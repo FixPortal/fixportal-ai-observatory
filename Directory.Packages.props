@@ -15,7 +15,7 @@
     <PackageVersion Include="NodaTime.Testing" Version="3.3.2" />
     <!-- NodaTime -->
     <PackageVersion Include="NodaTime" Version="3.3.2" />
-    <PackageVersion Include="NodaTime.Serialization.SystemTextJson" Version="1.3.1" />
+    <PackageVersion Include="NodaTime.Serialization.SystemTextJson" Version="1.4.0" />
     <!-- EF Core / Npgsql (net10) -->
     <PackageVersion Include="Microsoft.EntityFrameworkCore" Version="10.0.8" />
     <PackageVersion Include="Microsoft.EntityFrameworkCore.Design" Version="10.0.8" />
