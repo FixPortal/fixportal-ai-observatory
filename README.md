@@ -208,7 +208,7 @@ docker run -d --name aiobs-test-pg -e POSTGRES_DB=aiobs_test -e POSTGRES_USER=po
 | `infra.yml` | Push to `infra/**` or manual | `az deployment group create` on `fpaiobs-rg` (westeurope) |
 | `react-doctor.yml` | Every PR | React diagnostics with inline PR annotations; fails on error-severity findings |
 
-Secrets required in the GitHub environment: `AZURE_CREDENTIALS`, `AZURE_STATIC_WEB_APPS_API_TOKEN`, `DB_CONNECTION`, `ANTHROPIC_API_KEY`, `OBSERVATORY_API_KEY`.
+GitHub Actions secrets required for deployment: `AZURE_CREDENTIALS` (Azure service-principal login) and `SWA_DEPLOYMENT_TOKEN` (Static Web App deploy token). Runtime configuration — the database connection string, `ANTHROPIC_API_KEY`, and `OBSERVATORY_API_KEY` — is supplied to the API App Service via its application settings / Key Vault (pulled at runtime by the managed identity), **not** as GitHub secrets.
 
 ---
 
