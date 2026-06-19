@@ -25,7 +25,7 @@ Usage events enter via a `POST /api/events` endpoint, currently fed by a Claude 
 | Frontend | React 19, TypeScript 6, Vite 8 |
 | Charts | Recharts 3 (lazy-loaded) |
 | Server state | TanStack React Query 5 |
-| Styling | Custom CSS + `@fixportal/design` tokens (no Tailwind) |
+| Styling | Custom CSS + vendored design tokens & components (no Tailwind) |
 | Backend | ASP.NET Core 10, Minimal APIs |
 | ORM | EF Core 10 + NodaTime |
 | Database | PostgreSQL 16 |
@@ -98,7 +98,7 @@ The frontend (`src/AiObservatory.Web`) is a single-page app served by Azure Stat
 
 ### Design system
 
-The app imports `@fixportal/design/tokens.css` (shared monorepo package) for universal surface, text, brand, status, and border tokens. It never redefines those tokens. App-local tokens (provider palette, spacing scale, radius) live in `src/index.css`.
+The app uses a small set of vendored design tokens and UI primitives in `src/design/` — `tokens.css`, `components.css`, and the `BrandWordmark` / `Button` / `Card` / `StatusBadge` / `ThemeToggle` components — copied in so the repo builds standalone with no private package dependency. `src/index.css` imports those tokens for universal surface, text, brand, status, and border values and never redefines them; app-local tokens (provider palette, spacing scale, radius) also live in `src/index.css`.
 
 Provider colours are categorical, not semantic:
 
