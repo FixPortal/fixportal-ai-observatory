@@ -47,7 +47,7 @@ jobs:
           --health-retries 5
 
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
 
       - name: Lint workflow
         uses: raven-actions/actionlint@v2
@@ -89,7 +89,7 @@ jobs:
         working-directory: src/AiObservatory.Web
 
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
       - uses: actions/setup-node@v6
         with:
           node-version: '22'

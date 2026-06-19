@@ -18,9 +18,9 @@ jobs:
       pull-requests: write
       issues: write
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
 
-      - uses: millionco/react-doctor@547e1e4ecdb70315d81a91ec3605701d58616ee2 # v2.1.0
+      - uses: millionco/react-doctor@740211cf201ee28910c105b59b79e9aa73e1bd45 # v2.2.0
         # with:
         #   fail-on: warning      # "error" (default) | "warning" | "none"
         #   comment: false        # disable sticky PR summary comment
