@@ -1,0 +1,904 @@
+/*
+ * AI Observatory stylesheet.
+ * Imports @fixportal/design/tokens.css (shared cross-repo tokens) and extends
+ * it below with the Observatory's categorical provider palette, the
+ * spacing/motion/radius scales, and a font bridge. Universal surface/text/
+ * brand/status tokens come from the shared sheet — never redefine them here.
+ * Depth is borders, not shadows (no modal/toast/popover here). See system.md.
+ */
+
+/* Bundle the IBM Plex webfonts (latin 400/600), same as the CI dashboard, so the
+   --font-sans / --font-mono stacks below actually resolve to IBM Plex instead of
+   silently falling back to system-ui on machines without the family installed. */
+@import "@fontsource/ibm-plex-sans/latin-400.css";
+@import "@fontsource/ibm-plex-sans/latin-600.css";
+@import "@fontsource/ibm-plex-mono/latin-400.css";
+@import "@fontsource/ibm-plex-mono/latin-600.css";
+
+@import "./design/tokens.css";
+@import "./design/components.css";
+
+:root {
+  /* Font bridge: tokens.css (consumed without Tailwind theme.css) exposes no
+     font tokens. Mirror the IBM Plex stacks (bundled above via @fontsource);
+     system-ui remains the fallback. Promotion to shared tokens.css is an SP0
+     follow-up. */
+  --font-sans: "IBM Plex Sans", system-ui, -apple-system, sans-serif;
+  --font-mono: "IBM Plex Mono", ui-monospace, monospace;
+
+  /* Text on --brand-strong fills (the white-on-brand idiom from the design
+     standard; constant across themes). Promotion to shared tokens.css is an
+     SP0 follow-up alongside the font bridge above. */
+  --text-on-brand: #fff;
+
+  /* Spacing scale (4px base). --space-1 is a micro-offset for sub-card gaps and
+     compact control padding. --space-5 intentionally omitted; layout uses 4→6 jump. */
+  --space-1: 0.25rem;
+  --space-2: 0.5rem;
+  --space-3: 0.75rem;
+  --space-4: 1rem;
+  --space-6: 1.5rem;
+  --space-8: 2rem;
+
+  /* Motion. */
+  --transition-fast: 0.15s ease;
+  --transition-normal: 0.25s ease;
+
+  /* Radius vocabulary (4px base radius scale: 4/6/8px). */
+  --r-control: 4px;
+  --r-chip: 6px;
+  --r-panel: 8px;
+
+  /* Categorical provider palette — distinct from the semantic hues (brand teal,
+     ok green, bad red, warn amber, info indigo). Used as recharts fills + legend
+     swatches, never as text. Direction A (violet/sky/rose). */
+  --provider-anthropic: #7c3aed;
+  --provider-google: #0284c7;
+  --provider-copilot: #db2777;
+  --provider-openai: #ea580c;
+  --provider-other: #64748b;
+}
+
+:root[data-theme="dark"] {
+  --provider-anthropic: #a78bfa;
+  --provider-google: #38bdf8;
+  --provider-copilot: #f472b6;
+  --provider-openai: #fb923c;
+  --provider-other: #94a3b8;
+}
+
+/* ---- Base ---- */
+* { box-sizing: border-box; }
+html, body, #root { height: 100%; }
+body {
+  margin: 0;
+  background: var(--app-bg);
+  color: var(--text);
+  font-family: var(--font-sans);
+  -webkit-font-smoothing: antialiased;
+}
+
+/* ---- Shell + nav ---- */
+.dashboard { min-height: 100%; display: flex; flex-direction: column; }
+/* App header — mirrors the CI dashboard masthead: full BrandWordmark plus a mono
+   descriptor, sticky to the top edge. */
+.app-header {
+  position: sticky;
+  top: 0;
+  z-index: 10;
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  padding: var(--space-3) var(--space-6);
+  background: var(--card-bg);
+  border-bottom: 1px solid var(--border);
+}
+.app-header__lockup {
+  display: flex;
+  align-items: flex-end;
+  gap: var(--space-3);
+}
+.app-header__wordmark { display: block; color: var(--text); }
+.app-header__descriptor {
+  font-family: var(--font-mono);
+  font-size: 0.8125rem;        /* 13px */
+  letter-spacing: 0.05em;
+  color: var(--text-muted);
+  padding-bottom: var(--space-2);  /* baseline-align with the tall wordmark */
+  white-space: nowrap;
+}
+/* Centred content columns (the nav spans full width above). */
+.summary-cards, .sub-panel, .main-grid, .bottom-grid {
+  max-width: 1200px;
+  width: 100%;
+  margin-inline: auto;
+  padding: 0 var(--space-6);
+}
+.summary-cards { margin-top: var(--space-6); }
+.bottom-grid { padding-bottom: var(--space-6); }
+
+/* Theme toggle — markup uses fpds-theme-toggle/fpds-theme-toggle__btn from @fixportal/design/components.css */
+.fpds-theme-toggle { margin-left: auto; } /* sits at the right edge of the header */
+
+/* ---- Summary cards ---- */
+.summary-cards {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: var(--space-4);
+}
+.card-label {
+  font-size: 0.65rem;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+}
+.card-value {
+  font-family: var(--font-mono);
+  font-size: 1.5rem;
+  font-weight: 600;
+  color: var(--text);
+  margin-top: var(--space-2);
+}
+.card-value--model { font-size: 0.95rem; }
+.card-value--lead { font-size: 2rem; } /* spend leads the summary row */
+.card-sub { font-size: 0.72rem; color: var(--text-muted); margin-top: var(--space-1); }
+
+/* Inline help affordance — native tooltip via title/aria-label (no popover layer,
+   keeping the no-shadow rule). Functional info glyph, not decorative. */
+.info-hint {
+  cursor: help;
+  color: var(--text-muted);
+  font-weight: 600;
+  border-radius: var(--r-control);
+}
+.info-hint:focus-visible { outline: 2px solid var(--brand-strong); outline-offset: 2px; }
+
+/* ---- Panels / grids ---- */
+.main-grid, .bottom-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: var(--space-4);               /* tight within a section */
+  margin-top: var(--space-6);        /* generous between sections */
+}
+.panel {
+  background: var(--card-bg);
+  border: 1px solid var(--border);
+  border-radius: var(--r-panel);
+  padding: var(--space-4);
+}
+.panel-title {
+  font-size: 0.75rem;
+  font-weight: 600;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+  padding-bottom: var(--space-2);
+  margin-bottom: var(--space-3);
+  border-bottom: 1px solid var(--border);
+}
+
+/* Empty-state copy shown in a panel when there is no data / no unread insights. */
+.panel-empty {
+  margin: 0;
+  padding: var(--space-4) 0;
+  font-size: 0.8rem;
+  color: var(--text-muted);
+  text-align: center;
+}
+
+/* Page-level API-failure banner (bad/error family — tokens shared with insights). */
+.error-banner {
+  max-width: 1200px;
+  width: 100%;
+  margin: var(--space-4) auto 0;
+  padding: var(--space-3) var(--space-4);
+  background: var(--bad-bg);
+  border: 1px solid var(--bad-border);
+  border-radius: var(--r-chip);
+  color: var(--bad-text);
+  font-size: 0.8rem;
+}
+.error-banner__action {
+  margin-left: var(--space-1);
+  padding: 0;
+  background: none;
+  border: none;
+  border-bottom: 1px solid currentColor;
+  color: inherit;
+  font: inherit;
+  cursor: pointer;
+}
+
+/* ---- Sign-in gate ---- */
+.auth-gate {
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-4);
+}
+.auth-gate__wordmark { color: var(--text); }
+.auth-gate__descriptor {
+  font-family: var(--font-mono);
+  font-size: 0.8125rem;
+  letter-spacing: 0.05em;
+  color: var(--text-muted);
+}
+.auth-gate__button {
+  padding: var(--space-2) var(--space-4);
+  background: var(--surface);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--r-chip);
+  color: var(--text);
+  font: inherit;
+  cursor: pointer;
+}
+.auth-gate__button:disabled { color: var(--text-muted); cursor: default; }
+.auth-gate__button:hover:not(:disabled) { border-color: var(--brand); }
+
+/* ---- Model breakdown table ---- */
+.model-table { width: 100%; border-collapse: collapse; font-size: 0.8rem; }
+.model-table th {
+  text-align: left;
+  font-weight: 500;
+  font-size: 0.65rem;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--text-muted);
+  padding: var(--space-1) var(--space-2);
+}
+.model-table td {
+  padding: var(--space-2);
+  border-top: 1px solid var(--border);
+  color: var(--text);
+  font-family: var(--font-mono);
+}
+.model-table tbody tr {
+  transition: background-color var(--transition-fast);
+}
+.model-table tbody tr:hover {
+  background-color: var(--app-bg);
+}
+/* Categorical provider marker — same palette as the chart series. */
+.model-table__dot {
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  margin-right: var(--space-2);
+  vertical-align: baseline;
+}
+/* Decorative progress bar (no text) — --brand fill is fine here; it is NOT AA on
+   white (~3.74:1), so do not reuse this token in a text/border role. */
+.bar-mini {
+  height: 4px;
+  border-radius: 2px;
+  margin-top: var(--space-1);
+  background: var(--brand);
+}
+
+/* ---- Model breakdown controls ---- */
+.model-breakdown-controls {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-3);
+  margin-bottom: var(--space-4);
+  align-items: center;
+  justify-content: space-between;
+}
+.model-breakdown-search-container {
+  position: relative;
+  flex: 1 1 200px;
+}
+.model-breakdown-search {
+  appearance: none;
+  font: inherit;
+  font-size: 0.8rem;
+  width: 100%;
+  padding: var(--space-2) var(--space-3) var(--space-2) var(--space-6);
+  background: var(--app-bg);
+  border: 1px solid var(--border);
+  border-radius: var(--r-control);
+  color: var(--text);
+  transition: border-color var(--transition-fast);
+}
+.model-breakdown-search:focus {
+  outline: 2px solid var(--brand);
+  outline-offset: 1px;
+}
+.model-breakdown-search-icon {
+  position: absolute;
+  left: var(--space-2);
+  top: 50%;
+  transform: translateY(-50%);
+  width: 14px;
+  height: 14px;
+  color: var(--text-faint);
+  pointer-events: none;
+}
+.model-breakdown-filters {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+}
+.filter-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  appearance: none;
+  font: inherit;
+  font-size: 0.75rem;
+  font-weight: 500;
+  padding: var(--space-1) var(--space-3);
+  background: transparent;
+  border: 1px solid var(--border);
+  border-radius: var(--r-control);
+  color: var(--text-muted);
+  cursor: pointer;
+  transition: all var(--transition-fast);
+  user-select: none;
+}
+.filter-chip:hover:not(:disabled) {
+  color: var(--text);
+  border-color: var(--border-strong);
+  background: var(--app-bg);
+}
+.filter-chip__dot {
+  display: inline-block;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+}
+
+/* ---- Sortable table headers ---- */
+.sortable-header {
+  user-select: none;
+  transition: color var(--transition-fast);
+  outline: none;
+}
+.sortable-header:focus-visible {
+  outline: 2px solid var(--brand);
+  outline-offset: -2px;
+}
+.sortable-header:hover {
+  color: var(--text) !important;
+}
+.sortable-header__content {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+}
+.sort-indicator {
+  display: inline-block;
+  font-size: 0.6rem;
+  color: var(--text-faint);
+  transition: color var(--transition-fast);
+}
+.sortable-header:hover .sort-indicator {
+  color: var(--text-muted);
+}
+.sort-indicator--active {
+  color: var(--brand);
+}
+
+/* ---- Responsive ---- */
+@media (max-width: 760px) {
+  .summary-cards { grid-template-columns: repeat(2, 1fr); }
+  .main-grid, .bottom-grid { grid-template-columns: 1fr; }
+}
+
+/* ---- Insights feed ---- */
+.insights-feed { display: flex; flex-direction: column; gap: var(--space-3); }
+.insight {
+  border: 1px solid var(--border);
+  border-left: 3px solid var(--border-strong);
+  border-radius: var(--r-chip);
+  padding: var(--space-3);
+  background: var(--card-bg);
+}
+.insight-type {
+  font-size: 0.65rem;
+  font-weight: 600;
+  letter-spacing: 0.07em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+}
+.insight-title { font-size: 0.85rem; font-weight: 600; color: var(--text); margin-top: var(--space-1); }
+.insight-body { font-size: 0.8rem; color: var(--text-muted); margin-top: var(--space-1); }
+
+.insight-anomaly { border-left-color: var(--bad-border); background: var(--bad-bg); }
+.insight-efficiency { border-left-color: var(--ok-border); background: var(--ok-bg); }
+.insight-recommendation { border-left-color: var(--info-border); background: var(--info-bg); }
+.insight-summary { border-left-color: var(--border-strong); }
+.insight-summary .insight-type { color: var(--text-muted); }
+
+/* Body text on the tinted variants needs full --text for AA (--text-muted on the
+   light pastel bgs is ~4.4:1). Summary has no tint, so its base --text-muted stands. */
+.insight-anomaly .insight-body,
+.insight-efficiency .insight-body,
+.insight-recommendation .insight-body { color: var(--text); }
+
+/* Markdown rendering inside insight body — reset react-markdown's browser defaults
+   to fit the compact card layout. */
+.insight-body p { margin: 0 0 var(--space-2); }
+.insight-body p:last-child { margin-bottom: 0; }
+.insight-body ol,
+.insight-body ul { margin: var(--space-1) 0 var(--space-2) var(--space-4); padding: 0; }
+.insight-body li { margin-bottom: var(--space-1); }
+.insight-body strong { font-weight: 600; }
+.insight-body code {
+  font-family: var(--font-mono);
+  font-size: 0.75em;
+  background: color-mix(in srgb, var(--text) 8%, transparent);
+  border-radius: 3px;
+  padding: 1px 4px;
+}
+
+/* How-to-implement expansion panel */
+.insight-explanation {
+  margin-top: var(--space-3);
+  padding-top: var(--space-3);
+  border-top: 1px solid var(--border);
+}
+.insight-explanation__label {
+  font-size: 0.65rem;
+  font-weight: 600;
+  letter-spacing: 0.07em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+  margin-bottom: var(--space-2);
+}
+.insight-explain-error {
+  font-size: 0.75rem;
+  color: var(--bad-text);
+  margin: var(--space-2) 0 0;
+}
+
+/* Action row — dismiss + optional explain button side by side */
+.insight-actions {
+  display: flex;
+  gap: var(--space-2);
+  margin-top: var(--space-2);
+}
+
+/* Dismiss button — replaced by @fixportal/design Button variant="ghost" size="sm" */
+
+/* ---- Footer (FixPortal — mirrors the CI dashboard footer; per-site tagline) ---- */
+.site-footer {
+  margin-top: auto;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--space-3);
+  padding: var(--space-8) var(--space-6);
+  border-top: 1px solid var(--border);
+}
+/* Decorative inner brand band: aria-hidden in Footer.tsx keeps it out of the
+   accessibility tree; pointer-events:none drops mouse hits on the chrome. */
+.site-footer__band {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--space-2);
+  pointer-events: none;
+}
+.site-footer__wordmark { color: var(--text); opacity: 0.85; }
+.site-footer__tagline {
+  font-family: var(--font-mono);
+  font-size: 0.625rem;         /* 10px */
+  letter-spacing: 0.34em;
+  text-transform: uppercase;
+  color: var(--text-faint);
+}
+.site-footer__attrib {
+  font-family: var(--font-mono);
+  font-size: 0.6875rem;        /* 11px */
+  line-height: 1.6;
+  color: var(--text-muted);
+}
+.site-footer__attrib a {
+  color: var(--brand);
+  text-decoration: none;
+  border-bottom: 1px solid color-mix(in srgb, var(--brand) 45%, transparent);
+}
+.site-footer__attrib a:hover { border-bottom-color: var(--brand); }
+.site-footer__attrib a:focus-visible {
+  outline: 2px solid var(--brand);
+  outline-offset: 2px;
+  border-radius: var(--r-control);
+}
+
+/* Suspense fallback while the lazily-loaded chart chunk fetches. Matches the
+   chart heights so panels don't reflow when the chart paints. */
+.chart-skeleton {
+  height: 160px;
+  border-radius: var(--r-chip);
+  background: var(--app-bg);
+  border: 1px dashed var(--border);
+}
+
+/* ---- Page-level tab navigation ---- */
+.page-nav {
+  display: flex;
+  gap: 0;
+  padding: 0 var(--space-6);
+  background: var(--card-bg);
+  border-bottom: 1px solid var(--border);
+}
+
+.page-nav__tab {
+  padding: var(--space-3) var(--space-4);
+  border: none;
+  border-bottom: 2px solid transparent;
+  background: none;
+  color: var(--text-muted);
+  font-family: var(--font-sans);
+  font-size: 0.875rem;
+  font-weight: 500;
+  cursor: pointer;
+  transition: color 0.15s;
+  margin-bottom: -1px;  /* overlap container border */
+}
+
+.page-nav__tab:hover { color: var(--text); }
+
+.page-nav__tab--active {
+  color: var(--text);
+  font-weight: 600;
+  border-bottom-color: var(--brand);
+}
+
+/* ---- Adversarial-review panel layout ---- */
+.adv-review-panel {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+  padding: var(--space-4) var(--space-6);
+}
+
+/* ---- Chart Controls ---- */
+.chart-controls {
+  display: flex;
+  justify-content: flex-end;
+  margin-top: calc(-1 * var(--space-2));
+  margin-bottom: var(--space-3);
+}
+.chart-toggle {
+  display: inline-flex;
+  background: var(--app-bg);
+  border: 1px solid var(--border);
+  border-radius: var(--r-control);
+  padding: 2px;
+  gap: 2px;
+}
+.chart-toggle-btn {
+  appearance: none;
+  border: none;
+  font: inherit;
+  font-size: 0.7rem;
+  font-weight: 500;
+  padding: var(--space-1) var(--space-3);
+  border-radius: calc(var(--r-control) - 2px);
+  background: transparent;
+  color: var(--text-muted);
+  cursor: pointer;
+  transition: all var(--transition-fast);
+}
+.chart-toggle-btn:hover:not(.chart-toggle-btn--active) {
+  color: var(--text);
+}
+.chart-toggle-btn--active {
+  background: var(--card-bg);
+  color: var(--text);
+  font-weight: 600;
+}
+
+/* ---- recharts chrome (chart-token contract — see system.md) ---- */
+.recharts-cartesian-axis-tick-value { fill: var(--text-muted); }
+.recharts-legend-item-text { color: var(--text-muted) !important; }
+.recharts-cartesian-axis-line, .recharts-cartesian-axis-tick-line { stroke: var(--border); }
+
+/* ---- Subscription panel ---- */
+.sub-panel { margin-top: var(--space-6); }
+
+.sub-panel-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding-bottom: var(--space-2);
+  margin-bottom: var(--space-3);
+  border-bottom: 1px solid var(--border);
+}
+.sub-panel-title {
+  font-size: 0.75rem;
+  font-weight: 600;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+}
+.sub-panel-btn {
+  appearance: none;
+  font: inherit;
+  font-size: 0.72rem;
+  padding: var(--space-1) var(--space-3);
+  background: transparent;
+  border: 1px solid var(--border-strong);
+  border-radius: var(--r-control);
+  color: var(--text-muted);
+  cursor: pointer;
+  transition: color var(--transition-fast), border-color var(--transition-fast);
+}
+.sub-panel-btn:hover { color: var(--text); border-color: var(--border); }
+
+.sub-cards {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: var(--space-4);
+}
+.sub-card {
+  border: 1px solid var(--border);
+  border-left-width: 3px;
+  border-radius: var(--r-panel);
+  padding: var(--space-4);
+}
+.sub-card__header {
+  display: flex;
+  align-items: baseline;
+  gap: var(--space-2);
+  margin-bottom: var(--space-3);
+}
+.sub-card__provider { font-size: 0.8rem; font-weight: 700; }
+.sub-card__plan { font-size: 0.78rem; color: var(--text-muted); }
+.sub-card__cost {
+  font-family: var(--font-mono);
+  font-size: 1.35rem;
+  font-weight: 600;
+  margin-bottom: var(--space-1);
+}
+.sub-card__cost-unit {
+  font-family: var(--font-sans);
+  font-size: 0.75rem;
+  font-weight: 400;
+  color: var(--text-muted);
+}
+.sub-card__extra {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  font-size: 0.75rem;
+  margin-bottom: var(--space-3);
+}
+.sub-card__extra-label { color: var(--text-muted); }
+.sub-card__extra-chip {
+  appearance: none;
+  font: inherit;
+  color: inherit;
+  background: var(--app-bg);
+  border: 1px solid var(--border);
+  border-radius: var(--r-chip);
+  padding: 2px var(--space-2);
+  cursor: pointer;
+  font-size: 0.72rem;
+  transition: border-color var(--transition-fast);
+}
+.sub-card__extra-chip:hover { border-color: var(--border-strong); }
+.sub-card__extra-chip--null { color: var(--text-muted); }
+.sub-card__extra-input {
+  font: inherit;
+  font-size: 0.72rem;
+  padding: 2px var(--space-2);
+  background: var(--app-bg);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--r-chip);
+  color: var(--text);
+  width: 80px;
+}
+.sub-card__billing-day {
+  font-size: 0.7rem;
+  color: var(--text-muted);
+  margin-bottom: var(--space-3);
+}
+.sub-card__period-row {
+  display: flex;
+  justify-content: space-between;
+  font-size: 0.75rem;
+  margin-bottom: var(--space-2);
+}
+.sub-card__period-label { color: var(--text-muted); }
+.sub-card__period-value { font-weight: 600; font-family: var(--font-mono); }
+.sub-card__period-value--over { color: var(--bad-text); }
+
+.sub-progress-track {
+  background: var(--app-bg);
+  border: 1px solid var(--border);
+  border-radius: 3px;
+  height: 6px;
+  overflow: hidden;
+  margin-bottom: var(--space-1);
+}
+.sub-progress-fill {
+  height: 100%;
+  border-radius: 3px;
+  transition: width var(--transition-normal);
+}
+.sub-progress-fill--over { background: var(--bad-border) !important; }
+.sub-progress-label {
+  font-size: 0.65rem;
+  color: var(--text-muted);
+  text-align: right;
+}
+
+.sub-empty { text-align: center; padding: var(--space-8) 0; }
+.sub-empty__text {
+  font-size: 0.8rem;
+  color: var(--text-muted);
+  margin-bottom: var(--space-4);
+}
+
+/* ---- Subscription modal ---- */
+.modal::backdrop {
+  background: var(--overlay-bg);
+}
+.modal {
+  margin: var(--space-8) auto auto;
+  padding: 0;
+  background: var(--card-bg);
+  border: 1px solid var(--border);
+  border-radius: var(--r-panel);
+  width: calc(100% - 2rem);
+  max-width: 560px;
+  max-height: calc(100vh - 4rem);
+  overflow-y: auto;
+}
+.modal__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: var(--space-4);
+  border-bottom: 1px solid var(--border);
+  position: sticky;
+  top: 0;
+  background: var(--card-bg);
+  z-index: 1;
+}
+.modal__title { font-size: 0.9rem; font-weight: 600; color: var(--text); }
+.modal__close {
+  appearance: none;
+  font: inherit;
+  font-size: 1.1rem;
+  line-height: 1;
+  background: transparent;
+  border: 0;
+  color: var(--text-muted);
+  cursor: pointer;
+  padding: var(--space-1);
+}
+.modal__close:hover { color: var(--text); }
+.modal__body { padding: var(--space-3) var(--space-4) var(--space-4); }
+
+.sub-list { list-style: none; margin: 0; padding: 0; }
+.sub-list-row {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  padding: var(--space-2) 0;
+  border-bottom: 1px solid var(--border);
+}
+.sub-list-row:last-of-type { border-bottom: none; }
+.sub-list__badge {
+  font-size: 0.65rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  padding: 2px 7px;
+  border-radius: 99px;
+  white-space: nowrap;
+}
+.sub-list__name { flex: 1; font-size: 0.82rem; }
+.sub-list__cost { font-size: 0.78rem; color: var(--text-muted); font-family: var(--font-mono); white-space: nowrap; }
+.sub-list__actions { display: flex; gap: var(--space-2); flex-shrink: 0; }
+.sub-list__confirm { display: flex; align-items: center; gap: var(--space-2); flex-shrink: 0; }
+.sub-list__confirm-text { font-size: 0.72rem; color: var(--bad-text); }
+.sub-list__btn {
+  appearance: none;
+  font: inherit;
+  font-size: 0.7rem;
+  padding: var(--space-1) var(--space-2);
+  background: transparent;
+  border: 1px solid var(--border);
+  border-radius: var(--r-control);
+  color: var(--text-muted);
+  cursor: pointer;
+  transition: color var(--transition-fast), border-color var(--transition-fast);
+}
+.sub-list__btn:hover { color: var(--text); border-color: var(--border-strong); }
+.sub-list__btn--danger { color: var(--bad-text); border-color: var(--bad-border); }
+.sub-list__btn--danger:hover { background: var(--bad-bg); }
+
+.sub-add-btn {
+  appearance: none;
+  font: inherit;
+  font-size: 0.78rem;
+  padding: var(--space-2) var(--space-3);
+  background: transparent;
+  border: 1px dashed var(--border-strong);
+  border-radius: var(--r-control);
+  color: var(--text-muted);
+  cursor: pointer;
+  width: 100%;
+  margin-top: var(--space-3);
+  transition: border-color var(--transition-fast), color var(--transition-fast);
+}
+.sub-add-btn:hover { border-color: var(--brand); color: var(--brand); }
+
+.sub-form {
+  margin-top: var(--space-3);
+  padding-top: var(--space-3);
+  border-top: 1px solid var(--border);
+}
+.sub-form__title {
+  font-size: 0.7rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--text-muted);
+  margin-bottom: var(--space-3);
+}
+.sub-form__grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: var(--space-3);
+  margin-bottom: var(--space-3);
+}
+.sub-form__label {
+  display: block;
+  font-size: 0.7rem;
+  color: var(--text-muted);
+  margin-bottom: var(--space-1);
+}
+.sub-form__input,
+.sub-form__select {
+  appearance: none;
+  font: inherit;
+  font-size: 0.82rem;
+  width: 100%;
+  padding: var(--space-2) var(--space-3);
+  background: var(--app-bg);
+  border: 1px solid var(--border);
+  border-radius: var(--r-control);
+  color: var(--text);
+}
+.sub-form__input:focus,
+.sub-form__select:focus {
+  outline: 2px solid var(--brand);
+  outline-offset: 1px;
+}
+.sub-form__actions { display: flex; gap: var(--space-2); justify-content: flex-end; }
+.sub-form__btn {
+  appearance: none;
+  font: inherit;
+  font-size: 0.78rem;
+  padding: var(--space-2) var(--space-3);
+  border-radius: var(--r-control);
+  cursor: pointer;
+  transition: filter var(--transition-fast), background var(--transition-fast);
+}
+.sub-form__btn--secondary {
+  background: transparent;
+  border: 1px solid var(--border);
+  color: var(--text-muted);
+}
+.sub-form__btn--secondary:hover { border-color: var(--border-strong); color: var(--text); }
+.sub-form__btn--primary {
+  background: var(--brand-strong);
+  border: 1px solid var(--brand-strong);
+  color: var(--text-on-brand);
+}
+.sub-form__btn--primary:hover { filter: brightness(1.1); }
+.sub-form__btn:disabled { opacity: 0.5; cursor: not-allowed; }
+
+/* ---- Responsive additions ---- */
+@media (max-width: 760px) {
+  .sub-cards { grid-template-columns: 1fr; }
+}
