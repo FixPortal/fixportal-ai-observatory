@@ -14,13 +14,11 @@ import {
 // spend-card label, and the chart all derive from this so they cannot drift.
 export const AGGREGATES_DAYS_RANGE = 31
 
-export const localDate = (d: Date) =>
-  `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
+export const localDate = (d: Date) => d.toISOString().slice(0, 10)
 
 const aggregatesQueryFn = () => {
   const to = new Date()
-  const from = new Date(to)
-  from.setDate(from.getDate() - AGGREGATES_DAYS_RANGE)
+  const from = new Date(to.getTime() - (AGGREGATES_DAYS_RANGE - 1) * 24 * 60 * 60 * 1000)
   return getAggregates(localDate(from), localDate(to))
 }
 

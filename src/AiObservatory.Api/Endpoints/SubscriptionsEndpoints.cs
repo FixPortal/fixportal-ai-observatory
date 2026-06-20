@@ -36,6 +36,12 @@ public static class SubscriptionsEndpoints
                 return Results.BadRequest("CostAmount must be non-negative");
             }
 
+            var currencyUpper = (req.Currency ?? "").ToUpperInvariant();
+            if (currencyUpper != "GBP" && currencyUpper != "USD")
+            {
+                return Results.BadRequest("Currency must be GBP or USD");
+            }
+
             var sub = new Subscription
             {
                 Provider = provider,
@@ -68,6 +74,12 @@ public static class SubscriptionsEndpoints
             if (req.CostAmount < 0)
             {
                 return Results.BadRequest("CostAmount must be non-negative");
+            }
+
+            var currencyUpper = (req.Currency ?? "").ToUpperInvariant();
+            if (currencyUpper != "GBP" && currencyUpper != "USD")
+            {
+                return Results.BadRequest("Currency must be GBP or USD");
             }
 
             var sub = await db.Subscriptions.FindAsync(id);

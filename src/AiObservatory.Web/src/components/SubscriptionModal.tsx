@@ -173,6 +173,8 @@ export default function SubscriptionModal({ open, onClose }: Props) {
     if (!Number.isFinite(cost) || cost < 0) return 'Monthly cost must be a positive number.'
     const day = parseInt(state.formValues.billingDay, 10)
     if (!Number.isInteger(day) || day < 1 || day > 31) return 'Billing day must be between 1 and 31.'
+    const curr = state.formValues.currency.toUpperCase()
+    if (curr !== 'GBP' && curr !== 'USD') return 'Currency must be GBP or USD.'
     return null
   }
 
