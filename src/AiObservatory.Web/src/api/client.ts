@@ -151,3 +151,12 @@ export const getAdversarialReviewRuns = () =>
 
 export const getAdversarialReviewStats = () =>
   getJson<AdversarialReviewStats[]>('/adversarial-review/stats')
+
+export interface CavemanStats {
+  sessions: number
+  totalOutputTokens: number
+  totalEstSavedTokens: number
+  totalEstSavedUsd: number
+}
+
+export const getCavemanStats = () => getJson<CavemanStats>('/caveman-stats')

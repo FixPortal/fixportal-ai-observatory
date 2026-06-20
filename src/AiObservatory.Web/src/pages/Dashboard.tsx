@@ -4,6 +4,7 @@ import ModelBreakdown from '../components/ModelBreakdown'
 import InsightsFeed from '../components/InsightsFeed'
 import SubscriptionPanel from '../components/SubscriptionPanel'
 import AdversarialReviewPanel from '../components/AdversarialReviewPanel'
+import CavemanStatsPanel from '../components/CavemanStatsPanel'
 import Footer from '../components/Footer'
 import { BrandWordmark, ThemeToggle } from '../design'
 import { useDashboardStatus } from '../api/queries'
@@ -72,6 +73,7 @@ export default function Dashboard() {
       {tab === 'overview' && (
         <>
           <SummaryCards />
+          <CavemanStatsPanel />
           <SubscriptionPanel />
           <div className="main-grid">
             <div className="panel">
