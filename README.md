@@ -17,6 +17,8 @@ license: Apache-2.0
 > insights, subscription management, and budget alerting. Live at
 > [observatory.fixportal.org](https://observatory.fixportal.org).
 
+![AI Observatory dashboard](docs/dashboard.png)
+
 ## What It Does
 
 - Aggregates daily token usage and costs per provider and model
@@ -87,7 +89,7 @@ matching the `OBSERVATORY_API_KEY` secret.
 
 | Method | Route | Description |
 |---|---|---|
-| `GET` | `/api/aggregates` | Daily token usage + cost by provider/model (default: last 14 days) |
+| `GET` | `/api/aggregates` | Daily token usage + cost by provider/model (default: last 31 days) |
 | `GET` | `/api/insights` | 50 most recent AI-generated insights |
 | `POST` | `/api/insights/{id}/acknowledge` | Mark an insight as read |
 | `GET` | `/api/subscriptions` | List billing subscriptions |

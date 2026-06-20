@@ -31,7 +31,7 @@ public static class AggregatesEndpoints
             }
             else
             {
-                start = today.PlusDays(-13);
+                start = today.PlusDays(-30);
             }
 
             if (to is not null)
