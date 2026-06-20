@@ -1,10 +1,21 @@
+---
+title: AI Observatory
+date: 2026-06-03
+status: active
+repo: FixPortal/fixportal-ai-observatory
+stack: .NET 10 · React 19 · PostgreSQL 16
+license: Apache-2.0
+---
+
+![Build](https://github.com/FixPortal/fixportal-ai-observatory/actions/workflows/ci.yml/badge.svg)
+![License](https://img.shields.io/github/license/FixPortal/fixportal-ai-observatory)
+
 # AI Observatory
 
-Full-stack observability dashboard for AI service spending. Tracks token usage and costs across Anthropic, Google, and GitHub Copilot with AI-generated insights, subscription management, and budget alerting.
-
-**Live:** [observatory.fixportal.org](https://observatory.fixportal.org) | **API:** [fpaiobs-api.azurewebsites.net](https://fpaiobs-api.azurewebsites.net)
-
----
+> Full-stack observability dashboard for AI service spending. Tracks token usage
+> and costs across Anthropic, Google, and GitHub Copilot with AI-generated
+> insights, subscription management, and budget alerting. Live at
+> [observatory.fixportal.org](https://observatory.fixportal.org).
 
 ## What It Does
 
@@ -15,8 +26,6 @@ Full-stack observability dashboard for AI service spending. Tracks token usage a
 - Supports budget rules and FX-rate-aware GBP display
 
 Usage events enter via a `POST /api/events` endpoint, currently fed by a Claude Code `Stop` hook on the developer's machine.
-
----
 
 ## Tech Stack
 
@@ -34,7 +43,14 @@ Usage events enter via a `POST /api/events` endpoint, currently fed by a Claude 
 | IaC | Bicep (in `infra/`) |
 | Observability | Azure Application Insights |
 
----
+## Compatibility
+
+| Component | Requirement |
+|---|---|
+| .NET SDK | 10 (no down-level targets) |
+| Node | 22+ |
+| PostgreSQL | 16 |
+| Azure | App Service F1 + Static Web App Free tier |
 
 ## Project Structure
 
@@ -64,11 +80,10 @@ fixportal-ai-observatory/
 └── AiObservatory.slnx
 ```
 
----
-
 ## API Endpoints
 
-All routes are under `/api`.
+All routes are under `/api`. Requests require an `X-Observatory-Key` header
+matching the `OBSERVATORY_API_KEY` secret.
 
 | Method | Route | Description |
 |---|---|---|
@@ -82,10 +97,6 @@ All routes are under `/api`.
 | `DELETE` | `/api/subscriptions/{id}` | Remove a subscription |
 | `GET` | `/api/budget-rules` | List budget alert rules |
 | `POST` | `/api/events` | Ingest a raw usage event |
-
-Requests to the API require an `X-Observatory-Key` header matching the `OBSERVATORY_API_KEY` secret.
-
----
 
 ## Frontend Architecture
 
@@ -121,8 +132,6 @@ Depth is expressed through borders only — no box shadows anywhere.
 | efficiency | ok |
 | recommendation | info |
 | summary | neutral |
-
----
 
 ## Local Development
 
@@ -197,8 +206,6 @@ npm run doctor                         # React Doctor diagnostics
 docker run -d --name aiobs-test-pg -e POSTGRES_DB=aiobs_test -e POSTGRES_USER=postgres -e POSTGRES_PASSWORD=postgres -p 5432:5432 postgres:16 # spin up a local docker postgres if you want to unit test all locally
 ```
 
----
-
 ## CI / CD
 
 | Workflow | Trigger | What it does |
@@ -209,8 +216,6 @@ docker run -d --name aiobs-test-pg -e POSTGRES_DB=aiobs_test -e POSTGRES_USER=po
 | `react-doctor.yml` | Every PR | React diagnostics with inline PR annotations; fails on error-severity findings |
 
 GitHub Actions secrets required for deployment: `AZURE_CREDENTIALS` (Azure service-principal login) and `SWA_DEPLOYMENT_TOKEN` (Static Web App deploy token). Runtime configuration — the database connection string, `ANTHROPIC_API_KEY`, and `OBSERVATORY_API_KEY` — is supplied to the API App Service via its application settings / Key Vault (pulled at runtime by the managed identity), **not** as GitHub secrets.
-
----
 
 ## Infrastructure
 
@@ -227,14 +232,6 @@ All Azure resources live in `fpaiobs-rg` (westeurope). Bicep templates in `infra
 
 The API App Service uses a system-assigned managed identity to pull secrets from Key Vault at runtime — no secrets in app settings or environment variables.
 
-> [!IMPORTANT]
-> **Key Vault RBAC Role Assignment Drift (Runbook/Troubleshooting):**
-> Both the API and Ingest App Services use system-assigned managed identities, and their Bicep templates define the Key Vault Secrets User role assignment deterministically using resource IDs. If either App Service is deleted and recreated, the next infrastructure deployment will fail with `RoleAssignmentUpdateNotPermitted` because Azure prevents updating the immutable `principalId` of an existing role assignment.
->
-> **Resolution**: Before re-deploying, manually delete the stale role assignment for the App Service's identity from the Key Vault's Access Control (IAM) page in the Azure Portal.
-
----
-
 ## Background Intelligence Worker
 
 `IntelligenceWorkerService` runs in-process on the API and periodically analyses recent aggregates to produce insights. It uses the Anthropic SDK (`claude-*`) via `AnthropicIntelligenceClient`, building prompts with `PromptBuilder` and parsing structured responses with `InsightResponseParser`.
@@ -248,7 +245,16 @@ Insight types generated:
 
 Insights are stored in the `Insights` table and surfaced in the `InsightsFeed` component.
 
----
+## Troubleshooting
+
+| Symptom | Cause | Fix |
+|---|---|---|
+| Infra deploy fails with `RoleAssignmentUpdateNotPermitted` | App Service was deleted and recreated — Azure prevents updating the immutable `principalId` of an existing role assignment | Delete the stale Key Vault role assignment for the old identity from Key Vault IAM in the portal, then re-run `infra.yml` |
+| API returns `401` despite correct key | `OBSERVATORY_API_KEY` env var not set or Key Vault secret not replicated yet | Verify the secret in `fpaiobs-kv`; allow a few minutes after a Key Vault update before the App Service picks it up |
+| Frontend shows no data after deploy | `VITE_API_BASE_URL` not set in SWA environment variables | Add `VITE_API_BASE_URL=https://fpaiobs-api.azurewebsites.net` to the SWA application settings |
+| EF migrations fail on first run | Database does not yet exist or user lacks `CREATE` privileges | Ensure `DB_CONNECTION` points at an existing PostgreSQL 16 instance with a user that can create tables |
+| Entra sign-in loop or `401` after SSO | `aadClientId` Bicep param or `VITE_AAD_*` env vars are stale after app registration recreation | Re-run `infra/scripts/setup-entra.ps1` and redeploy both API and frontend with the new values |
+| Intelligence worker produces no insights | `ANTHROPIC_API_KEY` missing or invalid | Verify the secret in `fpaiobs-kv`; check Application Insights for `AnthropicIntelligenceClient` exceptions |
 
 ## Contributing
 
@@ -264,3 +270,32 @@ do not open a public issue.
 ## License
 
 [Apache-2.0](LICENSE) © 2026 Chris Dowling. See [NOTICE](NOTICE) for attribution.
+
+## Appendix
+
+### Live endpoints
+
+| Surface | URL |
+|---|---|
+| Dashboard | `https://observatory.fixportal.org` |
+| API | `https://fpaiobs-api.azurewebsites.net` |
+| API snapshot | `https://fpaiobs-api.azurewebsites.net/api/aggregates` |
+
+### Azure resources (`fpaiobs-rg`, westeurope)
+
+| Resource | Name |
+|---|---|
+| Resource group | `fpaiobs-rg` |
+| App Service | `fpaiobs-api` |
+| App Service Plan | `fpaiobs-plan` |
+| PostgreSQL Flexible | `fpaiobs-db` |
+| Key Vault | `fpaiobs-kv` |
+| Application Insights | `fpaiobs-ai` |
+| Static Web App | `fpaiobs-swa` |
+
+### Required GitHub Actions secrets
+
+| Secret | Purpose |
+|---|---|
+| `AZURE_CREDENTIALS` | Service principal login for `az` CLI in CI |
+| `SWA_DEPLOYMENT_TOKEN` | Static Web App deploy token |
