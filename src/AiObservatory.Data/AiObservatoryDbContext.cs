@@ -12,6 +12,7 @@ public class AiObservatoryDbContext(DbContextOptions<AiObservatoryDbContext> opt
     public DbSet<Insight> Insights => Set<Insight>();
     public DbSet<BudgetRule> BudgetRules => Set<BudgetRule>();
     public DbSet<AdversarialReviewRun> AdversarialReviewRuns => Set<AdversarialReviewRun>();
+    public DbSet<CavemanSession> CavemanSessions => Set<CavemanSession>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -60,6 +61,19 @@ public class AiObservatoryDbContext(DbContextOptions<AiObservatoryDbContext> opt
         {
             b.Property(r => r.Provider).HasConversion<string>();
             b.Property(r => r.Period).HasConversion<string>();
+        });
+
+        modelBuilder.Entity<CavemanSession>(b =>
+        {
+            b.Property(s => s.SessionId).HasMaxLength(200).IsRequired();
+            b.HasIndex(s => s.SessionId).IsUnique();
+            b.HasIndex(s => s.OccurredAt);
+            b.ToTable(t =>
+            {
+                t.HasCheckConstraint("CK_CavemanSession_OutputTokens_NonNegative", "\"OutputTokens\" >= 0");
+                t.HasCheckConstraint("CK_CavemanSession_EstSavedTokens_NonNegative", "\"EstSavedTokens\" >= 0");
+                t.HasCheckConstraint("CK_CavemanSession_EstSavedUsd_NonNegative", "\"EstSavedUsd\" >= 0");
+            });
         });
 
         modelBuilder.Entity<AdversarialReviewRun>(b =>

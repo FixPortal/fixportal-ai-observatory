@@ -1,9 +1,9 @@
 import { useQuery } from '@tanstack/react-query'
 import {
   getAggregates, getInsights, getSubscriptions,
-  getAdversarialReviewRuns, getAdversarialReviewStats,
+  getAdversarialReviewRuns, getAdversarialReviewStats, getCavemanStats,
   type DailyAggregate, type Insight, type Subscription,
-  type AdversarialReviewRun, type AdversarialReviewStats,
+  type AdversarialReviewRun, type AdversarialReviewStats, type CavemanStats,
 } from './client'
 
 // Shared query hooks. Components subscribe directly (react-query deduplicates by
@@ -46,6 +46,11 @@ export function useAdversarialReviewRuns(): AdversarialReviewRun[] {
 
 export function useAdversarialReviewStats(): AdversarialReviewStats[] {
   const { data = [] } = useQuery({ queryKey: ['adversarial-review-stats'], queryFn: getAdversarialReviewStats })
+  return data
+}
+
+export function useCavemanStats(): CavemanStats | undefined {
+  const { data } = useQuery({ queryKey: ['caveman-stats'], queryFn: getCavemanStats })
   return data
 }
 
