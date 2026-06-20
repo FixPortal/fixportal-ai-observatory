@@ -132,6 +132,7 @@ body {
   text-transform: uppercase;
   color: var(--text-muted);
 }
+.card-label--row { display: flex; align-items: center; gap: var(--space-2); }
 .card-value {
   font-family: var(--font-mono);
   font-size: 1.5rem;
@@ -143,15 +144,78 @@ body {
 .card-value--lead { font-size: 2rem; } /* spend leads the summary row */
 .card-sub { font-size: 0.72rem; color: var(--text-muted); margin-top: var(--space-1); }
 
-/* Inline help affordance — native tooltip via title/aria-label (no popover layer,
-   keeping the no-shadow rule). Functional info glyph, not decorative. */
-.info-hint {
-  cursor: help;
-  color: var(--text-muted);
-  font-weight: 600;
-  border-radius: var(--r-control);
+/* ---- Info button + popover ---- */
+/* Wraps the button and the absolute-positioned popover; provides the
+   position:relative stacking context the popover anchors against. */
+.info-anchor {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
 }
-.info-hint:focus-visible { outline: 2px solid var(--brand-strong); outline-offset: 2px; }
+.info-btn {
+  width: 14px;
+  height: 14px;
+  flex: none;
+  border-radius: 50%;
+  border: 1px solid var(--border-strong);
+  background: none;
+  color: var(--text-muted);
+  font-family: Georgia, serif;
+  font-style: italic;
+  font-size: 0.625rem;
+  line-height: 1;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  transition: border-color 0.12s ease, color 0.12s ease;
+}
+.info-btn:hover,
+.info-btn[aria-expanded="true"] {
+  border-color: var(--brand);
+  color: var(--brand);
+}
+.info-btn:focus-visible {
+  outline: 2px solid var(--brand);
+  outline-offset: 2px;
+}
+.info-popover {
+  position: absolute;
+  bottom: calc(100% + 8px);
+  left: 0;
+  width: 260px;
+  background: var(--card-bg);
+  border: 1px solid color-mix(in srgb, var(--brand) 60%, var(--border));
+  border-radius: var(--r-panel);
+  padding: var(--space-3);
+  font-size: 0.6875rem;
+  color: var(--text-muted);
+  line-height: 1.55;
+  z-index: 20;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.45);
+}
+.info-popover p { margin: 0 0 var(--space-2); }
+.info-popover p:last-of-type { margin-bottom: 0; }
+.info-popover__title {
+  font-size: 0.625rem;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--brand);
+  font-weight: 600;
+  margin-bottom: var(--space-2);
+}
+.info-popover__caret {
+  position: absolute;
+  bottom: -5px;
+  left: var(--space-3);
+  width: 8px;
+  height: 8px;
+  background: var(--card-bg);
+  border-right: 1px solid color-mix(in srgb, var(--brand) 60%, var(--border));
+  border-bottom: 1px solid color-mix(in srgb, var(--brand) 60%, var(--border));
+  transform: rotate(45deg);
+}
 
 /* ---- Panels / grids ---- */
 .main-grid, .bottom-grid {
@@ -609,6 +673,11 @@ body {
   padding-bottom: var(--space-2);
   margin-bottom: var(--space-3);
   border-bottom: 1px solid var(--border);
+}
+.sub-panel-title-row {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
 }
 .sub-panel-title {
   font-size: 0.75rem;

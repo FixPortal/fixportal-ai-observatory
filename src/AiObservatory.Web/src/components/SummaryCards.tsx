@@ -4,15 +4,7 @@ import { useAggregates, useInsights, AGGREGATES_DAYS_RANGE } from '../api/querie
 import { useUsdToGbp, formatGbp } from '../lib/currency'
 import { formatInt } from '../lib/format'
 import { getProvider } from '../config/providers'
-
-// Plain-language explanation of the cache figures, surfaced as a hover/focus
-// tooltip (no popover — this dashboard has no shadowed overlay layer).
-const CACHE_HELP =
-  'Cache hit: the share of prompt (input) tokens served from the provider\'s ' +
-  'prompt cache instead of being re-read at full price. ' +
-  'Saved: the estimated value of those cached reads versus paying the full ' +
-  'input list-price for them. This is notional — on a flat subscription no cash ' +
-  'is actually saved; it is what the caching would be worth at API list prices.'
+import { InfoPopover } from './InfoPopover'
 
 export default function SummaryCards() {
   const aggregates = useAggregates()
@@ -58,7 +50,13 @@ export default function SummaryCards() {
   return (
     <div className="summary-cards">
       <Card>
-        <div className="card-label">Spend · {AGGREGATES_DAYS_RANGE} days</div>
+        <div className="card-label card-label--row">
+          Spend · {AGGREGATES_DAYS_RANGE} days
+          <InfoPopover id="spend-info" title={`Spend · ${AGGREGATES_DAYS_RANGE} days`}>
+            <p>Rolling {AGGREGATES_DAYS_RANGE}-day window across all providers: Anthropic, Copilot, Google, and OpenAI.</p>
+            <p>Copilot and Google subscription usage is shown at notional API list rates — no real money changes hands on those providers.</p>
+          </InfoPopover>
+        </div>
         <div className="card-value card-value--lead">{formatGbp(totalSpend, rate)}</div>
       </Card>
       <Card>
@@ -68,17 +66,12 @@ export default function SummaryCards() {
           <div className="card-sub">
             <div>{formatInt(totalInputTokens)} in / {formatInt(totalOutputTokens)} out</div>
             {totalCacheRead > 0 && (
-              <div style={{ marginTop: 'var(--space-1)', color: 'var(--ok-text)', fontWeight: 500 }}>
+              <div style={{ marginTop: 'var(--space-1)', color: 'var(--ok-text)', fontWeight: 500, display: 'flex', alignItems: 'center', gap: 'var(--space-2)' }}>
                 {(cacheHitRate / 100).toLocaleString(undefined, { style: 'percent', maximumFractionDigits: 0 })} cache hit (saved {formatGbp(estimatedSavings, rate)})
-                {' '}
-                <span
-                  className="info-hint"
-                  role="note"
-                  aria-label={CACHE_HELP}
-                  title={CACHE_HELP}
-                >
-                  &#9432;
-                </span>
+                <InfoPopover id="cache-info" title="Prompt cache">
+                  <p>Cache hit: the share of prompt tokens served from the provider's cache instead of being re-read at full price.</p>
+                  <p>Saved: the estimated value of those cached reads versus paying the full input list price. Notional for subscription providers — the saving is what it would be worth at API list rates.</p>
+                </InfoPopover>
               </div>
             )}
           </div>
