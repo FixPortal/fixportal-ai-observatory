@@ -1,4 +1,5 @@
 import { useState, useMemo, useCallback, useRef } from 'react'
+import { InfoPopover } from './InfoPopover'
 import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { patchExtraUsage, type Subscription } from '../api/client'
 import { useSubscriptions, useAggregates, localDate } from '../api/queries'
@@ -146,7 +147,13 @@ export default function SubscriptionPanel() {
     <div className="sub-panel">
       <div className="panel">
         <div className="sub-panel-header">
-          <span className="sub-panel-title">Subscriptions</span>
+          <div className="sub-panel-title-row">
+            <span className="sub-panel-title">Subscriptions</span>
+            <InfoPopover id="subscriptions-info" title="Subscriptions">
+              <p>Period spend is API-tracked usage from the start of each provider's current billing cycle to today.</p>
+              <p>The cycle resets on the renewal day shown in each card. The progress bar shows period spend as a percentage of the monthly cost.</p>
+            </InfoPopover>
+          </div>
           <button type="button" className="sub-panel-btn" onClick={() => setModalOpen(true)}>
             Manage subscriptions
           </button>
