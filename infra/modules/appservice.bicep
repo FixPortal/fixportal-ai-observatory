@@ -33,7 +33,8 @@ resource app 'Microsoft.Web/sites@2023-01-01' = {
         { name: 'DB_CONNECTION', value: '@Microsoft.KeyVault(VaultName=${kvName};SecretName=db-connection)' }
         { name: 'ANTHROPIC_API_KEY', value: '@Microsoft.KeyVault(VaultName=${kvName};SecretName=anthropic-api-key)' }
         { name: 'OBSERVATORY_API_KEY', value: '@Microsoft.KeyVault(VaultName=${kvName};SecretName=observatory-api-key)' }
-        { name: 'OBSERVATORY_READONLY_API_KEY', value: '@Microsoft.KeyVault(VaultName=${kvName};SecretName=observatory-readonly-api-key)' }
+        // Public read-only key — not sensitive, hardcoded so infra redeploy doesn't break it.
+        { name: 'OBSERVATORY_READONLY_API_KEY', value: '019efe9f-3ea3-46f6-9181-0636518d8dab' }
         { name: 'APPLICATIONINSIGHTS_CONNECTION_STRING', value: aiConnectionString }
         { name: 'SWA_ORIGIN', value: 'https://observatory.fixportal.org' }
         // Entra JWT auth (non-secret). Empty AzureAd__ClientId => auth off, API-key only.
