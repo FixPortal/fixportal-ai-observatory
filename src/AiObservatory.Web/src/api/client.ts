@@ -180,4 +180,4 @@ export const deleteBudgetRule = async (id: string): Promise<void> => {
   await request(`/budget-rules/${id}`, { method: 'DELETE' })
 }
 
-export const getWebhookStatus = () => getJson<{ configured: boolean }>('/budget-rules/webhook-status')
+export const getEmailStatus = () => getJson<{ configured: boolean }>('/budget-rules/email-status')

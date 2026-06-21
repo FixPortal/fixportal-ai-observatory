@@ -12,8 +12,8 @@ public static class BudgetRulesEndpoints
         app.MapGet("/budget-rules", async (AiObservatoryDbContext db) =>
             Results.Ok(await db.BudgetRules.AsNoTracking().ToListAsync()));
 
-        app.MapGet("/budget-rules/webhook-status", (IConfiguration config) =>
-            Results.Ok(new { configured = !string.IsNullOrEmpty(config["BUDGET_ALERT_WEBHOOK_URL"]) }));
+        app.MapGet("/budget-rules/email-status", (IConfiguration config) =>
+            Results.Ok(new { configured = !string.IsNullOrEmpty(config["BUDGET_ALERT_EMAIL_TO"]) }));
 
         app.MapGet("/budget-rules/{id:guid}", async (Guid id, AiObservatoryDbContext db) =>
         {
