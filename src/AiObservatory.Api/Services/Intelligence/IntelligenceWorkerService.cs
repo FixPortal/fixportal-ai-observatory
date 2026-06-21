@@ -106,6 +106,8 @@ public class IntelligenceWorkerService(
         }
         catch (Exception ex)
         {
+            // Broad by design: keep the worker alive if the budget check fails
+            // (DB error, HTTP delivery failure, etc.) so it retries next cycle.
             logger.LogError(ex, "Intelligence worker budget check failed");
         }
     }
