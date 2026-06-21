@@ -19,6 +19,22 @@ license: Apache-2.0
 
 ![AI Observatory dashboard](docs/dashboard.png)
 
+## Try It Now
+
+The live API is publicly readable — no sign-up, no account needed:
+
+```bash
+curl -s https://fpaiobs-api.azurewebsites.net/api/aggregates \
+  -H "X-Observatory-Key: 019efe9f-3ea3-46f6-9181-0636518d8dab" | head -c 500
+```
+
+```bash
+curl -s https://fpaiobs-api.azurewebsites.net/api/insights \
+  -H "X-Observatory-Key: 019efe9f-3ea3-46f6-9181-0636518d8dab" | head -c 500
+```
+
+The key is read-only — GETs only, no writes.
+
 ## What It Does
 
 - Aggregates daily token usage and costs per provider and model
@@ -396,6 +412,8 @@ do not open a public issue.
 | Dashboard | `https://observatory.fixportal.org` |
 | API | `https://fpaiobs-api.azurewebsites.net` |
 | API snapshot | `https://fpaiobs-api.azurewebsites.net/api/aggregates` |
+
+Public read-only key: `019efe9f-3ea3-46f6-9181-0636518d8dab` — pass as `X-Observatory-Key`. GETs only.
 
 ### Azure resources (`fpaiobs-rg`, westeurope)
 
