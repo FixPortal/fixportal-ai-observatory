@@ -49,3 +49,8 @@ export async function getAccessToken(): Promise<string | null> {
     return null
   }
 }
+
+// Self-host mode: set VITE_API_KEY to authenticate the UI with the API key instead
+// of Entra. AuthGate is a no-op (no sign-in screen); the key is injected as
+// X-Observatory-Key on every request. Takes no effect when authEnabled is true.
+export const apiKey = import.meta.env.VITE_API_KEY ?? ''
