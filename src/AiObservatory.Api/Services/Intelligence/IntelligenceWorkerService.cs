@@ -17,6 +17,7 @@ public class IntelligenceWorkerService(
         while (!stoppingToken.IsCancellationRequested)
         {
             await RunAnalysisCatchupAsync(stoppingToken);
+            await RunBudgetCheckAsync(stoppingToken);
 
             var now = clock.GetCurrentInstant();
             var nextRun = now.InUtc().Date.PlusDays(1).AtMidnight().InUtc().ToInstant();
@@ -88,6 +89,24 @@ public class IntelligenceWorkerService(
             // Broad by design: isolate a single daily run's failure so the
             // long-running worker survives to the next iteration.
             logger.LogError(ex, "Intelligence worker failed for date {Date}", analysisDate);
+        }
+    }
+
+    private async Task RunBudgetCheckAsync(CancellationToken ct)
+    {
+        try
+        {
+            await using var scope = scopeFactory.CreateAsyncScope();
+            var svc = scope.ServiceProvider.GetRequiredService<BudgetAlertService>();
+            await svc.CheckAndAlertAsync(ct);
+        }
+        catch (OperationCanceledException) when (ct.IsCancellationRequested)
+        {
+            throw;
+        }
+        catch (Exception ex)
+        {
+            logger.LogError(ex, "Intelligence worker budget check failed");
         }
     }
 }

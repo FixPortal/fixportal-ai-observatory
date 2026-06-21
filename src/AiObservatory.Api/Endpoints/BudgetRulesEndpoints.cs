@@ -1,6 +1,7 @@
 using AiObservatory.Data;
 using AiObservatory.Data.Entities;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Configuration;
 
 namespace AiObservatory.Api.Endpoints;
 
@@ -35,6 +36,9 @@ public static class BudgetRulesEndpoints
             await db.BudgetRules.Where(r => r.Id == id).ExecuteDeleteAsync();
             return Results.NoContent();
         });
+
+        app.MapGet("/budget-rules/webhook-status", (IConfiguration config) =>
+            Results.Ok(new { configured = !string.IsNullOrEmpty(config["BUDGET_ALERT_WEBHOOK_URL"]) }));
 
         return app;
     }
