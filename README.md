@@ -137,7 +137,36 @@ Depth is expressed through borders only — no box shadows anywhere.
 
 ## Local Development
 
-### Prerequisites
+### Quick start (Docker)
+
+The fastest way to see a populated dashboard — one command, no local
+.NET / Node / PostgreSQL setup needed:
+
+```bash
+docker compose up --build
+```
+
+This starts PostgreSQL, the API (with EF migrations auto-applied), and the
+React frontend served by nginx on [http://localhost:5173](http://localhost:5173).
+A one-shot `seed` container fires once the API is healthy and populates 14 days
+of sample data.
+
+To supply an Anthropic API key (enables AI insights):
+
+```bash
+ANTHROPIC_API_KEY=sk-ant-... docker compose up --build
+```
+
+Without the key the API boots fine — AI insights and the `/explain` endpoint
+are simply disabled.
+
+To stop and wipe the database volume:
+
+```bash
+docker compose down -v
+```
+
+### Prerequisites (manual setup)
 
 - .NET 10 SDK
 - Node 22+
@@ -154,8 +183,8 @@ Set these environment variables (or user secrets):
 
 ```
 DB_CONNECTION=Host=localhost;Database=aiobservatory;Username=...;Password=...
-ANTHROPIC_API_KEY=sk-ant-...
 OBSERVATORY_API_KEY=<any-guid>
+ANTHROPIC_API_KEY=sk-ant-...   # optional — omit to skip AI insights
 ```
 
 Run EF Core migrations on first launch or after pulling new migrations:
@@ -336,6 +365,8 @@ Insights are stored in the `Insights` table and surfaced in the `InsightsFeed` c
 | Entra sign-in loop or `401` after SSO | `aadClientId` Bicep param or `VITE_AAD_*` env vars are stale after app registration recreation | Re-run `infra/scripts/setup-entra.ps1` and redeploy both API and frontend with the new values |
 | UI shows no data with `VITE_API_KEY` set | Key baked at build time — runtime env var has no effect | Rebuild the frontend with the env var set; confirm the value matches `OBSERVATORY_API_KEY` or `OBSERVATORY_READONLY_API_KEY` |
 | Intelligence worker produces no insights | `ANTHROPIC_API_KEY` missing or invalid | Verify the secret in `fpaiobs-kv`; check Application Insights for `AnthropicIntelligenceClient` exceptions |
+| `docker compose up` — seed container exits 1 | API not yet healthy when seed ran, or `OBSERVATORY_API_KEY` mismatch | Run `docker compose up` again; the seed is idempotent. Confirm the key in `docker-compose.yml` matches |
+| `docker compose up` — `api` keeps restarting | Database not ready or `DB_CONNECTION` wrong | Check `docker compose logs db`; ensure the `db` healthcheck passes before `api` starts |
 
 ## Contributing
 
