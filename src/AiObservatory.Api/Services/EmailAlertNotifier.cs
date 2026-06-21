@@ -22,7 +22,7 @@ public sealed class EmailAlertNotifier(ISmtpClient smtpClient, IConfiguration co
         if (!string.IsNullOrEmpty(user))
             await smtpClient.AuthenticateAsync(user, pass, ct);
 
-        var message = new MimeMessage();
+        using var message = new MimeMessage();
         message.From.Add(MailboxAddress.Parse(from));
         message.To.Add(MailboxAddress.Parse(to));
         message.Subject = $"Budget alert: {payload.Provider} {payload.Period} spend exceeded ${payload.ThresholdUsd:F2}";
