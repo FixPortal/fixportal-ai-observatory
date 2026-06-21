@@ -160,3 +160,24 @@ export interface CavemanStats {
 }
 
 export const getCavemanStats = () => getJson<CavemanStats>('/caveman-stats')
+
+export interface BudgetRule {
+  id: string
+  provider: string | null
+  period: 'daily' | 'weekly' | 'monthly'
+  thresholdUsd: number
+  lastTriggeredAt: string | null
+}
+
+export const getBudgetRules = () => getJson<BudgetRule[]>('/budget-rules')
+
+export const createBudgetRule = async (body: Omit<BudgetRule, 'id' | 'lastTriggeredAt'>): Promise<BudgetRule> => {
+  const res = await request('/budget-rules', { method: 'POST', headers: jsonHeaders, body: JSON.stringify(body) })
+  return res.json() as Promise<BudgetRule>
+}
+
+export const deleteBudgetRule = async (id: string): Promise<void> => {
+  await request(`/budget-rules/${id}`, { method: 'DELETE' })
+}
+
+export const getWebhookStatus = () => getJson<{ configured: boolean }>('/budget-rules/webhook-status')
