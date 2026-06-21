@@ -46,7 +46,7 @@ services:
       context: src/AiObservatory.Web
       dockerfile: Dockerfile
     ports:
-      - "5173:80"
+      - "4173:80"
     depends_on:
       - api
 
