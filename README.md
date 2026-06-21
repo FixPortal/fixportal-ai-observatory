@@ -183,8 +183,8 @@ Set these environment variables (or user secrets):
 
 ```
 DB_CONNECTION=Host=localhost;Database=aiobservatory;Username=...;Password=...
-ANTHROPIC_API_KEY=sk-ant-...
 OBSERVATORY_API_KEY=<any-guid>
+ANTHROPIC_API_KEY=sk-ant-...   # optional — omit to skip AI insights
 ```
 
 Run EF Core migrations on first launch or after pulling new migrations:
