@@ -12,6 +12,9 @@ public static class BudgetRulesEndpoints
         app.MapGet("/budget-rules", async (AiObservatoryDbContext db) =>
             Results.Ok(await db.BudgetRules.AsNoTracking().ToListAsync()));
 
+        app.MapGet("/budget-rules/webhook-status", (IConfiguration config) =>
+            Results.Ok(new { configured = !string.IsNullOrEmpty(config["BUDGET_ALERT_WEBHOOK_URL"]) }));
+
         app.MapGet("/budget-rules/{id:guid}", async (Guid id, AiObservatoryDbContext db) =>
         {
             var rule = await db.BudgetRules.FindAsync(id);
@@ -36,9 +39,6 @@ public static class BudgetRulesEndpoints
             await db.BudgetRules.Where(r => r.Id == id).ExecuteDeleteAsync();
             return Results.NoContent();
         });
-
-        app.MapGet("/budget-rules/webhook-status", (IConfiguration config) =>
-            Results.Ok(new { configured = !string.IsNullOrEmpty(config["BUDGET_ALERT_WEBHOOK_URL"]) }));
 
         return app;
     }
