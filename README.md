@@ -178,6 +178,52 @@ Set `VITE_API_BASE_URL` in `.env.local` to point at the running API:
 VITE_API_BASE_URL=http://localhost:5000
 ```
 
+### Seeding local data
+
+In development mode the API exposes a seed endpoint that wipes the database and
+populates 14 days of sample aggregates across Anthropic, Google, and Copilot,
+plus subscriptions, budget rules, and three sample insights — the fastest way to
+see a fully populated dashboard locally:
+
+```bash
+curl -X POST http://localhost:5000/api/dev/seed
+```
+
+This endpoint is only available when `ASPNETCORE_ENVIRONMENT=Development` (the
+default for `dotnet run`). It is not deployed to production.
+
+### Sending your first event
+
+To ingest a real usage event, `POST /api/events` with an `X-Observatory-Key`
+header. In local dev, writes require `OBSERVATORY_API_KEY` to be set in user
+secrets; GETs work without a key.
+
+```bash
+curl -X POST http://localhost:5000/api/events \
+  -H "X-Observatory-Key: <your-key>" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "provider": "anthropic",
+    "model": "claude-sonnet-4-6",
+    "inputTokens": 1500,
+    "outputTokens": 800,
+    "cacheReadTokens": 0,
+    "cacheWriteTokens": 0,
+    "costUsd": 0.012,
+    "eventKey": "my-first-event"
+  }'
+```
+
+Valid providers: `anthropic`, `google`, `copilot`, `openai`. The optional
+`eventKey` is an idempotency key — a duplicate key for the same provider is
+silently ignored. The optional `occurredAtUtc` backfills the event onto the
+correct historical day.
+
+A [Postman collection](docs/ai-observatory.postman_collection.json) covering all
+endpoints ships in `docs/`. Import it into Postman, set the `base_url` and
+`api_key` collection variables, and run the **Dev / Seed sample data** request
+to get a populated dashboard in one click.
+
 ### Authentication (production)
 
 The dashboard signs in with **Entra (Azure AD)** — no API key in the browser.
@@ -265,6 +311,10 @@ local setup and the PR checklist, and [CODE_OF_CONDUCT.md](CODE_OF_CONDUCT.md)
 for community expectations. In short: branch from `main` as
 `feat/<scope>` / `fix/<scope>` / `chore/<scope>`, PRs merge via **rebase** (no
 merge commits, no squash), and CI must pass before merging.
+
+The [Postman collection](docs/ai-observatory.postman_collection.json) at
+`docs/ai-observatory.postman_collection.json` covers every endpoint and is a
+useful companion while exploring or extending the API.
 
 To report a security vulnerability, follow [SECURITY.md](SECURITY.md) — please
 do not open a public issue.
