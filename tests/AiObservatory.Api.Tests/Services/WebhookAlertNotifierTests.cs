@@ -42,7 +42,7 @@ public class WebhookAlertNotifierTests
         handler.CallCount.Should().Be(1);
         handler.LastRequestUri.Should().Be(webhookUrl);
 
-        var body = await handler.LastRequestContent!.ReadAsStringAsync();
+        var body = await handler.LastRequestContent!.ReadAsStringAsync(TestContext.Current.CancellationToken);
         body.Should().Contain("Anthropic");
         body.Should().Contain("Daily");
         body.Should().Contain("10");
