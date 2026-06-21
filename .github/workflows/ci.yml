@@ -1,0 +1,103 @@
+name: CI
+
+on:
+  push:
+    branches: ["**"]
+    tags: ["v*"]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: Target environment
+        required: false
+        type: choice
+        options:
+          - fixportal-dev
+          - fixportal-prod
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  backend:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: read
+    services:
+      postgres:
+        # Pull from the AWS ECR Public mirror of the Docker official image, not
+        # Docker Hub directly. The service-container pull is run by the runner
+        # (we can't add our own retries to it), and Docker Hub periodically
+        # times out / throttles GitHub runners ("registry-1.docker.io: context
+        # deadline exceeded"), failing CI before Build/Test ever run. The ECR
+        # Public mirror is the same image with anonymous, un-throttled pulls.
+        image: public.ecr.aws/docker/library/postgres:16
+        env:
+          POSTGRES_DB: aiobs_test
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Lint workflow
+        uses: raven-actions/actionlint@v2
+        with:
+          shellcheck: true
+
+      - uses: actions/setup-dotnet@v5
+        with:
+          dotnet-version: 10.0.x
+
+      - name: Restore
+        run: dotnet restore AiObservatory.slnx
+        env:
+          GITHUB_PACKAGES_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build
+        run: dotnet build AiObservatory.slnx --configuration Release --no-restore
+
+      - name: Test
+        run: dotnet test AiObservatory.slnx --configuration Release --no-build --logger "trx;LogFileName=test-results.trx" --results-directory ./TestResults
+        env:
+          TEST_DB_CONNECTION: "Host=localhost;Database=aiobs_test;Username=postgres;Password=postgres"
+
+      - name: Upload test results
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: test-results
+          path: TestResults/*.trx
+          if-no-files-found: ignore
+
+  build-web:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: read
+    defaults:
+      run:
+        working-directory: src/AiObservatory.Web
+
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v6
+        with:
+          node-version: '22'
+          cache: 'npm'
+          cache-dependency-path: src/AiObservatory.Web/package-lock.json
+          registry-url: 'https://npm.pkg.github.com'
+
+      - run: npm ci
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      - run: npm run build

@@ -1,0 +1,162 @@
+/* @fixportal/design — raw design tokens (framework-agnostic).
+ * The single source of token VALUES for every FixPortal frontend.
+ * Light on the root selector; dark on [data-theme="dark"] (explicit toggle — R3).
+ * Tailwind v4 apps also import ./theme.css for the --color-* / --font-* aliases.
+ * Non-Tailwind / non-v4 apps consume these custom properties directly.
+ * App-local extension tokens (e.g. CI's --run/--pkg) live in the APP, after
+ * this import — never here. See design-standard.md § App-local tokens. */
+
+:root {
+  --app-bg: #f7f8fa;
+  --card-bg: #ffffff;
+  --sidebar-bg: #0b1220;
+  --border: #e5e7eb;
+  --border-strong: #cbd5e1;
+  --text: #1f2937;
+  --text-muted: #6b7280;
+  --text-faint: #94a3b8;
+
+  /* Sidebar — IDE chrome, theme-invariant. See system.md § Sidebar is
+     IDE-style chrome. Never override under [data-theme="dark"]. */
+  --sidebar-text: #e2e8f0;
+  --sidebar-text-muted: #94a3b8;
+  --sidebar-text-faint: #64748b;
+  --sidebar-hover-bg: rgba(255, 255, 255, 0.05);
+  --sidebar-selected-bg: rgba(255, 255, 255, 0.10);
+  --sidebar-border: rgba(255, 255, 255, 0.10);
+  --sidebar-active-bg: #0f4e47;
+  --sidebar-active-text: #86efac;
+  /* Attention badge on a subnav entry (e.g. pending-routes count). Amber on
+     the dark sidebar field -- theme-invariant like the rest of the sidebar
+     palette, and visually distinct from --sidebar-active-* so a pending
+     badge and the active-link state don't read as the same signal. */
+  --sidebar-badge-bg: #b45309;
+  --sidebar-badge-text: #fef3c7;
+
+  --brand-tint: #f0fdfa;
+  --brand-soft: #5eead4;
+  --brand-soft-rgb: 94 234 212;
+  --brand: #0d9488;
+  --brand-strong: #0f766e;
+  --flow-out: #7e22ce;
+  --flow-out-soft: #d2a5f0;
+
+  --ok-bg: #dcfce7;
+  --ok-border: #16a34a;
+  --ok-text: #15803d;
+
+  --warn-bg: #fef3c7;
+  --warn-border: #fbbf24;
+  --warn-text: #92400e;
+
+  --bad-bg: #fef2f2;
+  --bad-border: #fca5a5;
+  --bad-text: #991b1b;
+  --bad-solid: #dc2626;
+
+  --info-bg: #eef2ff;
+  --info-border: #a5b4fc;
+  --info-text: #3730a3;
+
+  /* Direction (Buy / Sell). Tracked separately from the intent-typed
+     --ok-* / --bad-* triplets so direction-coded UI (order side chips,
+     P&L arrows, fill markers) and status-coded UI can diverge later
+     without refactor. Currently shares the green / red hue families
+     with the intent palette by design. */
+  --side-buy-bg: #dcfce7;
+  --side-buy-border: #16a34a;
+  --side-buy-text: #15803d;
+
+  --side-sell-bg: #fef2f2;
+  --side-sell-border: #fca5a5;
+  --side-sell-text: #991b1b;
+
+  /* Modal / dialog backdrop. */
+  --overlay-bg: rgba(0, 0, 0, 0.40);
+
+  /* Order-status "new" pill (OrderTable). Sky-blue, kept distinct from the
+     indigo --info-* family so a New pill and a SourceChip don't collide in
+     one row. See system.md section Status palette. */
+  --new-bg: #eff6ff;
+  --new-border: #93c5fd;
+  --new-text: #1d4ed8;
+
+  /* Chart-fill amber for the MicroBarSparkline warn tone. Theme-invariant:
+     the --warn-* triplet goes fuchsia in dark, but a sparkline bar wants a
+     stable amber. See system.md section Sparkline. */
+  --warn-fill-soft: #fcd34d;
+  --warn-fill-deep: #f59e0b;
+
+  /* Code panes intentionally stay dark in both themes (terminal/editor convention). */
+  --code-bg: #1e1e2a;
+  --code-text: #cfcfe0;
+
+  /* Font families — canonical here on :root so non-Tailwind consumers read them
+     directly via var(--font-sans/-mono). theme.css restates identical values for
+     Tailwind's font-sans/font-mono utilities; keep the two in sync. */
+  --font-sans: "IBM Plex Sans", system-ui, sans-serif;
+  --font-mono: "IBM Plex Mono", ui-monospace, monospace;
+}
+
+:root[data-theme="dark"] {
+  --app-bg: #020617;
+  --card-bg: #0f172a;
+  --border: #1e293b;
+  --border-strong: #334155;
+  --text: #e2e8f0;
+  --text-muted: #94a3b8;
+  --text-faint: #64748b;
+
+  /* Code panes drop through the card to the page bg in dark mode — the
+     editor-inset look (VSCode / Monaco). Light mode keeps the dark
+     #1e1e2a default declared on :root. */
+  --code-bg: #020617;
+
+  --brand-tint: rgba(20, 184, 166, 0.10);
+
+  --ok-bg: rgba(22, 163, 74, 0.20);
+  --ok-text: #86efac;
+
+  --warn-bg: rgba(192, 38, 211, 0.16);
+  --warn-border: #c026d3;
+  --warn-text: #f0abfc;
+
+  --bad-bg: rgba(220, 38, 38, 0.12);
+  --bad-border: #7f1d1d;
+  --bad-text: #fecaca;
+
+  --info-bg: rgba(99, 102, 241, 0.10);
+  --info-border: #4338ca;
+  --info-text: #c7d2fe;
+
+  --side-buy-bg: rgba(22, 163, 74, 0.20);
+  --side-buy-border: #15803d;
+  --side-buy-text: #86efac;
+
+  --side-sell-bg: rgba(220, 38, 38, 0.18);
+  --side-sell-border: #7f1d1d;
+  --side-sell-text: #fecaca;
+
+  --overlay-bg: rgba(0, 0, 0, 0.60);
+
+  --new-bg: rgba(59, 130, 246, 0.18);
+  --new-border: #1d4ed8;
+  --new-text: #93c5fd;
+}
+
+/* Motion primitive — keyframe + utility, reduced-motion-safe. Lives here (not a
+   component stylesheet) so the single tokens.css import every consumer already
+   makes carries it; a dedicated component stylesheet is an SP4b concern. Used by
+   the BrandAvatar `animate` prop. */
+@keyframes fpds-spin {
+  to { transform: rotate(360deg); }
+}
+.fpds-spin {
+  /* slow, brand-safe rotation (the avatar is identity, not a busy-spinner) */
+  animation: fpds-spin 4s linear infinite;
+}
+@media (prefers-reduced-motion: reduce) {
+  .fpds-spin {
+    animation: none;
+  }
+}

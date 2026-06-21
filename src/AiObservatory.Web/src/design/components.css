@@ -1,0 +1,93 @@
+/* @fixportal/design — component styles (SP4b).
+ * Import alongside tokens.css. All values reference var(--token) from tokens.css.
+ * Exception: #fff on --brand-strong (≈5.5:1 contrast, AA both themes — see ONBOARDING.md). */
+
+/* ── ThemeToggle ───────────────────────────────────────────── */
+.fpds-theme-toggle {
+  display: inline-flex;
+  border: 1px solid var(--border-strong);
+  border-radius: 6px;
+  overflow: hidden;
+}
+.fpds-theme-toggle__btn {
+  appearance: none;
+  border: 0;
+  background: transparent;
+  color: var(--text-muted);
+  font: inherit;
+  font-size: 0.78rem;
+  padding: 0.25rem 0.75rem;
+  cursor: pointer;
+  transition: background 0.15s ease, color 0.15s ease;
+}
+.fpds-theme-toggle__btn + .fpds-theme-toggle__btn {
+  border-left: 1px solid var(--border);
+}
+.fpds-theme-toggle__btn:hover { color: var(--text); }
+.fpds-theme-toggle__btn:focus-visible { outline: 2px solid var(--brand-strong); outline-offset: -2px; }
+.fpds-theme-toggle__btn[aria-checked="true"] {
+  background: var(--brand-strong);
+  color: #fff;
+}
+
+/* ── Button ────────────────────────────────────────────────── */
+.fpds-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  appearance: none;
+  border-radius: 4px;
+  font: inherit;
+  font-weight: 500;
+  cursor: pointer;
+  transition: background 0.15s ease, color 0.15s ease, border-color 0.15s ease;
+}
+.fpds-btn:focus-visible {
+  outline: 2px solid var(--brand-strong);
+  outline-offset: 2px;
+}
+.fpds-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+
+.fpds-btn--md { font-size: 0.8125rem; padding: 0.375rem 0.875rem; }
+.fpds-btn--sm { font-size: 0.72rem;   padding: 0.25rem  0.625rem; }
+
+.fpds-btn--primary {
+  background: var(--brand-strong);
+  color: #fff;
+  border: 1px solid transparent;
+}
+.fpds-btn--primary:hover:not(:disabled) { background: var(--brand); }
+
+.fpds-btn--ghost {
+  background: transparent;
+  color: var(--text);
+  border: 1px solid var(--brand-strong);
+}
+.fpds-btn--ghost:hover:not(:disabled) {
+  background: var(--brand-strong);
+  color: #fff;
+}
+
+/* ── Card ──────────────────────────────────────────────────── */
+.fpds-card {
+  background: var(--card-bg);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 1rem;
+}
+
+/* ── StatusBadge ───────────────────────────────────────────── */
+.fpds-badge {
+  display: inline-block;
+  font-size: 0.7rem;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  padding: 0.125rem 0.5rem;
+  border-radius: 4px;
+  border: 1px solid;
+}
+.fpds-badge--ok   { background: var(--ok-bg);   border-color: var(--ok-border);   color: var(--ok-text);   }
+.fpds-badge--warn { background: var(--warn-bg);  border-color: var(--warn-border); color: var(--warn-text); }
+.fpds-badge--bad  { background: var(--bad-bg);   border-color: var(--bad-border);  color: var(--bad-text);  }
+.fpds-badge--info { background: var(--info-bg);  border-color: var(--info-border); color: var(--info-text); }

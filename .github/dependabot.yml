@@ -1,0 +1,58 @@
+version: 2
+
+updates:
+  - package-ecosystem: nuget
+    directory: /
+    schedule:
+      interval: weekly
+      day: monday
+      time: "06:00"
+      timezone: Europe/London
+    open-pull-requests-limit: 10
+    commit-message:
+      prefix: chore
+      include: scope
+    groups:
+      microsoft-extensions:
+        patterns:
+          - "Microsoft.Extensions.*"
+      aspnetcore:
+        patterns:
+          - "Microsoft.AspNetCore.*"
+      ef-core:
+        patterns:
+          - "Microsoft.EntityFrameworkCore*"
+      xunit:
+        patterns:
+          - "xunit*"
+          - "Xunit*"
+      testing:
+        patterns:
+          - "NSubstitute*"
+          - "AwesomeAssertions*"
+          - "coverlet*"
+          - "Stryker*"
+      nodatime:
+        patterns:
+          - "NodaTime*"
+      serilog:
+        patterns:
+          - "Serilog*"
+      azure-sdk:
+        patterns:
+          - "Azure.*"
+
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+      day: monday
+      time: "06:00"
+      timezone: Europe/London
+    open-pull-requests-limit: 5
+    commit-message:
+      prefix: ci
+    groups:
+      github-actions:
+        patterns:
+          - "*"

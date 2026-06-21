@@ -1,0 +1,28 @@
+name: Infra
+
+# Deploys the Bicep templates (incremental) only when infra changes, decoupled
+# from the code-deploy pipeline (deploy.yml). Makes resource config self-healing
+# — e.g. the API's httpsOnly is re-asserted from source on every infra change.
+on:
+  push:
+    branches: [main]
+    paths: ['infra/**']
+  workflow_dispatch:
+
+concurrency:
+  group: infra-deploy
+  cancel-in-progress: false
+
+jobs:
+  deploy-infra:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v7
+      - uses: azure/login@v3
+        with:
+          creds: ${{ secrets.AZURE_CREDENTIALS }}
+
+      - name: Deploy Bicep (incremental)
+        run: az deployment group create -g fpaiobs-rg -f infra/main.bicep
