@@ -2,8 +2,10 @@ import { useQuery } from '@tanstack/react-query'
 import {
   getAggregates, getInsights, getSubscriptions,
   getAdversarialReviewRuns, getAdversarialReviewStats, getCavemanStats,
+  getBudgetRules, getWebhookStatus,
   type DailyAggregate, type Insight, type Subscription,
   type AdversarialReviewRun, type AdversarialReviewStats, type CavemanStats,
+  type BudgetRule,
 } from './client'
 
 // Shared query hooks. Components subscribe directly (react-query deduplicates by
@@ -22,8 +24,14 @@ const aggregatesQueryFn = () => {
   return getAggregates(localDate(from), localDate(to))
 }
 
-export function useAggregates(): DailyAggregate[] {
-  const { data = [] } = useQuery({ queryKey: ['aggregates'], queryFn: aggregatesQueryFn })
+export function useAggregates(from?: Date, to?: Date): DailyAggregate[] {
+  const hasRange = from != null && to != null
+  const { data = [] } = useQuery({
+    queryKey: hasRange ? ['aggregates', localDate(from!), localDate(to!)] : ['aggregates'],
+    queryFn: hasRange
+      ? () => getAggregates(localDate(from!), localDate(to!))
+      : aggregatesQueryFn,
+  })
   return data
 }
 
@@ -50,6 +58,16 @@ export function useAdversarialReviewStats(): AdversarialReviewStats[] {
 export function useCavemanStats(): CavemanStats | undefined {
   const { data } = useQuery({ queryKey: ['caveman-stats'], queryFn: getCavemanStats })
   return data
+}
+
+export function useBudgetRules(): { rules: BudgetRule[]; isLoading: boolean; isError: boolean } {
+  const { data = [], isPending, isError } = useQuery({ queryKey: ['budget-rules'], queryFn: getBudgetRules })
+  return { rules: data, isLoading: isPending, isError }
+}
+
+export function useWebhookStatus(): { configured: boolean | undefined } {
+  const { data } = useQuery({ queryKey: ['webhook-status'], queryFn: getWebhookStatus })
+  return { configured: data?.configured }
 }
 
 export function useDashboardStatus(): { isError: boolean; isLoading: boolean; error: unknown } {
