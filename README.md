@@ -147,7 +147,7 @@ docker compose up --build
 ```
 
 This starts PostgreSQL, the API (with EF migrations auto-applied), and the
-React frontend served by nginx on [http://localhost:5173](http://localhost:5173).
+React frontend served by nginx on [http://localhost:4173](http://localhost:4173).
 A one-shot `seed` container fires once the API is healthy and populates 14 days
 of sample data.
 
