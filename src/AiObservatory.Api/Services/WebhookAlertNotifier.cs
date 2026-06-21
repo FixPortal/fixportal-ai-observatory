@@ -10,6 +10,7 @@ public sealed class WebhookAlertNotifier(IHttpClientFactory httpClientFactory, I
         var url = config["BUDGET_ALERT_WEBHOOK_URL"];
         if (string.IsNullOrEmpty(url)) return;
         var client = httpClientFactory.CreateClient();
-        await client.PostAsJsonAsync(url, payload, ct);
+        var response = await client.PostAsJsonAsync(url, payload, ct);
+        response.EnsureSuccessStatusCode();
     }
 }

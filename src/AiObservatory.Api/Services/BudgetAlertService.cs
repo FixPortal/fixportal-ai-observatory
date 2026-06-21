@@ -72,7 +72,7 @@ public class BudgetAlertService(IUsageRepository repository, IClock clock, IAler
                 rule.Period.ToString(),
                 rule.ThresholdUsd,
                 totalSpend,
-                DateTimeOffset.UtcNow), ct);
+                now.ToDateTimeOffset()), ct);
         }
     }
 }
