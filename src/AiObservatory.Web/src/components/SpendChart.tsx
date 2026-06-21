@@ -52,8 +52,13 @@ const ChartInner = lazy(async () => {
   }
 })
 
-export default function SpendChart() {
-  const aggregates = useAggregates()
+interface Props {
+  from?: Date
+  to?: Date
+}
+
+export default function SpendChart({ from, to }: Props) {
+  const aggregates = useAggregates(from, to)
   const rate = useUsdToGbp()
   const [mode, setMode] = useState<ChartMode>('spend')
 

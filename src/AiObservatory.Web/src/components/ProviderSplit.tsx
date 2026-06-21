@@ -32,8 +32,13 @@ const ChartInner = lazy(async () => {
   }
 })
 
-export default function ProviderSplit() {
-  const aggregates = useAggregates()
+interface Props {
+  from?: Date
+  to?: Date
+}
+
+export default function ProviderSplit({ from, to }: Props) {
+  const aggregates = useAggregates(from, to)
   const rate = useUsdToGbp()
 
   const data = useMemo(
