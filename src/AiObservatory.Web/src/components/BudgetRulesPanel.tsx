@@ -2,7 +2,7 @@ import { useState } from 'react'
 import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { Button } from '../design'
 import { createBudgetRule, deleteBudgetRule } from '../api/client'
-import { useBudgetRules, useInsights, useWebhookStatus } from '../api/queries'
+import { useBudgetRules, useInsights, useEmailStatus } from '../api/queries'
 
 const PROVIDERS = ['anthropic', 'copilot', 'google', 'openai'] as const
 const PERIODS = ['daily', 'weekly', 'monthly'] as const
@@ -22,7 +22,7 @@ function WebhookChip({ configured }: { configured: boolean | undefined }) {
         border: `1px solid ${configured ? 'var(--ok-border)' : 'var(--border)'}`,
       }}
     >
-      Webhook: {configured ? 'configured' : 'not configured'}
+      Email: {configured ? 'configured' : 'not configured'}
     </span>
   )
 }
@@ -31,7 +31,7 @@ export default function BudgetRulesPanel() {
   const qc = useQueryClient()
   const { rules, isLoading, isError } = useBudgetRules()
   const insights = useInsights()
-  const { configured } = useWebhookStatus()
+  const { configured } = useEmailStatus()
 
   const [panelOpen, setPanelOpen] = useState(false)
   const [provider, setProvider] = useState<string>('')

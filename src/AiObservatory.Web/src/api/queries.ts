@@ -2,7 +2,7 @@ import { useQuery } from '@tanstack/react-query'
 import {
   getAggregates, getInsights, getSubscriptions,
   getAdversarialReviewRuns, getAdversarialReviewStats, getCavemanStats,
-  getBudgetRules, getWebhookStatus,
+  getBudgetRules, getEmailStatus,
   type DailyAggregate, type Insight, type Subscription,
   type AdversarialReviewRun, type AdversarialReviewStats, type CavemanStats,
   type BudgetRule,
@@ -65,8 +65,8 @@ export function useBudgetRules(): { rules: BudgetRule[]; isLoading: boolean; isE
   return { rules: data, isLoading: isPending, isError }
 }
 
-export function useWebhookStatus(): { configured: boolean | undefined } {
-  const { data } = useQuery({ queryKey: ['webhook-status'], queryFn: getWebhookStatus })
+export function useEmailStatus(): { configured: boolean | undefined } {
+  const { data } = useQuery({ queryKey: ['email-status'], queryFn: getEmailStatus })
   return { configured: data?.configured }
 }
 
