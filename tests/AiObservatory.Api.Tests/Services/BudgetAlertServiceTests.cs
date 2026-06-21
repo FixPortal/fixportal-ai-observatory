@@ -12,6 +12,7 @@ namespace AiObservatory.Api.Tests.Services;
 public class BudgetAlertServiceTests
 {
     private readonly IUsageRepository _repo = Substitute.For<IUsageRepository>();
+    private readonly IAlertNotifier _notifier = Substitute.For<IAlertNotifier>();
     private readonly FakeClock _clock = new(Instant.FromUtc(2026, 6, 2, 10, 0));
 
     [Fact]
@@ -25,13 +26,16 @@ public class BudgetAlertServiceTests
                     Model = "claude-opus-4-8", CostUsd = 15m, InputTokens = 0, OutputTokens = 0, RequestCount = 1 }
             ]);
 
-        var sut = new BudgetAlertService(_repo, _clock);
+        var sut = new BudgetAlertService(_repo, _clock, _notifier);
         await sut.CheckAndAlertAsync(TestContext.Current.CancellationToken);
 
         await _repo.Received(1).AddInsightAsync(
             Arg.Is<Insight>(i => i.InsightType == InsightType.Anomaly && i.Title.Contains("Budget")),
             Arg.Any<CancellationToken>());
         await _repo.Received(1).SetBudgetRuleTriggeredAsync(rule.Id, Arg.Any<Instant>(), Arg.Any<CancellationToken>());
+        await _notifier.Received(1).NotifyAsync(
+            Arg.Is<BudgetAlertPayload>(p => p.ThresholdUsd == rule.ThresholdUsd),
+            Arg.Any<CancellationToken>());
     }
 
     [Fact]
@@ -45,7 +49,7 @@ public class BudgetAlertServiceTests
                     Model = "claude-sonnet-4-6", CostUsd = 3m, InputTokens = 0, OutputTokens = 0, RequestCount = 1 }
             ]);
 
-        var sut = new BudgetAlertService(_repo, _clock);
+        var sut = new BudgetAlertService(_repo, _clock, _notifier);
         await sut.CheckAndAlertAsync(TestContext.Current.CancellationToken);
 
         await _repo.DidNotReceive().AddInsightAsync(Arg.Any<Insight>(), Arg.Any<CancellationToken>());
@@ -68,7 +72,7 @@ public class BudgetAlertServiceTests
                     Model = "claude-opus-4-8", CostUsd = 15m, InputTokens = 0, OutputTokens = 0, RequestCount = 1 }
             ]);
 
-        var sut = new BudgetAlertService(_repo, _clock);
+        var sut = new BudgetAlertService(_repo, _clock, _notifier);
         await sut.CheckAndAlertAsync(TestContext.Current.CancellationToken);
 
         await _repo.DidNotReceive().AddInsightAsync(Arg.Any<Insight>(), Arg.Any<CancellationToken>());

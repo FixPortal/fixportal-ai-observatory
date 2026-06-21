@@ -31,6 +31,7 @@ var dbConnection = builder.Configuration["DB_CONNECTION"]
     ?? throw new InvalidOperationException("DB_CONNECTION configuration is missing.");
 builder.Services.AddDataLayer(dbConnection);
 builder.Services.AddSingleton<IClock>(SystemClock.Instance);
+builder.Services.AddSingleton<IAlertNotifier, WebhookAlertNotifier>();
 builder.Services.AddScoped<BudgetAlertService>();
 builder.Services.AddScoped<AdversarialReviewService>();
 builder.Services.AddSingleton<AnthropicIntelligenceClient>();
