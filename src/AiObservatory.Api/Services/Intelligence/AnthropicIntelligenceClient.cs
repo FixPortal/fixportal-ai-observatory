@@ -12,19 +12,24 @@ namespace AiObservatory.Api.Services.Intelligence;
 public class AnthropicIntelligenceClient
 {
     private const string InsightsToolName = "record_insights";
-    private readonly AnthropicClient _client;
+    private readonly AnthropicClient? _client;
     private readonly ILogger<AnthropicIntelligenceClient> _logger;
+
+    /// <summary>True when ANTHROPIC_API_KEY is configured. False = AI features silently disabled.</summary>
+    public bool IsConfigured => _client is not null;
 
     public AnthropicIntelligenceClient(IConfiguration configuration, ILogger<AnthropicIntelligenceClient> logger)
     {
-        var apiKey = configuration["ANTHROPIC_API_KEY"]
-            ?? throw new InvalidOperationException("ANTHROPIC_API_KEY configuration is missing.");
-        _client = new AnthropicClient(new APIAuthentication(apiKey));
+        var apiKey = configuration["ANTHROPIC_API_KEY"];
+        _client = apiKey is not null ? new AnthropicClient(new APIAuthentication(apiKey)) : null;
         _logger = logger;
+        if (!IsConfigured)
+            _logger.LogWarning("ANTHROPIC_API_KEY not set — AI insights and explanations are disabled.");
     }
 
     public virtual async Task<string> GenerateExplanationAsync(string title, string body, CancellationToken ct = default)
     {
+        if (_client is null) throw new InvalidOperationException("ANTHROPIC_API_KEY is not configured.");
         var prompt = $"""
             An AI cost analysis system flagged this insight about API usage patterns:
 
@@ -58,6 +63,7 @@ public class AnthropicIntelligenceClient
 
     public virtual async Task<string> GenerateInsightsJsonAsync(string prompt, CancellationToken ct = default)
     {
+        if (_client is null) throw new InvalidOperationException("ANTHROPIC_API_KEY is not configured.");
         var client = _client;
 
         var insightSchema = JsonNode.Parse("""
