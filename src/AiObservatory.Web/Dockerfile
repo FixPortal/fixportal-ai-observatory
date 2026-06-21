@@ -3,9 +3,9 @@ WORKDIR /app
 COPY package*.json ./
 RUN npm ci
 COPY . .
-# No VITE_API_BASE — nginx proxies /api to the api container (same-origin).
-# No VITE_AAD_CLIENT_ID — dev mode, no sign-in gate.
-RUN npm run build
+# Clear production env vars so .env.production is not baked into the image:
+# nginx proxies /api same-origin, no Azure AD sign-in gate needed.
+RUN VITE_API_BASE="" VITE_AAD_CLIENT_ID="" VITE_AAD_TENANT_ID="" VITE_AAD_API_SCOPE="" npm run build
 
 FROM nginx:stable-alpine AS runtime
 COPY --from=build /app/dist /usr/share/nginx/html
