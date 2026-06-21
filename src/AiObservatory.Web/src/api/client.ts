@@ -1,5 +1,5 @@
 // Prod build calls the API cross-origin (VITE_API_BASE); dev uses the Vite proxy.
-import { getAccessToken } from '../auth/msal'
+import { getAccessToken, apiKey } from '../auth/msal'
 
 const BASE = (import.meta.env.VITE_API_BASE ?? '') + '/api'
 
@@ -13,12 +13,14 @@ export class ApiError extends Error {
   }
 }
 
-// Auth: an Entra access token when signed in (production). In dev with no Entra
-// config getAccessToken() returns null and the header is omitted — the local API
-// runs without a key.
+// Auth priority: Entra JWT > VITE_API_KEY > none (dev).
+// Entra: production default. API key: self-host without Azure AD.
+// Neither: local dev — API runs keyless.
 async function authHeaders(): Promise<Record<string, string>> {
   const token = await getAccessToken()
-  return token ? { Authorization: `Bearer ${token}` } : {}
+  if (token) return { Authorization: `Bearer ${token}` }
+  if (apiKey) return { 'X-Observatory-Key': apiKey }
+  return {}
 }
 
 async function request(path: string, init: RequestInit = {}): Promise<Response> {

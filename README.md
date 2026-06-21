@@ -226,11 +226,14 @@ to get a populated dashboard in one click.
 
 ### Authentication (production)
 
-The dashboard signs in with **Entra (Azure AD)** — no API key in the browser.
-A single app registration (`fpaiobs-spa`) acts as both the SPA and the API it
-calls; the App Service validates the bearer token. Machine callers (the
-`observe-*` / `gemini-review` hooks) keep using the API key — an authenticated
-human bypasses the key, a keyless machine request still needs one.
+Two modes are available; pick one for your deployment.
+
+#### Option A — Entra (Azure AD)
+
+The default for Azure-hosted deployments. The dashboard signs in via Microsoft
+redirect — no API key in the browser. A single app registration (`fpaiobs-spa`)
+acts as both the SPA and the API it calls; the App Service validates the bearer
+token. Machine callers (hooks) keep using the API key.
 
 One-time setup (run as a tenant admin):
 
@@ -241,8 +244,37 @@ infra/scripts/setup-entra.ps1
 
 It prints `VITE_AAD_CLIENT_ID` / `VITE_AAD_TENANT_ID` / `VITE_AAD_API_SCOPE` for
 `src/AiObservatory.Web/.env.production`, and the `aadClientId` for the Bicep
-param. Sign-in is restricted to the assigned user. Local `npm run dev` leaves
-these unset, so it runs without sign-in against the local (keyless) API.
+param. Sign-in is restricted to the assigned user.
+
+To use a different tenant (self-hosting): edit the `setup-entra.ps1` defaults or
+pass `-TenantId` / `-SubscriptionId` flags and re-run. The script is idempotent.
+
+#### Option B — API key (no Azure AD)
+
+For self-hosters who do not want an Entra app registration. Set a single
+environment variable at build time:
+
+```
+VITE_API_KEY=<your-OBSERVATORY_API_KEY-value>
+```
+
+The UI sends `X-Observatory-Key` on every request instead of a bearer token.
+No sign-in screen is shown. The backend already accepts this header from any
+caller (it is the same key used by the machine hooks).
+
+Use `OBSERVATORY_READONLY_API_KEY` here if you want the UI to be read-only,
+or `OBSERVATORY_API_KEY` for full access.
+
+> **Note:** The key is baked into the frontend bundle at build time and visible
+> to anyone who can load the page. Protect access at the network or hosting
+> layer (IP allowlist, private VPC, basic-auth reverse proxy) rather than
+> relying on the key alone.
+
+#### Local dev
+
+`npm run dev` leaves all auth env vars unset. The app talks directly to
+`http://localhost:5000` (or `VITE_API_BASE_URL`) with no credentials — the API
+serves GETs without a key in development mode.
 
 ### Tests
 
@@ -302,6 +334,7 @@ Insights are stored in the `Insights` table and surfaced in the `InsightsFeed` c
 | Frontend shows no data after deploy | `VITE_API_BASE_URL` not set in SWA environment variables | Add `VITE_API_BASE_URL=https://fpaiobs-api.azurewebsites.net` to the SWA application settings |
 | EF migrations fail on first run | Database does not yet exist or user lacks `CREATE` privileges | Ensure `DB_CONNECTION` points at an existing PostgreSQL 16 instance with a user that can create tables |
 | Entra sign-in loop or `401` after SSO | `aadClientId` Bicep param or `VITE_AAD_*` env vars are stale after app registration recreation | Re-run `infra/scripts/setup-entra.ps1` and redeploy both API and frontend with the new values |
+| UI shows no data with `VITE_API_KEY` set | Key baked at build time — runtime env var has no effect | Rebuild the frontend with the env var set; confirm the value matches `OBSERVATORY_API_KEY` or `OBSERVATORY_READONLY_API_KEY` |
 | Intelligence worker produces no insights | `ANTHROPIC_API_KEY` missing or invalid | Verify the secret in `fpaiobs-kv`; check Application Insights for `AnthropicIntelligenceClient` exceptions |
 
 ## Contributing
