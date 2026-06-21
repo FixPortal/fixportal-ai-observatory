@@ -971,3 +971,8 @@ body {
 @media (max-width: 760px) {
   .sub-cards { grid-template-columns: 1fr; }
 }
+
+/* ---- Reporting page layout ---- */
+.reporting-page { display: flex; flex-direction: column; gap: var(--space-4); padding: 0 var(--space-6); }
+.reporting-range-bar { display: flex; align-items: center; gap: var(--space-3); flex-wrap: wrap; padding: var(--space-3) 0; }
+.reporting-range-label { color: var(--text-muted); font-size: 0.85rem; }

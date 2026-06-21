@@ -5,6 +5,7 @@ import InsightsFeed from '../components/InsightsFeed'
 import SubscriptionPanel from '../components/SubscriptionPanel'
 import AdversarialReviewPanel from '../components/AdversarialReviewPanel'
 import CavemanStatsPanel from '../components/CavemanStatsPanel'
+import ReportingPage from './ReportingPage'
 import Footer from '../components/Footer'
 import { BrandWordmark, ThemeToggle } from '../design'
 import { useDashboardStatus } from '../api/queries'
@@ -12,7 +13,7 @@ import { ApiError } from '../api/client'
 import { authEnabled, signIn } from '../auth/msal'
 import { useTheme } from '../theme/useTheme'
 
-type DashboardTab = 'overview' | 'adversarial-review'
+type DashboardTab = 'overview' | 'adversarial-review' | 'reporting'
 
 // recharts is heavy and the charts sit below the fold — code-split them so the
 // initial payload (nav + summary cards) paints without the chart library.
@@ -68,6 +69,13 @@ export default function Dashboard() {
         >
           Adversarial Review
         </button>
+        <button
+          type="button"
+          className={`page-nav__tab${tab === 'reporting' ? ' page-nav__tab--active' : ''}`}
+          onClick={() => setTab('reporting')}
+        >
+          Reporting
+        </button>
       </nav>
       {isError && <ErrorBanner error={error} />}
       {tab === 'overview' && (
@@ -102,6 +110,7 @@ export default function Dashboard() {
         </>
       )}
       {tab === 'adversarial-review' && <AdversarialReviewPanel />}
+      {tab === 'reporting' && <ReportingPage />}
       <Footer />
     </div>
   )
