@@ -16,6 +16,8 @@ concurrency:
 jobs:
   deploy-infra:
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
     steps:
       - uses: actions/checkout@v7
       - uses: azure/login@v3
