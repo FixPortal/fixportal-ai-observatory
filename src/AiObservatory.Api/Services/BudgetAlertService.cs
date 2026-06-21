@@ -4,7 +4,7 @@ using NodaTime;
 
 namespace AiObservatory.Api.Services;
 
-public class BudgetAlertService(IUsageRepository repository, IClock clock)
+public class BudgetAlertService(IUsageRepository repository, IClock clock, IAlertNotifier notifier)
 {
     // virtual to match the other de-interfaced services (FxRateProvider, AnthropicIntelligenceClient):
     // overridable for subclass-mocking now that IBudgetAlertService is gone.
@@ -67,6 +67,12 @@ public class BudgetAlertService(IUsageRepository repository, IClock clock)
 
             await repository.AddInsightAsync(insight, ct);
             await repository.SetBudgetRuleTriggeredAsync(rule.Id, now, ct);
+            await notifier.NotifyAsync(new BudgetAlertPayload(
+                rule.Provider?.ToString() ?? "all",
+                rule.Period.ToString(),
+                rule.ThresholdUsd,
+                totalSpend,
+                DateTimeOffset.UtcNow), ct);
         }
     }
 }
