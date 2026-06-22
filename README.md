@@ -19,6 +19,8 @@ license: Apache-2.0
 
 ![AI Observatory dashboard](docs/dashboard.png)
 
+![AI Observatory reporting](docs/reporting.png)
+
 ## What It Does
 
 - Aggregates daily token usage and costs per provider and model
