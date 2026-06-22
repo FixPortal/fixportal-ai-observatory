@@ -20,7 +20,7 @@ jobs:
     steps:
       - uses: actions/checkout@v7
 
-      - uses: millionco/react-doctor@740211cf201ee28910c105b59b79e9aa73e1bd45 # v2.2.0
+      - uses: millionco/react-doctor@0b4f4f4bd248a154e64eb508a48347f71154b3f3 # v2.2.2
         # with:
         #   fail-on: warning      # "error" (default) | "warning" | "none"
         #   comment: false        # disable sticky PR summary comment
