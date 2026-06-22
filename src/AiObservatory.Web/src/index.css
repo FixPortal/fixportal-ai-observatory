@@ -143,6 +143,8 @@ body {
 .card-value--model { font-size: 0.95rem; }
 .card-value--lead { font-size: 2rem; } /* spend leads the summary row */
 .card-sub { font-size: 0.72rem; color: var(--text-muted); margin-top: var(--space-1); }
+.card-delta--up   { color: var(--bad-text); }
+.card-delta--down { color: var(--ok-text); }
 
 /* ---- Info button + popover ---- */
 /* Wraps the button and the absolute-positioned popover; provides the

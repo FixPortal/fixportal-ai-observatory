@@ -65,6 +65,13 @@ export function useBudgetRules(): { rules: BudgetRule[]; isLoading: boolean; isE
   return { rules: data, isLoading: isPending, isError }
 }
 
+export function usePriorPeriodAggregates(): DailyAggregate[] {
+  const now = new Date()
+  const priorTo = new Date(now.getTime() - AGGREGATES_DAYS_RANGE * 24 * 60 * 60 * 1000)
+  const priorFrom = new Date(priorTo.getTime() - (AGGREGATES_DAYS_RANGE - 1) * 24 * 60 * 60 * 1000)
+  return useAggregates(priorFrom, priorTo)
+}
+
 export function useEmailStatus(): { configured: boolean | undefined } {
   const { data } = useQuery({ queryKey: ['email-status'], queryFn: getEmailStatus })
   return { configured: data?.configured }
