@@ -54,3 +54,8 @@ export async function getAccessToken(): Promise<string | null> {
 // of Entra. AuthGate is a no-op (no sign-in screen); the key is injected as
 // X-Observatory-Key on every request. Takes no effect when authEnabled is true.
 export const apiKey = import.meta.env.VITE_API_KEY ?? ''
+
+// Viewer-key share link: ?key=<value> in the URL grants read-only access without
+// Entra sign-in. Read once at module load — the value stays in memory for the
+// session; the param remains in the URL so bookmarks stay self-contained.
+export const urlApiKey = new URLSearchParams(window.location.search).get('key') ?? ''
