@@ -84,6 +84,18 @@ fixportal-ai-observatory/
 └── AiObservatory.slnx
 ```
 
+### Why a monorepo?
+
+The API and frontend are kept in a single repository for three reasons:
+
+1. **Source-first local development.** `docker compose up --build` builds both from source in one command. Splitting the repos would break this unless pre-built images are published to a registry — which adds a CI publishing step before local dev works for new contributors.
+2. **Atomic changes.** Adding a new endpoint and the component that calls it is one PR, one review, one merge. Cross-repo PRs for tightly-coupled changes are friction.
+3. **OSS contributor experience.** One clone gets you everything. No co-ordinating two repos, two CI pipelines, or two sets of issue trackers.
+
+### Path to a split
+
+If the frontend ever grows to the point where a React contributor shouldn't need the .NET SDK installed, splitting is viable. The pattern: both repos publish Docker images to a registry (e.g. GHCR) on merge, and a single `docker-compose.yml` in the backend repo wires the pre-built images together — no source build required for deployment or local demo. [fixportal-ci-backend](https://github.com/FixPortal/fixportal-ci-backend) is a working example of this approach.
+
 ## API Endpoints
 
 All routes are under `/api`. Requests require an `X-Observatory-Key` header
