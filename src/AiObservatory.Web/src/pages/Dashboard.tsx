@@ -42,7 +42,7 @@ function ErrorBanner({ error }: { error: unknown }) {
 }
 
 export default function Dashboard() {
-  const { isError, error } = useDashboardStatus()
+  const { isError, isLoading, error } = useDashboardStatus()
   const { mode, setMode } = useTheme()
   const [tab, setTab] = useState<DashboardTab>('overview')
   return (
@@ -78,6 +78,12 @@ export default function Dashboard() {
         </button>
       </nav>
       {isError && <ErrorBanner error={error} />}
+      {!isError && isLoading && (
+        <div className="loading-banner" role="status" aria-live="polite">
+          <span className="loading-banner__spinner" aria-hidden="true" />
+          Loading data — the API may take a moment to wake up on first load…
+        </div>
+      )}
       {tab === 'overview' && (
         <>
           <SummaryCards />
