@@ -1,7 +1,7 @@
 import { useEffect, type ReactNode } from 'react'
 import { useIsAuthenticated, useMsal } from '@azure/msal-react'
 import { BrandWordmark } from '../design'
-import { authEnabled, loginRequest } from './msal'
+import { authEnabled, loginRequest, urlApiKey } from './msal'
 
 /**
  * Gates the app behind Entra sign-in. When auth is disabled (no client id baked,
@@ -10,7 +10,9 @@ import { authEnabled, loginRequest } from './msal'
  * token acquisition can find it.
  */
 export default function AuthGate({ children }: { children: ReactNode }) {
-  if (!authEnabled) return <>{children}</>
+  // Viewer share link (?key=...) bypasses Entra sign-in — read-only access for
+  // colleagues without an Entra account. The key auths the API directly.
+  if (!authEnabled || urlApiKey) return <>{children}</>
   return <EntraGate>{children}</EntraGate>
 }
 
