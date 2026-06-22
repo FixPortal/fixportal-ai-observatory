@@ -1,13 +1,14 @@
 import { useMemo } from 'react'
 import { Card } from '../design'
-import { useAggregates, useInsights, AGGREGATES_DAYS_RANGE } from '../api/queries'
-import { useUsdToGbp, formatGbp } from '../lib/currency'
+import { useAggregates, usePriorPeriodAggregates, useInsights, AGGREGATES_DAYS_RANGE } from '../api/queries'
+import { useUsdToGbp, formatGbp, gbp } from '../lib/currency'
 import { formatInt } from '../lib/format'
 import { getProvider } from '../config/providers'
 import { InfoPopover } from './InfoPopover'
 
 export default function SummaryCards() {
   const aggregates = useAggregates()
+  const priorAggregates = usePriorPeriodAggregates()
   const insights = useInsights()
   const rate = useUsdToGbp()
 
@@ -52,6 +53,11 @@ export default function SummaryCards() {
     return { totalSpend, totalInputTokens, totalOutputTokens, totalCacheRead, estimatedSavings, topModel }
   }, [aggregates])
 
+  const priorTotalSpend = useMemo(() => priorAggregates.reduce((sum, a) => sum + a.costUsd, 0), [priorAggregates])
+  const deltaUsd = totalSpend - priorTotalSpend
+  const deltaGbpValue = deltaUsd * rate
+  const deltaPct = priorTotalSpend > 0 ? (deltaUsd / priorTotalSpend) * 100 : null
+
   const unread = useMemo(() => insights.filter(i => !i.acknowledged).length, [insights])
   const totalTokens = totalInputTokens + totalOutputTokens
   // Share of prompt tokens served from cache = cacheRead / (cacheRead + fresh input).
@@ -70,6 +76,11 @@ export default function SummaryCards() {
           </InfoPopover>
         </div>
         <div className="card-value card-value--lead">{formatGbp(totalSpend, rate)}</div>
+        {priorAggregates.length > 0 && (
+          <div className={`card-sub card-delta${deltaGbpValue > 0.005 ? ' card-delta--up' : deltaGbpValue < -0.005 ? ' card-delta--down' : ''}`}>
+            {deltaGbpValue > 0.005 ? '↑' : deltaGbpValue < -0.005 ? '↓' : '—'} {gbp(Math.abs(deltaGbpValue))}{deltaPct !== null ? ` (${Math.abs(deltaPct).toFixed(0)}%)` : ''} vs prior {AGGREGATES_DAYS_RANGE}d
+          </div>
+        )}
       </Card>
       <Card>
         <div className="card-label">Tokens</div>
