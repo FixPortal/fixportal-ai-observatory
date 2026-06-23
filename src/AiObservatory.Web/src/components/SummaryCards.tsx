@@ -29,18 +29,17 @@ export default function SummaryCards() {
       // Calculate estimated prompt cache savings in USD based on provider pricing
       const provider = getProvider(a.provider)
       if (provider?.cacheSavingsPerToken != null) {
-        let rate = 0
-        if (typeof provider.cacheSavingsPerToken === 'number') {
-          rate = provider.cacheSavingsPerToken
-        } else {
-          const modelLower = a.model.toLowerCase()
-          const matchKey = Object.keys(provider.cacheSavingsPerToken)
-            .sort((x, y) => y.length - x.length)
-            .find(key => key !== 'default' && modelLower.includes(key))
-          rate = matchKey
-            ? provider.cacheSavingsPerToken[matchKey]
-            : (provider.cacheSavingsPerToken['default'] ?? 0)
-        }
+        const rate = typeof provider.cacheSavingsPerToken === 'number'
+          ? provider.cacheSavingsPerToken
+          : (() => {
+              const modelLower = a.model.toLowerCase()
+              const matchKey = Object.keys(provider.cacheSavingsPerToken as Record<string, number>)
+                .sort((x, y) => y.length - x.length)
+                .find(key => key !== 'default' && modelLower.includes(key))
+              return matchKey
+                ? (provider.cacheSavingsPerToken as Record<string, number>)[matchKey]
+                : ((provider.cacheSavingsPerToken as Record<string, number>)['default'] ?? 0)
+            })()
         estimatedSavings += (a.cacheReadTokens ?? 0) * rate
       }
       

@@ -122,7 +122,7 @@ export default function BudgetRulesPanel() {
                   <th style={{ textAlign: 'left', padding: '4px 8px', color: 'var(--text-muted)', fontWeight: 600 }}>
                     Last fired
                   </th>
-                  <th style={{ width: 32 }} />
+                  <th style={{ width: 32 }} aria-label="Actions" />
                 </tr>
               </thead>
               <tbody>

@@ -2,6 +2,12 @@ import { Card } from '../design'
 import { useCavemanStats } from '../api/queries'
 import { useUsdToGbp, formatGbp } from '../lib/currency'
 
+function fmtTokens(n: number): string {
+  if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(1)}M`
+  if (n >= 1_000) return `${(n / 1_000).toFixed(0)}k`
+  return String(n)
+}
+
 export default function CavemanStatsPanel() {
   const stats = useCavemanStats()
   const rate = useUsdToGbp()
@@ -12,11 +18,6 @@ export default function CavemanStatsPanel() {
   const compressionPct = totalTokens > 0
     ? Math.round((stats.totalEstSavedTokens / totalTokens) * 100)
     : 0
-
-  const fmtTokens = (n: number) =>
-    n >= 1_000_000 ? `${(n / 1_000_000).toFixed(1)}M`
-    : n >= 1_000 ? `${(n / 1_000).toFixed(0)}k`
-    : String(n)
 
   return (
     <div className="summary-cards" style={{ marginTop: 0 }}>
