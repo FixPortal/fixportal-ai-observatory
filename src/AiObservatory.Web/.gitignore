@@ -24,3 +24,7 @@ coverage
 *.njsproj
 *.sln
 *.sw?
+
+# dotenv files — keep only .env.example
+.env*
+!.env.example

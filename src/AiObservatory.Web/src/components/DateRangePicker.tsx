@@ -1,4 +1,36 @@
+import type React from 'react'
 import { useEffect, useRef, useState } from 'react'
+
+const PRESETS = [7, 31, 90] as const
+
+const popoverStyle: React.CSSProperties = {
+  position: 'absolute',
+  top: 'calc(100% + 6px)',
+  left: 0,
+  zIndex: 20,
+  background: 'var(--card-bg)',
+  border: '1px solid var(--border)',
+  borderRadius: 'var(--r-panel)',
+  padding: 'var(--space-3)',
+  display: 'flex',
+  flexDirection: 'column',
+  gap: 'var(--space-2)',
+  minWidth: '220px',
+  boxShadow: '0 8px 24px rgba(0, 0, 0, 0.35)',
+}
+
+const applyButtonStyle: React.CSSProperties = {
+  marginTop: 'var(--space-1)',
+  padding: 'var(--space-1) var(--space-3)',
+  background: 'var(--brand)',
+  color: 'var(--text-on-brand)',
+  border: 'none',
+  borderRadius: 'var(--r-control)',
+  fontFamily: 'var(--font-sans)',
+  fontSize: '0.75rem',
+  fontWeight: 600,
+  cursor: 'pointer',
+}
 
 interface Props {
   from: Date
@@ -10,16 +42,22 @@ interface Props {
 
 export default function DateRangePicker({ from, to, preset, onPreset, onCustom }: Props) {
   const [popoverOpen, setPopoverOpen] = useState(false)
+  const [prevFrom, setPrevFrom] = useState(from)
+  const [prevTo, setPrevTo] = useState(to)
   const [fromStr, setFromStr] = useState(from.toISOString().slice(0, 10))
   const [toStr, setToStr] = useState(to.toISOString().slice(0, 10))
   const popoverRef = useRef<HTMLDivElement>(null)
   const containerRef = useRef<HTMLDivElement>(null)
 
-  // Sync input values when props change (e.g. when switching back to preset then custom)
-  useEffect(() => {
+  // Sync input values when props change — use previous-prop tracking to avoid setState in an effect
+  if (from !== prevFrom) {
+    setPrevFrom(from)
     setFromStr(from.toISOString().slice(0, 10))
+  }
+  if (to !== prevTo) {
+    setPrevTo(to)
     setToStr(to.toISOString().slice(0, 10))
-  }, [from, to])
+  }
 
   useEffect(() => {
     if (!popoverOpen) return
@@ -56,8 +94,6 @@ export default function DateRangePicker({ from, to, preset, onPreset, onCustom }
     }
   }
 
-  const PRESETS = [7, 31, 90] as const
-
   return (
     <div ref={containerRef} style={{ position: 'relative', display: 'inline-flex', alignItems: 'center', gap: 'var(--space-1)' }}>
       <div className="chart-toggle">
@@ -83,23 +119,9 @@ export default function DateRangePicker({ from, to, preset, onPreset, onCustom }
       {popoverOpen && (
         <div
           ref={popoverRef}
-          style={{
-            position: 'absolute',
-            top: 'calc(100% + 6px)',
-            left: 0,
-            zIndex: 20,
-            background: 'var(--card-bg)',
-            border: '1px solid var(--border)',
-            borderRadius: 'var(--r-panel)',
-            padding: 'var(--space-3)',
-            display: 'flex',
-            flexDirection: 'column',
-            gap: 'var(--space-2)',
-            minWidth: '220px',
-            boxShadow: '0 8px 24px rgba(0, 0, 0, 0.35)',
-          }}
+          style={popoverStyle}
         >
-          <label style={{ fontSize: '0.7rem', color: 'var(--text-muted)', display: 'flex', flexDirection: 'column', gap: '2px' }}>
+          <label style={{ fontSize: '0.75rem', color: 'var(--text-muted)', display: 'flex', flexDirection: 'column', gap: '2px' }}>
             From
             <input
               type="date"
@@ -116,7 +138,7 @@ export default function DateRangePicker({ from, to, preset, onPreset, onCustom }
               }}
             />
           </label>
-          <label style={{ fontSize: '0.7rem', color: 'var(--text-muted)', display: 'flex', flexDirection: 'column', gap: '2px' }}>
+          <label style={{ fontSize: '0.75rem', color: 'var(--text-muted)', display: 'flex', flexDirection: 'column', gap: '2px' }}>
             To
             <input
               type="date"
@@ -136,18 +158,7 @@ export default function DateRangePicker({ from, to, preset, onPreset, onCustom }
           <button
             type="button"
             onClick={handleApply}
-            style={{
-              marginTop: 'var(--space-1)',
-              padding: 'var(--space-1) var(--space-3)',
-              background: 'var(--brand)',
-              color: 'var(--text-on-brand)',
-              border: 'none',
-              borderRadius: 'var(--r-control)',
-              fontFamily: 'var(--font-sans)',
-              fontSize: '0.75rem',
-              fontWeight: 600,
-              cursor: 'pointer',
-            }}
+            style={applyButtonStyle}
           >
             Apply
           </button>
