@@ -29,7 +29,12 @@ license: Apache-2.0
 - Manages subscriptions (monthly flat cost + extra usage overlay, progress bar vs. period spend)
 - Supports budget rules and FX-rate-aware GBP display
 
-Usage events enter via a `POST /api/events` endpoint, currently fed by a Claude Code `Stop` hook on the developer's machine.
+Usage events enter via a `POST /api/events` endpoint. Vendor billing is polled
+by the `AiObservatory.Ingest` worker (Anthropic, OpenAI, Google, Copilot), and
+session-level token usage is pushed by local producers on the developer's
+machine — a Claude Code `Stop` hook plus the drop-in **[Codex / Copilot
+sweeper](clients/README.md)** for tools whose subscription usage the billing
+APIs cannot see.
 
 ## Tech Stack
 
