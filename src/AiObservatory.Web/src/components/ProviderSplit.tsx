@@ -4,11 +4,13 @@ import { useAggregates } from '../api/queries'
 import { providerColor } from '../theme/providerColors'
 import { useUsdToGbp, gbp } from '../lib/currency'
 
-const ChartInner = lazy(async () => {
-  const { PieChart, Pie, Cell, Tooltip, Legend, ResponsiveContainer } = await import('recharts')
-  
-  interface ProviderSlice { name: string; value: number }
-  return {
+interface ProviderSlice { name: string; value: number }
+
+// Inner is defined at module scope so its component identity is stable across
+// re-renders. Defining it inside the lazy() factory gave it a new reference on
+// every render, causing the chart to remount on any parent state change.
+const ChartInner = lazy(() =>
+  import('recharts').then(({ PieChart, Pie, Cell, Tooltip, Legend, ResponsiveContainer }) => ({
     default: function Inner({ data }: { data: ProviderSlice[] }) {
       return (
         <ResponsiveContainer width="100%" height={200}>
@@ -28,9 +30,9 @@ const ChartInner = lazy(async () => {
           </PieChart>
         </ResponsiveContainer>
       )
-    }
-  }
-})
+    },
+  }))
+)
 
 interface Props {
   from?: Date

@@ -68,7 +68,7 @@ export default function SummaryCards() {
   const deltaGbpValue = deltaUsd * rate
   const deltaPct = priorTotalSpend > 0 ? (deltaUsd / priorTotalSpend) * 100 : null
 
-  const unread = useMemo(() => insights.filter(i => !i.acknowledged).length, [insights])
+  const unread = insights.filter(i => !i.acknowledged).length
   const totalTokens = totalInputTokens + totalOutputTokens
   // Share of prompt tokens served from cache = cacheRead / (cacheRead + fresh input).
   // (input_tokens excludes cache reads, so the denominator is the whole prompt.)
