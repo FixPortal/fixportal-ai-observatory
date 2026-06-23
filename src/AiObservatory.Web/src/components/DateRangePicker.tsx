@@ -44,8 +44,8 @@ export default function DateRangePicker({ from, to, preset, onPreset, onCustom }
   const [popoverOpen, setPopoverOpen] = useState(false)
   const [prevFrom, setPrevFrom] = useState(from)
   const [prevTo, setPrevTo] = useState(to)
-  const [fromStr, setFromStr] = useState(from.toISOString().slice(0, 10))
-  const [toStr, setToStr] = useState(to.toISOString().slice(0, 10))
+  const [fromStr, setFromStr] = useState(() => from.toISOString().slice(0, 10))
+  const [toStr, setToStr] = useState(() => to.toISOString().slice(0, 10))
   const popoverRef = useRef<HTMLDivElement>(null)
   const containerRef = useRef<HTMLDivElement>(null)
 
