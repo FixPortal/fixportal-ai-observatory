@@ -9,10 +9,11 @@ const TEXT_MUTED = 'var(--text-muted)'
 
 type ChartMode = 'spend' | 'volume' | 'share'
 
-const ChartInner = lazy(async () => {
-  const { BarChart, Bar, XAxis, YAxis, Tooltip, Legend, ResponsiveContainer } = await import('recharts')
-
-  return {
+// Inner is defined at module scope so its component identity is stable across
+// re-renders. Defining it inside the lazy() factory gave it a new reference on
+// every render, causing the chart to remount whenever mode/date state changed.
+const ChartInner = lazy(() =>
+  import('recharts').then(({ BarChart, Bar, XAxis, YAxis, Tooltip, Legend, ResponsiveContainer }) => ({
     default: function Inner({ byDate, providers, mode }: { byDate: Record<string, string | number>[], providers: string[], mode: ChartMode }) {
       const yTick = (v: number) => {
         if (mode === 'spend') return `£${v}`
@@ -48,9 +49,9 @@ const ChartInner = lazy(async () => {
           </BarChart>
         </ResponsiveContainer>
       )
-    }
-  }
-})
+    },
+  }))
+)
 
 interface Props {
   from?: Date

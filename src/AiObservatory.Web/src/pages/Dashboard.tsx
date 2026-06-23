@@ -78,46 +78,48 @@ export default function Dashboard() {
           Reporting
         </button>
       </nav>
-      {isError && <ErrorBanner error={error} />}
-      {!isError && isLoading && (
-        <output className="loading-banner" aria-live="polite">
-          <span className="loading-banner__spinner" aria-hidden="true" />
-          Loading data — the API may take a moment to wake up on first load…
-        </output>
-      )}
-      {tab === 'overview' && (
-        <>
-          <SummaryCards />
-          <CavemanStatsPanel />
-          <SubscriptionPanel />
-          <div className="main-grid">
-            <div className="panel">
-              <div className="panel-title">Daily spend — last 31 days</div>
-              <Suspense fallback={<div className="chart-skeleton" />}>
-                <SpendChart />
-              </Suspense>
+      <main className="dashboard__main">
+        {isError && <ErrorBanner error={error} />}
+        {!isError && isLoading && (
+          <output className="loading-banner" aria-live="polite">
+            <span className="loading-banner__spinner" aria-hidden="true" />
+            Loading data — the API may take a moment to wake up on first load…
+          </output>
+        )}
+        {tab === 'overview' && (
+          <>
+            <SummaryCards />
+            <CavemanStatsPanel />
+            <SubscriptionPanel />
+            <div className="main-grid">
+              <div className="panel">
+                <div className="panel-title">Daily spend — last 31 days</div>
+                <Suspense fallback={<div className="chart-skeleton" />}>
+                  <SpendChart />
+                </Suspense>
+              </div>
+              <div className="panel">
+                <div className="panel-title">Provider split</div>
+                <Suspense fallback={<div className="chart-skeleton" />}>
+                  <ProviderSplit />
+                </Suspense>
+              </div>
             </div>
-            <div className="panel">
-              <div className="panel-title">Provider split</div>
-              <Suspense fallback={<div className="chart-skeleton" />}>
-                <ProviderSplit />
-              </Suspense>
+            <div className="bottom-grid">
+              <div className="panel">
+                <div className="panel-title">Model breakdown</div>
+                <ModelBreakdown />
+              </div>
+              <div className="panel">
+                <div className="panel-title">Insights</div>
+                <InsightsFeed />
+              </div>
             </div>
-          </div>
-          <div className="bottom-grid">
-            <div className="panel">
-              <div className="panel-title">Model breakdown</div>
-              <ModelBreakdown />
-            </div>
-            <div className="panel">
-              <div className="panel-title">Insights</div>
-              <InsightsFeed />
-            </div>
-          </div>
-        </>
-      )}
-      {tab === 'adversarial-review' && <AdversarialReviewPanel />}
-      {tab === 'reporting' && <ReportingPage />}
+          </>
+        )}
+        {tab === 'adversarial-review' && <AdversarialReviewPanel />}
+        {tab === 'reporting' && <ReportingPage />}
+      </main>
       <Footer />
     </div>
   )

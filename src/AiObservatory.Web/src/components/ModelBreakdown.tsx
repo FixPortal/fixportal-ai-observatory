@@ -157,7 +157,7 @@ export default function ModelBreakdown() {
   }, [filteredByModel, sortField, sortDirection])
 
   // Use maximum cost of unfiltered data to maintain a consistent visual scale for the progress bars
-  const maxCost = useMemo(() => Math.max(...rawByModel.map((item) => item.cost), 1), [rawByModel])
+  const maxCost = useMemo(() => rawByModel.reduce((m, item) => item.cost > m ? item.cost : m, 1), [rawByModel])
 
   if (rawByModel.length === 0) return <p className="panel-empty">No usage data for this period.</p>
 
