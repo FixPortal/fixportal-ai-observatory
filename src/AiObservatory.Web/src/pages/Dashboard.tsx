@@ -7,7 +7,8 @@ import AdversarialReviewPanel from '../components/AdversarialReviewPanel'
 import CavemanStatsPanel from '../components/CavemanStatsPanel'
 import ReportingPage from './ReportingPage'
 import Footer from '../components/Footer'
-import { BrandWordmark, ThemeToggle } from '../design'
+import { BrandWordmark } from '../design/BrandWordmark'
+import { ThemeToggle } from '../design/ThemeToggle'
 import { useDashboardStatus } from '../api/queries'
 import { ApiError } from '../api/client'
 import { authEnabled, signIn } from '../auth/msal'
@@ -79,10 +80,10 @@ export default function Dashboard() {
       </nav>
       {isError && <ErrorBanner error={error} />}
       {!isError && isLoading && (
-        <div className="loading-banner" role="status" aria-live="polite">
+        <output className="loading-banner" aria-live="polite">
           <span className="loading-banner__spinner" aria-hidden="true" />
           Loading data — the API may take a moment to wake up on first load…
-        </div>
+        </output>
       )}
       {tab === 'overview' && (
         <>

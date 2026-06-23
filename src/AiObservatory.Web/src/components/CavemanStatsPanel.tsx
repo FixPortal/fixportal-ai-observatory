@@ -1,4 +1,4 @@
-import { Card } from '../design'
+import { Card } from '../design/Card'
 import { useCavemanStats } from '../api/queries'
 import { useUsdToGbp, formatGbp } from '../lib/currency'
 

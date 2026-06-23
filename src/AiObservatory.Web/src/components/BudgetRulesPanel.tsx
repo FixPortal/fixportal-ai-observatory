@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { useMutation, useQueryClient } from '@tanstack/react-query'
-import { Button } from '../design'
+import { Button } from '../design/Button'
 import { createBudgetRule, deleteBudgetRule } from '../api/client'
 import { useBudgetRules, useInsights, useEmailStatus } from '../api/queries'
 

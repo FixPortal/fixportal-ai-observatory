@@ -1,10 +1,24 @@
 import { useMemo } from 'react'
-import { Card } from '../design'
+import { Card } from '../design/Card'
 import { useAggregates, usePriorPeriodAggregates, useInsights, AGGREGATES_DAYS_RANGE } from '../api/queries'
 import { useUsdToGbp, formatGbp, gbp } from '../lib/currency'
 import { formatInt } from '../lib/format'
-import { getProvider } from '../config/providers'
+import { getProvider, type ProviderConfig } from '../config/providers'
 import { InfoPopover } from './InfoPopover'
+
+function getCacheSavingsRate(provider: ProviderConfig, model: string): number {
+  if (typeof provider.cacheSavingsPerToken === 'number') {
+    return provider.cacheSavingsPerToken
+  }
+  const modelLower = model.toLowerCase()
+  const savingsObj = provider.cacheSavingsPerToken as Record<string, number>
+  const matchKey = Object.keys(savingsObj)
+    .sort((x, y) => y.length - x.length)
+    .find(key => key !== 'default' && modelLower.includes(key))
+  return matchKey
+    ? savingsObj[matchKey]
+    : (savingsObj['default'] ?? 0)
+}
 
 export default function SummaryCards() {
   const aggregates = useAggregates()
@@ -20,6 +34,8 @@ export default function SummaryCards() {
     let totalCacheRead = 0
     let estimatedSavings = 0
     const modelCosts: Record<string, number> = {}
+    const rateCache = new Map<string, number>()
+
     for (const a of aggregates) {
       totalSpend += a.costUsd
       totalInputTokens += a.inputTokens
@@ -29,17 +45,12 @@ export default function SummaryCards() {
       // Calculate estimated prompt cache savings in USD based on provider pricing
       const provider = getProvider(a.provider)
       if (provider?.cacheSavingsPerToken != null) {
-        const rate = typeof provider.cacheSavingsPerToken === 'number'
-          ? provider.cacheSavingsPerToken
-          : (() => {
-              const modelLower = a.model.toLowerCase()
-              const matchKey = Object.keys(provider.cacheSavingsPerToken as Record<string, number>)
-                .sort((x, y) => y.length - x.length)
-                .find(key => key !== 'default' && modelLower.includes(key))
-              return matchKey
-                ? (provider.cacheSavingsPerToken as Record<string, number>)[matchKey]
-                : ((provider.cacheSavingsPerToken as Record<string, number>)['default'] ?? 0)
-            })()
+        const cacheKey = `${a.provider}:${a.model}`
+        let rate = rateCache.get(cacheKey)
+        if (rate === undefined) {
+          rate = getCacheSavingsRate(provider, a.model)
+          rateCache.set(cacheKey, rate)
+        }
         estimatedSavings += (a.cacheReadTokens ?? 0) * rate
       }
       

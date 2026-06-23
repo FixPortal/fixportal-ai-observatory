@@ -1,5 +1,5 @@
 import { useMemo } from 'react'
-import { Card } from '../design'
+import { Card } from '../design/Card'
 import { computeBurnRate } from '../lib/velocity'
 import { useUsdToGbp, formatGbp } from '../lib/currency'
 import type { DailyAggregate } from '../api/client'

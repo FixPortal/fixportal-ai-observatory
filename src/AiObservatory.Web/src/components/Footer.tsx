@@ -1,4 +1,4 @@
-import { BrandWordmark } from '../design'
+import { BrandWordmark } from '../design/BrandWordmark'
 
 // FixPortal footer, monikered for this site. Models the estate's dashboard
 // footer convention (CI dashboard): shared wordmark, a per-site tagline, and

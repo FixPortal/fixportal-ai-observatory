@@ -1,6 +1,6 @@
 import { useEffect, type ReactNode } from 'react'
 import { useIsAuthenticated, useMsal } from '@azure/msal-react'
-import { BrandWordmark } from '../design'
+import { BrandWordmark } from '../design/BrandWordmark'
 import { authEnabled, loginRequest, urlApiKey } from './msal'
 
 /**
