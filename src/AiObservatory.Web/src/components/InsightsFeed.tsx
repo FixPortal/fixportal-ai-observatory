@@ -6,6 +6,7 @@ import { StatusBadge } from '../design/StatusBadge'
 import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { acknowledgeInsight, explainInsight, type Insight } from '../api/client'
 import { useInsights } from '../api/queries'
+import { isReadonly } from '../auth/msal'
 
 const TYPE_LABELS: Record<string, string> = {
   summary: 'Summary', efficiency: 'Efficiency', anomaly: 'Anomaly', recommendation: 'Recommendation'
@@ -62,14 +63,16 @@ function InsightRow({ insight }: { insight: Insight }) {
       {explainError && (
         <p className="insight-explain-error">Failed to load guidance. Try again.</p>
       )}
-      <div className="insight-actions">
-        {canExplain && !explanation && (
-          <Button variant="ghost" size="sm" onClick={() => explain.mutate()} disabled={explain.isPending}>
-            {explain.isPending ? 'Loading...' : 'How to implement'}
-          </Button>
-        )}
-        <Button variant="ghost" size="sm" onClick={() => ack.mutate(insight.id)} disabled={ack.isPending}>Dismiss</Button>
-      </div>
+      {!isReadonly && (
+        <div className="insight-actions">
+          {canExplain && !explanation && (
+            <Button variant="ghost" size="sm" onClick={() => explain.mutate()} disabled={explain.isPending}>
+              {explain.isPending ? 'Loading...' : 'How to implement'}
+            </Button>
+          )}
+          <Button variant="ghost" size="sm" onClick={() => ack.mutate(insight.id)} disabled={ack.isPending}>Dismiss</Button>
+        </div>
+      )}
     </div>
   )
 }

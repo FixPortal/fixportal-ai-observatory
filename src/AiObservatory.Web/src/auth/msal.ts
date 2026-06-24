@@ -57,5 +57,20 @@ export const apiKey = import.meta.env.VITE_API_KEY ?? ''
 
 // Viewer-key share link: ?key=<value> in the URL grants read-only access without
 // Entra sign-in. Read once at module load — the value stays in memory for the
-// session; the param remains in the URL so bookmarks stay self-contained.
+// session.
 export const urlApiKey = new URLSearchParams(window.location.search).get('key') ?? ''
+
+// Strip the key from the visible URL once captured so it does not linger in the
+// address bar, browser history, or any Referer header. The value is already held
+// in urlApiKey above for the session.
+if (urlApiKey && typeof window.history?.replaceState === 'function') {
+  const stripped = new URL(window.location.href)
+  stripped.searchParams.delete('key')
+  window.history.replaceState({}, '', stripped.pathname + stripped.search + stripped.hash)
+}
+
+// A viewer-key session is read-only — the API rejects every non-GET without the
+// admin key. Used to hide write controls so colleagues on a share link aren't
+// shown buttons that would only 401. (A viewer key is the only credential a
+// ?key= visitor holds; Entra and self-host keys never set urlApiKey.)
+export const isReadonly = urlApiKey.length > 0

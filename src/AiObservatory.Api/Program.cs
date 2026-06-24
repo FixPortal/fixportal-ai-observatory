@@ -7,6 +7,7 @@ using AiObservatory.Data;
 using AiObservatory.Data.Entities;
 using System.Threading.RateLimiting;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
+using Microsoft.AspNetCore.HttpOverrides;
 using Microsoft.AspNetCore.RateLimiting;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Identity.Web;
@@ -31,6 +32,16 @@ builder.Services.ConfigureHttpJsonOptions(o =>
 var dbConnection = builder.Configuration["DB_CONNECTION"]
     ?? throw new InvalidOperationException("DB_CONNECTION configuration is missing.");
 builder.Services.AddDataLayer(dbConnection);
+
+// Self-host safety: refuse to boot outside Development with the documented
+// placeholder admin key, so an exposed deploy can't run with a guessable
+// credential. The local Docker demo runs in Development and may keep "change-me".
+var adminKey = builder.Configuration["OBSERVATORY_API_KEY"];
+if (!builder.Environment.IsDevelopment() && (string.IsNullOrWhiteSpace(adminKey) || adminKey == "change-me"))
+{
+    throw new InvalidOperationException(
+        "OBSERVATORY_API_KEY must be set to a non-default value outside Development.");
+}
 builder.Services.AddSingleton<IClock>(SystemClock.Instance);
 builder.Services.AddTransient<MailKit.Net.Smtp.ISmtpClient, MailKit.Net.Smtp.SmtpClient>();
 builder.Services.AddTransient<IAlertNotifier, EmailAlertNotifier>();
@@ -64,6 +75,21 @@ builder.Services.AddRateLimiter(o =>
     });
 });
 
+// Honour X-Forwarded-For from a trusted reverse proxy (the nginx sidecar in the
+// Docker self-host topology) so the rate limiter partitions by the real client IP
+// rather than collapsing every proxied caller onto the bridge IP. Only proxies on
+// private networks are trusted, so a public client cannot spoof the header.
+builder.Services.Configure<ForwardedHeadersOptions>(o =>
+{
+    o.ForwardedHeaders = ForwardedHeaders.XForwardedFor;
+    o.ForwardLimit = 1;
+    o.KnownIPNetworks.Clear();
+    o.KnownProxies.Clear();
+    o.KnownIPNetworks.Add(new System.Net.IPNetwork(System.Net.IPAddress.Parse("10.0.0.0"), 8));
+    o.KnownIPNetworks.Add(new System.Net.IPNetwork(System.Net.IPAddress.Parse("172.16.0.0"), 12));
+    o.KnownIPNetworks.Add(new System.Net.IPNetwork(System.Net.IPAddress.Parse("192.168.0.0"), 16));
+});
+
 builder.Services.AddCors(o => o.AddDefaultPolicy(p =>
     p.WithOrigins(builder.Configuration["SWA_ORIGIN"] ?? "https://fpaiobs-swa.azurestaticapps.net")
      .AllowAnyMethod().AllowAnyHeader()));
@@ -87,6 +113,7 @@ using (var scope = app.Services.CreateScope())
     await db.Database.MigrateAsync();
 }
 
+app.UseForwardedHeaders();
 app.UseCors();
 app.UseRateLimiter();
 
@@ -101,9 +128,17 @@ var api = app.MapGroup("/api").AddEndpointFilter<ApiKeyEndpointFilter>().Require
 if (app.Environment.IsDevelopment())
 {
     app.MapOpenApi();
-    api.MapPost("/dev/seed", async (AiObservatoryDbContext db, IClock clock) =>
+    api.MapPost("/dev/seed", async (AiObservatoryDbContext db, IClock clock, CancellationToken ct) =>
     {
-        await db.Database.ExecuteSqlRawAsync("TRUNCATE TABLE \"DailyAggregates\", \"Subscriptions\", \"Insights\", \"BudgetRules\", \"UsageEvents\" RESTART IDENTITY CASCADE;");
+        // Idempotent: only seed an empty database. The Docker compose seed service
+        // calls this on every `up`; without this guard a re-up would TRUNCATE a
+        // self-hoster's accumulated data. If rows already exist, do nothing.
+        if (await db.DailyAggregates.AnyAsync(ct))
+        {
+            return Results.Ok("Already seeded — skipping (data present).");
+        }
+
+        await db.Database.ExecuteSqlRawAsync("TRUNCATE TABLE \"DailyAggregates\", \"Subscriptions\", \"Insights\", \"BudgetRules\", \"UsageEvents\" RESTART IDENTITY CASCADE;", ct);
 
         var today = clock.GetCurrentInstant().InUtc().Date;
 
@@ -247,7 +282,7 @@ if (app.Environment.IsDevelopment())
             Data = "{\"potentialSavingsUsd\":15.5}"
         });
 
-        await db.SaveChangesAsync();
+        await db.SaveChangesAsync(ct);
         return Results.Ok("Seed successful");
     });
 }
