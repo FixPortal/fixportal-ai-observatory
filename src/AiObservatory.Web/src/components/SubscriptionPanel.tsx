@@ -7,6 +7,7 @@ import { providerColor } from '../theme/providerColors'
 import { gbp, useUsdToGbp, formatCurrency } from '../lib/currency'
 import { currentBillingPeriodStart } from '../lib/subscriptions'
 import SubscriptionModal from './SubscriptionModal'
+import { isReadonly } from '../auth/msal'
 
 const PROVIDER_ORDER: Record<string, number> = { anthropic: 0, copilot: 1, google: 2 }
 const capitalize = (s: string) => s.charAt(0).toUpperCase() + s.slice(1)
@@ -34,6 +35,15 @@ function ExtraUsageChip({ sub }: { sub: Subscription }) {
       alert(`Failed to save extra usage cost: ${err.message}`)
     },
   })
+
+  // Read-only viewers (share link) can't patch — show the value, no edit affordance.
+  if (isReadonly) {
+    return (
+      <span className={`sub-card__extra-chip${sub.extraUsageCost === null ? ' sub-card__extra-chip--null' : ''}`}>
+        {sub.extraUsageCost !== null ? `+ ${formatCurrency(sub.extraUsageCost, sub.currency)}` : '—'}
+      </span>
+    )
+  }
 
   if (editing) {
     return (
@@ -154,9 +164,11 @@ export default function SubscriptionPanel() {
               <p>The cycle resets on the renewal day shown in each card. The progress bar shows period spend as a percentage of the monthly cost.</p>
             </InfoPopover>
           </div>
-          <button type="button" className="sub-panel-btn" onClick={() => setModalOpen(true)}>
-            Manage subscriptions
-          </button>
+          {!isReadonly && (
+            <button type="button" className="sub-panel-btn" onClick={() => setModalOpen(true)}>
+              Manage subscriptions
+            </button>
+          )}
         </div>
 
         {subscriptionsError ? (
@@ -164,9 +176,11 @@ export default function SubscriptionPanel() {
         ) : subscriptionsLoading ? null : collapsed.length === 0 ? (
           <div className="sub-empty">
             <p className="sub-empty__text">No subscriptions — add one to start tracking.</p>
-            <button type="button" className="sub-panel-btn" onClick={() => setModalOpen(true)}>
-              Add subscription
-            </button>
+            {!isReadonly && (
+              <button type="button" className="sub-panel-btn" onClick={() => setModalOpen(true)}>
+                Add subscription
+              </button>
+            )}
           </div>
         ) : (
           <div className="sub-cards">

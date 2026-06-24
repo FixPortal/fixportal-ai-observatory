@@ -1,3 +1,4 @@
+import { useMemo } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import {
   getAggregates, getInsights, getSubscriptions,
@@ -66,9 +67,15 @@ export function useBudgetRules(): { rules: BudgetRule[]; isLoading: boolean; isE
 }
 
 export function usePriorPeriodAggregates(): DailyAggregate[] {
-  const now = new Date()
-  const priorTo = new Date(now.getTime() - AGGREGATES_DAYS_RANGE * 24 * 60 * 60 * 1000)
-  const priorFrom = new Date(priorTo.getTime() - (AGGREGATES_DAYS_RANGE - 1) * 24 * 60 * 60 * 1000)
+  // Compute the window once per mount, not in the render body — keeps render pure
+  // and the date objects stable. (The query key is day-granular via localDate, so
+  // this never churns mid-day regardless.)
+  const { priorFrom, priorTo } = useMemo(() => {
+    const now = new Date()
+    const to = new Date(now.getTime() - AGGREGATES_DAYS_RANGE * 24 * 60 * 60 * 1000)
+    const from = new Date(to.getTime() - (AGGREGATES_DAYS_RANGE - 1) * 24 * 60 * 60 * 1000)
+    return { priorFrom: from, priorTo: to }
+  }, [])
   return useAggregates(priorFrom, priorTo)
 }
 

@@ -3,6 +3,7 @@ import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { Button } from '../design/Button'
 import { createBudgetRule, deleteBudgetRule } from '../api/client'
 import { useBudgetRules, useInsights, useEmailStatus } from '../api/queries'
+import { isReadonly } from '../auth/msal'
 
 const PROVIDERS = ['anthropic', 'copilot', 'google', 'openai'] as const
 const PERIODS = ['daily', 'weekly', 'monthly'] as const
@@ -96,9 +97,11 @@ export default function BudgetRulesPanel() {
             </span>
             <WebhookChip configured={configured} />
           </div>
-          <Button variant="ghost" size="sm" onClick={handleOpenPanel} disabled={panelOpen}>
-            + Add rule
-          </Button>
+          {!isReadonly && (
+            <Button variant="ghost" size="sm" onClick={handleOpenPanel} disabled={panelOpen}>
+              + Add rule
+            </Button>
+          )}
         </div>
 
         <div style={{ marginTop: 'var(--space-3)', borderTop: '1px solid var(--border)', paddingTop: 'var(--space-3)' }}>
@@ -122,7 +125,7 @@ export default function BudgetRulesPanel() {
                   <th style={{ textAlign: 'left', padding: '4px 8px', color: 'var(--text-muted)', fontWeight: 600 }}>
                     Last fired
                   </th>
-                  <th style={{ width: 32 }} aria-label="Actions" />
+                  {!isReadonly && <th style={{ width: 32 }} aria-label="Actions" />}
                 </tr>
               </thead>
               <tbody>
@@ -142,16 +145,18 @@ export default function BudgetRulesPanel() {
                         ? new Date(rule.lastTriggeredAt).toLocaleString()
                         : 'Never'}
                     </td>
-                    <td style={{ padding: '6px 0 6px 8px', textAlign: 'center' }}>
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        onClick={() => deleteRule.mutate(rule.id)}
-                        disabled={deleteRule.isPending}
-                      >
-                        Remove
-                      </Button>
-                    </td>
+                    {!isReadonly && (
+                      <td style={{ padding: '6px 0 6px 8px', textAlign: 'center' }}>
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => deleteRule.mutate(rule.id)}
+                          disabled={deleteRule.isPending}
+                        >
+                          Remove
+                        </Button>
+                      </td>
+                    )}
                   </tr>
                 ))}
               </tbody>
