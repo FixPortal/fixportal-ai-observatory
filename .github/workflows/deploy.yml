@@ -13,6 +13,7 @@ concurrency:
 
 jobs:
   deploy-api:
+    name: Deploy (api)
     runs-on: ubuntu-latest
     if: ${{ github.event.workflow_run.conclusion == 'success' || github.event_name == 'workflow_dispatch' }}
     permissions:
@@ -38,6 +39,7 @@ jobs:
           package: ./publish/api
 
   deploy-ingest:
+    name: Deploy (ingest)
     runs-on: ubuntu-latest
     if: ${{ github.event.workflow_run.conclusion == 'success' || github.event_name == 'workflow_dispatch' }}
     permissions:
@@ -63,6 +65,7 @@ jobs:
           package: ./publish/ingest
 
   deploy-web:
+    name: Deploy (web)
     runs-on: ubuntu-latest
     if: ${{ github.event.workflow_run.conclusion == 'success' || github.event_name == 'workflow_dispatch' }}
     permissions:
