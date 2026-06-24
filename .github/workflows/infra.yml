@@ -15,6 +15,7 @@ concurrency:
 
 jobs:
   deploy-infra:
+    name: Deploy (Bicep infra)
     runs-on: ubuntu-latest
     permissions:
       contents: read
