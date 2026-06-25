@@ -87,6 +87,12 @@ jobs:
           NODE_AUTH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       - run: npm run build
         working-directory: src/AiObservatory.Web
+        env:
+          # SWA Free tier can't proxy /api to the API App Service, so the prod
+          # build must call the API cross-origin at its absolute URL. Kept here,
+          # not in a .env.production, because .env* is gitignored and was silently
+          # dropped in the public-release history rewrite (the original outage).
+          VITE_API_BASE: https://fpaiobs-api.azurewebsites.net
       - uses: Azure/static-web-apps-deploy@1a947af9992250f3bc2e68ad0754c0b0c11566c9 # v1
         with:
           azure_static_web_apps_api_token: ${{ secrets.SWA_DEPLOYMENT_TOKEN }}
