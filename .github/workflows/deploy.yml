@@ -88,11 +88,20 @@ jobs:
       - run: npm run build
         working-directory: src/AiObservatory.Web
         env:
+          # All VITE_* below are build-time, baked into the public SPA bundle.
+          # They are public identifiers (API URL, Entra app/tenant ids, scope) —
+          # NOT secrets — so they live here rather than in a gitignored .env*,
+          # which was silently dropped in the public-release history rewrite (the
+          # original "Couldn't reach the API" + "session expired" outages).
+          #
           # SWA Free tier can't proxy /api to the API App Service, so the prod
-          # build must call the API cross-origin at its absolute URL. Kept here,
-          # not in a .env.production, because .env* is gitignored and was silently
-          # dropped in the public-release history rewrite (the original outage).
+          # build calls the API cross-origin at its absolute URL.
           VITE_API_BASE: https://fpaiobs-api.azurewebsites.net
+          # Entra (Azure AD) sign-in config. Without these the SPA's MSAL wiring
+          # is a no-op (authEnabled=false) → no bearer token → API 401.
+          VITE_AAD_CLIENT_ID: f3a9736e-1ba6-43b6-89f7-e799a9f93e9a
+          VITE_AAD_TENANT_ID: c5eac41f-0525-4692-8705-7822be64d5ae
+          VITE_AAD_API_SCOPE: api://f3a9736e-1ba6-43b6-89f7-e799a9f93e9a/access_as_user
       - uses: Azure/static-web-apps-deploy@1a947af9992250f3bc2e68ad0754c0b0c11566c9 # v1
         with:
           azure_static_web_apps_api_token: ${{ secrets.SWA_DEPLOYMENT_TOKEN }}
