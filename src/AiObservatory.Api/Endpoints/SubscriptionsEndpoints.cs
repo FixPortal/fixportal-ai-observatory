@@ -47,7 +47,7 @@ public static class SubscriptionsEndpoints
                 Provider = provider,
                 Name = req.Name,
                 CostAmount = req.CostAmount,
-                Currency = req.Currency,
+                Currency = currencyUpper,
                 BillingDay = req.BillingDay,
                 ActiveFrom = req.ActiveFrom,
                 ActiveTo = req.ActiveTo
@@ -91,7 +91,7 @@ public static class SubscriptionsEndpoints
             sub.Provider = provider;
             sub.Name = req.Name;
             sub.CostAmount = req.CostAmount;
-            sub.Currency = req.Currency;
+            sub.Currency = currencyUpper;
             sub.BillingDay = req.BillingDay;
             sub.ActiveFrom = req.ActiveFrom;
             sub.ActiveTo = req.ActiveTo;
