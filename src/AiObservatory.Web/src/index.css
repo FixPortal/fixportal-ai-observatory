@@ -1080,5 +1080,6 @@ body {
 
 @media (prefers-reduced-motion: reduce) {
   .collapsible-panel__body-outer { transition: none; }
+  .collapsible-panel__body-inner { transition: none; }
   .collapsible-panel__chevron { transition: none; }
 }
