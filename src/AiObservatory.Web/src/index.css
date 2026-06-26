@@ -1006,3 +1006,79 @@ body {
 .reporting-page { display: flex; flex-direction: column; gap: var(--space-4); padding: 0 var(--space-6); }
 .reporting-range-bar { display: flex; align-items: center; gap: var(--space-3); flex-wrap: wrap; padding: var(--space-3) 0; }
 .reporting-range-label { color: var(--text-muted); font-size: 0.85rem; }
+
+/* ---- Collapsible optional panels ---- */
+.collapsible-panel-zone {
+  max-width: 1200px;
+  width: 100%;
+  margin-inline: auto;
+  padding: 0 var(--space-6);
+  margin-top: var(--space-6);
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.collapsible-panel {
+  border: 1px solid var(--border);
+  border-radius: var(--r-panel);
+  overflow: hidden;
+}
+.collapsible-panel__header {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 14px;
+  background: var(--card-bg);
+  cursor: pointer;
+  border: none;
+  width: 100%;
+  text-align: left;
+  font: inherit;
+  color: inherit;
+  transition: background var(--transition-fast);
+}
+.collapsible-panel__header:hover { background: var(--surface); }
+.collapsible-panel__header:focus-visible {
+  outline: 2px solid var(--brand);
+  outline-offset: -2px;
+}
+.collapsible-panel__dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--brand);
+  flex-shrink: 0;
+}
+.collapsible-panel__title { font-size: 0.75rem; font-weight: 600; color: var(--text); }
+.collapsible-panel__summary { font-size: 0.68rem; color: var(--text-muted); }
+.collapsible-panel__chevron {
+  margin-left: auto;
+  color: var(--text-faint);
+  font-size: 10px;
+  flex-shrink: 0;
+  transition: transform 0.2s ease;
+}
+.collapsible-panel__chevron--open { transform: rotate(180deg); }
+
+/* Body — grid-template-rows animation (no max-height guessing) */
+.collapsible-panel__body-outer {
+  display: grid;
+  grid-template-rows: 0fr;
+  transition: grid-template-rows 0.2s ease;
+}
+.collapsible-panel__body-outer--open { grid-template-rows: 1fr; }
+.collapsible-panel__body-inner {
+  overflow: hidden;
+  background: var(--bg);
+  padding: 0 14px;
+  transition: padding 0.2s ease;
+}
+.collapsible-panel__body-outer--open .collapsible-panel__body-inner {
+  padding: 12px 14px;
+  border-top: 1px solid var(--border);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .collapsible-panel__body-outer { transition: none; }
+  .collapsible-panel__chevron { transition: none; }
+}
