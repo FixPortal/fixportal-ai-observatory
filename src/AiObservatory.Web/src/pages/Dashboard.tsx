@@ -89,7 +89,9 @@ export default function Dashboard() {
         {tab === 'overview' && (
           <>
             <SummaryCards />
-            <CavemanStatsPanel />
+            <div className="collapsible-panel-zone">
+              <CavemanStatsPanel />
+            </div>
             <SubscriptionPanel />
             <div className="main-grid">
               <div className="panel">
