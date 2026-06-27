@@ -14,6 +14,10 @@ public sealed class AdversarialReviewRun
     /// <summary>Repository the run reviewed (basename of the repo root). Null when not supplied.</summary>
     public string? Repo { get; init; }
 
+    /// <summary>Operator-assigned run name shown as the dashboard card title. Null when the
+    /// invocation gave no naming directive; capped at 80 chars.</summary>
+    public string? Summary { get; init; }
+
     public long InputTokens { get; init; }
     public long OutputTokens { get; init; }
     public decimal CostUsd { get; init; }

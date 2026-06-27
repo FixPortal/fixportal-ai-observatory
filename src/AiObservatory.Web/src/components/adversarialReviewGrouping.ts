@@ -5,6 +5,7 @@ const REVIEWER_ORDER = ['anthropic', 'google', 'openai']
 export interface RunGroup {
   runId: string
   repo: string | null
+  summary: string | null
   recordedAt: string
   participants: AdversarialReviewRun[]
   totals: { raised: number; accepted: number; costUsd: number; durationMs: number }
@@ -77,6 +78,7 @@ export function groupRuns(runs: AdversarialReviewRun[]): RunGroup[] {
     groups.push({
       runId,
       repo: participants.find(p => p.repo)?.repo ?? null,
+      summary: participants.find(p => p.summary)?.summary ?? null,
       recordedAt,
       participants,
       totals: {

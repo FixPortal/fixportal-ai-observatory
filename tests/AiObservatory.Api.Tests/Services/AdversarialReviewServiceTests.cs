@@ -25,7 +25,8 @@ public class AdversarialReviewServiceTests
         decimal costUsd = 0.12m,
         string runId = "2026-06-14T10:00:00Z",
         string role = "reviewer",
-        string? repo = "fixportal-engine") =>
+        string? repo = "fixportal-engine",
+        string? summary = null) =>
         new(
             EventType: "adversarial-review-run",
             Reviewer: reviewer,
@@ -38,7 +39,8 @@ public class AdversarialReviewServiceTests
             IssuesAccepted: issuesAccepted,
             RunId: runId,
             Role: role,
-            Repo: repo
+            Repo: repo,
+            Summary: summary
         );
 
     [Fact]
@@ -232,6 +234,48 @@ public class AdversarialReviewServiceTests
         result.Should().BeAssignableTo<IStatusCodeHttpResult>().Which.StatusCode.Should().Be(201);
         await _repo.Received(1).RecordRunAsync(
             Arg.Is<AdversarialReviewRun>(r => r.Role == "judge" && r.Repo == "fixportal-engine"),
+            Arg.Any<CancellationToken>());
+    }
+
+    [Fact]
+    public async Task RecordRun_trims_and_stores_summary()
+    {
+        _repo.RecordRunAsync(Arg.Any<AdversarialReviewRun>(), Arg.Any<CancellationToken>())
+            .Returns((Guid.NewGuid(), IsDuplicate: false));
+
+        await CreateSut().RecordRunAsync(ValidRequest(summary: "  Verifying adjusted formatting  "), CancellationToken.None);
+
+        await _repo.Received(1).RecordRunAsync(
+            Arg.Is<AdversarialReviewRun>(r => r.Summary == "Verifying adjusted formatting"),
+            Arg.Any<CancellationToken>());
+    }
+
+    [Theory]
+    [InlineData("")]
+    [InlineData("   ")]
+    [InlineData(null!)]
+    public async Task RecordRun_blank_summary_stored_as_null(string? summary)
+    {
+        _repo.RecordRunAsync(Arg.Any<AdversarialReviewRun>(), Arg.Any<CancellationToken>())
+            .Returns((Guid.NewGuid(), IsDuplicate: false));
+
+        await CreateSut().RecordRunAsync(ValidRequest(summary: summary), CancellationToken.None);
+
+        await _repo.Received(1).RecordRunAsync(
+            Arg.Is<AdversarialReviewRun>(r => r.Summary == null),
+            Arg.Any<CancellationToken>());
+    }
+
+    [Fact]
+    public async Task RecordRun_caps_summary_at_80_chars()
+    {
+        _repo.RecordRunAsync(Arg.Any<AdversarialReviewRun>(), Arg.Any<CancellationToken>())
+            .Returns((Guid.NewGuid(), IsDuplicate: false));
+
+        await CreateSut().RecordRunAsync(ValidRequest(summary: new string('x', 200)), CancellationToken.None);
+
+        await _repo.Received(1).RecordRunAsync(
+            Arg.Is<AdversarialReviewRun>(r => r.Summary != null && r.Summary.Length == 80),
             Arg.Any<CancellationToken>());
     }
 

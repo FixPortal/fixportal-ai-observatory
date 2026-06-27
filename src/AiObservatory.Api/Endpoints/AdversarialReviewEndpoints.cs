@@ -27,6 +27,7 @@ public static class AdversarialReviewEndpoints
                 r.Model,
                 r.Role,
                 r.Repo,
+                r.Summary,
                 r.InputTokens,
                 r.OutputTokens,
                 r.CostUsd,
