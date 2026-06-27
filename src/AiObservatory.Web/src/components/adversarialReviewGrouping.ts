@@ -12,12 +12,29 @@ export interface RunGroup {
   statusReason: string
 }
 
-export function formatDuration(ms: number): string {
-  const totalSec = Math.round(ms / 1000)
-  if (totalSec < 60) return `${totalSec}s`
-  const m = Math.floor(totalSec / 60)
-  const s = totalSec % 60
-  return `${m}m${String(s).padStart(2, '0')}s`
+// Banker's rounding (round half to even) to `dp` decimal places.
+export function bankersRound(value: number, dp = 0): number {
+  const f = 10 ** dp
+  const n = value * f
+  const floor = Math.floor(n)
+  const diff = n - floor
+  let rounded: number
+  if (Math.abs(diff - 0.5) < 1e-9) {
+    rounded = floor % 2 === 0 ? floor : floor + 1 // tie → nearest even
+  } else {
+    rounded = Math.round(n)
+  }
+  return rounded / f
+}
+
+// Per-panel durations: whole seconds (e.g. "188s").
+export function formatSeconds(ms: number): string {
+  return `${Math.round(ms / 1000)}s`
+}
+
+// Aggregate/average durations: minutes to 1dp (e.g. "3.1m").
+export function formatMinutes(ms: number): string {
+  return `${(ms / 60000).toFixed(1)}m`
 }
 
 function participantRank(p: AdversarialReviewRun): number {
