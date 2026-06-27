@@ -1096,5 +1096,3 @@ body {
 .adv-run__badge--warn { background: rgba(251,146,60,.15); color: #fb923c; }
 .adv-run__totals { font-size: 0.7rem; color: var(--text); }
 .adv-run__totals b { color: var(--text); font-weight: 700; }
-.adv-run__dot { display: inline-block; width: 7px; height: 7px; border-radius: 50%; margin-right: 7px; vertical-align: middle; }
-.adv-run__muted { color: var(--text-faint); }
