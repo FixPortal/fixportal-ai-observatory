@@ -6,6 +6,10 @@ reviews:
   collapse_walkthrough: true
   request_changes_workflow: true
 
+  tools:
+    eslint:
+      enabled: false
+
   auto_review:
     enabled: true
     drafts: false
