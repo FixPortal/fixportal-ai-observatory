@@ -1,5 +1,5 @@
 import { test, expect } from 'vitest'
-import { groupRuns, formatDuration } from './adversarialReviewGrouping'
+import { groupRuns, formatSeconds, formatMinutes, bankersRound } from './adversarialReviewGrouping'
 import type { AdversarialReviewRun } from '../api/client'
 
 function run(p: Partial<AdversarialReviewRun>): AdversarialReviewRun {
@@ -75,8 +75,24 @@ test('unknown vendor sorts after known reviewers and before the judge', () => {
   expect(groups[0].participants.map(p => p.role)).toEqual(['reviewer', 'reviewer', 'reviewer', 'judge'])
 })
 
-test('formatDuration renders seconds and minutes', () => {
-  expect(formatDuration(38000)).toBe('38s')
-  expect(formatDuration(64000)).toBe('1m04s')
-  expect(formatDuration(0)).toBe('0s')
+test('formatSeconds renders whole seconds', () => {
+  expect(formatSeconds(38000)).toBe('38s')
+  expect(formatSeconds(188036)).toBe('188s')
+  expect(formatSeconds(0)).toBe('0s')
+})
+
+test('formatMinutes renders minutes to 1dp', () => {
+  expect(formatMinutes(188036)).toBe('3.1m')
+  expect(formatMinutes(60000)).toBe('1.0m')
+  expect(formatMinutes(0)).toBe('0.0m')
+})
+
+test('bankersRound rounds half to even', () => {
+  expect(bankersRound(0.125, 2)).toBe(0.12) // tie → even (2)
+  expect(bankersRound(0.135, 2)).toBe(0.14) // tie → even (4)
+  expect(bankersRound(2.5, 0)).toBe(2)      // tie → even
+  expect(bankersRound(3.5, 0)).toBe(4)      // tie → even
+  expect(bankersRound(4.24, 0)).toBe(4)     // normal round down
+  expect(bankersRound(4.6, 0)).toBe(5)      // normal round up
+  expect(bankersRound(0.03019, 2)).toBe(0.03)
 })

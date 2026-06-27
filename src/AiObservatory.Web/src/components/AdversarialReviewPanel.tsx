@@ -2,15 +2,15 @@ import { useMemo } from 'react'
 import { useAdversarialReviewRuns, useAdversarialReviewStats } from '../api/queries'
 import { participantColor } from '../theme/providerColors'
 import { CollapsiblePanel } from './CollapsiblePanel'
-import { groupRuns, formatDuration, type RunGroup } from './adversarialReviewGrouping'
+import { groupRuns, formatSeconds, formatMinutes, bankersRound, type RunGroup } from './adversarialReviewGrouping'
 
 function formatCost(n: number | null | undefined): string {
   if (n == null) return '—'
-  return `$${n.toFixed(4)}`
+  return `$${bankersRound(n, 2).toFixed(2)}`
 }
-function formatNumber(n: number | null | undefined): string {
+function formatCount(n: number | null | undefined): string {
   if (n == null) return '—'
-  return n.toFixed(2)
+  return `${bankersRound(n, 0)}`
 }
 function capitalize(s: string): string {
   return s.charAt(0).toUpperCase() + s.slice(1)
@@ -26,7 +26,7 @@ function RunSummary({ group }: { group: RunGroup }) {
       </span>
       {!group.isComplete && <span className="adv-run__meta">{group.statusReason}</span>}
       <span className="adv-run__totals">
-        raised <b>{t.raised}</b> · accepted <b>{t.accepted}</b> · <b>{formatCost(t.costUsd)}</b> · <b>{formatDuration(t.durationMs)}</b>
+        raised <b>{t.raised}</b> · accepted <b>{t.accepted}</b> · <b>{formatCost(t.costUsd)}</b> · <b>{formatSeconds(t.durationMs)}</b>
       </span>
     </span>
   )
@@ -61,10 +61,10 @@ export default function AdversarialReviewPanel() {
                   <td>{s.model}</td>
                   <td>{s.runCount}</td>
                   <td>{formatCost(s.avgCostPerRun)}</td>
-                  <td>{formatNumber(s.avgIssuesRaised)}</td>
-                  <td>{formatNumber(s.avgIssuesAccepted)}</td>
+                  <td>{formatCount(s.avgIssuesRaised)}</td>
+                  <td>{formatCount(s.avgIssuesAccepted)}</td>
                   <td>{formatCost(s.avgCostPerAcceptedFinding)}</td>
-                  <td>{formatDuration(s.avgDurationMs)}</td>
+                  <td>{formatMinutes(s.avgDurationMs)}</td>
                 </tr>
               ))}
             </tbody>
@@ -103,7 +103,7 @@ export default function AdversarialReviewPanel() {
                       <td>{p.role === 'judge' ? '—' : p.issuesAccepted}</td>
                       <td>{formatCost(p.costUsd)}</td>
                       <td>{p.role === 'judge' ? '—' : formatCost(p.costPerAcceptedFinding)}</td>
-                      <td>{formatDuration(p.reviewDurationMs)}</td>
+                      <td>{formatSeconds(p.reviewDurationMs)}</td>
                     </tr>
                   ))}
                 </tbody>
