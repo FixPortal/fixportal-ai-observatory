@@ -4,11 +4,17 @@ using AiObservatory.Data.Repositories;
 using AwesomeAssertions;
 using Microsoft.EntityFrameworkCore;
 using NodaTime;
+using Npgsql;
 using Xunit;
 
 namespace AiObservatory.Data.Tests.Repositories;
 
 // Requires TEST_DB_CONNECTION env var pointing at a real PostgreSQL instance.
+// Runs against its OWN database (not the shared aiobs_test) so it never races
+// the other integration-test class, which drops its database on dispose. xUnit
+// runs separate test classes in parallel, so sharing one database meant one
+// class could DROP it mid-migrate in the other (CI: 57P01 / "index ... does
+// not exist"). MigrateAsync creates this database on first use.
 public class AdversarialReviewRepositoryTests : IAsyncLifetime
 {
     private string _connStr = null!;
@@ -17,8 +23,13 @@ public class AdversarialReviewRepositoryTests : IAsyncLifetime
 
     public async ValueTask InitializeAsync()
     {
-        _connStr = Environment.GetEnvironmentVariable("TEST_DB_CONNECTION")
+        var baseConn = Environment.GetEnvironmentVariable("TEST_DB_CONNECTION")
             ?? "Host=localhost;Database=aiobs_test;Username=postgres;Password=postgres";
+        // Keep the "_test" marker (DisposeAsync only drops a _test database).
+        _connStr = new NpgsqlConnectionStringBuilder(baseConn)
+        {
+            Database = "aiobs_test_adversarial"
+        }.ConnectionString;
         var options = new DbContextOptionsBuilder<AiObservatoryDbContext>()
             .UseNpgsql(_connStr, o => o.UseNodaTime())
             .Options;
