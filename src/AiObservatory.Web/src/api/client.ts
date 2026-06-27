@@ -132,6 +132,7 @@ export interface AdversarialReviewRun {
   model: string
   role: ReviewRole
   repo: string | null
+  summary: string | null
   inputTokens: number
   outputTokens: number
   costUsd: number

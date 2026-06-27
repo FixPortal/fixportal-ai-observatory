@@ -29,6 +29,20 @@ public class AdversarialReviewService(IAdversarialReviewRepository repo, IClock 
         return ModelAliases.TryGetValue(trimmed, out var canonical) ? canonical : trimmed;
     }
 
+    private const int SummaryMaxLength = 80;
+
+    // Operator-supplied run name: trim, null when blank, hard-cap at the column
+    // length so an over-long name truncates rather than 500ing on insert.
+    private static string? NormalizeSummary(string? summary)
+    {
+        if (string.IsNullOrWhiteSpace(summary))
+        {
+            return null;
+        }
+        var trimmed = summary.Trim();
+        return trimmed.Length <= SummaryMaxLength ? trimmed : trimmed[..SummaryMaxLength];
+    }
+
     public async Task<IResult> RecordRunAsync(AdversarialReviewRunRequest req, CancellationToken ct)
     {
         if (string.IsNullOrWhiteSpace(req.Reviewer))
@@ -95,6 +109,7 @@ public class AdversarialReviewService(IAdversarialReviewRepository repo, IClock 
             RunId = req.RunId.Trim(),
             Role = req.Role,
             Repo = req.Repo?.Trim(),
+            Summary = NormalizeSummary(req.Summary),
             RecordedAt = clock.GetCurrentInstant()
         };
 
@@ -118,5 +133,6 @@ public record AdversarialReviewRunRequest(
     int IssuesAccepted,
     string RunId,
     string Role,
-    string? Repo
+    string? Repo,
+    string? Summary = null
 );

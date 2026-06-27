@@ -1051,7 +1051,16 @@ body {
   background: var(--brand);
   flex-shrink: 0;
 }
-.collapsible-panel__title { font-size: 0.75rem; font-weight: 600; color: var(--text); }
+.collapsible-panel__title {
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: var(--text);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 22rem;
+  flex-shrink: 0;
+}
 .collapsible-panel__summary { font-size: 0.68rem; color: var(--text-muted); }
 .collapsible-panel__chevron {
   margin-left: auto;

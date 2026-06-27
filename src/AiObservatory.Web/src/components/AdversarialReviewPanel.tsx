@@ -20,6 +20,7 @@ function RunSummary({ group }: { group: RunGroup }) {
   const t = group.totals
   return (
     <span className="adv-run__summary">
+      {group.summary && <span className="adv-run__meta">{group.recordedAt.slice(0, 16).replace('T', ' ')}</span>}
       {group.repo && <span className="adv-run__meta">{group.repo}</span>}
       <span className={`adv-run__badge ${group.isComplete ? 'adv-run__badge--ok' : 'adv-run__badge--warn'}`}>
         {group.isComplete ? 'complete' : 'incomplete'}
@@ -81,7 +82,7 @@ export default function AdversarialReviewPanel() {
             <CollapsiblePanel
               key={group.runId}
               id={`adv-run-${group.runId}`}
-              title={group.recordedAt.slice(0, 16).replace('T', ' ')}
+              title={group.summary ?? group.recordedAt.slice(0, 16).replace('T', ' ')}
               summary={<RunSummary group={group} />}
             >
               <table className="model-table">

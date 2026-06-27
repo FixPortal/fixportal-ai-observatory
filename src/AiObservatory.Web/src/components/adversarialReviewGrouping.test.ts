@@ -5,7 +5,7 @@ import type { AdversarialReviewRun } from '../api/client'
 function run(p: Partial<AdversarialReviewRun>): AdversarialReviewRun {
   return {
     id: Math.random().toString(36).slice(2),
-    reviewer: 'anthropic', model: 'claude-sonnet-4-6', role: 'reviewer', repo: 'r',
+    reviewer: 'anthropic', model: 'claude-sonnet-4-6', role: 'reviewer', repo: 'r', summary: null,
     inputTokens: 0, outputTokens: 0, costUsd: 0, reviewDurationMs: 0,
     issuesRaised: 0, issuesAccepted: 0, costPerAcceptedFinding: null,
     runId: 'R1', recordedAt: '2026-06-27T12:00:00Z', ...p,
@@ -73,6 +73,17 @@ test('unknown vendor sorts after known reviewers and before the judge', () => {
   ])
   expect(groups[0].participants.map(p => p.reviewer)).toEqual(['anthropic', 'openai', 'mistral', 'anthropic'])
   expect(groups[0].participants.map(p => p.role)).toEqual(['reviewer', 'reviewer', 'reviewer', 'judge'])
+})
+
+test('group summary is taken from any participant carrying one, else null', () => {
+  const named = groupRuns([
+    run({ runId: 'R1', reviewer: 'anthropic', summary: null }),
+    run({ runId: 'R1', reviewer: 'openai', summary: 'Verifying adjusted formatting' }),
+  ])
+  expect(named[0].summary).toBe('Verifying adjusted formatting')
+
+  const unnamed = groupRuns([run({ runId: 'R2', reviewer: 'anthropic', summary: null })])
+  expect(unnamed[0].summary).toBeNull()
 })
 
 test('formatSeconds renders whole seconds', () => {
