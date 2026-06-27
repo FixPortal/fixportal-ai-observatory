@@ -254,6 +254,12 @@ body {
   text-align: center;
 }
 
+.panel-note {
+  margin: 6px 0 0;
+  font-size: 0.68rem;
+  color: var(--text-muted);
+}
+
 /* Page-level API-failure banner (bad/error family — tokens shared with insights). */
 .error-banner {
   max-width: 1200px;

@@ -4,9 +4,17 @@ import { participantColor } from '../theme/providerColors'
 import { CollapsiblePanel } from './CollapsiblePanel'
 import { groupRuns, formatSeconds, formatMinutes, bankersRound, type RunGroup } from './adversarialReviewGrouping'
 
-function formatCost(n: number | null | undefined): string {
+const PUTATIVE_NOTE = '~ putative cost — estimated from a combined token count (subscription model, no exact per-call billing)'
+
+// Anthropic reviewer/judge costs are blended estimates from the Agent tool's
+// combined token count; OpenAI and Google costs are exact from their APIs.
+function isPutativeCost(reviewer: string): boolean {
+  return reviewer === 'anthropic'
+}
+
+function formatCost(n: number | null | undefined, estimated = false): string {
   if (n == null) return '—'
-  return `$${bankersRound(n, 2).toFixed(2)}`
+  return `${estimated ? '~' : ''}$${bankersRound(n, 2).toFixed(2)}`
 }
 function formatCount(n: number | null | undefined): string {
   if (n == null) return '—'
@@ -61,10 +69,10 @@ export default function AdversarialReviewPanel() {
                   </td>
                   <td>{s.model}</td>
                   <td>{s.runCount}</td>
-                  <td>{formatCost(s.avgCostPerRun)}</td>
+                  <td title={isPutativeCost(s.reviewer) ? PUTATIVE_NOTE : undefined}>{formatCost(s.avgCostPerRun, isPutativeCost(s.reviewer))}</td>
                   <td>{formatCount(s.avgIssuesRaised)}</td>
                   <td>{formatCount(s.avgIssuesAccepted)}</td>
-                  <td>{formatCost(s.avgCostPerAcceptedFinding)}</td>
+                  <td title={isPutativeCost(s.reviewer) ? PUTATIVE_NOTE : undefined}>{formatCost(s.avgCostPerAcceptedFinding, isPutativeCost(s.reviewer))}</td>
                   <td>{formatMinutes(s.avgDurationMs)}</td>
                 </tr>
               ))}
@@ -102,8 +110,8 @@ export default function AdversarialReviewPanel() {
                       <td>{p.model}</td>
                       <td>{p.role === 'judge' ? '—' : p.issuesRaised}</td>
                       <td>{p.role === 'judge' ? '—' : p.issuesAccepted}</td>
-                      <td>{formatCost(p.costUsd)}</td>
-                      <td>{p.role === 'judge' ? '—' : formatCost(p.costPerAcceptedFinding)}</td>
+                      <td title={isPutativeCost(p.reviewer) ? PUTATIVE_NOTE : undefined}>{formatCost(p.costUsd, isPutativeCost(p.reviewer))}</td>
+                      <td title={isPutativeCost(p.reviewer) ? PUTATIVE_NOTE : undefined}>{p.role === 'judge' ? '—' : formatCost(p.costPerAcceptedFinding, isPutativeCost(p.reviewer))}</td>
                       <td>{formatSeconds(p.reviewDurationMs)}</td>
                     </tr>
                   ))}
@@ -113,6 +121,9 @@ export default function AdversarialReviewPanel() {
           ))
         )}
       </div>
+      {(stats.some(s => isPutativeCost(s.reviewer)) || groups.some(g => g.participants.some(p => isPutativeCost(p.reviewer)))) && (
+        <p className="panel-note">{PUTATIVE_NOTE}</p>
+      )}
     </div>
   )
 }
