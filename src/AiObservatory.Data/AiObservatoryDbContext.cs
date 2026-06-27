@@ -80,8 +80,10 @@ public class AiObservatoryDbContext(DbContextOptions<AiObservatoryDbContext> opt
         {
             b.Property(r => r.Reviewer).HasMaxLength(100).IsRequired();
             b.Property(r => r.Model).HasMaxLength(200).IsRequired();
+            b.Property(r => r.Role).HasMaxLength(20).IsRequired().HasDefaultValue("reviewer");
+            b.Property(r => r.Repo).HasMaxLength(200);
             b.Property(r => r.RunId).HasMaxLength(200).IsRequired();
-            b.HasIndex(r => r.RunId).IsUnique();
+            b.HasIndex(r => new { r.RunId, r.Reviewer, r.Role }).IsUnique();
             b.HasIndex(r => new { r.Reviewer, r.Model });
             b.HasIndex(r => r.RecordedAt);
             b.ToTable(t =>
