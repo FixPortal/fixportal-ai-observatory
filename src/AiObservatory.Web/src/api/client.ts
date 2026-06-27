@@ -124,11 +124,13 @@ export const explainInsight = async (id: string): Promise<{ explanation: string 
   return res.json() as Promise<{ explanation: string }>
 }
 
+export type ReviewRole = 'reviewer' | 'judge'
+
 export interface AdversarialReviewRun {
   id: string
   reviewer: string
   model: string
-  role: string
+  role: ReviewRole
   repo: string | null
   inputTokens: number
   outputTokens: number
@@ -144,6 +146,7 @@ export interface AdversarialReviewRun {
 export interface AdversarialReviewStats {
   reviewer: string
   model: string
+  role: ReviewRole
   runCount: number
   avgCostPerRun: number
   avgIssuesRaised: number

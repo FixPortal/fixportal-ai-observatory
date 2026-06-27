@@ -53,6 +53,28 @@ test('orders participants reviewers-then-judge, newest run first', () => {
   expect(groups[0].participants.map(p => p.role)).toEqual(['reviewer', 'judge'])
 })
 
+test('group recordedAt is the earliest participant time, independent of sort order', () => {
+  // Judge recorded last but sorts last; an unknown vendor recorded first but
+  // would sort oddly. The group timestamp must be the earliest, not participants[0].
+  const groups = groupRuns([
+    run({ runId: 'R1', reviewer: 'openai', role: 'reviewer', recordedAt: '2026-06-27T12:00:30Z' }),
+    run({ runId: 'R1', reviewer: 'anthropic', role: 'judge', recordedAt: '2026-06-27T12:00:45Z' }),
+    run({ runId: 'R1', reviewer: 'anthropic', role: 'reviewer', recordedAt: '2026-06-27T12:00:05Z' }),
+  ])
+  expect(groups[0].recordedAt).toBe('2026-06-27T12:00:05Z')
+})
+
+test('unknown vendor sorts after known reviewers and before the judge', () => {
+  const groups = groupRuns([
+    run({ runId: 'R1', reviewer: 'anthropic', role: 'judge' }),
+    run({ runId: 'R1', reviewer: 'mistral', role: 'reviewer' }),
+    run({ runId: 'R1', reviewer: 'anthropic', role: 'reviewer' }),
+    run({ runId: 'R1', reviewer: 'openai', role: 'reviewer' }),
+  ])
+  expect(groups[0].participants.map(p => p.reviewer)).toEqual(['anthropic', 'openai', 'mistral', 'anthropic'])
+  expect(groups[0].participants.map(p => p.role)).toEqual(['reviewer', 'reviewer', 'reviewer', 'judge'])
+})
+
 test('formatDuration renders seconds and minutes', () => {
   expect(formatDuration(38000)).toBe('38s')
   expect(formatDuration(64000)).toBe('1m04s')
