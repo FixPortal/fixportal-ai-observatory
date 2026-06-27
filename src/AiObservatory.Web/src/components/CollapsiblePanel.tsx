@@ -3,7 +3,7 @@ import { useState, type ReactNode } from 'react'
 interface CollapsiblePanelProps {
   id: string
   title: string
-  summary?: string
+  summary?: ReactNode
   children: ReactNode
 }
 

@@ -57,6 +57,7 @@
   --provider-copilot: #db2777;
   --provider-openai: #ea580c;
   --provider-other: #64748b;
+  --provider-judge: #d97706;
 }
 
 :root[data-theme="dark"] {
@@ -65,6 +66,7 @@
   --provider-copilot: #f472b6;
   --provider-openai: #fb923c;
   --provider-other: #94a3b8;
+  --provider-judge: #fbbf24;
 }
 
 /* ---- Base ---- */
@@ -1083,3 +1085,16 @@ body {
   .collapsible-panel__body-inner { transition: none; }
   .collapsible-panel__chevron { transition: none; }
 }
+
+/* ---- Adversarial review: per-run panels ---- */
+/* Let the panel summary span grow so the run totals right-align before the chevron. */
+.collapsible-panel__summary:has(.adv-run__summary) { flex: 1; display: flex; }
+.adv-run__summary { display: flex; align-items: center; gap: 10px; margin-left: auto; }
+.adv-run__meta { color: var(--text-muted); font-size: 0.68rem; }
+.adv-run__badge { font-size: 0.62rem; padding: 2px 7px; border-radius: 999px; font-weight: 600; }
+.adv-run__badge--ok { background: rgba(45,212,191,.15); color: #2dd4bf; }
+.adv-run__badge--warn { background: rgba(251,146,60,.15); color: #fb923c; }
+.adv-run__totals { font-size: 0.7rem; color: var(--text); }
+.adv-run__totals b { color: var(--text); font-weight: 700; }
+.adv-run__dot { display: inline-block; width: 7px; height: 7px; border-radius: 50%; margin-right: 7px; vertical-align: middle; }
+.adv-run__muted { color: var(--text-faint); }
