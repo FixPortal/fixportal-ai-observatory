@@ -53,10 +53,10 @@ export default function AdversarialReviewPanel() {
             </thead>
             <tbody>
               {stats.map(s => (
-                <tr key={`${s.reviewer}|${s.model}`}>
+                <tr key={`${s.reviewer}|${s.model}|${s.role}`}>
                   <td>
-                    <span className="model-table__dot" style={{ background: participantColor(s.reviewer, s.model.includes('opus') ? 'judge' : 'reviewer') }} title={s.reviewer} />
-                    {capitalize(s.reviewer)}
+                    <span className="model-table__dot" style={{ background: participantColor(s.reviewer, s.role) }} title={`${s.reviewer} ${s.role}`} />
+                    {capitalize(s.reviewer)}{s.role === 'judge' && ' (judge)'}
                   </td>
                   <td>{s.model}</td>
                   <td>{s.runCount}</td>

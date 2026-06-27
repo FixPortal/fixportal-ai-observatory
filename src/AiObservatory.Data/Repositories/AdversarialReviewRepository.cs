@@ -60,10 +60,11 @@ public class AdversarialReviewRepository(AiObservatoryDbContext ctx) : IAdversar
         var runs = await ctx.AdversarialReviewRuns.AsNoTracking().ToListAsync(ct);
 
         return runs
-            .GroupBy(r => new { r.Reviewer, r.Model })
+            .GroupBy(r => new { r.Reviewer, r.Model, r.Role })
             .Select(g => new AdversarialReviewStats(
                 g.Key.Reviewer,
                 g.Key.Model,
+                g.Key.Role,
                 g.Count(),
                 g.Average(r => r.CostUsd),
                 g.Average(r => (double)r.IssuesRaised),
@@ -71,7 +72,7 @@ public class AdversarialReviewRepository(AiObservatoryDbContext ctx) : IAdversar
                 g.Average(r => r.CostPerAcceptedFinding),  // null when every run had accepted=0
                 g.Average(r => (double)r.ReviewDurationMs)
             ))
-            .OrderBy(s => s.Reviewer).ThenBy(s => s.Model)
+            .OrderBy(s => s.Reviewer).ThenBy(s => s.Model).ThenBy(s => s.Role)
             .ToList();
     }
 

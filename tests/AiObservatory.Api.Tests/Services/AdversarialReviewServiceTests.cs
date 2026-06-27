@@ -190,6 +190,35 @@ public class AdversarialReviewServiceTests
             Arg.Any<CancellationToken>());
     }
 
+    [Theory]
+    [InlineData("sonnet")]   // non-anthropic reviewer must NOT get the alias resolved
+    [InlineData("opus")]
+    [InlineData("haiku")]
+    public async Task RecordRun_does_not_alias_bare_model_for_non_anthropic_reviewer(string model)
+    {
+        _repo.RecordRunAsync(Arg.Any<AdversarialReviewRun>(), Arg.Any<CancellationToken>())
+            .Returns((Guid.NewGuid(), IsDuplicate: false));
+
+        await CreateSut().RecordRunAsync(ValidRequest(reviewer: "openai", model: model), CancellationToken.None);
+
+        await _repo.Received(1).RecordRunAsync(
+            Arg.Is<AdversarialReviewRun>(r => r.Model == model),
+            Arg.Any<CancellationToken>());
+    }
+
+    [Theory]
+    [InlineData(1, 0)]
+    [InlineData(0, 1)]
+    [InlineData(2, 1)]
+    public async Task RecordRun_judge_with_non_zero_issues_returns_bad_request(int raised, int accepted)
+    {
+        var req = ValidRequest(role: "judge", model: "claude-opus-4-8", issuesRaised: raised, issuesAccepted: accepted);
+        var result = await CreateSut().RecordRunAsync(req, CancellationToken.None);
+
+        result.Should().BeAssignableTo<IStatusCodeHttpResult>().Which.StatusCode.Should().Be(400);
+        await _repo.DidNotReceive().RecordRunAsync(Arg.Any<AdversarialReviewRun>(), Arg.Any<CancellationToken>());
+    }
+
     [Fact]
     public async Task RecordRun_judge_with_zero_issues_is_accepted()
     {

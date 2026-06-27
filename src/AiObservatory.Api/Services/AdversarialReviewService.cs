@@ -16,9 +16,16 @@ public class AdversarialReviewService(IAdversarialReviewRepository repo, IClock 
         ["claude-haiku"] = "claude-haiku-4-5",
     };
 
-    private static string NormalizeModel(string model)
+    // Aliases are Anthropic short-names; only resolve them for the anthropic
+    // reviewer so a non-Anthropic run posting "opus"/"sonnet"/"haiku" is not
+    // silently rewritten to a claude-* model id.
+    private static string NormalizeModel(string model, string reviewer)
     {
         var trimmed = model.Trim();
+        if (reviewer != "anthropic")
+        {
+            return trimmed;
+        }
         return ModelAliases.TryGetValue(trimmed, out var canonical) ? canonical : trimmed;
     }
 
@@ -64,14 +71,20 @@ public class AdversarialReviewService(IAdversarialReviewRepository repo, IClock 
             return Results.BadRequest("IssuesAccepted cannot exceed IssuesRaised");
         }
 
+        if (req.Role == "judge" && (req.IssuesRaised != 0 || req.IssuesAccepted != 0))
+        {
+            return Results.BadRequest("Judge runs must have zero issue counts");
+        }
+
         decimal? costPerAcceptedFinding = req.IssuesAccepted > 0
             ? req.CostUsd / req.IssuesAccepted
             : null;
 
+        var reviewer = req.Reviewer.Trim().ToLowerInvariant();
         var run = new AdversarialReviewRun
         {
-            Reviewer = req.Reviewer.Trim().ToLowerInvariant(),
-            Model = NormalizeModel(req.Model),
+            Reviewer = reviewer,
+            Model = NormalizeModel(req.Model, reviewer),
             InputTokens = req.InputTokens,
             OutputTokens = req.OutputTokens,
             CostUsd = req.CostUsd,

@@ -20,10 +20,16 @@ export function formatDuration(ms: number): string {
   return `${m}m${String(s).padStart(2, '0')}s`
 }
 
+function participantRank(p: AdversarialReviewRun): number {
+  if (p.role === 'judge') return 99
+  const idx = REVIEWER_ORDER.indexOf(p.reviewer)
+  // Unknown vendors sort after the known reviewers but before the judge,
+  // rather than ahead of everything on indexOf's -1.
+  return idx === -1 ? REVIEWER_ORDER.length : idx
+}
+
 function sortParticipants(a: AdversarialReviewRun, b: AdversarialReviewRun): number {
-  const ra = a.role === 'judge' ? 99 : REVIEWER_ORDER.indexOf(a.reviewer)
-  const rb = b.role === 'judge' ? 99 : REVIEWER_ORDER.indexOf(b.reviewer)
-  return ra - rb
+  return participantRank(a) - participantRank(b)
 }
 
 export function groupRuns(runs: AdversarialReviewRun[]): RunGroup[] {
@@ -36,6 +42,12 @@ export function groupRuns(runs: AdversarialReviewRun[]): RunGroup[] {
 
   const groups: RunGroup[] = []
   for (const [runId, participants] of byRun) {
+    // Earliest participant timestamp = the run's time. Derive it before sorting
+    // so it never depends on participant display order (ISO-8601 sorts lexically).
+    const recordedAt = participants.reduce(
+      (earliest, p) => (p.recordedAt < earliest ? p.recordedAt : earliest),
+      participants[0].recordedAt,
+    )
     participants.sort(sortParticipants)
     const reviewerVendors = new Set(participants.filter(p => p.role === 'reviewer').map(p => p.reviewer))
     const hasJudge = participants.some(p => p.role === 'judge')
@@ -48,7 +60,7 @@ export function groupRuns(runs: AdversarialReviewRun[]): RunGroup[] {
     groups.push({
       runId,
       repo: participants.find(p => p.repo)?.repo ?? null,
-      recordedAt: participants[0].recordedAt,
+      recordedAt,
       participants,
       totals: {
         raised: participants.reduce((s, p) => s + p.issuesRaised, 0),

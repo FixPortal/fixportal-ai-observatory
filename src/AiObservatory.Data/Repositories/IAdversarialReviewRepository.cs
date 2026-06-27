@@ -5,6 +5,7 @@ namespace AiObservatory.Data.Repositories;
 public record AdversarialReviewStats(
     string Reviewer,
     string Model,
+    string Role,
     int RunCount,
     decimal AvgCostPerRun,
     double AvgIssuesRaised,
