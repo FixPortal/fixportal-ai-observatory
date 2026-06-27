@@ -26,6 +26,7 @@ function capitalize(s: string): string {
 
 function RunSummary({ group }: { group: RunGroup }) {
   const t = group.totals
+  const hasPutativeCost = group.participants.some(p => isPutativeCost(p.reviewer))
   return (
     <span className="adv-run__summary">
       {group.summary && <span className="adv-run__meta">{group.recordedAt.slice(0, 16).replace('T', ' ')}</span>}
@@ -35,7 +36,7 @@ function RunSummary({ group }: { group: RunGroup }) {
       </span>
       {!group.isComplete && <span className="adv-run__meta">{group.statusReason}</span>}
       <span className="adv-run__totals">
-        raised <b>{t.raised}</b> · accepted <b>{t.accepted}</b> · <b>{formatCost(t.costUsd)}</b> · <b>{formatSeconds(t.durationMs)}</b>
+        raised <b>{t.raised}</b> · accepted <b>{t.accepted}</b> · <b title={hasPutativeCost ? PUTATIVE_NOTE : undefined}>{formatCost(t.costUsd, hasPutativeCost)}</b> · <b>{formatSeconds(t.durationMs)}</b>
       </span>
     </span>
   )
