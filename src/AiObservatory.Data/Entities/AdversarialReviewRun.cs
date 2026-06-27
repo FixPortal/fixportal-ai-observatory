@@ -7,6 +7,13 @@ public sealed class AdversarialReviewRun
     public Guid Id { get; init; } = Guid.NewGuid();
     public string Reviewer { get; init; } = "";
     public string Model { get; init; } = "";
+
+    /// <summary>"reviewer" or "judge" — distinguishes the Opus judge from the Sonnet reviewer (both vendor "anthropic").</summary>
+    public string Role { get; init; } = "reviewer";
+
+    /// <summary>Repository the run reviewed (basename of the repo root). Null when not supplied.</summary>
+    public string? Repo { get; init; }
+
     public long InputTokens { get; init; }
     public long OutputTokens { get; init; }
     public decimal CostUsd { get; init; }
