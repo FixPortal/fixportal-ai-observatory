@@ -25,6 +25,8 @@ public static class AdversarialReviewEndpoints
                 r.Id,
                 r.Reviewer,
                 r.Model,
+                r.Role,
+                r.Repo,
                 r.InputTokens,
                 r.OutputTokens,
                 r.CostUsd,
@@ -43,6 +45,17 @@ public static class AdversarialReviewEndpoints
         {
             var stats = await repo.GetStatsAsync(ctx.RequestAborted);
             return Results.Ok(stats);
+        });
+
+        // Purge ALL adversarial-review runs. Admin-key gated by the /api group's
+        // ApiKeyEndpointFilter (non-GET requires the admin key). Irreversible —
+        // used to reset the table for a clean re-track.
+        app.MapDelete("/adversarial-review/runs", async (
+            IAdversarialReviewRepository repo,
+            HttpContext ctx) =>
+        {
+            var deleted = await repo.DeleteAllRunsAsync(ctx.RequestAborted);
+            return Results.Ok(new { deleted });
         });
 
         return app;
