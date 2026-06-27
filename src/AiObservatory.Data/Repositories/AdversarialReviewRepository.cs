@@ -12,7 +12,7 @@ public class AdversarialReviewRepository(AiObservatoryDbContext ctx) : IAdversar
         ArgumentNullException.ThrowIfNull(run);
 
         var existingId = await ctx.AdversarialReviewRuns.AsNoTracking()
-            .Where(r => r.RunId == run.RunId)
+            .Where(r => r.RunId == run.RunId && r.Reviewer == run.Reviewer && r.Role == run.Role)
             .Select(r => (Guid?)r.Id)
             .FirstOrDefaultAsync(ct);
 
@@ -31,7 +31,7 @@ public class AdversarialReviewRepository(AiObservatoryDbContext ctx) : IAdversar
         {
             ctx.Entry(run).State = EntityState.Detached;
             var winnerId = await ctx.AdversarialReviewRuns.AsNoTracking()
-                .Where(r => r.RunId == run.RunId)
+                .Where(r => r.RunId == run.RunId && r.Reviewer == run.Reviewer && r.Role == run.Role)
                 .Select(r => r.Id)
                 .FirstAsync(ct);
             return (winnerId, IsDuplicate: true);
@@ -68,9 +68,13 @@ public class AdversarialReviewRepository(AiObservatoryDbContext ctx) : IAdversar
                 g.Average(r => r.CostUsd),
                 g.Average(r => (double)r.IssuesRaised),
                 g.Average(r => (double)r.IssuesAccepted),
-                g.Average(r => r.CostPerAcceptedFinding)   // null when every run had accepted=0
+                g.Average(r => r.CostPerAcceptedFinding),  // null when every run had accepted=0
+                g.Average(r => (double)r.ReviewDurationMs)
             ))
             .OrderBy(s => s.Reviewer).ThenBy(s => s.Model)
             .ToList();
     }
+
+    public Task<int> DeleteAllRunsAsync(CancellationToken ct = default)
+        => ctx.AdversarialReviewRuns.ExecuteDeleteAsync(ct);
 }

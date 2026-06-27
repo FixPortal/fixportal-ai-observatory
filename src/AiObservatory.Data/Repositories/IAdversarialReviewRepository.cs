@@ -9,7 +9,8 @@ public record AdversarialReviewStats(
     decimal AvgCostPerRun,
     double AvgIssuesRaised,
     double AvgIssuesAccepted,
-    decimal? AvgCostPerAcceptedFinding
+    decimal? AvgCostPerAcceptedFinding,
+    double AvgDurationMs
 );
 
 public interface IAdversarialReviewRepository
@@ -17,4 +18,5 @@ public interface IAdversarialReviewRepository
     Task<(Guid Id, bool IsDuplicate)> RecordRunAsync(AdversarialReviewRun run, CancellationToken ct = default);
     Task<IReadOnlyList<AdversarialReviewRun>> GetRunsAsync(CancellationToken ct = default);
     Task<IReadOnlyList<AdversarialReviewStats>> GetStatsAsync(CancellationToken ct = default);
+    Task<int> DeleteAllRunsAsync(CancellationToken ct = default);
 }
