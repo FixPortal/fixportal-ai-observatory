@@ -23,7 +23,9 @@ public class AdversarialReviewServiceTests
         int issuesRaised = 5,
         int issuesAccepted = 3,
         decimal costUsd = 0.12m,
-        string runId = "2026-06-14T10:00:00Z") =>
+        string runId = "2026-06-14T10:00:00Z",
+        string role = "reviewer",
+        string? repo = "fixportal-engine") =>
         new(
             EventType: "adversarial-review-run",
             Reviewer: reviewer,
@@ -34,7 +36,9 @@ public class AdversarialReviewServiceTests
             ReviewDurationMs: 12345,
             IssuesRaised: issuesRaised,
             IssuesAccepted: issuesAccepted,
-            RunId: runId
+            RunId: runId,
+            Role: role,
+            Repo: repo
         );
 
     [Fact]
@@ -166,5 +170,50 @@ public class AdversarialReviewServiceTests
         await _repo.Received(1).RecordRunAsync(
             Arg.Is<AdversarialReviewRun>(r => r.RecordedAt == _clock.GetCurrentInstant()),
             Arg.Any<CancellationToken>());
+    }
+
+    [Theory]
+    [InlineData("sonnet", "claude-sonnet-4-6")]
+    [InlineData("opus", "claude-opus-4-8")]
+    [InlineData("claude-sonnet", "claude-sonnet-4-6")]
+    [InlineData("gpt-5.4", "gpt-5.4")]                 // unknown-to-map passes through
+    [InlineData("gemini-2.5-pro", "gemini-2.5-pro")]   // passes through
+    public async Task RecordRun_normalises_model_id(string input, string expected)
+    {
+        _repo.RecordRunAsync(Arg.Any<AdversarialReviewRun>(), Arg.Any<CancellationToken>())
+            .Returns((Guid.NewGuid(), IsDuplicate: false));
+
+        await CreateSut().RecordRunAsync(ValidRequest(model: input), CancellationToken.None);
+
+        await _repo.Received(1).RecordRunAsync(
+            Arg.Is<AdversarialReviewRun>(r => r.Model == expected),
+            Arg.Any<CancellationToken>());
+    }
+
+    [Fact]
+    public async Task RecordRun_judge_with_zero_issues_is_accepted()
+    {
+        _repo.RecordRunAsync(Arg.Any<AdversarialReviewRun>(), Arg.Any<CancellationToken>())
+            .Returns((Guid.NewGuid(), IsDuplicate: false));
+
+        var result = await CreateSut().RecordRunAsync(
+            ValidRequest(role: "judge", model: "claude-opus-4-8", issuesRaised: 0, issuesAccepted: 0, costUsd: 0.83m),
+            CancellationToken.None);
+
+        result.Should().BeAssignableTo<IStatusCodeHttpResult>().Which.StatusCode.Should().Be(201);
+        await _repo.Received(1).RecordRunAsync(
+            Arg.Is<AdversarialReviewRun>(r => r.Role == "judge" && r.Repo == "fixportal-engine"),
+            Arg.Any<CancellationToken>());
+    }
+
+    [Theory]
+    [InlineData("")]
+    [InlineData("verifier")]
+    [InlineData(null!)]
+    public async Task RecordRun_invalid_role_returns_bad_request(string? role)
+    {
+        var result = await CreateSut().RecordRunAsync(ValidRequest(role: role!), CancellationToken.None);
+        result.Should().BeAssignableTo<IStatusCodeHttpResult>().Which.StatusCode.Should().Be(400);
+        await _repo.DidNotReceive().RecordRunAsync(Arg.Any<AdversarialReviewRun>(), Arg.Any<CancellationToken>());
     }
 }
