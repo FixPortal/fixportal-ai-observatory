@@ -40,7 +40,14 @@ public class AdversarialReviewService(IAdversarialReviewRepository repo, IClock 
             return null;
         }
         var trimmed = summary.Trim();
-        return trimmed.Length <= SummaryMaxLength ? trimmed : trimmed[..SummaryMaxLength];
+        if (trimmed.Length <= SummaryMaxLength)
+        {
+            return trimmed;
+        }
+        // Don't slice through a surrogate pair (would yield an invalid lone
+        // surrogate); back off one unit if the cut would land mid-pair.
+        var cut = char.IsHighSurrogate(trimmed[SummaryMaxLength - 1]) ? SummaryMaxLength - 1 : SummaryMaxLength;
+        return trimmed[..cut];
     }
 
     public async Task<IResult> RecordRunAsync(AdversarialReviewRunRequest req, CancellationToken ct)

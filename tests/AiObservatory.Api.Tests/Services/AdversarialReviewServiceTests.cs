@@ -279,6 +279,23 @@ public class AdversarialReviewServiceTests
             Arg.Any<CancellationToken>());
     }
 
+    [Fact]
+    public async Task RecordRun_summary_truncation_does_not_split_a_surrogate_pair()
+    {
+        _repo.RecordRunAsync(Arg.Any<AdversarialReviewRun>(), Arg.Any<CancellationToken>())
+            .Returns((Guid.NewGuid(), IsDuplicate: false));
+
+        // 79 ASCII + a 2-UTF-16-unit codepoint => the 80-char cut would land mid-pair.
+        var input = new string('x', 79) + "\U0001F600";
+        await CreateSut().RecordRunAsync(ValidRequest(summary: input), CancellationToken.None);
+
+        // Result is exactly the 79 ASCII chars — the trailing high surrogate was
+        // dropped rather than split, so no lone surrogate remains.
+        await _repo.Received(1).RecordRunAsync(
+            Arg.Is<AdversarialReviewRun>(r => r.Summary == new string('x', 79)),
+            Arg.Any<CancellationToken>());
+    }
+
     [Theory]
     [InlineData("")]
     [InlineData("verifier")]
