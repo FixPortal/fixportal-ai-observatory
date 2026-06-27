@@ -128,6 +128,8 @@ export interface AdversarialReviewRun {
   id: string
   reviewer: string
   model: string
+  role: string
+  repo: string | null
   inputTokens: number
   outputTokens: number
   costUsd: number
@@ -147,6 +149,7 @@ export interface AdversarialReviewStats {
   avgIssuesRaised: number
   avgIssuesAccepted: number
   avgCostPerAcceptedFinding: number | null
+  avgDurationMs: number
 }
 
 export const getAdversarialReviewRuns = () =>
