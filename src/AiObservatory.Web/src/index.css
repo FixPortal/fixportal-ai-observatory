@@ -1059,7 +1059,7 @@ body {
   overflow: hidden;
   text-overflow: ellipsis;
   max-width: 22rem;
-  flex-shrink: 0;
+  min-width: 0; /* allow the flex item to shrink so the ellipsis can engage */
 }
 .collapsible-panel__summary { font-size: 0.68rem; color: var(--text-muted); }
 .collapsible-panel__chevron {
