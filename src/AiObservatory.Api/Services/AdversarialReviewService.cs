@@ -6,6 +6,22 @@ namespace AiObservatory.Api.Services;
 
 public class AdversarialReviewService(IAdversarialReviewRepository repo, IClock clock)
 {
+    private static readonly Dictionary<string, string> ModelAliases = new(StringComparer.OrdinalIgnoreCase)
+    {
+        ["sonnet"] = "claude-sonnet-4-6",
+        ["claude-sonnet"] = "claude-sonnet-4-6",
+        ["opus"] = "claude-opus-4-8",
+        ["claude-opus"] = "claude-opus-4-8",
+        ["haiku"] = "claude-haiku-4-5",
+        ["claude-haiku"] = "claude-haiku-4-5",
+    };
+
+    private static string NormalizeModel(string model)
+    {
+        var trimmed = model.Trim();
+        return ModelAliases.TryGetValue(trimmed, out var canonical) ? canonical : trimmed;
+    }
+
     public async Task<IResult> RecordRunAsync(AdversarialReviewRunRequest req, CancellationToken ct)
     {
         if (string.IsNullOrWhiteSpace(req.Reviewer))
@@ -21,6 +37,11 @@ public class AdversarialReviewService(IAdversarialReviewRepository repo, IClock 
         if (string.IsNullOrWhiteSpace(req.RunId))
         {
             return Results.BadRequest("RunId is required");
+        }
+
+        if (req.Role is not ("reviewer" or "judge"))
+        {
+            return Results.BadRequest("Role must be 'reviewer' or 'judge'");
         }
 
         if (req.InputTokens < 0 || req.OutputTokens < 0)
@@ -50,7 +71,7 @@ public class AdversarialReviewService(IAdversarialReviewRepository repo, IClock 
         var run = new AdversarialReviewRun
         {
             Reviewer = req.Reviewer.Trim().ToLowerInvariant(),
-            Model = req.Model.Trim(),
+            Model = NormalizeModel(req.Model),
             InputTokens = req.InputTokens,
             OutputTokens = req.OutputTokens,
             CostUsd = req.CostUsd,
@@ -59,6 +80,8 @@ public class AdversarialReviewService(IAdversarialReviewRepository repo, IClock 
             IssuesAccepted = req.IssuesAccepted,
             CostPerAcceptedFinding = costPerAcceptedFinding,
             RunId = req.RunId.Trim(),
+            Role = req.Role,
+            Repo = req.Repo?.Trim(),
             RecordedAt = clock.GetCurrentInstant()
         };
 
@@ -80,5 +103,7 @@ public record AdversarialReviewRunRequest(
     long ReviewDurationMs,
     int IssuesRaised,
     int IssuesAccepted,
-    string RunId
+    string RunId,
+    string Role,
+    string? Repo
 );
