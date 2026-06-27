@@ -426,3 +426,5 @@ graphify-out/
 .env
 .env.local
 .env.*.local
+
+.semgrep/guardian.yml
