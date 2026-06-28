@@ -93,7 +93,7 @@ public class AiObservatoryDbContext(DbContextOptions<AiObservatoryDbContext> opt
                 t.HasCheckConstraint("CK_AdversarialReviewRun_OutputTokens_NonNegative", "\"OutputTokens\" >= 0");
                 t.HasCheckConstraint("CK_AdversarialReviewRun_CostUsd_NonNegative", "\"CostUsd\" >= 0");
                 t.HasCheckConstraint("CK_AdversarialReviewRun_IssuesRaised_NonNegative", "\"IssuesRaised\" >= 0");
-                t.HasCheckConstraint("CK_AdversarialReviewRun_IssuesAccepted_Valid", "\"IssuesAccepted\" >= 0 AND \"IssuesAccepted\" <= \"IssuesRaised\"");
+                t.HasCheckConstraint("CK_AdversarialReviewRun_IssuesAccepted_NonNegative", "\"IssuesAccepted\" >= 0");
             });
         });
     }

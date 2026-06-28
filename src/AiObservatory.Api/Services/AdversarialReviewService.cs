@@ -87,11 +87,6 @@ public class AdversarialReviewService(IAdversarialReviewRepository repo, IClock 
             return Results.BadRequest("Issue counts must be non-negative");
         }
 
-        if (req.IssuesAccepted > req.IssuesRaised)
-        {
-            return Results.BadRequest("IssuesAccepted cannot exceed IssuesRaised");
-        }
-
         if (req.Role == "judge" && (req.IssuesRaised != 0 || req.IssuesAccepted != 0))
         {
             return Results.BadRequest("Judge runs must have zero issue counts");
