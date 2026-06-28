@@ -127,14 +127,21 @@ public class AdversarialReviewServiceTests
     }
 
     [Fact]
-    public async Task RecordRun_issues_accepted_exceeds_raised_returns_bad_request()
+    public async Task RecordRun_issues_accepted_exceeds_raised_is_allowed()
     {
-        var req = ValidRequest(issuesRaised: 2, issuesAccepted: 5);
+        // Cross-examination can credit a reviewer for findings they did not
+        // raise in Phase 1 (unanimous consensus). IssuesAccepted > IssuesRaised
+        // is valid and must not be rejected.
+        var newId = Guid.NewGuid();
+        _repo.RecordRunAsync(Arg.Any<AdversarialReviewRun>(), Arg.Any<CancellationToken>())
+            .Returns((newId, IsDuplicate: false));
+
+        var req = ValidRequest(issuesRaised: 0, issuesAccepted: 2);
         var result = await CreateSut().RecordRunAsync(req, CancellationToken.None);
 
         result.Should().BeAssignableTo<IStatusCodeHttpResult>()
-            .Which.StatusCode.Should().Be(400);
-        await _repo.DidNotReceive().RecordRunAsync(Arg.Any<AdversarialReviewRun>(), Arg.Any<CancellationToken>());
+            .Which.StatusCode.Should().Be(201);
+        await _repo.Received(1).RecordRunAsync(Arg.Any<AdversarialReviewRun>(), Arg.Any<CancellationToken>());
     }
 
     [Fact]
