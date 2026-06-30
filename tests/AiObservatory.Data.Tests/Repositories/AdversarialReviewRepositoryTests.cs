@@ -47,11 +47,15 @@ public class AdversarialReviewRepositoryTests : IAsyncLifetime
         await _ctx.DisposeAsync();
     }
 
-    private static AdversarialReviewRun Run(string runId, string reviewer, string role, string model) => new()
+    private static AdversarialReviewRun Run(
+        string runId, string reviewer, string role, string model,
+        decimal costUsd = 0.10m, int raised = 3, int accepted = 2, int? chunkCount = null,
+        Instant? recordedAt = null) => new()
     {
         RunId = runId, Reviewer = reviewer, Role = role, Model = model,
-        IssuesRaised = role == "judge" ? 0 : 3, IssuesAccepted = role == "judge" ? 0 : 2,
-        CostUsd = 0.10m, ReviewDurationMs = 1000, RecordedAt = Instant.FromUtc(2026, 6, 27, 12, 0)
+        IssuesRaised = role == "judge" ? 0 : raised, IssuesAccepted = role == "judge" ? 0 : accepted,
+        CostUsd = costUsd, ReviewDurationMs = 1000, ChunkCount = chunkCount,
+        RecordedAt = recordedAt ?? Instant.FromUtc(2026, 6, 27, 12, 0)
     };
 
     [Fact]
@@ -63,21 +67,34 @@ public class AdversarialReviewRepositoryTests : IAsyncLifetime
         var id3 = await _repo.RecordRunAsync(Run("R1", "openai", "reviewer", "gpt-5.4"), ct);
         var id4 = await _repo.RecordRunAsync(Run("R1", "anthropic", "judge", "claude-opus-4-8"), ct);
 
-        id1.IsDuplicate.Should().BeFalse();
-        id2.IsDuplicate.Should().BeFalse();
-        id3.IsDuplicate.Should().BeFalse();
-        id4.IsDuplicate.Should().BeFalse();
+        id1.Existed.Should().BeFalse();
+        id2.Existed.Should().BeFalse();
+        id3.Existed.Should().BeFalse();
+        id4.Existed.Should().BeFalse();
         (await _repo.GetRunsAsync(ct)).Where(r => r.RunId == "R1").Should().HaveCount(4);
     }
 
     [Fact]
-    public async Task Re_emitting_same_runId_reviewer_role_dedups()
+    public async Task Re_emitting_same_participant_updates_in_place()
     {
         var ct = TestContext.Current.CancellationToken;
-        await _repo.RecordRunAsync(Run("R2", "anthropic", "reviewer", "claude-sonnet-4-6"), ct);
-        var second = await _repo.RecordRunAsync(Run("R2", "anthropic", "reviewer", "claude-sonnet-4-6"), ct);
-        second.IsDuplicate.Should().BeTrue();
-        (await _repo.GetRunsAsync(ct)).Where(r => r.RunId == "R2").Should().HaveCount(1);
+        var first = await _repo.RecordRunAsync(
+            Run("R2", "anthropic", "reviewer", "claude-sonnet-4-6", costUsd: 0m, raised: 0, accepted: 0), ct);
+        // Backfill the same participant with real numbers and a chunk count.
+        var second = await _repo.RecordRunAsync(
+            Run("R2", "anthropic", "reviewer", "claude-sonnet-4-6", costUsd: 1.50m, raised: 9, accepted: 6, chunkCount: 4), ct);
+
+        first.Existed.Should().BeFalse();
+        second.Existed.Should().BeTrue();
+        second.Id.Should().Be(first.Id); // same row corrected, not a new one
+
+        var rows = (await _repo.GetRunsAsync(ct)).Where(r => r.RunId == "R2").ToList();
+        rows.Should().ContainSingle();
+        var row = rows[0];
+        row.CostUsd.Should().Be(1.50m);
+        row.IssuesRaised.Should().Be(9);
+        row.IssuesAccepted.Should().Be(6);
+        row.ChunkCount.Should().Be(4);
     }
 
     [Fact]

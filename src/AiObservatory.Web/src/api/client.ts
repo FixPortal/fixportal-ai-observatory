@@ -140,6 +140,7 @@ export interface AdversarialReviewRun {
   issuesRaised: number
   issuesAccepted: number
   costPerAcceptedFinding: number | null
+  chunkCount: number | null
   runId: string
   recordedAt: string
 }

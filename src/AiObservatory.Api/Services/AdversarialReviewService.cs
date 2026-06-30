@@ -92,6 +92,11 @@ public class AdversarialReviewService(IAdversarialReviewRepository repo, IClock 
             return Results.BadRequest("Judge runs must have zero issue counts");
         }
 
+        if (req.ChunkCount is <= 0)
+        {
+            return Results.BadRequest("ChunkCount must be positive when supplied");
+        }
+
         decimal? costPerAcceptedFinding = req.IssuesAccepted > 0
             ? req.CostUsd / req.IssuesAccepted
             : null;
@@ -108,6 +113,7 @@ public class AdversarialReviewService(IAdversarialReviewRepository repo, IClock 
             IssuesRaised = req.IssuesRaised,
             IssuesAccepted = req.IssuesAccepted,
             CostPerAcceptedFinding = costPerAcceptedFinding,
+            ChunkCount = req.ChunkCount,
             RunId = req.RunId.Trim(),
             Role = req.Role,
             Repo = req.Repo?.Trim(),
@@ -115,10 +121,12 @@ public class AdversarialReviewService(IAdversarialReviewRepository repo, IClock 
             RecordedAt = clock.GetCurrentInstant()
         };
 
-        var (id, isDuplicate) = await repo.RecordRunAsync(run, ct);
+        var (id, existed) = await repo.RecordRunAsync(run, ct);
 
-        return isDuplicate
-            ? Results.Ok(new { Id = id, Duplicate = true })
+        // An existing participant row is corrected in place (last-write-wins), not
+        // rejected — report it as updated rather than a no-op duplicate.
+        return existed
+            ? Results.Ok(new { Id = id, Updated = true })
             : Results.Created($"/api/adversarial-review/runs/{id}", new { Id = id });
     }
 }
@@ -136,5 +144,6 @@ public record AdversarialReviewRunRequest(
     string RunId,
     string Role,
     string? Repo,
-    string? Summary = null
+    string? Summary = null,
+    int? ChunkCount = null
 );
