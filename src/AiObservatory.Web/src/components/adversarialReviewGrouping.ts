@@ -11,6 +11,8 @@ export interface RunGroup {
   totals: { raised: number; accepted: number; costUsd: number; durationMs: number }
   isComplete: boolean
   statusReason: string
+  /** Chunks aggregated into this run when it was a batched review; null for a single-diff run. */
+  chunkCount: number | null
 }
 
 // Banker's rounding (round half to even) to `dp` decimal places.
@@ -89,6 +91,9 @@ export function groupRuns(runs: AdversarialReviewRun[]): RunGroup[] {
       },
       isComplete,
       statusReason,
+      // A batched run carries the same chunk count on every participant; take the
+      // first non-null. Null when no participant reported one (single-diff run).
+      chunkCount: participants.find(p => p.chunkCount != null)?.chunkCount ?? null,
     })
   }
 

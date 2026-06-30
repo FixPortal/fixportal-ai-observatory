@@ -6,7 +6,13 @@ namespace AiObservatory.Data.Repositories;
 
 public class AdversarialReviewRepository(AiObservatoryDbContext ctx) : IAdversarialReviewRepository
 {
-    public async Task<(Guid Id, bool IsDuplicate)> RecordRunAsync(
+    // Upsert keyed on the (RunId, Reviewer, Role) unique index. A re-emit for an
+    // existing participant UPDATES its metrics in place (last-write-wins) rather
+    // than being dropped as a duplicate — this is the correction path that lets a
+    // run emitted with placeholder zeros (or a partial/incremental batch
+    // aggregate) be backfilled with real numbers. RecordedAt is deliberately
+    // preserved on update so a corrected run keeps its chronological position.
+    public async Task<(Guid Id, bool Existed)> RecordRunAsync(
         AdversarialReviewRun run, CancellationToken ct = default)
     {
         ArgumentNullException.ThrowIfNull(run);
@@ -18,7 +24,8 @@ public class AdversarialReviewRepository(AiObservatoryDbContext ctx) : IAdversar
 
         if (existingId is not null)
         {
-            return (existingId.Value, IsDuplicate: true);
+            await UpdateMetricsAsync(run, ct);
+            return (existingId.Value, Existed: true);
         }
 
         ctx.AdversarialReviewRuns.Add(run);
@@ -29,16 +36,38 @@ public class AdversarialReviewRepository(AiObservatoryDbContext ctx) : IAdversar
         catch (DbUpdateException ex) when (
             ex.InnerException is PostgresException { SqlState: PostgresErrorCodes.UniqueViolation })
         {
+            // Lost an insert race with a concurrent emit of the same participant;
+            // apply our values as an update so last-write-wins still holds.
             ctx.Entry(run).State = EntityState.Detached;
+            await UpdateMetricsAsync(run, ct);
             var winnerId = await ctx.AdversarialReviewRuns.AsNoTracking()
                 .Where(r => r.RunId == run.RunId && r.Reviewer == run.Reviewer && r.Role == run.Role)
                 .Select(r => r.Id)
                 .FirstAsync(ct);
-            return (winnerId, IsDuplicate: true);
+            return (winnerId, Existed: true);
         }
 
-        return (run.Id, IsDuplicate: false);
+        return (run.Id, Existed: false);
     }
+
+    // Overwrite the mutable metric columns of the matched participant row. Does
+    // not touch Id or RecordedAt (identity + chronological anchor).
+    private Task<int> UpdateMetricsAsync(AdversarialReviewRun run, CancellationToken ct) =>
+        ctx.AdversarialReviewRuns
+            .Where(r => r.RunId == run.RunId && r.Reviewer == run.Reviewer && r.Role == run.Role)
+            .ExecuteUpdateAsync(s => s
+                .SetProperty(r => r.Model, run.Model)
+                .SetProperty(r => r.Repo, run.Repo)
+                .SetProperty(r => r.Summary, run.Summary)
+                .SetProperty(r => r.InputTokens, run.InputTokens)
+                .SetProperty(r => r.OutputTokens, run.OutputTokens)
+                .SetProperty(r => r.CostUsd, run.CostUsd)
+                .SetProperty(r => r.ReviewDurationMs, run.ReviewDurationMs)
+                .SetProperty(r => r.IssuesRaised, run.IssuesRaised)
+                .SetProperty(r => r.IssuesAccepted, run.IssuesAccepted)
+                .SetProperty(r => r.CostPerAcceptedFinding, run.CostPerAcceptedFinding)
+                .SetProperty(r => r.ChunkCount, run.ChunkCount),
+                ct);
 
     public async Task<IReadOnlyList<AdversarialReviewRun>> GetRunsAsync(CancellationToken ct = default)
     {

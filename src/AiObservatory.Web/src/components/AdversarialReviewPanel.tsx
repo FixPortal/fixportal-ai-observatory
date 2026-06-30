@@ -31,6 +31,11 @@ function RunSummary({ group }: { group: RunGroup }) {
     <span className="adv-run__summary">
       {group.summary && <span className="adv-run__meta">{group.recordedAt.slice(0, 16).replace('T', ' ')}</span>}
       {group.repo && <span className="adv-run__meta">{group.repo}</span>}
+      {group.chunkCount != null && (
+        <span className="adv-run__meta" title="Batched review: a large diff split into cohesive chunks, each a full panel run, summed per participant.">
+          aggregate of {group.chunkCount} chunks
+        </span>
+      )}
       <span className={`adv-run__badge ${group.isComplete ? 'adv-run__badge--ok' : 'adv-run__badge--warn'}`}>
         {group.isComplete ? 'complete' : 'incomplete'}
       </span>

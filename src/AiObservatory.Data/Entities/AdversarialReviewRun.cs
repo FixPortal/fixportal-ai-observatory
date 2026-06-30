@@ -31,6 +31,13 @@ public sealed class AdversarialReviewRun
     public decimal? CostPerAcceptedFinding { get; init; }
 
     /// <summary>
+    /// Number of chunks aggregated into this participant row when the run was a
+    /// chunked/batched review (large diff split into cohesive chunks, each a full
+    /// panel run, summed per participant). Null for a single-diff run.
+    /// </summary>
+    public int? ChunkCount { get; init; }
+
+    /// <summary>
     /// Client-supplied utc-timestamp-slug used for idempotency.
     /// </summary>
     public string RunId { get; init; } = "";

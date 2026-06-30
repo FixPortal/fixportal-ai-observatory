@@ -48,7 +48,7 @@ public class AdversarialReviewServiceTests
     {
         var newId = Guid.NewGuid();
         _repo.RecordRunAsync(Arg.Any<AdversarialReviewRun>(), Arg.Any<CancellationToken>())
-            .Returns((newId, IsDuplicate: false));
+            .Returns((newId, Existed: false));
 
         var result = await CreateSut().RecordRunAsync(ValidRequest(), CancellationToken.None);
 
@@ -63,16 +63,38 @@ public class AdversarialReviewServiceTests
     }
 
     [Fact]
-    public async Task RecordRun_duplicate_returns_ok_with_duplicate_flag()
+    public async Task RecordRun_existing_participant_returns_ok_corrected_in_place()
     {
         var existingId = Guid.NewGuid();
         _repo.RecordRunAsync(Arg.Any<AdversarialReviewRun>(), Arg.Any<CancellationToken>())
-            .Returns((existingId, IsDuplicate: true));
+            .Returns((existingId, Existed: true));
 
         var result = await CreateSut().RecordRunAsync(ValidRequest(), CancellationToken.None);
 
         result.Should().BeAssignableTo<IStatusCodeHttpResult>()
             .Which.StatusCode.Should().Be(200);
+    }
+
+    [Fact]
+    public async Task RecordRun_passes_chunk_count_through_to_repository()
+    {
+        _repo.RecordRunAsync(Arg.Any<AdversarialReviewRun>(), Arg.Any<CancellationToken>())
+            .Returns((Guid.NewGuid(), Existed: false));
+
+        await CreateSut().RecordRunAsync(ValidRequest() with { ChunkCount = 21 }, CancellationToken.None);
+
+        await _repo.Received(1).RecordRunAsync(
+            Arg.Is<AdversarialReviewRun>(r => r.ChunkCount == 21),
+            Arg.Any<CancellationToken>());
+    }
+
+    [Fact]
+    public async Task RecordRun_rejects_non_positive_chunk_count()
+    {
+        var result = await CreateSut().RecordRunAsync(ValidRequest() with { ChunkCount = 0 }, CancellationToken.None);
+
+        result.Should().BeAssignableTo<IStatusCodeHttpResult>().Which.StatusCode.Should().Be(400);
+        await _repo.DidNotReceive().RecordRunAsync(Arg.Any<AdversarialReviewRun>(), Arg.Any<CancellationToken>());
     }
 
     [Theory]
@@ -87,7 +109,7 @@ public class AdversarialReviewServiceTests
         decimal? expected = expectedRaw.HasValue ? (decimal)expectedRaw.Value : null;
 
         _repo.RecordRunAsync(Arg.Any<AdversarialReviewRun>(), Arg.Any<CancellationToken>())
-            .Returns((Guid.NewGuid(), IsDuplicate: false));
+            .Returns((Guid.NewGuid(), Existed: false));
 
         await CreateSut().RecordRunAsync(
             ValidRequest(issuesRaised: raised, issuesAccepted: accepted, costUsd: cost),
@@ -134,7 +156,7 @@ public class AdversarialReviewServiceTests
         // is valid and must not be rejected.
         var newId = Guid.NewGuid();
         _repo.RecordRunAsync(Arg.Any<AdversarialReviewRun>(), Arg.Any<CancellationToken>())
-            .Returns((newId, IsDuplicate: false));
+            .Returns((newId, Existed: false));
 
         var req = ValidRequest(issuesRaised: 0, issuesAccepted: 2);
         var result = await CreateSut().RecordRunAsync(req, CancellationToken.None);
@@ -159,7 +181,7 @@ public class AdversarialReviewServiceTests
     public async Task RecordRun_normalises_reviewer_to_lowercase()
     {
         _repo.RecordRunAsync(Arg.Any<AdversarialReviewRun>(), Arg.Any<CancellationToken>())
-            .Returns((Guid.NewGuid(), IsDuplicate: false));
+            .Returns((Guid.NewGuid(), Existed: false));
 
         await CreateSut().RecordRunAsync(ValidRequest(reviewer: "Anthropic"), CancellationToken.None);
 
@@ -172,7 +194,7 @@ public class AdversarialReviewServiceTests
     public async Task RecordRun_stamps_recorded_at_from_clock()
     {
         _repo.RecordRunAsync(Arg.Any<AdversarialReviewRun>(), Arg.Any<CancellationToken>())
-            .Returns((Guid.NewGuid(), IsDuplicate: false));
+            .Returns((Guid.NewGuid(), Existed: false));
 
         await CreateSut().RecordRunAsync(ValidRequest(), CancellationToken.None);
 
@@ -190,7 +212,7 @@ public class AdversarialReviewServiceTests
     public async Task RecordRun_normalises_model_id(string input, string expected)
     {
         _repo.RecordRunAsync(Arg.Any<AdversarialReviewRun>(), Arg.Any<CancellationToken>())
-            .Returns((Guid.NewGuid(), IsDuplicate: false));
+            .Returns((Guid.NewGuid(), Existed: false));
 
         await CreateSut().RecordRunAsync(ValidRequest(model: input), CancellationToken.None);
 
@@ -206,7 +228,7 @@ public class AdversarialReviewServiceTests
     public async Task RecordRun_does_not_alias_bare_model_for_non_anthropic_reviewer(string model)
     {
         _repo.RecordRunAsync(Arg.Any<AdversarialReviewRun>(), Arg.Any<CancellationToken>())
-            .Returns((Guid.NewGuid(), IsDuplicate: false));
+            .Returns((Guid.NewGuid(), Existed: false));
 
         await CreateSut().RecordRunAsync(ValidRequest(reviewer: "openai", model: model), CancellationToken.None);
 
@@ -232,7 +254,7 @@ public class AdversarialReviewServiceTests
     public async Task RecordRun_judge_with_zero_issues_is_accepted()
     {
         _repo.RecordRunAsync(Arg.Any<AdversarialReviewRun>(), Arg.Any<CancellationToken>())
-            .Returns((Guid.NewGuid(), IsDuplicate: false));
+            .Returns((Guid.NewGuid(), Existed: false));
 
         var result = await CreateSut().RecordRunAsync(
             ValidRequest(role: "judge", model: "claude-opus-4-8", issuesRaised: 0, issuesAccepted: 0, costUsd: 0.83m),
@@ -248,7 +270,7 @@ public class AdversarialReviewServiceTests
     public async Task RecordRun_trims_and_stores_summary()
     {
         _repo.RecordRunAsync(Arg.Any<AdversarialReviewRun>(), Arg.Any<CancellationToken>())
-            .Returns((Guid.NewGuid(), IsDuplicate: false));
+            .Returns((Guid.NewGuid(), Existed: false));
 
         await CreateSut().RecordRunAsync(ValidRequest(summary: "  Verifying adjusted formatting  "), CancellationToken.None);
 
@@ -264,7 +286,7 @@ public class AdversarialReviewServiceTests
     public async Task RecordRun_blank_summary_stored_as_null(string? summary)
     {
         _repo.RecordRunAsync(Arg.Any<AdversarialReviewRun>(), Arg.Any<CancellationToken>())
-            .Returns((Guid.NewGuid(), IsDuplicate: false));
+            .Returns((Guid.NewGuid(), Existed: false));
 
         await CreateSut().RecordRunAsync(ValidRequest(summary: summary), CancellationToken.None);
 
@@ -277,7 +299,7 @@ public class AdversarialReviewServiceTests
     public async Task RecordRun_caps_summary_at_80_chars()
     {
         _repo.RecordRunAsync(Arg.Any<AdversarialReviewRun>(), Arg.Any<CancellationToken>())
-            .Returns((Guid.NewGuid(), IsDuplicate: false));
+            .Returns((Guid.NewGuid(), Existed: false));
 
         await CreateSut().RecordRunAsync(ValidRequest(summary: new string('x', 200)), CancellationToken.None);
 
@@ -290,7 +312,7 @@ public class AdversarialReviewServiceTests
     public async Task RecordRun_summary_truncation_does_not_split_a_surrogate_pair()
     {
         _repo.RecordRunAsync(Arg.Any<AdversarialReviewRun>(), Arg.Any<CancellationToken>())
-            .Returns((Guid.NewGuid(), IsDuplicate: false));
+            .Returns((Guid.NewGuid(), Existed: false));
 
         // 79 ASCII + a 2-UTF-16-unit codepoint => the 80-char cut would land mid-pair.
         var input = new string('x', 79) + "\U0001F600";
