@@ -1,0 +1,49 @@
+using System.Security.Cryptography;
+using System.Text;
+using Microsoft.AspNetCore.Http;
+using Microsoft.Extensions.Configuration;
+using Microsoft.Extensions.Hosting;
+
+namespace AiObservatory.Api;
+
+// Stricter sibling of ApiKeyEndpointFilter for GET routes whose data is more
+// sensitive than the rest of the read surface (project/repo names reveal what
+// Chris is working on, unlike aggregate spend). The readonly viewer key is
+// never accepted here — only an Entra-authenticated user or the admin key.
+public class AdminOnlyApiKeyEndpointFilter(IConfiguration config, IHostEnvironment env) : IEndpointFilter
+{
+    public async ValueTask<object?> InvokeAsync(EndpointFilterInvocationContext context, EndpointFilterDelegate next)
+    {
+        if (context.HttpContext.User.Identity?.IsAuthenticated == true)
+        {
+            return await next(context);
+        }
+
+        var expectedAdmin = config["OBSERVATORY_API_KEY"];
+        if (string.IsNullOrEmpty(expectedAdmin))
+        {
+            // Fail closed outside dev, mirroring ApiKeyEndpointFilter's behavior for
+            // a missing key — a misconfigured deploy must not silently allow access.
+            return env.IsDevelopment() ? await next(context) : Results.StatusCode(503);
+        }
+
+        if (!context.HttpContext.Request.Headers.TryGetValue("X-Observatory-Key", out var provided)
+            || !FixedTimeEquals(provided.ToString(), expectedAdmin))
+        {
+            return Results.Unauthorized();
+        }
+
+        return await next(context);
+    }
+
+    private static bool FixedTimeEquals(string a, string b)
+    {
+        var aBytes = Encoding.UTF8.GetBytes(a);
+        var bBytes = Encoding.UTF8.GetBytes(b);
+        if (aBytes.Length != bBytes.Length)
+        {
+            return false;
+        }
+        return CryptographicOperations.FixedTimeEquals(aBytes, bBytes);
+    }
+}
