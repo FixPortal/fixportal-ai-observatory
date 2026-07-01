@@ -1164,3 +1164,38 @@ body {
   overflow: hidden;
 }
 .project-table__bar { height: 100%; border-radius: 4px; background: var(--brand); }
+
+/* ---- Activity tab: treemap ---- */
+.activity-treemap {
+  display: flex;
+  gap: 2px;
+  height: 160px;
+  border-radius: var(--r-chip);
+  overflow: hidden;
+}
+.activity-treemap__block {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-1);
+  min-width: 48px;
+  border: none;
+  color: var(--text-on-brand);
+  cursor: pointer;
+  text-align: center;
+  padding: var(--space-2);
+  transition: filter var(--transition-fast);
+}
+.activity-treemap__block:hover:not(:disabled) { filter: brightness(1.1); }
+.activity-treemap__block:disabled { cursor: default; }
+.activity-treemap__block--selected { outline: 2px solid var(--text); outline-offset: -2px; }
+.activity-treemap__label {
+  font-size: 0.7rem;
+  font-weight: 600;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 100%;
+}
+.activity-treemap__value { font-size: 0.65rem; opacity: 0.85; }
