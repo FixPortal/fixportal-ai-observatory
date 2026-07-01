@@ -27,6 +27,7 @@ public static class ActivityEndpoints
                 return Results.BadRequest("Cannot upsert more than 1000 sessions at once.");
             }
 
+            var seenSessionIds = new HashSet<string>();
             foreach (var s in req.Sessions)
             {
                 if (string.IsNullOrWhiteSpace(s.SessionId) || s.SessionId.Length > 200)
@@ -45,6 +46,10 @@ public static class ActivityEndpoints
                 {
                     return Results.BadRequest($"LastSeenAtUtc must not be before StartedAtUtc: '{s.SessionId}'");
                 }
+                if (!seenSessionIds.Add(s.SessionId))
+                {
+                    return Results.BadRequest($"Duplicate SessionId in batch: '{s.SessionId}'");
+                }
             }
 
             var now = clock.GetCurrentInstant();
@@ -62,6 +67,10 @@ public static class ActivityEndpoints
                 {
                     return Results.BadRequest($"Timestamps must not be in the future: '{s.SessionId}'");
                 }
+                if (s.ActiveSeconds > (lastSeenAt - startedAt).TotalSeconds)
+                {
+                    return Results.BadRequest($"ActiveSeconds exceeds elapsed time for session '{s.SessionId}'");
+                }
 
                 if (existing.TryGetValue(s.SessionId, out var current))
                 {
@@ -70,11 +79,12 @@ public static class ActivityEndpoints
                         continue;
                     }
 
+                    var (mergedAs, mergedLs) = MergeActivity(current, s.ActiveSeconds, lastSeenAt);
                     await db.ClaudeActivitySessions
                         .Where(x => x.SessionId == s.SessionId)
                         .ExecuteUpdateAsync(upd => upd
-                            .SetProperty(p => p.ActiveSeconds, s.ActiveSeconds)
-                            .SetProperty(p => p.LastSeenAt, lastSeenAt), ct);
+                            .SetProperty(p => p.ActiveSeconds, mergedAs)
+                            .SetProperty(p => p.LastSeenAt, mergedLs), ct);
                 }
                 else
                 {
@@ -168,6 +178,14 @@ public static class ActivityEndpoints
 
     public static bool ShouldReplaceExisting(ClaudeActivitySession existing, long newActiveSeconds, Instant newLastSeenAt) =>
         newActiveSeconds > existing.ActiveSeconds || newLastSeenAt > existing.LastSeenAt;
+
+    // Per-field monotonic merge: ShouldReplaceExisting fires when EITHER field is newer,
+    // so an update must not blindly overwrite both — that can regress whichever field the
+    // incoming row didn't actually improve.
+    public static (long ActiveSeconds, Instant LastSeenAt) MergeActivity(
+        ClaudeActivitySession existing, long newActiveSeconds, Instant newLastSeenAt) =>
+        (Math.Max(existing.ActiveSeconds, newActiveSeconds),
+         newLastSeenAt > existing.LastSeenAt ? newLastSeenAt : existing.LastSeenAt);
 
     public static bool TryParseDateRange(
         string? from, string? to, LocalDate today,

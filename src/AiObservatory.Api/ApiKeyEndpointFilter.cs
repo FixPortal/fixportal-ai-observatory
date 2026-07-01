@@ -26,6 +26,24 @@ public class ApiKeyEndpointFilter(IConfiguration config, IHostEnvironment env) :
         {
             if (string.IsNullOrEmpty(expectedReadonly))
             {
+                // A configured admin key still works on GET even when the readonly key
+                // hasn't been set — otherwise admin-only routes (e.g. the Activity
+                // endpoints) become unreachable in a deploy that never set
+                // OBSERVATORY_READONLY_API_KEY, despite the caller holding a valid
+                // admin key. Once an admin key exists to check against, a non-matching
+                // key is a plain auth failure (401), not a 503 — the 503 fallback below
+                // is reserved for the case where no key at all is configured.
+                if (!string.IsNullOrEmpty(expectedAdmin))
+                {
+                    if (context.HttpContext.Request.Headers.TryGetValue("X-Observatory-Key", out var providedAdminKey)
+                        && ApiKeyComparer.FixedTimeEquals(providedAdminKey.ToString(), expectedAdmin))
+                    {
+                        return await next(context);
+                    }
+
+                    return Results.Unauthorized();
+                }
+
                 // Fail closed: a missing read-only key must NOT silently open the GET
                 // surface (raw usage telemetry) to anonymous callers. Only local dev is
                 // allowed to run keyless; any other environment treats the absent key as

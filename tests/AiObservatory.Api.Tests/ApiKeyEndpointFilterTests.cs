@@ -63,6 +63,65 @@ public class ApiKeyEndpointFilterTests
     }
 
     [Fact]
+    public async Task InvokeAsync_WhenGetAndReadOnlyKeyUnconfigured_AllowsValidAdminKey()
+    {
+        // Arrange — OBSERVATORY_READONLY_API_KEY unset, OBSERVATORY_API_KEY set, Production.
+        // A valid admin key on a GET must still be reachable even though the readonly
+        // key was never configured (e.g. the Activity endpoints in a deploy that hasn't
+        // set OBSERVATORY_READONLY_API_KEY).
+        _config["OBSERVATORY_API_KEY"].Returns("admin-key-12345");
+        _config["OBSERVATORY_READONLY_API_KEY"].Returns((string?)null);
+
+        var httpContext = new DefaultHttpContext();
+        httpContext.Request.Method = "GET";
+        httpContext.Request.Headers["X-Observatory-Key"] = "admin-key-12345";
+        var context = EndpointFilterInvocationContext.Create(httpContext);
+
+        var nextCalled = false;
+        ValueTask<object?> Next(EndpointFilterInvocationContext _)
+        {
+            nextCalled = true;
+            return ValueTask.FromResult<object?>(Results.Ok());
+        }
+
+        // Act
+        var result = await _sut.InvokeAsync(context, Next);
+
+        // Assert
+        Assert.True(nextCalled);
+        Assert.IsType<Ok>(result);
+    }
+
+    [Fact]
+    public async Task InvokeAsync_WhenGetAndReadOnlyKeyUnconfigured_RejectsWrongKey()
+    {
+        // Arrange — same setup, but the header key doesn't match the admin key. Because
+        // an admin key IS configured, a mismatch is a plain 401, not the 503 misconfig
+        // fallback (that fallback only fires when no key is configured at all).
+        _config["OBSERVATORY_API_KEY"].Returns("admin-key-12345");
+        _config["OBSERVATORY_READONLY_API_KEY"].Returns((string?)null);
+
+        var httpContext = new DefaultHttpContext();
+        httpContext.Request.Method = "GET";
+        httpContext.Request.Headers["X-Observatory-Key"] = "wrong-key-12345";
+        var context = EndpointFilterInvocationContext.Create(httpContext);
+
+        var nextCalled = false;
+        ValueTask<object?> Next(EndpointFilterInvocationContext _)
+        {
+            nextCalled = true;
+            return ValueTask.FromResult<object?>(Results.Ok());
+        }
+
+        // Act
+        var result = await _sut.InvokeAsync(context, Next);
+
+        // Assert
+        Assert.False(nextCalled);
+        Assert.IsType<UnauthorizedHttpResult>(result);
+    }
+
+    [Fact]
     public async Task InvokeAsync_WhenGetAndReadOnlyKeyConfigured_AllowsValidReadOnlyKey()
     {
         // Arrange
