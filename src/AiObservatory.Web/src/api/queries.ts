@@ -4,9 +4,10 @@ import {
   getAggregates, getInsights, getSubscriptions,
   getAdversarialReviewRuns, getAdversarialReviewStats, getCavemanStats,
   getBudgetRules, getEmailStatus,
+  getActivityDaily, getActivityByProject,
   type DailyAggregate, type Insight, type Subscription,
   type AdversarialReviewRun, type AdversarialReviewStats, type CavemanStats,
-  type BudgetRule,
+  type BudgetRule, type DailyActivity, type ProjectActivity,
 } from './client'
 
 // Shared query hooks. Components subscribe directly (react-query deduplicates by
@@ -32,6 +33,28 @@ export function useAggregates(from?: Date, to?: Date): DailyAggregate[] {
     queryFn: hasRange
       ? () => getAggregates(localDate(from!), localDate(to!))
       : aggregatesQueryFn,
+  })
+  return data
+}
+
+export function useActivityDaily(from?: Date, to?: Date): DailyActivity[] {
+  const hasRange = from != null && to != null
+  const { data = [] } = useQuery({
+    queryKey: hasRange ? ['activity-daily', localDate(from!), localDate(to!)] : ['activity-daily'],
+    queryFn: hasRange
+      ? () => getActivityDaily(localDate(from!), localDate(to!))
+      : () => getActivityDaily(),
+  })
+  return data
+}
+
+export function useActivityByProject(from?: Date, to?: Date): ProjectActivity[] {
+  const hasRange = from != null && to != null
+  const { data = [] } = useQuery({
+    queryKey: hasRange ? ['activity-by-project', localDate(from!), localDate(to!)] : ['activity-by-project'],
+    queryFn: hasRange
+      ? () => getActivityByProject(localDate(from!), localDate(to!))
+      : () => getActivityByProject(),
   })
   return data
 }

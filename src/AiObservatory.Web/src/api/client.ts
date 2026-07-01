@@ -84,6 +84,24 @@ export const getInsights = () => getJson<Insight[]>('/insights')
 
 export const getSubscriptions = () => getJson<Subscription[]>('/subscriptions')
 
+export interface DailyActivity {
+  date: string
+  activeSeconds: number
+}
+
+export interface ProjectActivity {
+  project: string
+  sessionCount: number
+  activeSeconds: number
+  sharePercent: number
+}
+
+export const getActivityDaily = (from?: string, to?: string) =>
+  getJson<DailyActivity[]>('/activity/daily', { from, to })
+
+export const getActivityByProject = (from?: string, to?: string) =>
+  getJson<ProjectActivity[]>('/activity/by-project', { from, to })
+
 export const acknowledgeInsight = async (id: string): Promise<void> => {
   await request(`/insights/${id}/acknowledge`, { method: 'POST' })
 }
