@@ -1111,3 +1111,56 @@ body {
 .adv-run__badge--warn { background: rgba(251,146,60,.15); color: #fb923c; }
 .adv-run__totals { font-size: 0.7rem; color: var(--text); }
 .adv-run__totals b { color: var(--text); font-weight: 700; }
+
+/* ---- Activity tab: project breakdown ---- */
+.project-breakdown-controls {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-3);
+  margin-bottom: var(--space-4);
+  align-items: center;
+  justify-content: space-between;
+}
+.project-breakdown-search {
+  appearance: none;
+  font: inherit;
+  font-size: 0.8rem;
+  flex: 1 1 200px;
+  padding: var(--space-2) var(--space-3);
+  background: var(--app-bg);
+  border: 1px solid var(--border);
+  border-radius: var(--r-control);
+  color: var(--text);
+  transition: border-color var(--transition-fast);
+}
+.project-breakdown-search:focus {
+  outline: 2px solid var(--brand);
+  outline-offset: 1px;
+}
+.project-table { width: 100%; border-collapse: collapse; font-size: 0.8rem; }
+.project-table th {
+  text-align: left;
+  font-weight: 500;
+  font-size: 0.65rem;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--text-muted);
+  padding: var(--space-1) var(--space-2);
+}
+.project-table td {
+  padding: var(--space-2);
+  border-top: 1px solid var(--border);
+  color: var(--text);
+  font-family: var(--font-mono);
+}
+.project-table tbody tr { transition: background-color var(--transition-fast); }
+.project-table tbody tr:hover { background-color: var(--app-bg); }
+.project-table__share { display: flex; align-items: center; gap: var(--space-2); }
+.project-table__bar-track {
+  flex: 1;
+  height: 8px;
+  border-radius: 4px;
+  background: var(--border);
+  overflow: hidden;
+}
+.project-table__bar { height: 100%; border-radius: 4px; background: var(--brand); }
