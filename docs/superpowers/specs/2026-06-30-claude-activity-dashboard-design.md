@@ -159,6 +159,17 @@ Page layout (`ActivityPage.tsx`, mirroring `ReportingPage.tsx`'s structure):
 - No unit coverage for the capture algorithm itself in this repo — it lives
   in the out-of-repo hook script, outside this repo's test suite.
 
+## Known limitations
+
+- **Midnight-spanning sessions are attributed to their start day.** Each session
+  is one cumulative row (`StartedAt` + `ActiveSeconds`), and `/api/activity/daily`
+  groups by the `StartedAt` UTC date. A session active across midnight therefore
+  counts entirely toward the day it began, not split across the two days.
+  Accepted deliberately: this is a personal-scale focused-time proxy, and
+  day-slicing would require raw per-event rows (a materially larger schema and
+  capture change) to correct an edge case that barely moves the totals. Revisit
+  only if accurate per-day splitting becomes a real need.
+
 ## Open questions / follow-ups
 
 - GitHub activity (PRs, most-changed repo) — separate spec, not started.
