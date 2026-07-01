@@ -18,6 +18,7 @@ public class AnthropicUsageClient(HttpClient http) : IAnthropicUsageClient
         ["claude-3-5-haiku"] = (0.8m, 4.0m, 0.08m, 1.00m),
         ["claude-opus-4"] = (15.0m, 75.0m, 1.50m, 18.75m),
         ["claude-sonnet-4"] = (3.0m, 15.0m, 0.30m, 3.75m),
+        ["claude-sonnet-5"] = (3.0m, 15.0m, 0.30m, 3.75m),
         ["claude-haiku-4"] = (0.8m, 4.0m, 0.08m, 1.00m),
         ["claude-opus-3-5"] = (15.0m, 75.0m, 1.50m, 18.75m),
         ["claude-sonnet-3-5"] = (3.0m, 15.0m, 0.30m, 3.75m),
@@ -26,6 +27,11 @@ public class AnthropicUsageClient(HttpClient http) : IAnthropicUsageClient
         ["claude-3-sonnet"] = (3.0m, 15.0m, 0.30m, 3.75m),
         ["claude-3-haiku"] = (0.25m, 1.25m, 0.03m, 0.3125m),
     };
+
+    // Sonnet 5 introductory rate, in effect through this date inclusive (Anthropic-announced).
+    private static readonly LocalDate Sonnet5IntroPricingEndsOn = new(2026, 8, 31);
+    private static readonly (decimal Input, decimal Output, decimal CacheRead, decimal CacheWrite) Sonnet5IntroPricing =
+        (2.0m, 10.0m, 0.20m, 2.50m);
 
     public async Task<IReadOnlyList<AnthropicUsageRecord>> GetUsageAsync(
         LocalDate date, CancellationToken ct = default)
@@ -65,7 +71,7 @@ public class AnthropicUsageClient(HttpClient http) : IAnthropicUsageClient
                     }
 
                     var cacheRead = d.CacheReadInputTokens > 0 ? d.CacheReadInputTokens : d.CachedInputTokens;
-                    var costUsd = ComputeCost(d.Model ?? "unknown", d.InputTokens, d.OutputTokens,
+                    var costUsd = ComputeCost(d.Model ?? "unknown", parsedDate, d.InputTokens, d.OutputTokens,
                         cacheRead, d.CacheCreationInputTokens);
 
                     allRecords.Add(new AnthropicUsageRecord(
@@ -87,7 +93,7 @@ public class AnthropicUsageClient(HttpClient http) : IAnthropicUsageClient
         return allRecords;
     }
 
-    private static decimal ComputeCost(string model, long input, long output, long cacheRead, long cacheWrite)
+    private static decimal ComputeCost(string model, LocalDate usageDate, long input, long output, long cacheRead, long cacheWrite)
     {
         // Longest matching prefix wins (same fix as OpenAiUsageClient). The tiers here
         // don't currently share price-differing prefixes, but Contains + FirstOrDefault
@@ -101,6 +107,13 @@ public class AnthropicUsageClient(HttpClient http) : IAnthropicUsageClient
         if (ir == 0)
         {
             (ir, or, crr, cwr) = (3.0m, 15.0m, 0.30m, 3.75m);
+        }
+        // Sonnet 5 launched with introductory pricing through 2026-08-31; usage billed
+        // for that window gets the lower rate regardless of when this code runs.
+        else if (model.StartsWith("claude-sonnet-5", StringComparison.OrdinalIgnoreCase)
+            && usageDate <= Sonnet5IntroPricingEndsOn)
+        {
+            (ir, or, crr, cwr) = Sonnet5IntroPricing;
         }
         return input / 1_000_000m * ir + output / 1_000_000m * or
              + cacheRead / 1_000_000m * crr + cacheWrite / 1_000_000m * cwr;
