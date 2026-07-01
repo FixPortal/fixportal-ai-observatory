@@ -1,5 +1,3 @@
-using System.Security.Cryptography;
-using System.Text;
 using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Hosting;
@@ -28,22 +26,11 @@ public class AdminOnlyApiKeyEndpointFilter(IConfiguration config, IHostEnvironme
         }
 
         if (!context.HttpContext.Request.Headers.TryGetValue("X-Observatory-Key", out var provided)
-            || !FixedTimeEquals(provided.ToString(), expectedAdmin))
+            || !ApiKeyComparer.FixedTimeEquals(provided.ToString(), expectedAdmin))
         {
             return Results.Unauthorized();
         }
 
         return await next(context);
-    }
-
-    private static bool FixedTimeEquals(string a, string b)
-    {
-        var aBytes = Encoding.UTF8.GetBytes(a);
-        var bBytes = Encoding.UTF8.GetBytes(b);
-        if (aBytes.Length != bBytes.Length)
-        {
-            return false;
-        }
-        return CryptographicOperations.FixedTimeEquals(aBytes, bBytes);
     }
 }

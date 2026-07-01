@@ -1,5 +1,3 @@
-using System.Security.Cryptography;
-using System.Text;
 using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Hosting;
@@ -43,8 +41,8 @@ public class ApiKeyEndpointFilter(IConfiguration config, IHostEnvironment env) :
             }
 
             var providedGetString = providedGet.ToString();
-            var matchesReadonly = FixedTimeEquals(providedGetString, expectedReadonly);
-            var matchesAdmin = !string.IsNullOrEmpty(expectedAdmin) && FixedTimeEquals(providedGetString, expectedAdmin);
+            var matchesReadonly = ApiKeyComparer.FixedTimeEquals(providedGetString, expectedReadonly);
+            var matchesAdmin = !string.IsNullOrEmpty(expectedAdmin) && ApiKeyComparer.FixedTimeEquals(providedGetString, expectedAdmin);
 
             if (!matchesReadonly && !matchesAdmin)
             {
@@ -60,22 +58,11 @@ public class ApiKeyEndpointFilter(IConfiguration config, IHostEnvironment env) :
         }
 
         if (!context.HttpContext.Request.Headers.TryGetValue("X-Observatory-Key", out var provided)
-            || !FixedTimeEquals(provided.ToString(), expectedAdmin))
+            || !ApiKeyComparer.FixedTimeEquals(provided.ToString(), expectedAdmin))
         {
             return Results.Unauthorized();
         }
 
         return await next(context);
-    }
-
-    private static bool FixedTimeEquals(string a, string b)
-    {
-        var aBytes = Encoding.UTF8.GetBytes(a);
-        var bBytes = Encoding.UTF8.GetBytes(b);
-        if (aBytes.Length != bBytes.Length)
-        {
-            return false;
-        }
-        return CryptographicOperations.FixedTimeEquals(aBytes, bBytes);
     }
 }

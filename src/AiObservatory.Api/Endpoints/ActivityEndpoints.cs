@@ -169,7 +169,7 @@ public static class ActivityEndpoints
     public static bool ShouldReplaceExisting(ClaudeActivitySession existing, long newActiveSeconds, Instant newLastSeenAt) =>
         newActiveSeconds > existing.ActiveSeconds || newLastSeenAt > existing.LastSeenAt;
 
-    private static bool TryParseDateRange(
+    public static bool TryParseDateRange(
         string? from, string? to, LocalDate today,
         out LocalDate start, out LocalDate end, out IResult? error)
     {

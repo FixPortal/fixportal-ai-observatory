@@ -22,7 +22,7 @@ public class AdminOnlyApiKeyEndpointFilterTests
         _sut = new AdminOnlyApiKeyEndpointFilter(_config, _env);
     }
 
-    private static (EndpointFilterInvocationContext context, Func<bool> wasNextCalled) BuildContext(
+    private static EndpointFilterInvocationContext BuildContext(
         string method, string? key = null, bool authenticated = false)
     {
         var httpContext = new DefaultHttpContext();
@@ -36,14 +36,14 @@ public class AdminOnlyApiKeyEndpointFilterTests
         {
             httpContext.Request.Headers["X-Observatory-Key"] = key;
         }
-        return (EndpointFilterInvocationContext.Create(httpContext), () => false);
+        return EndpointFilterInvocationContext.Create(httpContext);
     }
 
     [Fact]
     public async Task InvokeAsync_WhenAdminKeyConfigured_AllowsValidAdminKey()
     {
         _config["OBSERVATORY_API_KEY"].Returns("admin-key-12345");
-        var (context, _) = BuildContext("GET", "admin-key-12345");
+        var context = BuildContext("GET", "admin-key-12345");
 
         var nextCalled = false;
         ValueTask<object?> Next(EndpointFilterInvocationContext _) { nextCalled = true; return ValueTask.FromResult<object?>(Results.Ok()); }
@@ -61,7 +61,7 @@ public class AdminOnlyApiKeyEndpointFilterTests
         // even though the readonly key is accepted by the shared ApiKeyEndpointFilter
         // on every other GET route.
         _config["OBSERVATORY_API_KEY"].Returns("admin-key-12345");
-        var (context, _) = BuildContext("GET", "readonly-key-12345");
+        var context = BuildContext("GET", "readonly-key-12345");
 
         var nextCalled = false;
         ValueTask<object?> Next(EndpointFilterInvocationContext _) { nextCalled = true; return ValueTask.FromResult<object?>(Results.Ok()); }
@@ -76,7 +76,7 @@ public class AdminOnlyApiKeyEndpointFilterTests
     public async Task InvokeAsync_WhenNoKeyHeader_RejectsAnonymousRequest()
     {
         _config["OBSERVATORY_API_KEY"].Returns("admin-key-12345");
-        var (context, _) = BuildContext("GET");
+        var context = BuildContext("GET");
 
         var nextCalled = false;
         ValueTask<object?> Next(EndpointFilterInvocationContext _) { nextCalled = true; return ValueTask.FromResult<object?>(Results.Ok()); }
@@ -91,7 +91,7 @@ public class AdminOnlyApiKeyEndpointFilterTests
     public async Task InvokeAsync_WhenEntraAuthenticated_AllowsRegardlessOfKey()
     {
         _config["OBSERVATORY_API_KEY"].Returns("admin-key-12345");
-        var (context, _) = BuildContext("GET", authenticated: true);
+        var context = BuildContext("GET", authenticated: true);
 
         var nextCalled = false;
         ValueTask<object?> Next(EndpointFilterInvocationContext _) { nextCalled = true; return ValueTask.FromResult<object?>(Results.Ok()); }
@@ -110,7 +110,7 @@ public class AdminOnlyApiKeyEndpointFilterTests
     {
         _env.EnvironmentName.Returns(environment);
         _config["OBSERVATORY_API_KEY"].Returns((string?)null);
-        var (context, _) = BuildContext("GET");
+        var context = BuildContext("GET");
 
         var nextCalled = false;
         ValueTask<object?> Next(EndpointFilterInvocationContext _) { nextCalled = true; return ValueTask.FromResult<object?>(Results.Ok()); }

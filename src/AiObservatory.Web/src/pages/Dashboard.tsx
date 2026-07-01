@@ -12,7 +12,7 @@ import { BrandWordmark } from '../design/BrandWordmark'
 import { ThemeToggle } from '../design/ThemeToggle'
 import { useDashboardStatus } from '../api/queries'
 import { ApiError } from '../api/client'
-import { authEnabled, signIn, urlApiKey } from '../auth/msal'
+import { authEnabled, isReadonly, signIn } from '../auth/msal'
 import { useTheme } from '../theme/useTheme'
 
 type DashboardTab = 'overview' | 'adversarial-review' | 'reporting' | 'activity'
@@ -78,7 +78,7 @@ export default function Dashboard() {
         >
           Reporting
         </button>
-        {!urlApiKey && (
+        {!isReadonly && (
           <button
             type="button"
             className={`page-nav__tab${tab === 'activity' ? ' page-nav__tab--active' : ''}`}
