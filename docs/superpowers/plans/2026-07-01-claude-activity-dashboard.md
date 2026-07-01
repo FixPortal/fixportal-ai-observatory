@@ -119,6 +119,7 @@ git commit -m "feat: add ClaudeActivitySession entity and migration"
 // tests/AiObservatory.Api.Tests/AdminOnlyApiKeyEndpointFilterTests.cs
 using System.Security.Claims;
 using AiObservatory.Api;
+using AwesomeAssertions;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Http.HttpResults;
 using Microsoft.Extensions.Configuration;
@@ -168,8 +169,8 @@ public class AdminOnlyApiKeyEndpointFilterTests
 
         var result = await _sut.InvokeAsync(context, Next);
 
-        Assert.True(nextCalled);
-        Assert.IsType<Ok>(result);
+        nextCalled.Should().BeTrue();
+        result.Should().BeOfType<Ok>();
     }
 
     [Fact]
@@ -186,8 +187,8 @@ public class AdminOnlyApiKeyEndpointFilterTests
 
         var result = await _sut.InvokeAsync(context, Next);
 
-        Assert.False(nextCalled);
-        Assert.IsType<UnauthorizedHttpResult>(result);
+        nextCalled.Should().BeFalse();
+        result.Should().BeOfType<UnauthorizedHttpResult>();
     }
 
     [Fact]
@@ -201,8 +202,8 @@ public class AdminOnlyApiKeyEndpointFilterTests
 
         var result = await _sut.InvokeAsync(context, Next);
 
-        Assert.False(nextCalled);
-        Assert.IsType<UnauthorizedHttpResult>(result);
+        nextCalled.Should().BeFalse();
+        result.Should().BeOfType<UnauthorizedHttpResult>();
     }
 
     [Fact]
@@ -216,8 +217,8 @@ public class AdminOnlyApiKeyEndpointFilterTests
 
         var result = await _sut.InvokeAsync(context, Next);
 
-        Assert.True(nextCalled);
-        Assert.IsType<Ok>(result);
+        nextCalled.Should().BeTrue();
+        result.Should().BeOfType<Ok>();
     }
 
     [Theory]
@@ -235,15 +236,15 @@ public class AdminOnlyApiKeyEndpointFilterTests
 
         var result = await _sut.InvokeAsync(context, Next);
 
-        Assert.Equal(expectNext, nextCalled);
+        nextCalled.Should().Be(expectNext);
         if (expectNext)
         {
-            Assert.IsType<Ok>(result);
+            result.Should().BeOfType<Ok>();
         }
         else
         {
-            var statusResult = Assert.IsType<StatusCodeHttpResult>(result);
-            Assert.Equal(expectedStatus, statusResult.StatusCode);
+            var statusResult = result.Should().BeOfType<StatusCodeHttpResult>().Subject;
+            statusResult.StatusCode.Should().Be(expectedStatus);
         }
     }
 }
@@ -344,6 +345,7 @@ git commit -m "feat: add admin-only API key filter for sensitive GET routes"
 // tests/AiObservatory.Api.Tests/ActivityEndpointsTests.cs
 using AiObservatory.Api.Endpoints;
 using AiObservatory.Data.Entities;
+using AwesomeAssertions;
 using NodaTime;
 using Xunit;
 
@@ -366,7 +368,7 @@ public class ActivityEndpointsTests
     {
         var existing = ExistingSession(100, Instant.FromUtc(2026, 7, 1, 9, 5));
         var result = ActivityEndpoints.ShouldReplaceExisting(existing, 150, Instant.FromUtc(2026, 7, 1, 9, 5));
-        Assert.True(result);
+        result.Should().BeTrue();
     }
 
     [Fact]
@@ -374,7 +376,7 @@ public class ActivityEndpointsTests
     {
         var existing = ExistingSession(100, Instant.FromUtc(2026, 7, 1, 9, 5));
         var result = ActivityEndpoints.ShouldReplaceExisting(existing, 100, Instant.FromUtc(2026, 7, 1, 9, 6));
-        Assert.True(result);
+        result.Should().BeTrue();
     }
 
     [Fact]
@@ -384,7 +386,7 @@ public class ActivityEndpointsTests
         // already recorded more time. Must not regress the stored total.
         var existing = ExistingSession(150, Instant.FromUtc(2026, 7, 1, 9, 6));
         var result = ActivityEndpoints.ShouldReplaceExisting(existing, 100, Instant.FromUtc(2026, 7, 1, 9, 5));
-        Assert.False(result);
+        result.Should().BeFalse();
     }
 
     [Fact]
@@ -393,7 +395,7 @@ public class ActivityEndpointsTests
         var lastSeenAt = Instant.FromUtc(2026, 7, 1, 9, 5);
         var existing = ExistingSession(100, lastSeenAt);
         var result = ActivityEndpoints.ShouldReplaceExisting(existing, 100, lastSeenAt);
-        Assert.False(result);
+        result.Should().BeFalse();
     }
 }
 ```

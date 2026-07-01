@@ -112,6 +112,14 @@ export default function ProjectBreakdown({ projects, selectedProject, onSelectPr
               <tr
                 key={p.project}
                 onClick={() => onSelectProject(p.project === selectedProject ? null : p.project)}
+                onKeyDown={(e: KeyboardEvent) => {
+                  if (e.key === 'Enter' || e.key === ' ') {
+                    if (e.key === ' ') e.preventDefault()
+                    onSelectProject(p.project === selectedProject ? null : p.project)
+                  }
+                }}
+                role="button"
+                tabIndex={0}
                 style={{ cursor: 'pointer' }}
               >
                 <td>{p.project}</td>

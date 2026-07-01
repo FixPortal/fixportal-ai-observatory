@@ -53,6 +53,41 @@ public class ActivityEndpointsTests
         result.Should().BeFalse();
     }
 
+    [Fact]
+    public void MergeActivity_WhenIncomingActiveSecondsGreaterButLastSeenAtEarlier_KeepsExistingLastSeenAt()
+    {
+        // Regression case: writing both incoming fields unconditionally would move
+        // LastSeenAt backwards even though ActiveSeconds genuinely improved.
+        var existing = ExistingSession(100, Instant.FromUtc(2026, 7, 1, 9, 10));
+        var (activeSeconds, lastSeenAt) = ActivityEndpoints.MergeActivity(
+            existing, 150, Instant.FromUtc(2026, 7, 1, 9, 5));
+
+        activeSeconds.Should().Be(150);
+        lastSeenAt.Should().Be(Instant.FromUtc(2026, 7, 1, 9, 10));
+    }
+
+    [Fact]
+    public void MergeActivity_WhenIncomingLastSeenAtLaterButActiveSecondsSmaller_KeepsExistingActiveSeconds()
+    {
+        var existing = ExistingSession(150, Instant.FromUtc(2026, 7, 1, 9, 5));
+        var (activeSeconds, lastSeenAt) = ActivityEndpoints.MergeActivity(
+            existing, 100, Instant.FromUtc(2026, 7, 1, 9, 6));
+
+        activeSeconds.Should().Be(150);
+        lastSeenAt.Should().Be(Instant.FromUtc(2026, 7, 1, 9, 6));
+    }
+
+    [Fact]
+    public void MergeActivity_WhenBothIncomingGreater_TakesBothIncoming()
+    {
+        var existing = ExistingSession(100, Instant.FromUtc(2026, 7, 1, 9, 5));
+        var (activeSeconds, lastSeenAt) = ActivityEndpoints.MergeActivity(
+            existing, 150, Instant.FromUtc(2026, 7, 1, 9, 6));
+
+        activeSeconds.Should().Be(150);
+        lastSeenAt.Should().Be(Instant.FromUtc(2026, 7, 1, 9, 6));
+    }
+
     private static readonly LocalDate Today = new(2026, 7, 1);
 
     [Fact]
