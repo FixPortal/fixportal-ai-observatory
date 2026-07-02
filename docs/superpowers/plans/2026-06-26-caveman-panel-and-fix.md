@@ -42,7 +42,7 @@
 
 - [ ] **Step 1: Create feature branch from origin/main**
 
-  Run in the repo root (`D:\FixPortal\fixportal-ai-observatory`):
+  Run in the repo root (`D:\fix-portal\fixportal-ai-observatory`):
 
   ```powershell
   git fetch origin
