@@ -1,4 +1,5 @@
 import { useState, type ReactNode } from 'react'
+import { safeStorage } from '../lib/safeStorage'
 
 interface CollapsiblePanelProps {
   id: string
@@ -8,13 +9,13 @@ interface CollapsiblePanelProps {
 }
 
 export function CollapsiblePanel({ id, title, summary, children }: CollapsiblePanelProps) {
-  const [open, setOpen] = useState(() => localStorage.getItem(`panel-${id}-expanded`) === 'true')
+  const [open, setOpen] = useState(() => safeStorage.get(`panel-${id}-expanded`) === 'true')
   const bodyId = `panel-${id}-body`
 
   function toggle() {
     setOpen(prev => {
       const next = !prev
-      localStorage.setItem(`panel-${id}-expanded`, String(next))
+      safeStorage.set(`panel-${id}-expanded`, String(next))
       return next
     })
   }

@@ -49,7 +49,7 @@ export interface Insight {
   id: string
   generatedAt: string
   // eslint-disable-next-line sonarjs/max-union-size
-  insightType: 'summary' | 'efficiency' | 'anomaly' | 'recommendation'
+  insightType: 'summary' | 'efficiency' | 'anomaly' | 'recommendation' | 'budgetalert'
   title: string
   body: string
   data: Record<string, unknown>

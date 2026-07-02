@@ -1,15 +1,12 @@
 ﻿import { useCallback, useEffect, useMemo, useState, type ReactNode } from 'react'
 import { ThemeContext, type ThemeMode, type ResolvedTheme } from './useTheme'
+import { safeStorage } from '../lib/safeStorage'
 
 const STORAGE_KEY = 'aiobs-theme'
 
 function readMode(): ThemeMode {
-  try {
-    const stored = localStorage.getItem(STORAGE_KEY)
-    if (stored === 'light' || stored === 'dark' || stored === 'system') return stored
-  } catch {
-    /* ignore */
-  }
+  const stored = safeStorage.get(STORAGE_KEY)
+  if (stored === 'light' || stored === 'dark' || stored === 'system') return stored
   return 'system'
 }
 
@@ -33,7 +30,7 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
   }, [resolved])
 
   useEffect(() => {
-    try { localStorage.setItem(STORAGE_KEY, mode) } catch { /* ignore */ }
+    safeStorage.set(STORAGE_KEY, mode)
   }, [mode])
 
   useEffect(() => {

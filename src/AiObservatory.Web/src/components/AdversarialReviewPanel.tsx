@@ -6,6 +6,16 @@ import { groupRuns, formatSeconds, formatMinutes, bankersRound, type RunGroup } 
 
 const PUTATIVE_NOTE = '~ putative cost — estimated from a combined token count (subscription model, no exact per-call billing)'
 
+// recordedAt is a UTC (Z-suffixed) NodaTime Instant. Slicing the string showed the UTC
+// wall-clock as if local (an hour early under BST); format it in the viewer's local zone.
+const RECORDED_AT_FMT = new Intl.DateTimeFormat(undefined, {
+  year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', hour12: false,
+})
+function formatRecordedAt(iso: string): string {
+  const d = new Date(iso)
+  return Number.isNaN(d.getTime()) ? iso.slice(0, 16).replace('T', ' ') : RECORDED_AT_FMT.format(d)
+}
+
 // Anthropic reviewer/judge costs are blended estimates from the Agent tool's
 // combined token count; OpenAI and Google costs are exact from their APIs.
 function isPutativeCost(reviewer: string): boolean {
@@ -29,7 +39,7 @@ function RunSummary({ group }: { group: RunGroup }) {
   const hasPutativeCost = group.participants.some(p => isPutativeCost(p.reviewer))
   return (
     <span className="adv-run__summary">
-      {group.summary && <span className="adv-run__meta">{group.recordedAt.slice(0, 16).replace('T', ' ')}</span>}
+      {group.summary && <span className="adv-run__meta">{formatRecordedAt(group.recordedAt)}</span>}
       {group.repo && <span className="adv-run__meta">{group.repo}</span>}
       {group.chunkCount != null && (
         <span className="adv-run__meta" title="Batched review: a large diff split into cohesive chunks, each a full panel run, summed per participant.">
@@ -48,15 +58,17 @@ function RunSummary({ group }: { group: RunGroup }) {
 }
 
 export default function AdversarialReviewPanel() {
-  const stats = useAdversarialReviewStats()
-  const runs = useAdversarialReviewRuns()
+  const { stats, isError: statsError } = useAdversarialReviewStats()
+  const { runs, isError: runsError } = useAdversarialReviewRuns()
   const groups = useMemo(() => groupRuns(runs), [runs])
 
   return (
     <div className="adv-review-panel">
       <div className="panel">
         <div className="panel-title">Stats by reviewer &amp; model</div>
-        {stats.length === 0 ? (
+        {statsError ? (
+          <p className="panel-empty">Couldn’t load review stats — try refreshing.</p>
+        ) : stats.length === 0 ? (
           <p className="panel-empty">No adversarial-review runs recorded yet.</p>
         ) : (
           <table className="model-table">
@@ -89,14 +101,16 @@ export default function AdversarialReviewPanel() {
 
       <div className="panel">
         <div className="panel-title">Recent runs</div>
-        {groups.length === 0 ? (
+        {runsError ? (
+          <p className="panel-empty">Couldn’t load runs — try refreshing.</p>
+        ) : groups.length === 0 ? (
           <p className="panel-empty">No runs recorded yet.</p>
         ) : (
           groups.map(group => (
             <CollapsiblePanel
               key={group.runId}
               id={`adv-run-${group.runId}`}
-              title={group.summary ?? group.recordedAt.slice(0, 16).replace('T', ' ')}
+              title={group.summary ?? formatRecordedAt(group.recordedAt)}
               summary={<RunSummary group={group} />}
             >
               <table className="model-table">

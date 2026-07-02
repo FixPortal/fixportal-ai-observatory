@@ -4,6 +4,10 @@ export interface TreemapBlock {
   project: string
   activeSeconds: number
   percent: number
+  // True only for the synthetic overflow bucket. Distinguishes it from a real project
+  // literally named "Other" (which would otherwise collide on the React key and get
+  // wrongly disabled / recoloured).
+  isOther?: boolean
 }
 
 export function buildTreemapBlocks(projects: ProjectActivity[], maxBlocks = 8): TreemapBlock[] {
@@ -26,6 +30,7 @@ export function buildTreemapBlocks(projects: ProjectActivity[], maxBlocks = 8): 
       project: 'Other',
       activeSeconds: restSeconds,
       percent: Math.round((restSeconds / total) * 1000) / 10,
+      isOther: true,
     })
   }
 

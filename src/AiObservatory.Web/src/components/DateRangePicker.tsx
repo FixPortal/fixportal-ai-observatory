@@ -89,7 +89,10 @@ export default function DateRangePicker({ from, to, preset, onPreset, onCustom }
     const f = new Date(fromStr)
     const t = new Date(toStr)
     if (!isNaN(f.getTime()) && !isNaN(t.getTime())) {
-      onCustom(f, t)
+      // Swap an inverted range rather than emitting from > to (which downstream floors to
+      // a 1-day span and renders a misleading "no data" instead of the range the user meant).
+      const [start, end] = f <= t ? [f, t] : [t, f]
+      onCustom(start, end)
       setPopoverOpen(false)
     }
   }
@@ -126,6 +129,7 @@ export default function DateRangePicker({ from, to, preset, onPreset, onCustom }
             <input
               type="date"
               value={fromStr}
+              max={toStr}
               onChange={e => setFromStr(e.target.value)}
               style={{
                 fontFamily: 'var(--font-mono)',
@@ -143,6 +147,7 @@ export default function DateRangePicker({ from, to, preset, onPreset, onCustom }
             <input
               type="date"
               value={toStr}
+              min={fromStr}
               onChange={e => setToStr(e.target.value)}
               style={{
                 fontFamily: 'var(--font-mono)',

@@ -1,4 +1,4 @@
-import { lazy, Suspense, useState } from 'react'
+import { lazy, Suspense, useRef, useState, type KeyboardEvent } from 'react'
 import SummaryCards from '../components/SummaryCards'
 import ModelBreakdown from '../components/ModelBreakdown'
 import InsightsFeed from '../components/InsightsFeed'
@@ -16,6 +16,13 @@ import { authEnabled, isReadonly, signIn } from '../auth/msal'
 import { useTheme } from '../theme/useTheme'
 
 type DashboardTab = 'overview' | 'adversarial-review' | 'reporting' | 'activity'
+
+const TABS: { id: DashboardTab; label: string; readonlyHidden?: boolean }[] = [
+  { id: 'overview', label: 'Overview' },
+  { id: 'adversarial-review', label: 'Adversarial Review' },
+  { id: 'reporting', label: 'Reporting' },
+  { id: 'activity', label: 'Activity', readonlyHidden: true },
+]
 
 // recharts is heavy and the charts sit below the fold — code-split them so the
 // initial payload (nav + summary cards) paints without the chart library.
@@ -47,6 +54,21 @@ export default function Dashboard() {
   const { isError, isLoading, error } = useDashboardStatus()
   const { mode, setMode } = useTheme()
   const [tab, setTab] = useState<DashboardTab>('overview')
+  const visibleTabs = TABS.filter(t => !(t.readonlyHidden && isReadonly))
+  const tabRefs = useRef<(HTMLButtonElement | null)[]>([])
+
+  // Tablist arrow-key navigation with roving tabIndex (only the selected tab is in the
+  // tab order; arrows move focus + selection between the rest).
+  const onTabKeyDown = (e: KeyboardEvent, index: number) => {
+    let next: number | null = null
+    if (e.key === 'ArrowRight' || e.key === 'ArrowDown') next = (index + 1) % visibleTabs.length
+    else if (e.key === 'ArrowLeft' || e.key === 'ArrowUp') next = (index - 1 + visibleTabs.length) % visibleTabs.length
+    if (next === null) return
+    e.preventDefault()
+    setTab(visibleTabs[next].id)
+    tabRefs.current[next]?.focus()
+  }
+
   return (
     <div className="dashboard">
       <header className="app-header">
@@ -56,39 +78,26 @@ export default function Dashboard() {
         </span>
         <ThemeToggle value={mode} onChange={setMode} />
       </header>
-      <nav className="page-nav" aria-label="Dashboard sections">
-        <button
-          type="button"
-          className={`page-nav__tab${tab === 'overview' ? ' page-nav__tab--active' : ''}`}
-          onClick={() => setTab('overview')}
-        >
-          Overview
-        </button>
-        <button
-          type="button"
-          className={`page-nav__tab${tab === 'adversarial-review' ? ' page-nav__tab--active' : ''}`}
-          onClick={() => setTab('adversarial-review')}
-        >
-          Adversarial Review
-        </button>
-        <button
-          type="button"
-          className={`page-nav__tab${tab === 'reporting' ? ' page-nav__tab--active' : ''}`}
-          onClick={() => setTab('reporting')}
-        >
-          Reporting
-        </button>
-        {!isReadonly && (
+      <nav className="page-nav" role="tablist" aria-label="Dashboard sections">
+        {visibleTabs.map((t, i) => (
           <button
+            key={t.id}
+            ref={el => { tabRefs.current[i] = el }}
             type="button"
-            className={`page-nav__tab${tab === 'activity' ? ' page-nav__tab--active' : ''}`}
-            onClick={() => setTab('activity')}
+            role="tab"
+            id={`dashboard-tab-${t.id}`}
+            aria-selected={tab === t.id}
+            aria-controls="dashboard-tabpanel"
+            tabIndex={tab === t.id ? 0 : -1}
+            className={`page-nav__tab${tab === t.id ? ' page-nav__tab--active' : ''}`}
+            onClick={() => setTab(t.id)}
+            onKeyDown={e => onTabKeyDown(e, i)}
           >
-            Activity
+            {t.label}
           </button>
-        )}
+        ))}
       </nav>
-      <main className="dashboard__main">
+      <main className="dashboard__main" id="dashboard-tabpanel" role="tabpanel" aria-labelledby={`dashboard-tab-${tab}`}>
         {isError && <ErrorBanner error={error} />}
         {!isError && isLoading && (
           <output className="loading-banner" aria-live="polite">

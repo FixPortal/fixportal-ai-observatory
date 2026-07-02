@@ -6,6 +6,9 @@ import { formatActiveTime } from '../lib/duration'
 // Fixed palette cycled by index — projects are arbitrary strings, unlike
 // providerColor's known provider set, so there's no semantic color to key off.
 const PALETTE = ['var(--brand)', '#5a9c7c', '#3f6f8f', '#7a5fa0', '#b8895a', '#4f8a8b', '#9c5a7c', '#6b8e4e']
+// Neutral fill for the overflow bucket so a 9th block doesn't wrap back to the brand
+// colour (PALETTE[8 % 8]) and read as the largest project.
+const OTHER_COLOR = 'var(--provider-other, #64748b)'
 
 interface Props {
   projects: ProjectActivity[]
@@ -22,13 +25,13 @@ export default function ProjectTreemap({ projects, selectedProject, onSelectProj
     <div className="activity-treemap">
       {blocks.map((b, i) => (
         <button
-          key={b.project}
+          key={b.isOther ? '__other__' : b.project}
           type="button"
-          className={`activity-treemap__block${b.project === selectedProject ? ' activity-treemap__block--selected' : ''}`}
-          style={{ flexGrow: b.activeSeconds, background: PALETTE[i % PALETTE.length] }}
+          className={`activity-treemap__block${!b.isOther && b.project === selectedProject ? ' activity-treemap__block--selected' : ''}`}
+          style={{ flexGrow: b.activeSeconds, background: b.isOther ? OTHER_COLOR : PALETTE[i % PALETTE.length] }}
           // The "Other" bucket aggregates everything past the top N — there's no
           // single project to filter the table to, so it's not interactive.
-          disabled={b.project === 'Other'}
+          disabled={b.isOther}
           onClick={() => onSelectProject(b.project === selectedProject ? null : b.project)}
           title={`${b.project} — ${formatActiveTime(b.activeSeconds)} (${b.percent}%)`}
         >

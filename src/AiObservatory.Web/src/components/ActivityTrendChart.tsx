@@ -35,7 +35,7 @@ interface Props {
 }
 
 export default function ActivityTrendChart({ from, to }: Props) {
-  const daily = useActivityDaily(from, to)
+  const { daily, isError } = useActivityDaily(from, to)
 
   const byDate = useMemo(
     () => daily
@@ -44,6 +44,7 @@ export default function ActivityTrendChart({ from, to }: Props) {
     [daily],
   )
 
+  if (isError) return <p className="panel-empty">Couldn’t load activity — try refreshing.</p>
   if (byDate.length === 0) return <p className="panel-empty">No activity data for this period.</p>
 
   return (

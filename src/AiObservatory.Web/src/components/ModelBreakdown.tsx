@@ -1,5 +1,4 @@
 import { useState, useMemo } from 'react'
-import type { KeyboardEvent } from 'react'
 import { useAggregates } from '../api/queries'
 import { useUsdToGbp, formatGbp } from '../lib/currency'
 import { providerColor } from '../theme/providerColors'
@@ -46,12 +45,6 @@ const SortableHeader = ({
   onSort,
 }: SortableHeaderProps) => {
   const isActive = sortField === field
-  const handleKeyDown = (e: KeyboardEvent) => {
-    if (e.key === 'Enter' || e.key === ' ') {
-      e.preventDefault()
-      onSort(field)
-    }
-  }
 
   // Determine aria-sort value
   let ariaSort: 'ascending' | 'descending' | 'none' = 'none'
@@ -65,22 +58,15 @@ const SortableHeader = ({
     indicatorSymbol = sortDirection === 'asc' ? '▲' : '▼'
   }
 
+  // Real <button> inside the <th>: native keyboard/focus semantics, header role intact.
   return (
-    <th
-      onClick={() => onSort(field)}
-      onKeyDown={handleKeyDown}
-      className="sortable-header"
-      style={{ cursor: 'pointer' }}
-      tabIndex={0}
-      aria-sort={ariaSort}
-      title={hint}
-    >
-      <span className="sortable-header__content">
+    <th className="sortable-header" aria-sort={ariaSort}>
+      <button type="button" className="sortable-header__content" onClick={() => onSort(field)} title={hint}>
         {label}
         <span className={`sort-indicator ${isActive ? 'sort-indicator--active' : ''}`} aria-hidden="true">
           {indicatorSymbol}
         </span>
-      </span>
+      </button>
     </th>
   )
 }
@@ -156,8 +142,11 @@ export default function ModelBreakdown() {
     })
   }, [filteredByModel, sortField, sortDirection])
 
-  // Use maximum cost of unfiltered data to maintain a consistent visual scale for the progress bars
-  const maxCost = useMemo(() => rawByModel.reduce((m, item) => item.cost > m ? item.cost : m, 1), [rawByModel])
+  // Use maximum cost of unfiltered data to maintain a consistent visual scale for the
+  // progress bars. Seed with EPSILON (not 1): a "1" floor under-scales every bar when the
+  // top model costs < $1; EPSILON keeps the ratio true and avoids a divide-by-zero NaN
+  // when all costs are 0.
+  const maxCost = useMemo(() => Math.max(...rawByModel.map(item => item.cost), Number.EPSILON), [rawByModel])
 
   if (rawByModel.length === 0) return <p className="panel-empty">No usage data for this period.</p>
 

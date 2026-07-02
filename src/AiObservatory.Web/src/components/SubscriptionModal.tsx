@@ -274,6 +274,7 @@ export default function SubscriptionModal({ open, onClose }: Props) {
             <div className="sub-form__title">
               {state.formMode === 'add' ? 'Add subscription' : 'Edit subscription'}
             </div>
+            <form onSubmit={(e) => { e.preventDefault(); handleSave() }}>
             <div className="sub-form__grid">
               <div>
                 <label htmlFor="sub-form-provider" className="sub-form__label">Provider</label>
@@ -371,14 +372,14 @@ export default function SubscriptionModal({ open, onClose }: Props) {
                 Cancel
               </button>
               <button
-                type="button"
+                type="submit"
                 className="sub-form__btn sub-form__btn--primary"
-                onClick={handleSave}
                 disabled={isSaving}
               >
                 {isSaving ? 'Saving...' : 'Save'}
               </button>
             </div>
+            </form>
           </div>
         )}
       </div>
