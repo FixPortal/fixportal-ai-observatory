@@ -87,6 +87,7 @@ export const getSubscriptions = () => getJson<Subscription[]>('/subscriptions')
 export interface DailyActivity {
   date: string
   activeSeconds: number
+  wallClockSeconds: number
 }
 
 export interface ProjectActivity {

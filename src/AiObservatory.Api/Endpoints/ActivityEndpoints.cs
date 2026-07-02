@@ -145,7 +145,7 @@ public static class ActivityEndpoints
             var sessions = await db.ClaudeActivitySessions
                 .AsNoTracking()
                 .Where(s => s.StartedAt >= startInstant && s.StartedAt < endInstant)
-                .Select(s => new { s.StartedAt, s.ActiveSeconds })
+                .Select(s => new { s.StartedAt, s.LastSeenAt, s.ActiveSeconds })
                 .ToListAsync(ct);
 
             // In-memory grouping: LocalDatePattern.Iso.Format(Instant) isn't SQL-
@@ -154,7 +154,10 @@ public static class ActivityEndpoints
             // GROUP BY if row count ever grows past a single user's history.
             var byDate = sessions
                 .GroupBy(s => LocalDatePattern.Iso.Format(s.StartedAt.InUtc().Date))
-                .Select(g => new DailyActivityResponse(g.Key, g.Sum(s => s.ActiveSeconds)))
+                .Select(g => new DailyActivityResponse(
+                    g.Key,
+                    g.Sum(s => s.ActiveSeconds),
+                    MergeIntervalSeconds(g.Select(s => (s.StartedAt, s.LastSeenAt)))))
                 .OrderBy(d => d.Date)
                 .ToList();
 
@@ -179,6 +182,7 @@ public static class ActivityEndpoints
             var sessions = await db.ClaudeActivitySessions
                 .AsNoTracking()
                 .Where(s => s.StartedAt >= startInstant && s.StartedAt < endInstant)
+                .Where(s => AllowedProjectOwners.Any(o => s.Project.StartsWith(o + "/")))
                 .Select(s => new { s.SessionId, s.Project, s.ActiveSeconds })
                 .ToListAsync(ct);
 
@@ -196,7 +200,26 @@ public static class ActivityEndpoints
 
             return Results.Ok(byProject);
         }).AddEndpointFilter<AdminOnlyApiKeyEndpointFilter>();
+
+        // One-off cleanup for pre-allowlist ingestion noise (scratch dirs, other
+        // orgs, non-git leaf-folder fallbacks like "claude-review"). Irreversible.
+        // Admin-key gated, mirrors the /aggregates provider-scoped reset.
+        app.MapDelete("/activity/sessions/disallowed-projects", async (
+            AiObservatoryDbContext db,
+            CancellationToken ct) =>
+        {
+            var deleted = await db.ClaudeActivitySessions
+                .Where(s => !AllowedProjectOwners.Any(o => s.Project.StartsWith(o + "/")))
+                .ExecuteDeleteAsync(ct);
+
+            return Results.Ok(new { deletedSessions = deleted });
+        }).AddEndpointFilter<AdminOnlyApiKeyEndpointFilter>();
     }
+
+    // Only these two GitHub accounts are "real" projects for the dashboard — everything
+    // else (scratch folders, other orgs, non-git dirs falling back to a leaf folder name)
+    // is ingestion noise and stays out of the Project breakdown/treemap.
+    public static readonly string[] AllowedProjectOwners = ["fix-portal", "chris-fixportal"];
 
     public static bool ShouldReplaceExisting(ClaudeActivitySession existing, long newActiveSeconds, Instant newLastSeenAt) =>
         newActiveSeconds > existing.ActiveSeconds || newLastSeenAt > existing.LastSeenAt;
@@ -208,6 +231,31 @@ public static class ActivityEndpoints
         ClaudeActivitySession existing, long newActiveSeconds, Instant newLastSeenAt) =>
         (Math.Max(existing.ActiveSeconds, newActiveSeconds),
          newLastSeenAt > existing.LastSeenAt ? newLastSeenAt : existing.LastSeenAt);
+
+    // Wall-clock time actually spent: merges overlapping session spans instead of
+    // summing them, so N parallel sessions covering the same hour count as one hour.
+    public static long MergeIntervalSeconds(IEnumerable<(Instant Start, Instant End)> spans)
+    {
+        var ordered = spans.Where(s => s.End > s.Start).OrderBy(s => s.Start).ToList();
+        if (ordered.Count == 0) return 0;
+
+        var total = Duration.Zero;
+        var (curStart, curEnd) = ordered[0];
+        foreach (var (start, end) in ordered.Skip(1))
+        {
+            if (start > curEnd)
+            {
+                total += curEnd - curStart;
+                (curStart, curEnd) = (start, end);
+            }
+            else if (end > curEnd)
+            {
+                curEnd = end;
+            }
+        }
+        total += curEnd - curStart;
+        return (long)total.TotalSeconds;
+    }
 
     public static bool TryParseDateRange(
         string? from, string? to, LocalDate today,
@@ -257,6 +305,6 @@ public sealed record ActivitySessionRequest(
 
 public sealed record ActivitySessionsRequest(List<ActivitySessionRequest> Sessions);
 
-public sealed record DailyActivityResponse(string Date, long ActiveSeconds);
+public sealed record DailyActivityResponse(string Date, long ActiveSeconds, long WallClockSeconds);
 
 public sealed record ProjectActivityResponse(string Project, int SessionCount, long ActiveSeconds, double SharePercent);
