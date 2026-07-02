@@ -1,5 +1,4 @@
 import { useState, useMemo } from 'react'
-import type { KeyboardEvent } from 'react'
 import type { ProjectActivity } from '../api/client'
 import { filterProjects, sortProjects } from './projectBreakdownSort'
 import type { ProjectSortField, SortDirection } from './projectBreakdownSort'
@@ -15,32 +14,21 @@ interface SortableHeaderProps {
 
 const SortableHeader = ({ field, label, sortField, sortDirection, onSort }: SortableHeaderProps) => {
   const isActive = sortField === field
-  const handleKeyDown = (e: KeyboardEvent) => {
-    if (e.key === 'Enter' || e.key === ' ') {
-      e.preventDefault()
-      onSort(field)
-    }
-  }
   let ariaSort: 'ascending' | 'descending' | 'none' = 'none'
   if (isActive) ariaSort = sortDirection === 'asc' ? 'ascending' : 'descending'
   let indicatorSymbol = '↕'
   if (isActive) indicatorSymbol = sortDirection === 'asc' ? '▲' : '▼'
 
+  // Real <button> inside the <th>: native keyboard/focus semantics instead of a
+  // tabIndex/onKeyDown-decorated cell, and the <th> keeps its column-header role.
   return (
-    <th
-      onClick={() => onSort(field)}
-      onKeyDown={handleKeyDown}
-      className="sortable-header"
-      style={{ cursor: 'pointer' }}
-      tabIndex={0}
-      aria-sort={ariaSort}
-    >
-      <span className="sortable-header__content">
+    <th className="sortable-header" aria-sort={ariaSort}>
+      <button type="button" className="sortable-header__content" onClick={() => onSort(field)}>
         {label}
         <span className={`sort-indicator ${isActive ? 'sort-indicator--active' : ''}`} aria-hidden="true">
           {indicatorSymbol}
         </span>
-      </span>
+      </button>
     </th>
   )
 }
@@ -89,7 +77,12 @@ export default function ProjectBreakdown({ projects, selectedProject, onSelectPr
           aria-label="Search projects"
         />
         {selectedProject && (
-          <button type="button" className="filter-chip" onClick={() => onSelectProject(null)}>
+          <button
+            type="button"
+            className="filter-chip"
+            aria-label={`Clear filter: ${selectedProject}`}
+            onClick={() => onSelectProject(null)}
+          >
             Filtered: {selectedProject} ✕
           </button>
         )}
@@ -111,18 +104,20 @@ export default function ProjectBreakdown({ projects, selectedProject, onSelectPr
             {visible.map((p) => (
               <tr
                 key={p.project}
-                onClick={() => onSelectProject(p.project === selectedProject ? null : p.project)}
-                onKeyDown={(e: KeyboardEvent) => {
-                  if (e.key === 'Enter' || e.key === ' ') {
-                    if (e.key === ' ') e.preventDefault()
-                    onSelectProject(p.project === selectedProject ? null : p.project)
-                  }
-                }}
-                role="button"
-                tabIndex={0}
-                style={{ cursor: 'pointer' }}
+                className={p.project === selectedProject ? 'project-table__row--selected' : undefined}
               >
-                <td>{p.project}</td>
+                <td>
+                  {/* Real <button> for the interactive cell: keeps the <tr>/<td> table
+                      semantics intact (a <tr role="button"> flattens the row for AT). */}
+                  <button
+                    type="button"
+                    className="project-table__select"
+                    aria-pressed={p.project === selectedProject}
+                    onClick={() => onSelectProject(p.project === selectedProject ? null : p.project)}
+                  >
+                    {p.project}
+                  </button>
+                </td>
                 <td>{p.sessionCount.toLocaleString()}</td>
                 <td>{formatActiveTime(p.activeSeconds)}</td>
                 <td>

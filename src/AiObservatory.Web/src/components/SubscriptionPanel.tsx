@@ -58,8 +58,13 @@ function ExtraUsageChip({ sub }: { sub: Subscription }) {
         onChange={e => setDraft(e.target.value)}
         onBlur={() => {
           if (escapedRef.current) { escapedRef.current = false; return }
-          const val = parseFloat(draft)
-          patch.mutate(Number.isFinite(val) ? val : null)
+          const trimmed = draft.trim()
+          if (trimmed === '') { patch.mutate(null); return } // blank clears the value
+          const val = parseFloat(trimmed)
+          // Reject negatives (min="0" only constrains the spinner, not typed input): a
+          // negative would deflate the total, % of budget, and over-budget flag.
+          if (!Number.isFinite(val) || val < 0) { setEditing(false); return }
+          patch.mutate(val)
         }}
         onKeyDown={e => {
           if (e.key === 'Enter') (e.target as HTMLInputElement).blur()
@@ -99,6 +104,7 @@ interface GroupedSubscription {
   activeFrom: string
   activeTo: string | null
   originalSubscription: Subscription // reference for patching extra usage
+  memberCount: number // subs merged into this card; >1 disables inline extra-usage edit
 }
 
 export default function SubscriptionPanel() {
@@ -120,11 +126,14 @@ export default function SubscriptionPanel() {
     [subscriptions, today]
   )
 
-  // Collapse multiple subscriptions for the same provider (sum plan costs)
+  // Collapse subscriptions into one card ONLY when they share provider AND currency AND
+  // billing day. Merging across different currencies summed raw amounts into a nonsense
+  // total and % denominator; merging different billing days measured the second sub against
+  // the wrong period window and mislabelled the renewal day. Differing subs stay separate.
   const collapsed = useMemo(() => {
     const groups: Record<string, GroupedSubscription> = {}
     for (const sub of active) {
-      const key = sub.provider.toLowerCase()
+      const key = `${sub.provider.toLowerCase()}|${sub.currency.toUpperCase()}|${sub.billingDay}`
       if (!groups[key]) {
         groups[key] = {
           provider: sub.provider,
@@ -135,7 +144,8 @@ export default function SubscriptionPanel() {
           billingDay: sub.billingDay,
           activeFrom: sub.activeFrom,
           activeTo: sub.activeTo,
-          originalSubscription: sub
+          originalSubscription: sub,
+          memberCount: 0,
         }
       }
       const g = groups[key]
@@ -149,6 +159,7 @@ export default function SubscriptionPanel() {
       if (sub.activeFrom < g.activeFrom) {
         g.activeFrom = sub.activeFrom
       }
+      g.memberCount += 1
     }
     return Object.values(groups)
   }, [active])
@@ -218,7 +229,19 @@ export default function SubscriptionPanel() {
 
                   <div className="sub-card__extra">
                     <span className="sub-card__extra-label">Extra:</span>
-                    <ExtraUsageChip sub={sub.originalSubscription} />
+                    {sub.memberCount > 1 ? (
+                      // Multiple plans merged: show the combined extra read-only — inline
+                      // editing here would only patch the first plan (edit each individually
+                      // via Manage subscriptions).
+                      <span
+                        className={`sub-card__extra-chip${sub.extraUsageCost === null ? ' sub-card__extra-chip--null' : ''}`}
+                        title="Combined extra usage across merged plans — edit each plan via Manage subscriptions"
+                      >
+                        {sub.extraUsageCost !== null ? `+ ${formatCurrency(sub.extraUsageCost, sub.currency)}` : '—'}
+                      </span>
+                    ) : (
+                      <ExtraUsageChip sub={sub.originalSubscription} />
+                    )}
                   </div>
 
                   <div className="sub-card__billing-day">

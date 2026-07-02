@@ -3,7 +3,7 @@
 // config, so `msalInstance` is null, `authEnabled` is false, and the app talks to
 // the (key-free) local API directly. In production the build bakes the client id,
 // tenant, and API scope, and every request carries a bearer token.
-import { PublicClientApplication, type Configuration, type RedirectRequest } from '@azure/msal-browser'
+import { PublicClientApplication, InteractionRequiredAuthError, type Configuration, type RedirectRequest } from '@azure/msal-browser'
 
 const clientId = import.meta.env.VITE_AAD_CLIENT_ID ?? ''
 const tenantId = import.meta.env.VITE_AAD_TENANT_ID ?? ''
@@ -37,15 +37,33 @@ export function signIn(): void {
   msalInstance?.loginRedirect(loginRequest).catch(() => { /* redirect aborted */ })
 }
 
+// Single-flight guard for the interactive redirect. The dashboard mounts many queries at
+// once; without this the first caller starts the redirect and the rest throw
+// BrowserAuthError: interaction_in_progress, which would escape raw into a react-query
+// queryFn and render as a misleading "outage" banner.
+let redirectInFlight: Promise<void> | null = null
+
 export async function getAccessToken(): Promise<string | null> {
   if (!msalInstance) return null
-  const account = msalInstance.getActiveAccount() ?? msalInstance.getAllAccounts()[0]
+  const instance = msalInstance
+  const account = instance.getActiveAccount() ?? instance.getAllAccounts()[0]
   if (!account) return null
   try {
-    const result = await msalInstance.acquireTokenSilent({ ...loginRequest, account })
+    const result = await instance.acquireTokenSilent({ ...loginRequest, account })
     return result.accessToken
-  } catch {
-    await msalInstance.acquireTokenRedirect({ ...loginRequest, account })
+  } catch (err) {
+    // Only an interaction-required failure (expired/revoked consent) warrants an
+    // interactive redirect. A transient/network error is rethrown so react-query can
+    // retry — force-redirecting to Microsoft on a blip would be a needless bounce.
+    if (!(err instanceof InteractionRequiredAuthError)) {
+      throw err
+    }
+    // Share one redirect across concurrent callers and swallow interaction_in_progress
+    // so it never escapes; the page reloads once the redirect completes.
+    redirectInFlight ??= instance
+      .acquireTokenRedirect({ ...loginRequest, account })
+      .catch(() => { /* interaction_in_progress or redirect aborted; page will reload */ })
+    await redirectInFlight
     return null
   }
 }
@@ -56,17 +74,31 @@ export async function getAccessToken(): Promise<string | null> {
 export const apiKey = import.meta.env.VITE_API_KEY ?? ''
 
 // Viewer-key share link: ?key=<value> in the URL grants read-only access without
-// Entra sign-in. Read once at module load — the value stays in memory for the
-// session.
-export const urlApiKey = new URLSearchParams(window.location.search).get('key') ?? ''
+// Entra sign-in. Persist to sessionStorage so a reload / tab-restore — which re-evaluates
+// this module against the already-stripped URL — still finds the key, instead of dropping
+// the viewer to the Entra sign-in screen they can't pass. Scoped to the tab, cleared on close.
+const VIEWER_KEY_STORAGE = 'observatory:viewer-key'
+
+function readViewerKey(): string {
+  const fromUrl = new URLSearchParams(window.location.search).get('key')
+  if (fromUrl) {
+    try { window.sessionStorage.setItem(VIEWER_KEY_STORAGE, fromUrl) } catch { /* storage blocked */ }
+    return fromUrl
+  }
+  try { return window.sessionStorage.getItem(VIEWER_KEY_STORAGE) ?? '' } catch { return '' }
+}
+
+export const urlApiKey = readViewerKey()
 
 // Strip the key from the visible URL once captured so it does not linger in the
 // address bar, browser history, or any Referer header. The value is already held
-// in urlApiKey above for the session.
+// in urlApiKey (and sessionStorage) for the session.
 if (urlApiKey && typeof window.history?.replaceState === 'function') {
   const stripped = new URL(window.location.href)
-  stripped.searchParams.delete('key')
-  window.history.replaceState({}, '', stripped.pathname + stripped.search + stripped.hash)
+  if (stripped.searchParams.has('key')) {
+    stripped.searchParams.delete('key')
+    window.history.replaceState({}, '', stripped.pathname + stripped.search + stripped.hash)
+  }
 }
 
 // A viewer-key session is read-only — the API rejects every non-GET without the

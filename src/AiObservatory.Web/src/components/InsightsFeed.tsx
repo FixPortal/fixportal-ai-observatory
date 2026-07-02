@@ -9,13 +9,15 @@ import { useInsights } from '../api/queries'
 import { isReadonly } from '../auth/msal'
 
 const TYPE_LABELS: Record<string, string> = {
-  summary: 'Summary', efficiency: 'Efficiency', anomaly: 'Anomaly', recommendation: 'Recommendation'
+  summary: 'Summary', efficiency: 'Efficiency', anomaly: 'Anomaly', recommendation: 'Recommendation',
+  budgetalert: 'Budget alert',
 }
 
 const INSIGHT_VARIANTS: Record<string, 'ok' | 'warn' | 'bad' | 'info'> = {
   anomaly: 'bad',
   efficiency: 'ok',
   recommendation: 'info',
+  budgetalert: 'warn',
 }
 
 const EXPLAINABLE = new Set(['recommendation', 'efficiency'])
@@ -33,7 +35,9 @@ function InsightRow({ insight }: { insight: Insight }) {
 
   const explain = useMutation({
     mutationFn: () => explainInsight(insight.id),
+    onMutate: () => setExplainError(false),
     onSuccess: (data) => {
+      setExplainError(false)
       setExplanation(data.explanation)
       qc.invalidateQueries({ queryKey: ['insights'] })
     },

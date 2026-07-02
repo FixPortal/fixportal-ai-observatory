@@ -10,12 +10,14 @@ function fmtTokens(n: number): string {
 }
 
 export default function CavemanStatsPanel() {
-  const stats = useCavemanStats()
+  const { stats, isError } = useCavemanStats()
   const rate = useUsdToGbp()
 
-  const summaryLine = stats && stats.sessions > 0
-    ? `${stats.sessions.toLocaleString()} sessions · ${formatGbp(stats.totalEstSavedUsd, rate)} saved`
-    : 'No sessions yet'
+  const summaryLine = isError
+    ? 'Couldn’t load stats'
+    : stats && stats.sessions > 0
+      ? `${stats.sessions.toLocaleString()} sessions · ${formatGbp(stats.totalEstSavedUsd, rate)} saved`
+      : 'No sessions yet'
 
   const totalTokens = (stats?.totalOutputTokens ?? 0) + (stats?.totalEstSavedTokens ?? 0)
   const compressionPct = totalTokens > 0

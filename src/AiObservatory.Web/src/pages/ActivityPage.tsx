@@ -9,7 +9,7 @@ const ProjectTreemap = lazy(() => import('../components/ProjectTreemap'))
 
 export default function ActivityPage() {
   const { from, to, preset, setPreset, setCustom } = useDateRange()
-  const byProject = useActivityByProject(from, to)
+  const { projects: byProject, isError } = useActivityByProject(from, to)
   const [selectedProject, setSelectedProject] = useState<string | null>(null)
   const rangeLabel = `${localDate(from)} to ${localDate(to)}`
 
@@ -21,6 +21,11 @@ export default function ActivityPage() {
         <DateRangePicker from={from} to={to} preset={preset} onPreset={setPreset} onCustom={setCustom} />
         <span className="reporting-range-label">{rangeLabel}</span>
       </div>
+      {isError && (
+        <div className="error-banner" role="alert">
+          Couldn’t load activity data. It may be unavailable or you may not be authorised — try refreshing.
+        </div>
+      )}
       <div className="panel">
         <div className="panel-title">Active time — {rangeLabel}</div>
         <Suspense fallback={<div className="chart-skeleton" />}>

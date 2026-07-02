@@ -38,10 +38,14 @@ export default function BudgetRulesPanel() {
   const [provider, setProvider] = useState<string>('')
   const [period, setPeriod] = useState<'daily' | 'weekly' | 'monthly'>('monthly')
   const [threshold, setThreshold] = useState<string>('')
+  const [mutationError, setMutationError] = useState<string | null>(null)
+  const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null)
 
   const deleteRule = useMutation({
     mutationFn: deleteBudgetRule,
-    onSuccess: () => qc.invalidateQueries({ queryKey: ['budget-rules'] }),
+    onMutate: () => setMutationError(null),
+    onSuccess: () => { qc.invalidateQueries({ queryKey: ['budget-rules'] }); setConfirmDeleteId(null) },
+    onError: (e: Error) => setMutationError(`Couldn’t remove the rule: ${e.message}`),
   })
 
   const addRule = useMutation({
@@ -51,6 +55,7 @@ export default function BudgetRulesPanel() {
         period,
         thresholdUsd: parseFloat(threshold),
       }),
+    onMutate: () => setMutationError(null),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['budget-rules'] })
       setPanelOpen(false)
@@ -58,10 +63,13 @@ export default function BudgetRulesPanel() {
       setPeriod('monthly')
       setThreshold('')
     },
+    onError: (e: Error) => setMutationError(`Couldn’t add the rule: ${e.message}`),
   })
 
+  // Match by title, not insightType: budget-alert insights are typed BudgetAlert now but
+  // older rows are Anomaly, and the title prefix is the stable marker across both.
   const budgetAlerts = insights
-    .filter(i => i.insightType === 'anomaly' && i.title.startsWith('Budget alert:'))
+    .filter(i => i.title.startsWith('Budget alert:'))
     .sort((a, b) => b.generatedAt.localeCompare(a.generatedAt))
     .slice(0, 10)
 
@@ -106,6 +114,7 @@ export default function BudgetRulesPanel() {
 
         <div style={{ marginTop: 'var(--space-3)', borderTop: '1px solid var(--border)', paddingTop: 'var(--space-3)' }}>
           {isError && <p className="panel-empty">Failed to load budget rules.</p>}
+          {mutationError && <p className="panel-empty" role="alert">{mutationError}</p>}
           {!isError && !isLoading && rules.length === 0 && (
             <p className="panel-empty">No budget rules configured.</p>
           )}
@@ -147,14 +156,25 @@ export default function BudgetRulesPanel() {
                     </td>
                     {!isReadonly && (
                       <td style={{ padding: '6px 0 6px 8px', textAlign: 'center' }}>
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          onClick={() => deleteRule.mutate(rule.id)}
-                          disabled={deleteRule.isPending}
-                        >
-                          Remove
-                        </Button>
+                        {confirmDeleteId === rule.id ? (
+                          <span style={{ display: 'inline-flex', gap: 4, justifyContent: 'flex-end' }}>
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              onClick={() => deleteRule.mutate(rule.id)}
+                              disabled={deleteRule.isPending}
+                            >
+                              Confirm
+                            </Button>
+                            <Button variant="ghost" size="sm" onClick={() => setConfirmDeleteId(null)}>
+                              Cancel
+                            </Button>
+                          </span>
+                        ) : (
+                          <Button variant="ghost" size="sm" onClick={() => setConfirmDeleteId(rule.id)}>
+                            Remove
+                          </Button>
+                        )}
                       </td>
                     )}
                   </tr>

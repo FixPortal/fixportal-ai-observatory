@@ -18,7 +18,16 @@ import {
 // spend-card label, and the chart all derive from this so they cannot drift.
 export const AGGREGATES_DAYS_RANGE = 31
 
-export const localDate = (d: Date) => d.toISOString().slice(0, 10)
+// Local calendar date (yyyy-MM-dd) from the machine's timezone — NOT toISOString(),
+// which emits the UTC date and, in the 00:00–00:59 local window under a positive offset
+// (e.g. BST), reports yesterday. That off-by-one drove the billing-period start, the
+// active-subscription filter, and the range labels a day early. One helper, every consumer.
+export const localDate = (d: Date) => {
+  const y = d.getFullYear()
+  const m = String(d.getMonth() + 1).padStart(2, '0')
+  const day = String(d.getDate()).padStart(2, '0')
+  return `${y}-${m}-${day}`
+}
 
 const aggregatesQueryFn = () => {
   const to = new Date()
@@ -37,26 +46,26 @@ export function useAggregates(from?: Date, to?: Date): DailyAggregate[] {
   return data
 }
 
-export function useActivityDaily(from?: Date, to?: Date): DailyActivity[] {
+export function useActivityDaily(from?: Date, to?: Date): { daily: DailyActivity[]; isError: boolean; isLoading: boolean } {
   const hasRange = from != null && to != null
-  const { data = [] } = useQuery({
+  const { data = [], isError, isPending } = useQuery({
     queryKey: hasRange ? ['activity-daily', localDate(from!), localDate(to!)] : ['activity-daily'],
     queryFn: hasRange
       ? () => getActivityDaily(localDate(from!), localDate(to!))
       : () => getActivityDaily(),
   })
-  return data
+  return { daily: data, isError, isLoading: isPending }
 }
 
-export function useActivityByProject(from?: Date, to?: Date): ProjectActivity[] {
+export function useActivityByProject(from?: Date, to?: Date): { projects: ProjectActivity[]; isError: boolean; isLoading: boolean } {
   const hasRange = from != null && to != null
-  const { data = [] } = useQuery({
+  const { data = [], isError, isPending } = useQuery({
     queryKey: hasRange ? ['activity-by-project', localDate(from!), localDate(to!)] : ['activity-by-project'],
     queryFn: hasRange
       ? () => getActivityByProject(localDate(from!), localDate(to!))
       : () => getActivityByProject(),
   })
-  return data
+  return { projects: data, isError, isLoading: isPending }
 }
 
 export function useInsights(): Insight[] {
@@ -69,19 +78,19 @@ export function useSubscriptions(): { subscriptions: Subscription[]; isError: bo
   return { isError, subscriptions: data, isLoading: isPending }
 }
 
-export function useAdversarialReviewRuns(): AdversarialReviewRun[] {
-  const { data = [] } = useQuery({ queryKey: ['adversarial-review-runs'], queryFn: getAdversarialReviewRuns })
-  return data
+export function useAdversarialReviewRuns(): { runs: AdversarialReviewRun[]; isError: boolean; isLoading: boolean } {
+  const { data = [], isError, isPending } = useQuery({ queryKey: ['adversarial-review-runs'], queryFn: getAdversarialReviewRuns })
+  return { runs: data, isError, isLoading: isPending }
 }
 
-export function useAdversarialReviewStats(): AdversarialReviewStats[] {
-  const { data = [] } = useQuery({ queryKey: ['adversarial-review-stats'], queryFn: getAdversarialReviewStats })
-  return data
+export function useAdversarialReviewStats(): { stats: AdversarialReviewStats[]; isError: boolean; isLoading: boolean } {
+  const { data = [], isError, isPending } = useQuery({ queryKey: ['adversarial-review-stats'], queryFn: getAdversarialReviewStats })
+  return { stats: data, isError, isLoading: isPending }
 }
 
-export function useCavemanStats(): CavemanStats | undefined {
-  const { data } = useQuery({ queryKey: ['caveman-stats'], queryFn: getCavemanStats })
-  return data
+export function useCavemanStats(): { stats: CavemanStats | undefined; isError: boolean; isLoading: boolean } {
+  const { data, isError, isPending } = useQuery({ queryKey: ['caveman-stats'], queryFn: getCavemanStats })
+  return { stats: data, isError, isLoading: isPending }
 }
 
 export function useBudgetRules(): { rules: BudgetRule[]; isLoading: boolean; isError: boolean } {
