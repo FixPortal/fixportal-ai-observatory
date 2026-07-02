@@ -16,20 +16,25 @@ public class CopilotUsageClient(HttpClient http, string org) : ICopilotUsageClie
     {
         var dateStr = LocalDatePattern.Iso.Format(date);
         var options = new JsonSerializerOptions { PropertyNamingPolicy = JsonNamingPolicy.SnakeCaseLower };
-        var response = await http.GetFromJsonAsync<List<CopilotOrgUsageResponse>>(
+        // Capture the raw element so RawJson preserves the true API payload (the typed DTO
+        // covers only a handful of the metrics response's fields; re-serializing it would
+        // drop everything else and record zeros for fields this endpoint no longer returns).
+        var response = await http.GetFromJsonAsync<List<JsonElement>>(
             $"/orgs/{org}/copilot/metrics?since={dateStr}&until={dateStr}", options, ct);
         if (response is null || response.Count == 0)
         {
             return null;
         }
 
-        var first = response[0];
+        var firstElement = response[0];
+        var first = firstElement.Deserialize<CopilotOrgUsageResponse>(options)
+            ?? new CopilotOrgUsageResponse(0, 0, 0, 0);
         return new CopilotUsageRecord(
             Date: date,
             ActiveUsers: first.TotalActiveUsers,
             TotalSuggestionsCount: first.TotalSuggestionsCount,
             TotalAcceptancesCount: first.TotalAcceptancesCount,
-            RawJson: JsonSerializer.Serialize(first, options));
+            RawJson: firstElement.GetRawText());
     }
 
     private sealed record CopilotOrgUsageResponse(

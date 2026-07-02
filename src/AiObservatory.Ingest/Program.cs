@@ -13,6 +13,14 @@ var host = Host.CreateDefaultBuilder(args)
     {
         var cfg = ctx.Configuration;
 
+        // A Key Vault reference that fails to resolve (secret absent, or the app has no
+        // access) is left by App Service as the literal "@Microsoft.KeyVault(...)" string.
+        // That is non-empty, so a plain IsNullOrEmpty gate would enable the provider with a
+        // garbage credential and 401 hourly forever. Treat such a value as unset.
+        static bool IsConfigured(string? value) =>
+            !string.IsNullOrEmpty(value) &&
+            !value.StartsWith("@Microsoft.KeyVault(", StringComparison.OrdinalIgnoreCase);
+
         var connectionString = cfg["DB_CONNECTION"]
             ?? throw new InvalidOperationException("DB_CONNECTION is required");
         services.AddDataLayer(connectionString);
@@ -23,7 +31,7 @@ var host = Host.CreateDefaultBuilder(args)
         // Anthropic — enabled when ANTHROPIC_BILLING_KEY is set.
         // Requires a workspace admin API key (different from the standard API key).
         var anthropicKey = cfg["ANTHROPIC_BILLING_KEY"];
-        if (!string.IsNullOrEmpty(anthropicKey))
+        if (IsConfigured(anthropicKey))
         {
             services.AddHttpClient<IAnthropicUsageClient, AnthropicUsageClient>(c =>
             {
@@ -38,7 +46,7 @@ var host = Host.CreateDefaultBuilder(args)
         // GITHUB_TOKEN requires the manage_billing:copilot scope.
         var githubToken = cfg["GITHUB_TOKEN"];
         var copilotOrg = cfg["COPILOT_ORG"];
-        if (!string.IsNullOrEmpty(githubToken) && !string.IsNullOrEmpty(copilotOrg))
+        if (IsConfigured(githubToken) && IsConfigured(copilotOrg))
         {
             services.AddHttpClient<ICopilotUsageClient, CopilotUsageClient>(c =>
             {
@@ -50,7 +58,7 @@ var host = Host.CreateDefaultBuilder(args)
             services.AddScoped<ICopilotUsageClient>(sp =>
             {
                 var factory = sp.GetRequiredService<IHttpClientFactory>();
-                var http = factory.CreateClient(typeof(ICopilotUsageClient).FullName ?? nameof(ICopilotUsageClient));
+                var http = factory.CreateClient(nameof(ICopilotUsageClient));
                 return new CopilotUsageClient(http, copilotOrg);
             });
             services.AddScoped<CopilotIngestionService>();
@@ -60,7 +68,7 @@ var host = Host.CreateDefaultBuilder(args)
         // Also requires GOOGLE_APPLICATION_CREDENTIALS pointing at a service account key.
         // See GoogleBillingClient.cs for full setup instructions.
         var googleBillingAccount = cfg["GOOGLE_BILLING_ACCOUNT_ID"];
-        if (!string.IsNullOrEmpty(googleBillingAccount))
+        if (IsConfigured(googleBillingAccount))
         {
             services.AddHttpClient<IGoogleBillingClient, GoogleBillingClient>(c =>
             {
@@ -69,7 +77,7 @@ var host = Host.CreateDefaultBuilder(args)
             services.AddScoped<IGoogleBillingClient>(sp =>
             {
                 var factory = sp.GetRequiredService<IHttpClientFactory>();
-                var http = factory.CreateClient(typeof(IGoogleBillingClient).FullName ?? nameof(IGoogleBillingClient));
+                var http = factory.CreateClient(nameof(IGoogleBillingClient));
                 return new GoogleBillingClient(http, googleBillingAccount);
             });
             services.AddScoped<GoogleIngestionService>();
@@ -79,7 +87,7 @@ var host = Host.CreateDefaultBuilder(args)
         // Requires an admin API key with the openai.usage.read permission.
         // Create one at platform.openai.com/api-keys (type: Admin key).
         var openAiAdminKey = cfg["OPENAI_ADMIN_KEY"];
-        if (!string.IsNullOrEmpty(openAiAdminKey))
+        if (IsConfigured(openAiAdminKey))
         {
             services.AddHttpClient<IOpenAiUsageClient, OpenAiUsageClient>(c =>
             {
