@@ -72,7 +72,13 @@ public class ApiKeyEndpointFilter(IConfiguration config, IHostEnvironment env) :
 
         if (string.IsNullOrEmpty(expectedAdmin))
         {
-            return Results.StatusCode(503);
+            // No admin key configured. Mirror the GET branch (and AdminOnlyApiKeyEndpointFilter):
+            // a keyless local dev box still serves writes so machine callers (observe-stop /
+            // sweeper / gemini hooks) POSTing without a token work; any other environment treats
+            // the absent key as a misconfiguration and refuses.
+            return env.IsDevelopment()
+                ? await next(context)
+                : Results.StatusCode(503);
         }
 
         if (!context.HttpContext.Request.Headers.TryGetValue("X-Observatory-Key", out var provided)

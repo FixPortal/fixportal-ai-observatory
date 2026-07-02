@@ -69,10 +69,14 @@ public class AdversarialReviewRepository(AiObservatoryDbContext ctx) : IAdversar
                 .SetProperty(r => r.ChunkCount, run.ChunkCount),
                 ct);
 
-    public async Task<IReadOnlyList<AdversarialReviewRun>> GetRunsAsync(CancellationToken ct = default)
+    public async Task<IReadOnlyList<AdversarialReviewRun>> GetRunsAsync(string? runId = null, CancellationToken ct = default)
     {
-        return await ctx.AdversarialReviewRuns
-            .AsNoTracking()
+        var query = ctx.AdversarialReviewRuns.AsNoTracking();
+        if (runId is not null)
+        {
+            query = query.Where(r => r.RunId == runId);
+        }
+        return await query
             .OrderByDescending(r => r.RecordedAt)
             .ToListAsync(ct);
     }

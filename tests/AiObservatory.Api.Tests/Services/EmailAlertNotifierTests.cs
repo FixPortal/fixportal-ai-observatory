@@ -32,6 +32,9 @@ public class EmailAlertNotifierTests
     public async Task NotifyAsync_connects_authenticates_and_sends_when_configured()
     {
         var smtp = Substitute.For<ISmtpClient>();
+        // The notifier only disconnects when still connected; mirror a live client that
+        // reports connected after ConnectAsync so the finally-block disconnect runs.
+        smtp.IsConnected.Returns(true);
         MimeMessage? sent = null;
         smtp.When(x => x.SendAsync(Arg.Any<MimeMessage>(), Arg.Any<CancellationToken>(), Arg.Any<ITransferProgress>()))
             .Do(x => sent = x.Arg<MimeMessage>());

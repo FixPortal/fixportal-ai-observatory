@@ -20,9 +20,7 @@ public static class AdversarialReviewEndpoints
             IAdversarialReviewRepository repo,
             HttpContext ctx) =>
         {
-            var runs = await repo.GetRunsAsync(ctx.RequestAborted);
-            if (runId is not null)
-                runs = runs.Where(r => r.RunId == runId).ToList();
+            var runs = await repo.GetRunsAsync(runId, ctx.RequestAborted);
             return Results.Ok(runs.Select(r => new
             {
                 r.Id,

@@ -15,7 +15,8 @@ public static class AggregatesEndpoints
         app.MapGet("/aggregates", async (
             AiObservatoryDbContext db,
             IClock clock,
-            string? from, string? to) =>
+            string? from, string? to,
+            CancellationToken ct) =>
         {
             var today = clock.GetCurrentInstant().InUtc().Date;
             LocalDate start, end;
@@ -48,6 +49,11 @@ public static class AggregatesEndpoints
                 end = today;
             }
 
+            if (start > end)
+            {
+                return Results.BadRequest("from must be on or before to");
+            }
+
             var data = await db.DailyAggregates
                 .AsNoTracking()
                 .Where(a => a.Date >= start && a.Date <= end)
@@ -67,7 +73,7 @@ public static class AggregatesEndpoints
                     a.CostUsd,
                     a.RequestCount
                 })
-                .ToListAsync();
+                .ToListAsync(ct);
 
             return Results.Ok(data);
         });

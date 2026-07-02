@@ -67,6 +67,29 @@ public class AdversarialReviewService(IAdversarialReviewRepository repo, IClock 
             return Results.BadRequest("RunId is required");
         }
 
+        // Length-guard the caller-supplied, column-capped string fields so an over-long
+        // value returns 400 rather than surfacing as a Postgres 22001 / 500 on insert.
+        // (Summary is truncated by NormalizeSummary; Role is enum-validated below.)
+        if (req.Reviewer.Trim().Length > 100)
+        {
+            return Results.BadRequest("Reviewer must be 100 characters or fewer");
+        }
+
+        if (req.Model.Trim().Length > 200)
+        {
+            return Results.BadRequest("Model must be 200 characters or fewer");
+        }
+
+        if (req.RunId.Trim().Length > 200)
+        {
+            return Results.BadRequest("RunId must be 200 characters or fewer");
+        }
+
+        if (req.Repo is not null && req.Repo.Trim().Length > 200)
+        {
+            return Results.BadRequest("Repo must be 200 characters or fewer");
+        }
+
         if (req.Role is not ("reviewer" or "judge"))
         {
             return Results.BadRequest("Role must be 'reviewer' or 'judge'");

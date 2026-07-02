@@ -145,7 +145,11 @@ public class UsageRepository(AiObservatoryDbContext ctx) : IUsageRepository
 
     public async Task<LocalDate?> GetLatestInsightPeriodEndAsync(CancellationToken ct = default)
     {
+        // Exclude budget-alert insights: they carry PeriodEnd = today (a notification, not
+        // an analysis of a completed day), so counting them would advance the daily-analysis
+        // watermark past the current day and permanently skip that day's AI analysis.
         return await ctx.Insights.AsNoTracking()
+            .Where(i => i.InsightType != InsightType.BudgetAlert)
             .OrderByDescending(i => i.PeriodEnd)
             .Select(i => (LocalDate?)i.PeriodEnd)
             .FirstOrDefaultAsync(ct);
@@ -220,6 +224,9 @@ public class UsageRepository(AiObservatoryDbContext ctx) : IUsageRepository
     public async Task<IReadOnlyList<EventCostRecord>> GetEventsByProviderAsync(
         Provider provider, Instant? from = null, Instant? to = null, int limit = 10_000, CancellationToken ct = default)
     {
+        // Defense-in-depth: the endpoint already clamps, but a 0/negative limit here would
+        // make Take throw or return nothing, and an unbounded one could OOM the response.
+        limit = Math.Clamp(limit, 1, 10_000);
         var query = ctx.UsageEvents.AsNoTracking().Where(e => e.Provider == provider);
         if (from is { } f)
         {

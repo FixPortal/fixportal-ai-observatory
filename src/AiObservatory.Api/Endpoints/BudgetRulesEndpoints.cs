@@ -21,8 +21,15 @@ public static class BudgetRulesEndpoints
             return rule is not null ? Results.Ok(rule) : Results.NotFound();
         }).WithName("GetBudgetRuleById");
 
-        app.MapPost("/budget-rules", async (CreateBudgetRuleRequest req, AiObservatoryDbContext db) =>
+        app.MapPost("/budget-rules", async (CreateBudgetRuleRequest req, AiObservatoryDbContext db, CancellationToken ct) =>
         {
+            // A zero/negative threshold is exceeded by any spend, so the rule fires a
+            // spurious alert (plus Insight row + email) every period until deleted.
+            if (req.ThresholdUsd <= 0)
+            {
+                return Results.BadRequest("ThresholdUsd must be greater than zero");
+            }
+
             var rule = new BudgetRule
             {
                 Provider = req.Provider,
@@ -30,7 +37,7 @@ public static class BudgetRulesEndpoints
                 ThresholdUsd = req.ThresholdUsd,
             };
             db.BudgetRules.Add(rule);
-            await db.SaveChangesAsync();
+            await db.SaveChangesAsync(ct);
             return Results.CreatedAtRoute("GetBudgetRuleById", new { id = rule.Id }, rule);
         });
 

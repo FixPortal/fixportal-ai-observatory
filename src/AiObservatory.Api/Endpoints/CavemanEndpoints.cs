@@ -2,6 +2,7 @@ using AiObservatory.Data;
 using AiObservatory.Data.Entities;
 using Microsoft.EntityFrameworkCore;
 using NodaTime;
+using Npgsql;
 
 namespace AiObservatory.Api.Endpoints;
 
@@ -23,29 +24,42 @@ public static class CavemanEndpoints
 
             var now = clock.GetCurrentInstant();
 
+            var seenSessionIds = new HashSet<string>();
             foreach (var s in req.Sessions)
             {
                 if (string.IsNullOrWhiteSpace(s.SessionId) || s.SessionId.Length > 200)
                     return Results.BadRequest($"SessionId invalid: '{s.SessionId}'");
                 if (s.OutputTokens < 0 || s.EstSavedTokens < 0 || s.EstSavedUsd < 0)
                     return Results.BadRequest("Token counts and cost must be non-negative.");
+                var occurredAt = Instant.FromDateTimeOffset(s.OccurredAtUtc);
+                if (occurredAt > now + Duration.FromMinutes(5))
+                    return Results.BadRequest($"OccurredAtUtc must not be in the future: {s.OccurredAtUtc}");
+                // In-batch dedup guard (mirrors ActivityEndpoints): two entries sharing a
+                // not-yet-persisted SessionId would both insert and violate the unique index.
+                if (!seenSessionIds.Add(s.SessionId))
+                    return Results.BadRequest($"Duplicate SessionId in batch: '{s.SessionId}'");
             }
 
             var sessionIds = req.Sessions.Select(s => s.SessionId).ToList();
-            var existingIds = await db.CavemanSessions
+            var existing = await db.CavemanSessions
                 .Where(s => sessionIds.Contains(s.SessionId))
-                .Select(s => s.SessionId)
-                .ToHashSetAsync(ct);
+                .ToDictionaryAsync(s => s.SessionId, s => s.OccurredAt, ct);
 
+            await using var tx = await db.Database.BeginTransactionAsync(ct);
             var upserted = 0;
             foreach (var s in req.Sessions)
             {
                 var occurredAt = Instant.FromDateTimeOffset(s.OccurredAtUtc);
-                if (occurredAt > now + Duration.FromMinutes(5))
-                    return Results.BadRequest($"OccurredAtUtc must not be in the future: {s.OccurredAtUtc}");
 
-                if (existingIds.Contains(s.SessionId))
+                if (existing.TryGetValue(s.SessionId, out var existingOccurredAt))
                 {
+                    // Last-write-wins by event time: ignore a replayed/stale batch so it
+                    // can't regress a newer snapshot's fields (mode / tokens / savings).
+                    if (occurredAt < existingOccurredAt)
+                    {
+                        continue;
+                    }
+
                     await db.CavemanSessions
                         .Where(x => x.SessionId == s.SessionId)
                         .ExecuteUpdateAsync(upd => upd
@@ -72,7 +86,18 @@ public static class CavemanEndpoints
                 upserted++;
             }
 
-            await db.SaveChangesAsync(ct);
+            try
+            {
+                await db.SaveChangesAsync(ct);
+                await tx.CommitAsync(ct);
+            }
+            catch (DbUpdateException ex) when (
+                ex.InnerException is PostgresException { SqlState: PostgresErrorCodes.UniqueViolation })
+            {
+                // Concurrent insert of one of these SessionIds; LWW makes a retry converge.
+                await tx.RollbackAsync(ct);
+                return Results.Conflict("Concurrent write to one or more sessions; retry.");
+            }
             return Results.Ok(new { Upserted = upserted });
         });
 

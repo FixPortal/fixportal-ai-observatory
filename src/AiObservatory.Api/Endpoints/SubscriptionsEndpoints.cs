@@ -18,12 +18,17 @@ public static class SubscriptionsEndpoints
             return sub is not null ? Results.Ok(sub) : Results.NotFound();
         }).WithName("GetSubscriptionById");
 
-        app.MapPost("/subscriptions", async (SubscriptionRequest req, AiObservatoryDbContext db) =>
+        app.MapPost("/subscriptions", async (SubscriptionRequest req, AiObservatoryDbContext db, CancellationToken ct) =>
         {
             if (!Enum.TryParse<Provider>(req.Provider, ignoreCase: true, out var provider)
                 || !Enum.IsDefined(provider))
             {
                 return Results.BadRequest($"Unknown provider: {req.Provider}");
+            }
+
+            if (string.IsNullOrWhiteSpace(req.Name) || req.Name.Length > 200)
+            {
+                return Results.BadRequest("Name is required and must be 200 characters or fewer");
             }
 
             if (req.BillingDay < 1 || req.BillingDay > 31)
@@ -54,16 +59,21 @@ public static class SubscriptionsEndpoints
             };
 
             db.Subscriptions.Add(sub);
-            await db.SaveChangesAsync();
+            await db.SaveChangesAsync(ct);
             return Results.CreatedAtRoute("GetSubscriptionById", new { id = sub.Id }, sub);
         });
 
-        app.MapPut("/subscriptions/{id:guid}", async (Guid id, SubscriptionRequest req, AiObservatoryDbContext db) =>
+        app.MapPut("/subscriptions/{id:guid}", async (Guid id, SubscriptionRequest req, AiObservatoryDbContext db, CancellationToken ct) =>
         {
             if (!Enum.TryParse<Provider>(req.Provider, ignoreCase: true, out var provider)
                 || !Enum.IsDefined(provider))
             {
                 return Results.BadRequest($"Unknown provider: {req.Provider}");
+            }
+
+            if (string.IsNullOrWhiteSpace(req.Name) || req.Name.Length > 200)
+            {
+                return Results.BadRequest("Name is required and must be 200 characters or fewer");
             }
 
             if (req.BillingDay < 1 || req.BillingDay > 31)
@@ -82,7 +92,7 @@ public static class SubscriptionsEndpoints
                 return Results.BadRequest("Currency must be GBP or USD");
             }
 
-            var sub = await db.Subscriptions.FindAsync(id);
+            var sub = await db.Subscriptions.FindAsync([id], ct);
             if (sub is null)
             {
                 return Results.NotFound();
@@ -95,21 +105,29 @@ public static class SubscriptionsEndpoints
             sub.BillingDay = req.BillingDay;
             sub.ActiveFrom = req.ActiveFrom;
             sub.ActiveTo = req.ActiveTo;
-            await db.SaveChangesAsync();
+            await db.SaveChangesAsync(ct);
             return Results.Ok(sub);
         });
 
         app.MapPatch("/subscriptions/{id:guid}/extra-usage",
-            async (Guid id, ExtraUsageRequest req, AiObservatoryDbContext db) =>
+            async (Guid id, ExtraUsageRequest req, AiObservatoryDbContext db, CancellationToken ct) =>
         {
-            var sub = await db.Subscriptions.FindAsync(id);
+            // Reject a negative extra-usage amount: it would deflate the subscription's
+            // total spend, its % of budget, and the over-budget flag (frontend guard alone
+            // is bypassable — a typed "-5" passes the input's min="0").
+            if (req.Amount is < 0)
+            {
+                return Results.BadRequest("Amount must be non-negative");
+            }
+
+            var sub = await db.Subscriptions.FindAsync([id], ct);
             if (sub is null)
             {
                 return Results.NotFound();
             }
 
             sub.ExtraUsageCost = req.Amount;
-            await db.SaveChangesAsync();
+            await db.SaveChangesAsync(ct);
             return Results.Ok(sub);
         });
 
