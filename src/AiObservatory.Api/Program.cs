@@ -56,16 +56,18 @@ builder.Services.AddMemoryCache();
 builder.Services.AddHttpClient<FxRateProvider>();
 builder.Services.AddHostedService<IntelligenceWorkerService>();
 
-// Fixed-window rate limit per caller (API key if present, else remote IP) on the /api
-// group, so an unauthenticated GET or a hot loop can't hammer the B1 plan.
+// Fixed-window rate limit per client IP on the /api group, so an unauthenticated GET or a
+// hot loop can't hammer the B1 plan. Partitioning on the (real, post-UseForwardedHeaders)
+// remote IP rather than the X-Observatory-Key header is deliberate: the limiter runs before
+// ApiKeyEndpointFilter, so the header is unvalidated at this point — keying on it let an
+// anonymous caller mint a fresh 120/min bucket per request just by rotating a random header,
+// bypassing the limit entirely.
 builder.Services.AddRateLimiter(o =>
 {
     o.RejectionStatusCode = StatusCodes.Status429TooManyRequests;
     o.AddPolicy("api", ctx =>
     {
-        var partitionKey = ctx.Request.Headers["X-Observatory-Key"].ToString() is { Length: > 0 } key
-            ? key
-            : ctx.Connection.RemoteIpAddress?.ToString() ?? "anonymous";
+        var partitionKey = ctx.Connection.RemoteIpAddress?.ToString() ?? "anonymous";
         return RateLimitPartition.GetFixedWindowLimiter(partitionKey, _ => new FixedWindowRateLimiterOptions
         {
             PermitLimit = 120,
@@ -130,16 +132,22 @@ if (app.Environment.IsDevelopment())
     app.MapOpenApi();
     api.MapPost("/dev/seed", async (AiObservatoryDbContext db, IClock clock, CancellationToken ct) =>
     {
-        // Idempotent: only seed an empty database. The Docker compose seed service
-        // calls this on every `up`; without this guard a re-up would TRUNCATE a
-        // self-hoster's accumulated data. If rows already exist, do nothing.
-        if (await db.DailyAggregates.AnyAsync(ct))
+        // Idempotent: only seed a genuinely empty database. The Docker compose seed
+        // service calls this on every `up`; the guard must cover EVERY table the seed
+        // writes, not just DailyAggregates — a self-hoster who created a Subscription or
+        // BudgetRule (neither of which writes a DailyAggregate) before any aggregation
+        // would otherwise have that config silently destroyed on the next `up`.
+        if (await db.DailyAggregates.AnyAsync(ct)
+            || await db.Subscriptions.AnyAsync(ct)
+            || await db.Insights.AnyAsync(ct)
+            || await db.BudgetRules.AnyAsync(ct)
+            || await db.UsageEvents.AnyAsync(ct))
         {
             return Results.Ok("Already seeded — skipping (data present).");
         }
 
-        await db.Database.ExecuteSqlRawAsync("TRUNCATE TABLE \"DailyAggregates\", \"Subscriptions\", \"Insights\", \"BudgetRules\", \"UsageEvents\" RESTART IDENTITY CASCADE;", ct);
-
+        // No TRUNCATE: the guard above proves all seeded tables are empty, so the previous
+        // destructive reset is unnecessary (and was the data-loss vector it guarded against).
         var today = clock.GetCurrentInstant().InUtc().Date;
 
         for (int i = 0; i < 14; i++)

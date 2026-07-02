@@ -23,9 +23,11 @@ public class ApiKeyEndpointFilterTests
     }
 
     [Theory]
-    // Keyless GET is allowed only in Development; any other environment fails closed (503).
+    // Keyless requests are allowed only in Development (reads and writes); any other
+    // environment fails closed (503).
     [InlineData("GET", "Development", true, 200)]
     [InlineData("GET", "Production", false, 503)]
+    [InlineData("POST", "Development", true, 200)]
     [InlineData("POST", "Production", false, 503)]
     public async Task InvokeAsync_WhenKeysNotConfigured_FailsClosedOutsideDev(
         string method, string environment, bool expectNext, int expectedStatus)

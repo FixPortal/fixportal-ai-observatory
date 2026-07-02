@@ -18,21 +18,30 @@ public sealed class EmailAlertNotifier(ISmtpClient smtpClient, IConfiguration co
         var pass = config["BUDGET_ALERT_SMTP_PASS"] ?? string.Empty;
         var from = config["BUDGET_ALERT_EMAIL_FROM"] ?? user;
 
-        await smtpClient.ConnectAsync(host, port, SecureSocketOptions.StartTls, ct);
-        if (!string.IsNullOrEmpty(user))
-            await smtpClient.AuthenticateAsync(user, pass, ct);
-
-        using var message = new MimeMessage();
-        message.From.Add(MailboxAddress.Parse(from));
-        message.To.Add(MailboxAddress.Parse(to));
-        message.Subject = $"Budget alert: {payload.Provider} {payload.Period} spend exceeded ${payload.ThresholdUsd:F2}";
-        message.Body = new TextPart("plain")
+        try
         {
-            Text = $"Total {payload.Period.ToLower()} spend for {payload.Provider} reached ${payload.ActualSpend:F2}, " +
-                   $"exceeding your ${payload.ThresholdUsd:F2} threshold.\n\nTriggered at: {payload.TriggeredAt:u}"
-        };
+            await smtpClient.ConnectAsync(host, port, SecureSocketOptions.StartTls, ct);
+            if (!string.IsNullOrEmpty(user))
+                await smtpClient.AuthenticateAsync(user, pass, ct);
 
-        await smtpClient.SendAsync(message, ct);
-        await smtpClient.DisconnectAsync(true, ct);
+            using var message = new MimeMessage();
+            message.From.Add(MailboxAddress.Parse(from));
+            message.To.Add(MailboxAddress.Parse(to));
+            message.Subject = $"Budget alert: {payload.Provider} {payload.Period} spend exceeded ${payload.ThresholdUsd:F2}";
+            message.Body = new TextPart("plain")
+            {
+                Text = $"Total {payload.Period.ToLower()} spend for {payload.Provider} reached ${payload.ActualSpend:F2}, " +
+                       $"exceeding your ${payload.ThresholdUsd:F2} threshold.\n\nTriggered at: {payload.TriggeredAt:u}"
+            };
+
+            await smtpClient.SendAsync(message, ct);
+        }
+        finally
+        {
+            // Disconnect even if authenticate/send throws — otherwise the scoped SMTP client
+            // is returned to the container still connected.
+            if (smtpClient.IsConnected)
+                await smtpClient.DisconnectAsync(true, ct);
+        }
     }
 }

@@ -71,7 +71,7 @@ public class AdversarialReviewRepositoryTests : IAsyncLifetime
         id2.Existed.Should().BeFalse();
         id3.Existed.Should().BeFalse();
         id4.Existed.Should().BeFalse();
-        (await _repo.GetRunsAsync(ct)).Where(r => r.RunId == "R1").Should().HaveCount(4);
+        (await _repo.GetRunsAsync("R1", ct)).Should().HaveCount(4);
     }
 
     [Fact]
@@ -88,7 +88,7 @@ public class AdversarialReviewRepositoryTests : IAsyncLifetime
         second.Existed.Should().BeTrue();
         second.Id.Should().Be(first.Id); // same row corrected, not a new one
 
-        var rows = (await _repo.GetRunsAsync(ct)).Where(r => r.RunId == "R2").ToList();
+        var rows = (await _repo.GetRunsAsync("R2", ct)).ToList();
         rows.Should().ContainSingle();
         var row = rows[0];
         row.CostUsd.Should().Be(1.50m);
@@ -104,6 +104,6 @@ public class AdversarialReviewRepositoryTests : IAsyncLifetime
         await _repo.RecordRunAsync(Run("R3", "anthropic", "reviewer", "claude-sonnet-4-6"), ct);
         var deleted = await _repo.DeleteAllRunsAsync(ct);
         deleted.Should().BeGreaterThan(0);
-        (await _repo.GetRunsAsync(ct)).Should().BeEmpty();
+        (await _repo.GetRunsAsync(ct: ct)).Should().BeEmpty();
     }
 }

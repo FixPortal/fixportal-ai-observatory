@@ -118,7 +118,9 @@ public static class EventsEndpoints
                 return Results.BadRequest("CostUsd must be non-negative");
             }
 
-            var result = await repo.PatchEventCostAsync(p, eventKey, req.CostUsd, ct);
+            // Trim to match the stored key: POST persists req.EventKey.Trim(), so a padded
+            // route value would otherwise miss the row and drop the cost correction as a 404.
+            var result = await repo.PatchEventCostAsync(p, eventKey.Trim(), req.CostUsd, ct);
 
             return result is null
                 ? Results.NotFound()

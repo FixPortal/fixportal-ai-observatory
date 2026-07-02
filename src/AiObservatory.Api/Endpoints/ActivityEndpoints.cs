@@ -4,6 +4,7 @@ using AiObservatory.Data.Entities;
 using Microsoft.EntityFrameworkCore;
 using NodaTime;
 using NodaTime.Text;
+using Npgsql;
 
 namespace AiObservatory.Api.Endpoints;
 
@@ -27,6 +28,7 @@ public static class ActivityEndpoints
                 return Results.BadRequest("Cannot upsert more than 1000 sessions at once.");
             }
 
+            var now = clock.GetCurrentInstant();
             var seenSessionIds = new HashSet<string>();
             foreach (var s in req.Sessions)
             {
@@ -46,21 +48,9 @@ public static class ActivityEndpoints
                 {
                     return Results.BadRequest($"LastSeenAtUtc must not be before StartedAtUtc: '{s.SessionId}'");
                 }
-                if (!seenSessionIds.Add(s.SessionId))
-                {
-                    return Results.BadRequest($"Duplicate SessionId in batch: '{s.SessionId}'");
-                }
-            }
-
-            var now = clock.GetCurrentInstant();
-            var sessionIds = req.Sessions.Select(s => s.SessionId).ToList();
-            var existing = await db.ClaudeActivitySessions
-                .Where(s => sessionIds.Contains(s.SessionId))
-                .ToDictionaryAsync(s => s.SessionId, ct);
-
-            var upserted = 0;
-            foreach (var s in req.Sessions)
-            {
+                // Hoisted from the mutation loop: a bad row must fail BEFORE any earlier row
+                // is committed (the update path uses ExecuteUpdateAsync, which writes
+                // immediately), so validation happens entirely up-front.
                 var startedAt = Instant.FromDateTimeOffset(s.StartedAtUtc);
                 var lastSeenAt = Instant.FromDateTimeOffset(s.LastSeenAtUtc);
                 if (startedAt > now + Duration.FromMinutes(5) || lastSeenAt > now + Duration.FromMinutes(5))
@@ -71,6 +61,26 @@ public static class ActivityEndpoints
                 {
                     return Results.BadRequest($"ActiveSeconds exceeds elapsed time for session '{s.SessionId}'");
                 }
+                if (!seenSessionIds.Add(s.SessionId))
+                {
+                    return Results.BadRequest($"Duplicate SessionId in batch: '{s.SessionId}'");
+                }
+            }
+
+            var sessionIds = req.Sessions.Select(s => s.SessionId).ToList();
+            var existing = await db.ClaudeActivitySessions
+                .Where(s => sessionIds.Contains(s.SessionId))
+                .ToDictionaryAsync(s => s.SessionId, ct);
+
+            // One transaction so the ExecuteUpdateAsync writes and the deferred inserts commit
+            // atomically — a unique-violation race on a concurrently-inserted SessionId rolls
+            // the whole batch back rather than leaving it half-applied.
+            await using var tx = await db.Database.BeginTransactionAsync(ct);
+            var upserted = 0;
+            foreach (var s in req.Sessions)
+            {
+                var startedAt = Instant.FromDateTimeOffset(s.StartedAtUtc);
+                var lastSeenAt = Instant.FromDateTimeOffset(s.LastSeenAtUtc);
 
                 if (existing.TryGetValue(s.SessionId, out var current))
                 {
@@ -101,7 +111,19 @@ public static class ActivityEndpoints
                 upserted++;
             }
 
-            await db.SaveChangesAsync(ct);
+            try
+            {
+                await db.SaveChangesAsync(ct);
+                await tx.CommitAsync(ct);
+            }
+            catch (DbUpdateException ex) when (
+                ex.InnerException is PostgresException { SqlState: PostgresErrorCodes.UniqueViolation })
+            {
+                // A concurrent request inserted one of these SessionIds between the existence
+                // snapshot and SaveChanges. The merge is monotonic, so a retry converges.
+                await tx.RollbackAsync(ct);
+                return Results.Conflict("Concurrent write to one or more sessions; retry.");
+            }
             return Results.Ok(new { Upserted = upserted });
         });
 
@@ -213,6 +235,12 @@ public static class ActivityEndpoints
                 return false;
             }
             end = LocalDate.FromDateOnly(toDate);
+        }
+
+        if (start > end)
+        {
+            error = Results.BadRequest("from must be on or before to");
+            return false;
         }
 
         return true;

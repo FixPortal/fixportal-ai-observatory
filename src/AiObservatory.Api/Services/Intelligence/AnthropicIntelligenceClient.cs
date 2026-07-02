@@ -21,7 +21,9 @@ public class AnthropicIntelligenceClient
     public AnthropicIntelligenceClient(IConfiguration configuration, ILogger<AnthropicIntelligenceClient> logger)
     {
         var apiKey = configuration["ANTHROPIC_API_KEY"];
-        _client = apiKey is not null ? new AnthropicClient(new APIAuthentication(apiKey)) : null;
+        // Whitespace/empty key means "disabled", same as unset — otherwise an empty-string
+        // env var makes IsConfigured true and every worker cycle calls the API and 401s.
+        _client = !string.IsNullOrWhiteSpace(apiKey) ? new AnthropicClient(new APIAuthentication(apiKey)) : null;
         _logger = logger;
         if (!IsConfigured)
             _logger.LogWarning("ANTHROPIC_API_KEY not set — AI insights and explanations are disabled.");
