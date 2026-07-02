@@ -3,6 +3,7 @@ import type { ProjectActivity } from '../api/client'
 import { filterProjects, sortProjects } from './projectBreakdownSort'
 import type { ProjectSortField, SortDirection } from './projectBreakdownSort'
 import { formatActiveTime } from '../lib/duration'
+import SearchIcon from '../design/SearchIcon'
 
 interface SortableHeaderProps {
   field: ProjectSortField
@@ -67,24 +68,29 @@ export default function ProjectBreakdown({ projects, selectedProject, onSelectPr
 
   return (
     <>
-      <div className="project-breakdown-controls">
-        <input
-          type="text"
-          placeholder="Search projects..."
-          value={searchQuery}
-          onChange={(e) => setSearchQuery(e.target.value)}
-          className="project-breakdown-search"
-          aria-label="Search projects"
-        />
+      <div className="breakdown-controls">
+        <div className="breakdown-search-container">
+          <SearchIcon />
+          <input
+            type="text"
+            placeholder="Search projects..."
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+            className="breakdown-search"
+            aria-label="Search projects"
+          />
+        </div>
         {selectedProject && (
-          <button
-            type="button"
-            className="filter-chip"
-            aria-label={`Clear filter: ${selectedProject}`}
-            onClick={() => onSelectProject(null)}
-          >
-            Filtered: {selectedProject} ✕
-          </button>
+          <div className="breakdown-filters">
+            <button
+              type="button"
+              className="filter-chip"
+              aria-label={`Clear filter: ${selectedProject}`}
+              onClick={() => onSelectProject(null)}
+            >
+              Filtered: {selectedProject} ✕
+            </button>
+          </div>
         )}
       </div>
 

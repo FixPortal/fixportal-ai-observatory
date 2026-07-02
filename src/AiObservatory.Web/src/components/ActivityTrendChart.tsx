@@ -6,9 +6,15 @@ import { formatShortDate } from '../lib/format'
 
 const TEXT_MUTED = 'var(--text-muted)'
 
+interface ChartRow {
+  date: string
+  wallClockMinutes: number
+  overlapMinutes: number
+}
+
 const ChartInner = lazy(() =>
-  import('recharts').then(({ BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer }) => ({
-    default: function Inner({ byDate }: { byDate: { date: string; minutes: number }[] }) {
+  import('recharts').then(({ BarChart, Bar, XAxis, YAxis, Tooltip, Legend, ResponsiveContainer }) => ({
+    default: function Inner({ byDate }: { byDate: ChartRow[] }) {
       return (
         <ResponsiveContainer width="100%" height={160}>
           <BarChart data={byDate}>
@@ -21,7 +27,9 @@ const ChartInner = lazy(() =>
               labelFormatter={(label) => formatShortDate(String(label ?? ''))}
               formatter={(v: ValueType | undefined) => formatActiveTime(Number(Array.isArray(v) ? v[0] : v ?? 0) * 60)}
             />
-            <Bar dataKey="minutes" fill="var(--brand)" />
+            <Legend wrapperStyle={{ fontSize: 11, color: TEXT_MUTED }} />
+            <Bar dataKey="wallClockMinutes" name="Wall-clock" stackId="time" fill="var(--brand)" />
+            <Bar dataKey="overlapMinutes" name="Parallel sessions" stackId="time" fill="var(--text-muted)" />
           </BarChart>
         </ResponsiveContainer>
       )
@@ -40,7 +48,11 @@ export default function ActivityTrendChart({ from, to }: Props) {
   const byDate = useMemo(
     () => daily
       .toSorted((a, b) => a.date.localeCompare(b.date))
-      .map((d) => ({ date: d.date, minutes: Math.round(d.activeSeconds / 60) })),
+      .map((d) => ({
+        date: d.date,
+        wallClockMinutes: Math.round(d.wallClockSeconds / 60),
+        overlapMinutes: Math.round((d.activeSeconds - d.wallClockSeconds) / 60),
+      })),
     [daily],
   )
 

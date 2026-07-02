@@ -3,29 +3,13 @@ import { useAggregates } from '../api/queries'
 import { useUsdToGbp, formatGbp } from '../lib/currency'
 import { providerColor } from '../theme/providerColors'
 import { getProvider, PROVIDER_ORDER } from '../config/providers'
+import SearchIcon from '../design/SearchIcon'
 
 type SortField = 'model' | 'requests' | 'cost' | 'cpm'
 type SortDirection = 'asc' | 'desc'
 
 const formatProviderName = (p: string) =>
   getProvider(p)?.displayName ?? (p.charAt(0).toUpperCase() + p.slice(1))
-
-const SearchIcon = () => (
-  <svg
-    className="model-breakdown-search-icon"
-    xmlns="http://www.w3.org/2000/svg"
-    viewBox="0 0 24 24"
-    fill="none"
-    stroke="currentColor"
-    strokeWidth="2.5"
-    strokeLinecap="round"
-    strokeLinejoin="round"
-    aria-hidden="true"
-  >
-    <circle cx="11" cy="11" r="8" />
-    <path d="m21 21-4.3-4.3" />
-  </svg>
-)
 
 interface SortableHeaderProps {
   field: SortField
@@ -161,19 +145,19 @@ export default function ModelBreakdown() {
 
   return (
     <>
-      <div className="model-breakdown-controls">
-        <div className="model-breakdown-search-container">
+      <div className="breakdown-controls">
+        <div className="breakdown-search-container">
           <SearchIcon />
           <input
             type="text"
             placeholder="Search models..."
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
-            className="model-breakdown-search"
+            className="breakdown-search"
             aria-label="Search models"
           />
         </div>
-        <div className="model-breakdown-filters">
+        <div className="breakdown-filters">
           <button
             type="button"
             onClick={() => setSelectedProvider('all')}

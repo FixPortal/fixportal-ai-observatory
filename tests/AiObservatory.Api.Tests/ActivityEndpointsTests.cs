@@ -88,6 +88,70 @@ public class ActivityEndpointsTests
         lastSeenAt.Should().Be(Instant.FromUtc(2026, 7, 1, 9, 6));
     }
 
+    [Fact]
+    public void MergeIntervalSeconds_WhenEmpty_ReturnsZero()
+    {
+        ActivityEndpoints.MergeIntervalSeconds([]).Should().Be(0);
+    }
+
+    [Fact]
+    public void MergeIntervalSeconds_WhenSingleSpan_ReturnsItsDuration()
+    {
+        var span = (Instant.FromUtc(2026, 7, 1, 9, 0), Instant.FromUtc(2026, 7, 1, 10, 0));
+        ActivityEndpoints.MergeIntervalSeconds([span]).Should().Be(3600);
+    }
+
+    [Fact]
+    public void MergeIntervalSeconds_WhenSpansDisjoint_SumsBoth()
+    {
+        var a = (Instant.FromUtc(2026, 7, 1, 9, 0), Instant.FromUtc(2026, 7, 1, 10, 0));
+        var b = (Instant.FromUtc(2026, 7, 1, 11, 0), Instant.FromUtc(2026, 7, 1, 12, 0));
+        ActivityEndpoints.MergeIntervalSeconds([a, b]).Should().Be(7200);
+    }
+
+    [Fact]
+    public void MergeIntervalSeconds_WhenSpansOverlap_CountsUnionNotSum()
+    {
+        // Two parallel sessions covering the same hour must not double-count —
+        // this is the fix for the >24h/day bar chart bug.
+        var a = (Instant.FromUtc(2026, 7, 1, 9, 0), Instant.FromUtc(2026, 7, 1, 11, 0));
+        var b = (Instant.FromUtc(2026, 7, 1, 10, 0), Instant.FromUtc(2026, 7, 1, 12, 0));
+        ActivityEndpoints.MergeIntervalSeconds([a, b]).Should().Be(3 * 3600);
+    }
+
+    [Fact]
+    public void MergeIntervalSeconds_WhenOneSpanFullyContainsAnother_CountsOuterOnly()
+    {
+        var outer = (Instant.FromUtc(2026, 7, 1, 9, 0), Instant.FromUtc(2026, 7, 1, 12, 0));
+        var inner = (Instant.FromUtc(2026, 7, 1, 10, 0), Instant.FromUtc(2026, 7, 1, 11, 0));
+        ActivityEndpoints.MergeIntervalSeconds([outer, inner]).Should().Be(3 * 3600);
+    }
+
+    [Fact]
+    public void MergeIntervalSeconds_WhenSpansTouchExactly_MergesAdjacent()
+    {
+        var a = (Instant.FromUtc(2026, 7, 1, 9, 0), Instant.FromUtc(2026, 7, 1, 10, 0));
+        var b = (Instant.FromUtc(2026, 7, 1, 10, 0), Instant.FromUtc(2026, 7, 1, 11, 0));
+        ActivityEndpoints.MergeIntervalSeconds([a, b]).Should().Be(2 * 3600);
+    }
+
+    [Fact]
+    public void MergeIntervalSeconds_WhenUnordered_StillMergesCorrectly()
+    {
+        var late = (Instant.FromUtc(2026, 7, 1, 11, 0), Instant.FromUtc(2026, 7, 1, 12, 0));
+        var early = (Instant.FromUtc(2026, 7, 1, 9, 0), Instant.FromUtc(2026, 7, 1, 10, 0));
+        ActivityEndpoints.MergeIntervalSeconds([late, early]).Should().Be(7200);
+    }
+
+    [Fact]
+    public void MergeIntervalSeconds_WhenSpanIsZeroLengthOrInverted_IsIgnored()
+    {
+        var valid = (Instant.FromUtc(2026, 7, 1, 9, 0), Instant.FromUtc(2026, 7, 1, 10, 0));
+        var zeroLength = (Instant.FromUtc(2026, 7, 1, 12, 0), Instant.FromUtc(2026, 7, 1, 12, 0));
+        var inverted = (Instant.FromUtc(2026, 7, 1, 14, 0), Instant.FromUtc(2026, 7, 1, 13, 0));
+        ActivityEndpoints.MergeIntervalSeconds([valid, zeroLength, inverted]).Should().Be(3600);
+    }
+
     private static readonly LocalDate Today = new(2026, 7, 1);
 
     [Fact]
