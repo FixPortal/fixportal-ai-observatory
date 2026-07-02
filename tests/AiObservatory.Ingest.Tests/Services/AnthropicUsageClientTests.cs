@@ -1,6 +1,7 @@
 using System.Net;
 using AiObservatory.Ingest.Services.Anthropic;
 using AwesomeAssertions;
+using Microsoft.Extensions.Logging.Abstractions;
 using NodaTime;
 
 namespace AiObservatory.Ingest.Tests.Services;
@@ -22,13 +23,17 @@ public class AnthropicUsageClientTests
             {
               "data": [
                 {
-                  "bucket_start_time": "{{bucketDate:yyyy-MM-dd}}T00:00:00Z",
-                  "model": "{{model}}",
-                  "input_tokens": 1000000,
-                  "output_tokens": 1000000,
-                  "cache_read_input_tokens": 0,
-                  "cached_input_tokens": 0,
-                  "cache_creation_input_tokens": 0
+                  "starting_at": "{{bucketDate:yyyy-MM-dd}}T00:00:00Z",
+                  "ending_at": "{{bucketDate.PlusDays(1):yyyy-MM-dd}}T00:00:00Z",
+                  "results": [
+                    {
+                      "model": "{{model}}",
+                      "input_tokens": 1000000,
+                      "output_tokens": 1000000,
+                      "cache_read_input_tokens": 0,
+                      "cache_creation_input_tokens": 0
+                    }
+                  ]
                 }
               ],
               "has_more": false,
@@ -36,7 +41,7 @@ public class AnthropicUsageClientTests
             }
             """;
         var http = new HttpClient(new StubHandler(json)) { BaseAddress = new Uri("https://api.anthropic.com") };
-        return new AnthropicUsageClient(http);
+        return new AnthropicUsageClient(http, NullLogger<AnthropicUsageClient>.Instance);
     }
 
     [Fact]
