@@ -16,6 +16,7 @@ public static class ServiceCollectionExtensions
                 npgsql.UseNodaTime()));
         services.AddScoped<IUsageRepository, UsageRepository>();
         services.AddScoped<IAdversarialReviewRepository, AdversarialReviewRepository>();
+        services.AddScoped<IGitHubActivityRepository, GitHubActivityRepository>();
         return services;
     }
 }
