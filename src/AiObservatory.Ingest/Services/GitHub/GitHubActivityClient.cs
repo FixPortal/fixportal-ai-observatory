@@ -72,9 +72,13 @@ public class GitHubActivityClient(HttpClient http, ILogger<GitHubActivityClient>
         var reviews = await response.Content.ReadFromJsonAsync<List<ReviewDto>>(JsonOptions, ct) ?? [];
         if (reviews.Count == 0) return (0, null);
 
-        var first = reviews
-            .Select(r => InstantPattern.ExtendedIso.Parse(r.SubmittedAt).Value)
-            .Min();
+        // Pending reviews (not yet submitted) omit submitted_at entirely — only submitted
+        // reviews count toward FirstReviewAt, but ReviewCount still reflects every review.
+        var submittedAts = reviews
+            .Where(r => r.SubmittedAt is not null)
+            .Select(r => InstantPattern.ExtendedIso.Parse(r.SubmittedAt!).Value)
+            .ToList();
+        Instant? first = submittedAts.Count > 0 ? submittedAts.Min() : null;
         return (reviews.Count, first);
     }
 
@@ -91,7 +95,9 @@ public class GitHubActivityClient(HttpClient http, ILogger<GitHubActivityClient>
 
     public async Task<IReadOnlyList<GitHubCommitRecord>> GetCommitsAsync(string repo, LocalDate since, CancellationToken ct = default)
     {
-        var sinceStr = LocalDatePattern.Iso.Format(since);
+        // GitHub's `since` param on this endpoint requires a full timestamp, not a bare date —
+        // a bare date is silently ignored by the API and would return the repo's entire history.
+        var sinceStr = InstantPattern.ExtendedIso.Format(since.AtStartOfDayInZone(DateTimeZone.Utc).ToInstant());
         var results = new List<GitHubCommitRecord>();
         var page = 1;
         while (true)
@@ -156,7 +162,7 @@ public class GitHubActivityClient(HttpClient http, ILogger<GitHubActivityClient>
         int Number, string Title, PullRequestUserDto User, string State,
         string CreatedAt, string? MergedAt, string? ClosedAt);
     private sealed record PullRequestUserDto(string Login);
-    private sealed record ReviewDto(string SubmittedAt);
+    private sealed record ReviewDto(string? SubmittedAt);
     private sealed record CommitListDto(string Sha, CommitInnerDto Commit);
     private sealed record CommitInnerDto(CommitAuthorDto Author);
     private sealed record CommitAuthorDto(string Name, string Date);

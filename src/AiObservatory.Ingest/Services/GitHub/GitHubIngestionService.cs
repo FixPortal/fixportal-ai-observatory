@@ -12,7 +12,8 @@ public class GitHubIngestionService(
     IGitHubActivityClient client,
     IGitHubActivityRepository repository,
     IOptions<IngestOptions> options,
-    ILogger<GitHubIngestionService> logger)
+    ILogger<GitHubIngestionService> logger,
+    IClock clock)
 {
     private const int BackfillDays = 30;
 
@@ -22,7 +23,7 @@ public class GitHubIngestionService(
     // healthy ones must not trip that, but every configured repo failing should.
     public async Task<int> IngestSinceAsync(LocalDate date, CancellationToken ct = default)
     {
-        var now = SystemClock.Instance.GetCurrentInstant();
+        var now = clock.GetCurrentInstant();
         var failedRepoCount = 0;
         foreach (var repo in options.Value.GitHubRepoAllowlist)
         {
@@ -47,7 +48,7 @@ public class GitHubIngestionService(
             catch (GitHubRateLimitExceededException)
             {
                 logger.LogWarning("GitHub: aborting remaining repos this poll cycle due to rate limit");
-                return 0;
+                return failedRepoCount;
             }
             catch (OperationCanceledException)
             {

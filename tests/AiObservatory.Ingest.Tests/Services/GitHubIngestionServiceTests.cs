@@ -24,7 +24,7 @@ public class GitHubIngestionServiceTests
         client.GetCommitsAsync("fix-portal/example", Arg.Any<LocalDate>(), Arg.Any<CancellationToken>()).Returns([]);
         client.GetWorkflowRunsAsync("fix-portal/example", Arg.Any<LocalDate>(), Arg.Any<CancellationToken>()).Returns([]);
 
-        var sut = new GitHubIngestionService(client, repo, Options("fix-portal/example"), NullLogger<GitHubIngestionService>.Instance);
+        var sut = new GitHubIngestionService(client, repo, Options("fix-portal/example"), NullLogger<GitHubIngestionService>.Instance, SystemClock.Instance);
 
         var pollDate = new LocalDate(2026, 7, 1);
         await sut.IngestSinceAsync(pollDate, TestContext.Current.CancellationToken);
@@ -42,7 +42,7 @@ public class GitHubIngestionServiceTests
         client.GetCommitsAsync("fix-portal/example", Arg.Any<LocalDate>(), Arg.Any<CancellationToken>()).Returns([]);
         client.GetWorkflowRunsAsync("fix-portal/example", Arg.Any<LocalDate>(), Arg.Any<CancellationToken>()).Returns([]);
 
-        var sut = new GitHubIngestionService(client, repo, Options("fix-portal/example"), NullLogger<GitHubIngestionService>.Instance);
+        var sut = new GitHubIngestionService(client, repo, Options("fix-portal/example"), NullLogger<GitHubIngestionService>.Instance, SystemClock.Instance);
 
         var pollDate = new LocalDate(2026, 7, 1);
         await sut.IngestSinceAsync(pollDate, TestContext.Current.CancellationToken);
@@ -61,7 +61,7 @@ public class GitHubIngestionServiceTests
         client.GetCommitsAsync(Arg.Any<string>(), Arg.Any<LocalDate>(), Arg.Any<CancellationToken>()).Returns([]);
         client.GetWorkflowRunsAsync(Arg.Any<string>(), Arg.Any<LocalDate>(), Arg.Any<CancellationToken>()).Returns([]);
 
-        var sut = new GitHubIngestionService(client, repo, Options("fix-portal/example"), NullLogger<GitHubIngestionService>.Instance);
+        var sut = new GitHubIngestionService(client, repo, Options("fix-portal/example"), NullLogger<GitHubIngestionService>.Instance, SystemClock.Instance);
         await sut.IngestSinceAsync(new LocalDate(2026, 7, 1), TestContext.Current.CancellationToken);
 
         await repo.Received(1).UpsertPullRequestAsync(pr, Arg.Any<Instant>(), Arg.Any<CancellationToken>());
@@ -79,7 +79,7 @@ public class GitHubIngestionServiceTests
         client.GetCommitsAsync(Arg.Any<string>(), Arg.Any<LocalDate>(), Arg.Any<CancellationToken>()).Returns([]);
         client.GetWorkflowRunsAsync(Arg.Any<string>(), Arg.Any<LocalDate>(), Arg.Any<CancellationToken>()).Returns([]);
 
-        var sut = new GitHubIngestionService(client, repo, Options("fix-portal/broken", "fix-portal/ok"), NullLogger<GitHubIngestionService>.Instance);
+        var sut = new GitHubIngestionService(client, repo, Options("fix-portal/broken", "fix-portal/ok"), NullLogger<GitHubIngestionService>.Instance, SystemClock.Instance);
 
         var failedCount = await sut.IngestSinceAsync(new LocalDate(2026, 7, 1), TestContext.Current.CancellationToken);
 
@@ -98,11 +98,34 @@ public class GitHubIngestionServiceTests
         client.GetCommitsAsync(Arg.Any<string>(), Arg.Any<LocalDate>(), Arg.Any<CancellationToken>()).Returns([]);
         client.GetWorkflowRunsAsync(Arg.Any<string>(), Arg.Any<LocalDate>(), Arg.Any<CancellationToken>()).Returns([]);
 
-        var sut = new GitHubIngestionService(client, repo, Options("fix-portal/first", "fix-portal/second"), NullLogger<GitHubIngestionService>.Instance);
+        var sut = new GitHubIngestionService(client, repo, Options("fix-portal/first", "fix-portal/second"), NullLogger<GitHubIngestionService>.Instance, SystemClock.Instance);
 
         var failedCount = await sut.IngestSinceAsync(new LocalDate(2026, 7, 1), TestContext.Current.CancellationToken);
 
         await client.DidNotReceive().GetPullRequestsAsync("fix-portal/second", Arg.Any<LocalDate>(), Arg.Any<CancellationToken>());
         failedCount.Should().Be(0);
+    }
+
+    [Fact]
+    public async Task IngestSinceAsync_WhenRepoAlreadyFailedThenRateLimitHit_ReturnsPriorFailureCount()
+    {
+        var client = Substitute.For<IGitHubActivityClient>();
+        var repo = Substitute.For<IGitHubActivityRepository>();
+        repo.HasAnyDataForRepoAsync(Arg.Any<string>(), Arg.Any<CancellationToken>()).Returns(true);
+        client.GetPullRequestsAsync("fix-portal/broken", Arg.Any<LocalDate>(), Arg.Any<CancellationToken>())
+            .Returns(Task.FromException<IReadOnlyList<GitHubPullRequestRecord>>(new HttpRequestException("403")));
+        client.GetPullRequestsAsync("fix-portal/rate-limited", Arg.Any<LocalDate>(), Arg.Any<CancellationToken>())
+            .Returns(Task.FromException<IReadOnlyList<GitHubPullRequestRecord>>(new GitHubRateLimitExceededException(10)));
+        client.GetCommitsAsync(Arg.Any<string>(), Arg.Any<LocalDate>(), Arg.Any<CancellationToken>()).Returns([]);
+        client.GetWorkflowRunsAsync(Arg.Any<string>(), Arg.Any<LocalDate>(), Arg.Any<CancellationToken>()).Returns([]);
+
+        var sut = new GitHubIngestionService(
+            client, repo, Options("fix-portal/broken", "fix-portal/rate-limited", "fix-portal/never-reached"),
+            NullLogger<GitHubIngestionService>.Instance, SystemClock.Instance);
+
+        var failedCount = await sut.IngestSinceAsync(new LocalDate(2026, 7, 1), TestContext.Current.CancellationToken);
+
+        await client.DidNotReceive().GetPullRequestsAsync("fix-portal/never-reached", Arg.Any<LocalDate>(), Arg.Any<CancellationToken>());
+        failedCount.Should().Be(1);
     }
 }
