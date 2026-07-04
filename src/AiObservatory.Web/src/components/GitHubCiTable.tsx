@@ -41,7 +41,7 @@ export default function GitHubCiTable({ ci }: { ci: GitHubCiSummary[] }) {
             <td>{c.totalRuns}</td>
             <td>{c.failedRuns}</td>
             <td style={{ color: c.successRate < SUCCESS_RATE_WARN_THRESHOLD ? 'var(--danger, #d33)' : undefined }}>
-              {c.successRate.toFixed(0)}%
+              {c.successRate < SUCCESS_RATE_WARN_THRESHOLD ? '⚠ ' : ''}{c.successRate.toFixed(0)}%
             </td>
           </tr>
         ))}
