@@ -29,6 +29,15 @@ describe('GitHubPrTable', () => {
 
   it('renders em dash for a PR with no turnaround yet', () => {
     render(<GitHubPrTable prs={prs} />)
-    expect(screen.getByText('—')).toBeInTheDocument()
+    const row = screen.getByText(/Add feature/).closest('tr')!
+    expect(row).toHaveTextContent('—')
+  })
+
+  it('renders the merged date for a merged PR and an em dash for one still open', () => {
+    render(<GitHubPrTable prs={prs} />)
+    const mergedRow = screen.getByText(/Fix bug/).closest('tr')!
+    const openRow = screen.getByText(/Add feature/).closest('tr')!
+    expect(mergedRow).toHaveTextContent(new Date(prs[1].mergedAt!).toLocaleDateString())
+    expect(openRow).toHaveTextContent('—')
   })
 })
