@@ -97,21 +97,28 @@ public class GitHubActivityRepositoryTests : IAsyncLifetime
     }
 
     [Fact]
-    public async Task HasAnyDataForRepoAsync_WhenNoRowsForRepo_ReturnsFalse()
+    public async Task GetBackfillStatusAsync_WhenNoRowsForRepo_AllFalse()
     {
-        var result = await _repo.HasAnyDataForRepoAsync("fix-portal/never-seen", TestContext.Current.CancellationToken);
-        result.Should().BeFalse();
+        var result = await _repo.GetBackfillStatusAsync("fix-portal/never-seen", TestContext.Current.CancellationToken);
+        result.HasPullRequests.Should().BeFalse();
+        result.HasCommits.Should().BeFalse();
+        result.HasWorkflowRuns.Should().BeFalse();
     }
 
     [Fact]
-    public async Task HasAnyDataForRepoAsync_WhenARowExists_ReturnsTrue()
+    public async Task GetBackfillStatusAsync_WhenOnlyCommitsExist_OnlyCommitsTrue()
     {
+        // Regression case: a crash/rate-limit abort after PRs ingested but before
+        // commits/runs must not permanently skip THEIR backfill — each table's
+        // status is independent, not OR'd into one repo-wide bool.
         var ct = TestContext.Current.CancellationToken;
         await _repo.UpsertCommitAsync(
             new GitHubCommitRecord("fix-portal/example", "abc123", "chris", Instant.FromUtc(2026, 7, 1, 9, 0), 1, 0),
             Instant.FromUtc(2026, 7, 1, 9, 0), ct);
 
-        var result = await _repo.HasAnyDataForRepoAsync("fix-portal/example", ct);
-        result.Should().BeTrue();
+        var result = await _repo.GetBackfillStatusAsync("fix-portal/example", ct);
+        result.HasPullRequests.Should().BeFalse();
+        result.HasCommits.Should().BeTrue();
+        result.HasWorkflowRuns.Should().BeFalse();
     }
 }
