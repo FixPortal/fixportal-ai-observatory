@@ -5,9 +5,11 @@ import {
   getAdversarialReviewRuns, getAdversarialReviewStats, getCavemanStats,
   getBudgetRules, getEmailStatus,
   getActivityDaily, getActivityByProject,
+  getGitHubPrs, getGitHubCommitSummary, getGitHubCi,
   type DailyAggregate, type Insight, type Subscription,
   type AdversarialReviewRun, type AdversarialReviewStats, type CavemanStats,
   type BudgetRule, type DailyActivity, type ProjectActivity,
+  type GitHubPr, type GitHubCommitSummary, type GitHubCiSummary,
 } from './client'
 
 // Shared query hooks. Components subscribe directly (react-query deduplicates by
@@ -66,6 +68,33 @@ export function useActivityByProject(from?: Date, to?: Date): { projects: Projec
       : () => getActivityByProject(),
   })
   return { projects: data, isError, isLoading: isPending }
+}
+
+export function useGitHubPrs(from?: Date, to?: Date): { prs: GitHubPr[]; isError: boolean; isLoading: boolean } {
+  const hasRange = from != null && to != null
+  const { data = [], isError, isPending } = useQuery({
+    queryKey: hasRange ? ['github-prs', localDate(from!), localDate(to!)] : ['github-prs'],
+    queryFn: hasRange ? () => getGitHubPrs(localDate(from!), localDate(to!)) : () => getGitHubPrs(),
+  })
+  return { prs: data, isError, isLoading: isPending }
+}
+
+export function useGitHubCommitSummary(from?: Date, to?: Date): { summary: GitHubCommitSummary[]; isError: boolean; isLoading: boolean } {
+  const hasRange = from != null && to != null
+  const { data = [], isError, isPending } = useQuery({
+    queryKey: hasRange ? ['github-commits-summary', localDate(from!), localDate(to!)] : ['github-commits-summary'],
+    queryFn: hasRange ? () => getGitHubCommitSummary(localDate(from!), localDate(to!)) : () => getGitHubCommitSummary(),
+  })
+  return { summary: data, isError, isLoading: isPending }
+}
+
+export function useGitHubCi(from?: Date, to?: Date): { ci: GitHubCiSummary[]; isError: boolean; isLoading: boolean } {
+  const hasRange = from != null && to != null
+  const { data = [], isError, isPending } = useQuery({
+    queryKey: hasRange ? ['github-ci', localDate(from!), localDate(to!)] : ['github-ci'],
+    queryFn: hasRange ? () => getGitHubCi(localDate(from!), localDate(to!)) : () => getGitHubCi(),
+  })
+  return { ci: data, isError, isLoading: isPending }
 }
 
 export function useInsights(): Insight[] {
