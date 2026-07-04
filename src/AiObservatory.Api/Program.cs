@@ -298,6 +298,7 @@ if (app.Environment.IsDevelopment())
 api.MapEventsEndpoints();
 api.MapCavemanEndpoints();
 api.MapActivityEndpoints();
+api.MapGitHubActivityEndpoints();
 api.MapAdversarialReviewEndpoints();
 api.MapAggregatesEndpoints();
 api.MapInsightsEndpoints();
