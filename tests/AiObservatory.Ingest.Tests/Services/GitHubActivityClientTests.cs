@@ -163,4 +163,33 @@ public class GitHubActivityClientTests
 
         handler.RequestedUrls.Should().Contain(u => u.Contains("since=2026-07-01"));
     }
+
+    [Fact]
+    public async Task GetWorkflowRunsAsync_UsesConclusionWhenCompleted()
+    {
+        var handler = new StubHandler(_ => JsonResponse("""
+            {"workflow_runs":[{"id":123,"name":"CI","status":"completed","conclusion":"success","created_at":"2026-07-01T09:00:00Z"}]}
+            """));
+        var sut = CreateSut(handler);
+
+        var result = await sut.GetWorkflowRunsAsync("fix-portal/example", new LocalDate(2026, 7, 1), TestContext.Current.CancellationToken);
+
+        var run = result.Single();
+        run.RunId.Should().Be(123);
+        run.WorkflowName.Should().Be("CI");
+        run.Status.Should().Be("success");
+    }
+
+    [Fact]
+    public async Task GetWorkflowRunsAsync_UsesStatusWhenNotYetCompleted()
+    {
+        var handler = new StubHandler(_ => JsonResponse("""
+            {"workflow_runs":[{"id":124,"name":"CI","status":"in_progress","conclusion":null,"created_at":"2026-07-01T09:00:00Z"}]}
+            """));
+        var sut = CreateSut(handler);
+
+        var result = await sut.GetWorkflowRunsAsync("fix-portal/example", new LocalDate(2026, 7, 1), TestContext.Current.CancellationToken);
+
+        result.Single().Status.Should().Be("in_progress");
+    }
 }
