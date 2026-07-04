@@ -45,10 +45,15 @@ public class GitHubActivityClient(HttpClient http, ILogger<GitHubActivityClient>
                 }
 
                 var (reviewCount, firstReviewAt) = await GetReviewSummaryAsync(repo, pr.Number, ct);
+                Instant? mergedAt = pr.MergedAt is null ? null : InstantPattern.ExtendedIso.Parse(pr.MergedAt).Value;
+                // GitHub's REST API only ever returns "open"/"closed" for `state` — mergedness
+                // is signaled separately via `merged_at`. Derive the 3-way state promised by
+                // the entity/frontend rather than passing the raw 2-way API value through.
+                var state = mergedAt is not null ? "merged" : pr.State;
                 results.Add(new GitHubPullRequestRecord(
-                    repo, pr.Number, pr.Title, pr.User.Login, pr.State,
+                    repo, pr.Number, pr.Title, pr.User.Login, state,
                     createdAt,
-                    pr.MergedAt is null ? null : InstantPattern.ExtendedIso.Parse(pr.MergedAt).Value,
+                    mergedAt,
                     pr.ClosedAt is null ? null : InstantPattern.ExtendedIso.Parse(pr.ClosedAt).Value,
                     firstReviewAt, reviewCount));
             }

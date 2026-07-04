@@ -103,6 +103,42 @@ public class GitHubActivityClientTests
     }
 
     [Fact]
+    public async Task GetPullRequestsAsync_WhenPrWasMerged_ReturnsStateMerged()
+    {
+        var handler = new StubHandler(req =>
+        {
+            if (req.RequestUri!.ToString().Contains("/reviews")) return JsonResponse("[]");
+            return JsonResponse("""
+                [{"number":42,"title":"Add feature","user":{"login":"chris"},"state":"closed",
+                  "created_at":"2026-07-01T09:00:00Z","merged_at":"2026-07-01T10:00:00Z","closed_at":"2026-07-01T10:00:00Z"}]
+                """);
+        });
+        var sut = CreateSut(handler);
+
+        var result = await sut.GetPullRequestsAsync("fix-portal/example", new LocalDate(2026, 7, 1), TestContext.Current.CancellationToken);
+
+        result.Single().State.Should().Be("merged");
+    }
+
+    [Fact]
+    public async Task GetPullRequestsAsync_WhenPrClosedWithoutMerge_ReturnsStateClosed()
+    {
+        var handler = new StubHandler(req =>
+        {
+            if (req.RequestUri!.ToString().Contains("/reviews")) return JsonResponse("[]");
+            return JsonResponse("""
+                [{"number":43,"title":"Abandoned","user":{"login":"chris"},"state":"closed",
+                  "created_at":"2026-07-01T09:00:00Z","merged_at":null,"closed_at":"2026-07-01T10:00:00Z"}]
+                """);
+        });
+        var sut = CreateSut(handler);
+
+        var result = await sut.GetPullRequestsAsync("fix-portal/example", new LocalDate(2026, 7, 1), TestContext.Current.CancellationToken);
+
+        result.Single().State.Should().Be("closed");
+    }
+
+    [Fact]
     public async Task GetPullRequestsAsync_WhenRateLimitNearZero_ThrowsRateLimitException()
     {
         var handler = new StubHandler(_ => JsonResponse("[]", rateLimitRemaining: 10));
