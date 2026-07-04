@@ -7,6 +7,7 @@ import AdversarialReviewPanel from '../components/AdversarialReviewPanel'
 import CavemanStatsPanel from '../components/CavemanStatsPanel'
 import ReportingPage from './ReportingPage'
 import ActivityPage from './ActivityPage'
+import GitHubPage from './GitHubPage'
 import Footer from '../components/Footer'
 import { BrandWordmark } from '../design/BrandWordmark'
 import { ThemeToggle } from '../design/ThemeToggle'
@@ -15,13 +16,14 @@ import { ApiError } from '../api/client'
 import { authEnabled, isReadonly, signIn } from '../auth/msal'
 import { useTheme } from '../theme/useTheme'
 
-type DashboardTab = 'overview' | 'adversarial-review' | 'reporting' | 'activity'
+type DashboardTab = 'overview' | 'adversarial-review' | 'reporting' | 'activity' | 'github'
 
 const TABS: { id: DashboardTab; label: string; readonlyHidden?: boolean }[] = [
   { id: 'overview', label: 'Overview' },
   { id: 'adversarial-review', label: 'Adversarial Review' },
   { id: 'reporting', label: 'Reporting' },
   { id: 'activity', label: 'Activity', readonlyHidden: true },
+  { id: 'github', label: 'GitHub', readonlyHidden: true },
 ]
 
 // recharts is heavy and the charts sit below the fold — code-split them so the
@@ -141,6 +143,7 @@ export default function Dashboard() {
         {tab === 'adversarial-review' && <AdversarialReviewPanel />}
         {tab === 'reporting' && <ReportingPage />}
         {tab === 'activity' && <ActivityPage />}
+        {tab === 'github' && <GitHubPage />}
       </main>
       <Footer />
     </div>
