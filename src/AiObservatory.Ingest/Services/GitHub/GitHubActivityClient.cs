@@ -25,11 +25,14 @@ public class GitHubActivityClient(HttpClient http, ILogger<GitHubActivityClient>
         var page = 1;
         while (true)
         {
-            // Default sort for this endpoint is created/desc (newest first) — once a page
-            // yields a PR older than `since`, every PR on every later page is older too, so
-            // the outer loop can stop instead of paging through a repo's entire PR history
-            // on every 3-day poll.
-            var response = await http.GetAsync($"/repos/{repo}/pulls?state=all&per_page={PerPage}&page={page}", ct);
+            // Sorted by updated/desc (not created/desc) so a PR opened long ago that gets
+            // merged/reviewed/commented on THIS week still surfaces near the top — otherwise
+            // its stale State/MergedAt/ReviewCount would never be re-fetched once it fell past
+            // the early-break point on created_at. Once a page yields a PR whose updated_at
+            // predates `since`, every PR on every later page is even less recently updated, so
+            // the outer loop can stop instead of paging through a repo's entire PR history on
+            // every 3-day poll.
+            var response = await http.GetAsync($"/repos/{repo}/pulls?state=all&sort=updated&direction=desc&per_page={PerPage}&page={page}", ct);
             CheckRateLimit(response);
             response.EnsureSuccessStatusCode();
             var prs = await response.Content.ReadFromJsonAsync<List<PullRequestDto>>(JsonOptions, ct) ?? [];
@@ -37,12 +40,14 @@ public class GitHubActivityClient(HttpClient http, ILogger<GitHubActivityClient>
             var reachedOlderThanSince = false;
             foreach (var pr in prs)
             {
-                var createdAt = InstantPattern.ExtendedIso.Parse(pr.CreatedAt).Value;
-                if (createdAt.InUtc().Date < since)
+                var updatedAt = InstantPattern.ExtendedIso.Parse(pr.UpdatedAt).Value;
+                if (updatedAt.InUtc().Date < since)
                 {
                     reachedOlderThanSince = true;
                     break;
                 }
+
+                var createdAt = InstantPattern.ExtendedIso.Parse(pr.CreatedAt).Value;
 
                 var (reviewCount, firstReviewAt) = await GetReviewSummaryAsync(repo, pr.Number, ct);
                 Instant? mergedAt = pr.MergedAt is null ? null : InstantPattern.ExtendedIso.Parse(pr.MergedAt).Value;
@@ -160,7 +165,7 @@ public class GitHubActivityClient(HttpClient http, ILogger<GitHubActivityClient>
 
     private sealed record PullRequestDto(
         int Number, string Title, PullRequestUserDto User, string State,
-        string CreatedAt, string? MergedAt, string? ClosedAt);
+        string CreatedAt, string UpdatedAt, string? MergedAt, string? ClosedAt);
     private sealed record PullRequestUserDto(string Login);
     private sealed record ReviewDto(string? SubmittedAt);
     private sealed record CommitListDto(string Sha, CommitInnerDto Commit);

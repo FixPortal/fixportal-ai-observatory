@@ -44,7 +44,7 @@ public class GitHubActivityClientTests
             }
             return JsonResponse("""
                 [{"number":42,"title":"Add feature","user":{"login":"chris"},"state":"open",
-                  "created_at":"2026-07-01T09:00:00Z","merged_at":null,"closed_at":null}]
+                  "created_at":"2026-07-01T09:00:00Z","updated_at":"2026-07-01T09:00:00Z","merged_at":null,"closed_at":null}]
                 """);
         });
         var sut = CreateSut(handler);
@@ -67,7 +67,7 @@ public class GitHubActivityClientTests
             if (req.RequestUri!.ToString().Contains("/reviews")) return JsonResponse("[]");
             return JsonResponse("""
                 [{"number":1,"title":"WIP","user":{"login":"chris"},"state":"open",
-                  "created_at":"2026-07-01T09:00:00Z","merged_at":null,"closed_at":null}]
+                  "created_at":"2026-07-01T09:00:00Z","updated_at":"2026-07-01T09:00:00Z","merged_at":null,"closed_at":null}]
                 """);
         });
         var sut = CreateSut(handler);
@@ -90,7 +90,7 @@ public class GitHubActivityClientTests
             }
             return JsonResponse("""
                 [{"number":42,"title":"Add feature","user":{"login":"chris"},"state":"open",
-                  "created_at":"2026-07-01T09:00:00Z","merged_at":null,"closed_at":null}]
+                  "created_at":"2026-07-01T09:00:00Z","updated_at":"2026-07-01T09:00:00Z","merged_at":null,"closed_at":null}]
                 """);
         });
         var sut = CreateSut(handler);
@@ -113,10 +113,10 @@ public class GitHubActivityClientTests
             // Page 1: a full 100-row page (forces a second page request); page 2: short page, stop.
             if (req.RequestUri!.ToString().Contains("page=2"))
             {
-                return JsonResponse("""[{"number":2,"title":"b","user":{"login":"chris"},"state":"open","created_at":"2026-07-01T09:00:00Z","merged_at":null,"closed_at":null}]""");
+                return JsonResponse("""[{"number":2,"title":"b","user":{"login":"chris"},"state":"open","created_at":"2026-07-01T09:00:00Z","updated_at":"2026-07-01T09:00:00Z","merged_at":null,"closed_at":null}]""");
             }
             var page = string.Join(",", Enumerable.Range(1, 100).Select(i =>
-                $$"""{"number":{{i}},"title":"t","user":{"login":"chris"},"state":"open","created_at":"2026-07-01T09:00:00Z","merged_at":null,"closed_at":null}"""));
+                $$"""{"number":{{i}},"title":"t","user":{"login":"chris"},"state":"open","created_at":"2026-07-01T09:00:00Z","updated_at":"2026-07-01T09:00:00Z","merged_at":null,"closed_at":null}"""));
             return JsonResponse($"[{page}]");
         });
         var sut = CreateSut(handler);
@@ -127,6 +127,34 @@ public class GitHubActivityClientTests
     }
 
     [Fact]
+    public async Task GetPullRequestsAsync_WhenOldPrWasRecentlyUpdated_IsStillIncludedAndDoesNotEarlyBreak()
+    {
+        // Sorted by updated/desc: an old PR (created months ago) that was updated within
+        // `since` must still be captured, and pagination must key off updated_at — not
+        // created_at — so a stale-but-recently-updated PR further down the page doesn't
+        // trigger an early break before the next (older-updated) page is even requested.
+        var handler = new StubHandler(req =>
+        {
+            if (req.RequestUri!.ToString().Contains("/reviews")) return JsonResponse("[]");
+            if (req.RequestUri!.ToString().Contains("page=2"))
+            {
+                return JsonResponse("""[]""");
+            }
+            return JsonResponse("""
+                [{"number":99,"title":"Old PR, recently merged","user":{"login":"chris"},"state":"closed",
+                  "created_at":"2026-05-01T09:00:00Z","updated_at":"2026-07-01T10:00:00Z","merged_at":"2026-07-01T10:00:00Z","closed_at":"2026-07-01T10:00:00Z"}]
+                """);
+        });
+        var sut = CreateSut(handler);
+
+        var result = await sut.GetPullRequestsAsync("fix-portal/example", new LocalDate(2026, 7, 1), TestContext.Current.CancellationToken);
+
+        var pr = result.Single();
+        pr.Number.Should().Be(99);
+        pr.State.Should().Be("merged");
+    }
+
+    [Fact]
     public async Task GetPullRequestsAsync_WhenPrWasMerged_ReturnsStateMerged()
     {
         var handler = new StubHandler(req =>
@@ -134,7 +162,7 @@ public class GitHubActivityClientTests
             if (req.RequestUri!.ToString().Contains("/reviews")) return JsonResponse("[]");
             return JsonResponse("""
                 [{"number":42,"title":"Add feature","user":{"login":"chris"},"state":"closed",
-                  "created_at":"2026-07-01T09:00:00Z","merged_at":"2026-07-01T10:00:00Z","closed_at":"2026-07-01T10:00:00Z"}]
+                  "created_at":"2026-07-01T09:00:00Z","updated_at":"2026-07-01T10:00:00Z","merged_at":"2026-07-01T10:00:00Z","closed_at":"2026-07-01T10:00:00Z"}]
                 """);
         });
         var sut = CreateSut(handler);
@@ -152,7 +180,7 @@ public class GitHubActivityClientTests
             if (req.RequestUri!.ToString().Contains("/reviews")) return JsonResponse("[]");
             return JsonResponse("""
                 [{"number":43,"title":"Abandoned","user":{"login":"chris"},"state":"closed",
-                  "created_at":"2026-07-01T09:00:00Z","merged_at":null,"closed_at":"2026-07-01T10:00:00Z"}]
+                  "created_at":"2026-07-01T09:00:00Z","updated_at":"2026-07-01T10:00:00Z","merged_at":null,"closed_at":"2026-07-01T10:00:00Z"}]
                 """);
         });
         var sut = CreateSut(handler);
