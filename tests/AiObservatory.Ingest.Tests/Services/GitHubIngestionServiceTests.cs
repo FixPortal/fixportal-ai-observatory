@@ -1,5 +1,6 @@
 using AiObservatory.Data.Repositories;
 using AiObservatory.Ingest.Services.GitHub;
+using AwesomeAssertions;
 using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Options;
 using NodaTime;
@@ -80,9 +81,10 @@ public class GitHubIngestionServiceTests
 
         var sut = new GitHubIngestionService(client, repo, Options("fix-portal/broken", "fix-portal/ok"), NullLogger<GitHubIngestionService>.Instance);
 
-        await sut.IngestSinceAsync(new LocalDate(2026, 7, 1), TestContext.Current.CancellationToken);
+        var failedCount = await sut.IngestSinceAsync(new LocalDate(2026, 7, 1), TestContext.Current.CancellationToken);
 
         await client.Received(1).GetPullRequestsAsync("fix-portal/ok", Arg.Any<LocalDate>(), Arg.Any<CancellationToken>());
+        failedCount.Should().Be(1);
     }
 
     [Fact]
@@ -98,8 +100,9 @@ public class GitHubIngestionServiceTests
 
         var sut = new GitHubIngestionService(client, repo, Options("fix-portal/first", "fix-portal/second"), NullLogger<GitHubIngestionService>.Instance);
 
-        await sut.IngestSinceAsync(new LocalDate(2026, 7, 1), TestContext.Current.CancellationToken);
+        var failedCount = await sut.IngestSinceAsync(new LocalDate(2026, 7, 1), TestContext.Current.CancellationToken);
 
         await client.DidNotReceive().GetPullRequestsAsync("fix-portal/second", Arg.Any<LocalDate>(), Arg.Any<CancellationToken>());
+        failedCount.Should().Be(0);
     }
 }

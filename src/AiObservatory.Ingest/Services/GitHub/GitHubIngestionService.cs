@@ -16,9 +16,14 @@ public class GitHubIngestionService(
 {
     private const int BackfillDays = 30;
 
-    public async Task IngestSinceAsync(LocalDate date, CancellationToken ct = default)
+    // Returns the count of repos that failed with a non-rate-limit exception this cycle, so
+    // the caller (ProviderPollingWorkerService) can decide whether the whole provider should
+    // be treated as failed for its escalation alerting — a single flaky repo among several
+    // healthy ones must not trip that, but every configured repo failing should.
+    public async Task<int> IngestSinceAsync(LocalDate date, CancellationToken ct = default)
     {
         var now = SystemClock.Instance.GetCurrentInstant();
+        var failedRepoCount = 0;
         foreach (var repo in options.Value.GitHubRepoAllowlist)
         {
             try
@@ -42,7 +47,7 @@ public class GitHubIngestionService(
             catch (GitHubRateLimitExceededException)
             {
                 logger.LogWarning("GitHub: aborting remaining repos this poll cycle due to rate limit");
-                return;
+                return 0;
             }
             catch (OperationCanceledException)
             {
@@ -51,7 +56,9 @@ public class GitHubIngestionService(
             catch (Exception ex)
             {
                 logger.LogError(ex, "GitHub: failed to ingest {Repo}; skipping for this cycle", repo);
+                failedRepoCount++;
             }
         }
+        return failedRepoCount;
     }
 }

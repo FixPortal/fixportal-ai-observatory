@@ -63,7 +63,14 @@ public class ProviderPollingWorkerService(
         // single-day calls), so it's invoked once per cycle with the earliest
         // lookback date, not once per date in `dates`.
         await TryIngestAsync<GitHubIngestionService>(sp, "GitHub",
-            (s, _) => s.IngestSinceAsync(dates[0], ct), [dates[0]]);
+            async (s, _) =>
+            {
+                var failed = await s.IngestSinceAsync(dates[0], ct);
+                if (failed > 0 && failed == options.Value.GitHubRepoAllowlist.Length)
+                {
+                    throw new InvalidOperationException($"All {failed} configured GitHub repos failed to ingest this cycle");
+                }
+            }, [dates[0]]);
     }
 
     private async Task TryIngestAsync<TService>(
