@@ -102,7 +102,7 @@ var host = Host.CreateDefaultBuilder(args)
         // allowlisted. Reuses the same GITHUB_TOKEN as Copilot metrics; this PAT now also
         // needs contents:read, pull-requests:read, actions:read (in addition to
         // manage_billing:copilot if Copilot metrics are also enabled).
-        var githubRepoAllowlist = cfg.GetSection($"{IngestOptions.SectionName}:GitHubRepoAllowlist").Get<string[]>() ?? [];
+        var githubRepoAllowlist = cfg.GetSection($"{IngestOptions.SectionName}:{nameof(IngestOptions.GitHubRepoAllowlist)}").Get<string[]>() ?? [];
         if (IsConfigured(githubToken) && githubRepoAllowlist.Length > 0)
         {
             services.AddHttpClient<IGitHubActivityClient, GitHubActivityClient>(c =>

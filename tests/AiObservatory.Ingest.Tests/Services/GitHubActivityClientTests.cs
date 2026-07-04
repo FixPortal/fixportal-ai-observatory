@@ -79,6 +79,30 @@ public class GitHubActivityClientTests
     }
 
     [Fact]
+    public async Task GetPullRequestsAsync_WhenReviewIsPending_ExcludesItFromFirstReviewAtButCountsIt()
+    {
+        var handler = new StubHandler(req =>
+        {
+            if (req.RequestUri!.ToString().Contains("/reviews"))
+            {
+                // Pending reviews omit submitted_at entirely.
+                return JsonResponse("""[{"submitted_at":null},{"submitted_at":"2026-07-01T14:00:00Z"}]""");
+            }
+            return JsonResponse("""
+                [{"number":42,"title":"Add feature","user":{"login":"chris"},"state":"open",
+                  "created_at":"2026-07-01T09:00:00Z","merged_at":null,"closed_at":null}]
+                """);
+        });
+        var sut = CreateSut(handler);
+
+        var result = await sut.GetPullRequestsAsync("fix-portal/example", new LocalDate(2026, 7, 1), TestContext.Current.CancellationToken);
+
+        var pr = result.Single();
+        pr.ReviewCount.Should().Be(2);
+        pr.FirstReviewAt.Should().Be(Instant.FromUtc(2026, 7, 1, 14, 0));
+    }
+
+    [Fact]
     public async Task GetPullRequestsAsync_PaginatesUntilShortPage()
     {
         var callCount = 0;
@@ -197,7 +221,8 @@ public class GitHubActivityClientTests
 
         await sut.GetCommitsAsync("fix-portal/example", new LocalDate(2026, 7, 1), TestContext.Current.CancellationToken);
 
-        handler.RequestedUrls.Should().Contain(u => u.Contains("since=2026-07-01"));
+        // HttpClient does not URL-encode colons in the request URI passed to GetAsync.
+        handler.RequestedUrls.Should().Contain(u => u.Contains("since=2026-07-01T00:00:00Z"));
     }
 
     [Fact]

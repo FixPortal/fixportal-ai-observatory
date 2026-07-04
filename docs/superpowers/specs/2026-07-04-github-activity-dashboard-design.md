@@ -140,7 +140,11 @@ New `GitHubActivityEndpoints.cs`, mapped under `/api/github`:
   additions, deletions }[]`, grouped by repo. No individual commit rows
   exposed.
 - **`GET /api/github/ci?from=&to=`** — `{ repo, workflowName, totalRuns,
-  failedRuns, successRate }[]`, grouped by repo + workflow name.
+  failedRuns, successRate }[]`, grouped by repo + workflow name. `successRate`
+  is `successful runs / totalRuns` (runs where `Status == "success"`), not
+  `(totalRuns - failedRuns) / totalRuns` — non-terminal states such as
+  `queued`/`in_progress` and `cancelled` count toward `totalRuns` but toward
+  neither `failedRuns` nor the success count.
 
 Same `yyyy-MM-dd` range-parsing convention as `/api/aggregates` and
 `/api/activity`. All three GETs use `AdminOnlyApiKeyEndpointFilter` (the same

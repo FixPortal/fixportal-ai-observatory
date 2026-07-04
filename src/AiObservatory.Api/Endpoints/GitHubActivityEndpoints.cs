@@ -27,7 +27,7 @@ public static class GitHubActivityEndpoints
 
             var response = prs.Select(p => new GitHubPrResponse(
                 p.Repo, p.Number, p.Title, p.Author, p.State,
-                p.CreatedAt.ToString(), p.MergedAt?.ToString(),
+                p.CreatedAt, p.MergedAt,
                 p.ReviewCount, ComputeTurnaroundHours(p.CreatedAt, p.FirstReviewAt)));
 
             return Results.Ok(response);
@@ -44,17 +44,13 @@ public static class GitHubActivityEndpoints
             var startInstant = start.AtStartOfDayInZone(DateTimeZone.Utc).ToInstant();
             var endInstant = end.PlusDays(1).AtStartOfDayInZone(DateTimeZone.Utc).ToInstant();
 
-            var commits = await db.GitHubCommits
+            var byRepo = await db.GitHubCommits
                 .AsNoTracking()
                 .Where(c => c.CommittedAt >= startInstant && c.CommittedAt < endInstant)
-                .Select(c => new { c.Repo, c.Additions, c.Deletions })
-                .ToListAsync(ct);
-
-            var byRepo = commits
                 .GroupBy(c => c.Repo)
                 .Select(g => new GitHubCommitSummaryResponse(g.Key, g.Count(), g.Sum(c => c.Additions), g.Sum(c => c.Deletions)))
                 .OrderByDescending(r => r.CommitCount)
-                .ToList();
+                .ToListAsync(ct);
 
             return Results.Ok(byRepo);
         }).AddEndpointFilter<AdminOnlyApiKeyEndpointFilter>();
@@ -80,11 +76,11 @@ public static class GitHubActivityEndpoints
                 .GroupBy(r => (r.Repo, r.WorkflowName))
                 .Select(g =>
                 {
-                    var total = g.Count();
                     var failed = g.Count(r => r.Status == "failure");
+                    var succeeded = g.Count(r => r.Status == "success");
                     return new GitHubCiResponse(
-                        g.Key.Repo, g.Key.WorkflowName, total, failed,
-                        total > 0 ? Math.Round((total - failed) * 100.0 / total, 1) : 0);
+                        g.Key.Repo, g.Key.WorkflowName, g.Count(), failed,
+                        ComputeSuccessRate(g.Count(), succeeded));
                 })
                 .OrderByDescending(r => r.TotalRuns)
                 .ToList();
@@ -98,11 +94,16 @@ public static class GitHubActivityEndpoints
         if (firstReviewAt is not { } reviewedAt) return null;
         return Math.Round((reviewedAt - createdAt).TotalHours, 1);
     }
+
+    // Only runs with Status == "success" count toward the rate — cancelled/in_progress/queued
+    // runs count toward the total but are neither a success nor a (terminal) failure.
+    public static double ComputeSuccessRate(int total, int succeeded) =>
+        total > 0 ? Math.Round(succeeded * 100.0 / total, 1) : 0;
 }
 
 public sealed record GitHubPrResponse(
     string Repo, int Number, string Title, string Author, string State,
-    string CreatedAt, string? MergedAt, int ReviewCount, double? TurnaroundHours);
+    Instant CreatedAt, Instant? MergedAt, int ReviewCount, double? TurnaroundHours);
 
 public sealed record GitHubCommitSummaryResponse(string Repo, int CommitCount, int Additions, int Deletions);
 

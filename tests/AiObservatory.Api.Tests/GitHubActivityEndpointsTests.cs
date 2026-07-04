@@ -29,4 +29,26 @@ public class GitHubActivityEndpointsTests
             Instant.FromUtc(2026, 7, 1, 9, 0), Instant.FromUtc(2026, 7, 1, 9, 40));
         result.Should().Be(0.7); // 40 minutes = 0.666...h, rounds to 0.7
     }
+
+    [Fact]
+    public void ComputeSuccessRate_WhenNoRuns_ReturnsZero()
+    {
+        GitHubActivityEndpoints.ComputeSuccessRate(0, 0).Should().Be(0);
+    }
+
+    [Fact]
+    public void ComputeSuccessRate_MixedBatchWithNonTerminalStates_CountsOnlyExplicitSuccesses()
+    {
+        // 5 runs: 2 success, 1 failure, 1 cancelled, 1 in_progress.
+        // Old (broken) formula: (total - failed) / total = 4/5 = 80%.
+        // Correct formula: succeeded / total = 2/5 = 40% — cancelled/in_progress must not
+        // count as success just because they aren't "failure".
+        GitHubActivityEndpoints.ComputeSuccessRate(total: 5, succeeded: 2).Should().Be(40.0);
+    }
+
+    [Fact]
+    public void ComputeSuccessRate_AllSuccess_ReturnsOneHundred()
+    {
+        GitHubActivityEndpoints.ComputeSuccessRate(total: 3, succeeded: 3).Should().Be(100.0);
+    }
 }
