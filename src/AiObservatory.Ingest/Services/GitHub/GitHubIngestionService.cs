@@ -30,9 +30,10 @@ public class GitHubIngestionService(
             try
             {
                 var status = await repository.GetBackfillStatusAsync(repo, ct);
-                var prsSince = status.HasPullRequests ? date : date.PlusDays(-BackfillDays);
-                var commitsSince = status.HasCommits ? date : date.PlusDays(-BackfillDays);
-                var runsSince = status.HasWorkflowRuns ? date : date.PlusDays(-BackfillDays);
+                LocalDate SinceDate(bool hasBackfilled) => hasBackfilled ? date : date.PlusDays(-BackfillDays);
+                var prsSince = SinceDate(status.HasPullRequests);
+                var commitsSince = SinceDate(status.HasCommits);
+                var runsSince = SinceDate(status.HasWorkflowRuns);
 
                 var prs = await client.GetPullRequestsAsync(repo, prsSince, ct);
                 foreach (var pr in prs) await repository.UpsertPullRequestAsync(pr, now, ct);
