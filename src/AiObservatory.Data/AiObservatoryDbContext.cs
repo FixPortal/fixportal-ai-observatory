@@ -14,6 +14,9 @@ public class AiObservatoryDbContext(DbContextOptions<AiObservatoryDbContext> opt
     public DbSet<AdversarialReviewRun> AdversarialReviewRuns => Set<AdversarialReviewRun>();
     public DbSet<CavemanSession> CavemanSessions => Set<CavemanSession>();
     public DbSet<ClaudeActivitySession> ClaudeActivitySessions => Set<ClaudeActivitySession>();
+    public DbSet<GitHubPullRequest> GitHubPullRequests => Set<GitHubPullRequest>();
+    public DbSet<GitHubCommit> GitHubCommits => Set<GitHubCommit>();
+    public DbSet<GitHubWorkflowRun> GitHubWorkflowRuns => Set<GitHubWorkflowRun>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -88,6 +91,40 @@ public class AiObservatoryDbContext(DbContextOptions<AiObservatoryDbContext> opt
             {
                 t.HasCheckConstraint("CK_ClaudeActivitySession_ActiveSeconds_NonNegative", "\"ActiveSeconds\" >= 0");
             });
+        });
+
+        modelBuilder.Entity<GitHubPullRequest>(b =>
+        {
+            b.Property(p => p.Repo).HasMaxLength(200).IsRequired();
+            b.Property(p => p.Title).HasMaxLength(500).IsRequired();
+            b.Property(p => p.Author).HasMaxLength(200).IsRequired();
+            b.Property(p => p.State).HasMaxLength(20).IsRequired();
+            b.HasIndex(p => new { p.Repo, p.Number }).IsUnique();
+            b.HasIndex(p => p.CreatedAt);
+            b.ToTable(t => t.HasCheckConstraint("CK_GitHubPullRequest_ReviewCount_NonNegative", "\"ReviewCount\" >= 0"));
+        });
+
+        modelBuilder.Entity<GitHubCommit>(b =>
+        {
+            b.Property(c => c.Repo).HasMaxLength(200).IsRequired();
+            b.Property(c => c.Sha).HasMaxLength(40).IsRequired();
+            b.Property(c => c.Author).HasMaxLength(200).IsRequired();
+            b.HasIndex(c => new { c.Repo, c.Sha }).IsUnique();
+            b.HasIndex(c => c.CommittedAt);
+            b.ToTable(t =>
+            {
+                t.HasCheckConstraint("CK_GitHubCommit_Additions_NonNegative", "\"Additions\" >= 0");
+                t.HasCheckConstraint("CK_GitHubCommit_Deletions_NonNegative", "\"Deletions\" >= 0");
+            });
+        });
+
+        modelBuilder.Entity<GitHubWorkflowRun>(b =>
+        {
+            b.Property(r => r.Repo).HasMaxLength(200).IsRequired();
+            b.Property(r => r.WorkflowName).HasMaxLength(200).IsRequired();
+            b.Property(r => r.Status).HasMaxLength(20).IsRequired();
+            b.HasIndex(r => new { r.Repo, r.RunId }).IsUnique();
+            b.HasIndex(r => r.CreatedAt);
         });
 
         modelBuilder.Entity<AdversarialReviewRun>(b =>
