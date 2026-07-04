@@ -60,7 +60,7 @@ var host = Host.CreateDefaultBuilder(args)
             {
                 var factory = sp.GetRequiredService<IHttpClientFactory>();
                 var http = factory.CreateClient(nameof(ICopilotUsageClient));
-                return new CopilotUsageClient(http, copilotOrg);
+                return new CopilotUsageClient(http, copilotOrg!);
             });
             services.AddScoped<CopilotIngestionService>();
         }
@@ -79,7 +79,7 @@ var host = Host.CreateDefaultBuilder(args)
             {
                 var factory = sp.GetRequiredService<IHttpClientFactory>();
                 var http = factory.CreateClient(nameof(IGoogleBillingClient));
-                return new GoogleBillingClient(http, googleBillingAccount);
+                return new GoogleBillingClient(http, googleBillingAccount!);
             });
             services.AddScoped<GoogleIngestionService>();
         }

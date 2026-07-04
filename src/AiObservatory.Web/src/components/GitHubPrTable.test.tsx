@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { render, screen, fireEvent } from '@testing-library/react'
+import { render, screen, fireEvent, within } from '@testing-library/react'
 import GitHubPrTable from './GitHubPrTable'
 import type { GitHubPr } from '../api/client'
 
@@ -27,17 +27,21 @@ describe('GitHubPrTable', () => {
     expect(screen.getByText('No PR activity for this period.')).toBeInTheDocument()
   })
 
-  it('renders em dash for a PR with no turnaround yet', () => {
+  it('renders em dash in the Turnaround column for a PR with no turnaround yet', () => {
     render(<GitHubPrTable prs={prs} />)
-    const row = screen.getByText(/Add feature/).closest('tr')!
-    expect(row).toHaveTextContent('—')
+    // prs[1] ("Fix bug") has turnaroundHours: null but a non-null mergedAt, so its Merged
+    // column renders a date, not a dash — isolating the assertion to the Turnaround cell
+    // specifically (not "the row contains a dash somewhere").
+    const row = screen.getByText(/Fix bug/).closest('tr')!
+    const cells = within(row).getAllByRole('cell')
+    expect(cells[7]).toHaveTextContent('—')
   })
 
   it('renders the merged date for a merged PR and an em dash for one still open', () => {
     render(<GitHubPrTable prs={prs} />)
     const mergedRow = screen.getByText(/Fix bug/).closest('tr')!
     const openRow = screen.getByText(/Add feature/).closest('tr')!
-    expect(mergedRow).toHaveTextContent(new Date(prs[1].mergedAt!).toLocaleDateString())
-    expect(openRow).toHaveTextContent('—')
+    expect(within(mergedRow).getAllByRole('cell')[5]).toHaveTextContent(new Date(prs[1].mergedAt!).toLocaleDateString())
+    expect(within(openRow).getAllByRole('cell')[5]).toHaveTextContent('—')
   })
 })

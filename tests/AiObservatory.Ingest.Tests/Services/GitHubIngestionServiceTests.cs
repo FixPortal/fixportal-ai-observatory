@@ -4,12 +4,16 @@ using AwesomeAssertions;
 using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Options;
 using NodaTime;
+using NodaTime.Testing;
 using NSubstitute;
 
 namespace AiObservatory.Ingest.Tests.Services;
 
 public class GitHubIngestionServiceTests
 {
+    private static readonly Instant FixedNow = Instant.FromUtc(2026, 7, 1, 12, 0);
+    private static readonly FakeClock Clock = new(FixedNow);
+
     private static IOptions<IngestOptions> Options(params string[] repos) =>
         Microsoft.Extensions.Options.Options.Create(new IngestOptions { GitHubRepoAllowlist = repos });
 
@@ -24,7 +28,7 @@ public class GitHubIngestionServiceTests
         client.GetCommitsAsync("fix-portal/example", Arg.Any<LocalDate>(), Arg.Any<CancellationToken>()).Returns([]);
         client.GetWorkflowRunsAsync("fix-portal/example", Arg.Any<LocalDate>(), Arg.Any<CancellationToken>()).Returns([]);
 
-        var sut = new GitHubIngestionService(client, repo, Options("fix-portal/example"), NullLogger<GitHubIngestionService>.Instance, SystemClock.Instance);
+        var sut = new GitHubIngestionService(client, repo, Options("fix-portal/example"), NullLogger<GitHubIngestionService>.Instance, Clock);
 
         var pollDate = new LocalDate(2026, 7, 1);
         await sut.IngestSinceAsync(pollDate, TestContext.Current.CancellationToken);
@@ -42,7 +46,7 @@ public class GitHubIngestionServiceTests
         client.GetCommitsAsync("fix-portal/example", Arg.Any<LocalDate>(), Arg.Any<CancellationToken>()).Returns([]);
         client.GetWorkflowRunsAsync("fix-portal/example", Arg.Any<LocalDate>(), Arg.Any<CancellationToken>()).Returns([]);
 
-        var sut = new GitHubIngestionService(client, repo, Options("fix-portal/example"), NullLogger<GitHubIngestionService>.Instance, SystemClock.Instance);
+        var sut = new GitHubIngestionService(client, repo, Options("fix-portal/example"), NullLogger<GitHubIngestionService>.Instance, Clock);
 
         var pollDate = new LocalDate(2026, 7, 1);
         await sut.IngestSinceAsync(pollDate, TestContext.Current.CancellationToken);
@@ -61,10 +65,10 @@ public class GitHubIngestionServiceTests
         client.GetCommitsAsync(Arg.Any<string>(), Arg.Any<LocalDate>(), Arg.Any<CancellationToken>()).Returns([]);
         client.GetWorkflowRunsAsync(Arg.Any<string>(), Arg.Any<LocalDate>(), Arg.Any<CancellationToken>()).Returns([]);
 
-        var sut = new GitHubIngestionService(client, repo, Options("fix-portal/example"), NullLogger<GitHubIngestionService>.Instance, SystemClock.Instance);
+        var sut = new GitHubIngestionService(client, repo, Options("fix-portal/example"), NullLogger<GitHubIngestionService>.Instance, Clock);
         await sut.IngestSinceAsync(new LocalDate(2026, 7, 1), TestContext.Current.CancellationToken);
 
-        await repo.Received(1).UpsertPullRequestAsync(pr, Arg.Any<Instant>(), Arg.Any<CancellationToken>());
+        await repo.Received(1).UpsertPullRequestAsync(pr, FixedNow, Arg.Any<CancellationToken>());
     }
 
     [Fact]
@@ -79,7 +83,7 @@ public class GitHubIngestionServiceTests
         client.GetCommitsAsync(Arg.Any<string>(), Arg.Any<LocalDate>(), Arg.Any<CancellationToken>()).Returns([]);
         client.GetWorkflowRunsAsync(Arg.Any<string>(), Arg.Any<LocalDate>(), Arg.Any<CancellationToken>()).Returns([]);
 
-        var sut = new GitHubIngestionService(client, repo, Options("fix-portal/broken", "fix-portal/ok"), NullLogger<GitHubIngestionService>.Instance, SystemClock.Instance);
+        var sut = new GitHubIngestionService(client, repo, Options("fix-portal/broken", "fix-portal/ok"), NullLogger<GitHubIngestionService>.Instance, Clock);
 
         var failedCount = await sut.IngestSinceAsync(new LocalDate(2026, 7, 1), TestContext.Current.CancellationToken);
 
@@ -98,7 +102,7 @@ public class GitHubIngestionServiceTests
         client.GetCommitsAsync(Arg.Any<string>(), Arg.Any<LocalDate>(), Arg.Any<CancellationToken>()).Returns([]);
         client.GetWorkflowRunsAsync(Arg.Any<string>(), Arg.Any<LocalDate>(), Arg.Any<CancellationToken>()).Returns([]);
 
-        var sut = new GitHubIngestionService(client, repo, Options("fix-portal/first", "fix-portal/second"), NullLogger<GitHubIngestionService>.Instance, SystemClock.Instance);
+        var sut = new GitHubIngestionService(client, repo, Options("fix-portal/first", "fix-portal/second"), NullLogger<GitHubIngestionService>.Instance, Clock);
 
         var failedCount = await sut.IngestSinceAsync(new LocalDate(2026, 7, 1), TestContext.Current.CancellationToken);
 
@@ -121,7 +125,7 @@ public class GitHubIngestionServiceTests
 
         var sut = new GitHubIngestionService(
             client, repo, Options("fix-portal/broken", "fix-portal/rate-limited", "fix-portal/never-reached"),
-            NullLogger<GitHubIngestionService>.Instance, SystemClock.Instance);
+            NullLogger<GitHubIngestionService>.Instance, Clock);
 
         var failedCount = await sut.IngestSinceAsync(new LocalDate(2026, 7, 1), TestContext.Current.CancellationToken);
 

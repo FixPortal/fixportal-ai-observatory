@@ -66,23 +66,23 @@ public static class GitHubActivityEndpoints
             var startInstant = start.AtStartOfDayInZone(DateTimeZone.Utc).ToInstant();
             var endInstant = end.PlusDays(1).AtStartOfDayInZone(DateTimeZone.Utc).ToInstant();
 
-            var runs = await db.GitHubWorkflowRuns
+            var grouped = await db.GitHubWorkflowRuns
                 .AsNoTracking()
                 .Where(r => r.CreatedAt >= startInstant && r.CreatedAt < endInstant)
-                .Select(r => new { r.Repo, r.WorkflowName, r.Status })
+                .GroupBy(r => new { r.Repo, r.WorkflowName })
+                .Select(g => new
+                {
+                    g.Key.Repo,
+                    g.Key.WorkflowName,
+                    Total = g.Count(),
+                    Failed = g.Count(r => r.Status == "failure"),
+                    Succeeded = g.Count(r => r.Status == "success"),
+                })
+                .OrderByDescending(r => r.Total)
                 .ToListAsync(ct);
 
-            var byRepoWorkflow = runs
-                .GroupBy(r => (r.Repo, r.WorkflowName))
-                .Select(g =>
-                {
-                    var failed = g.Count(r => r.Status == "failure");
-                    var succeeded = g.Count(r => r.Status == "success");
-                    return new GitHubCiResponse(
-                        g.Key.Repo, g.Key.WorkflowName, g.Count(), failed,
-                        ComputeSuccessRate(g.Count(), succeeded));
-                })
-                .OrderByDescending(r => r.TotalRuns)
+            var byRepoWorkflow = grouped
+                .Select(r => new GitHubCiResponse(r.Repo, r.WorkflowName, r.Total, r.Failed, ComputeSuccessRate(r.Total, r.Succeeded)))
                 .ToList();
 
             return Results.Ok(byRepoWorkflow);
