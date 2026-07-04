@@ -118,8 +118,34 @@ public class GitHubActivityClient(HttpClient http, ILogger<GitHubActivityClient>
         return results;
     }
 
-    public Task<IReadOnlyList<GitHubWorkflowRunRecord>> GetWorkflowRunsAsync(string repo, LocalDate since, CancellationToken ct = default) =>
-        throw new NotImplementedException("Added in Task 8");
+    public async Task<IReadOnlyList<GitHubWorkflowRunRecord>> GetWorkflowRunsAsync(string repo, LocalDate since, CancellationToken ct = default)
+    {
+        var sinceStr = LocalDatePattern.Iso.Format(since);
+        var results = new List<GitHubWorkflowRunRecord>();
+        var page = 1;
+        while (true)
+        {
+            var response = await http.GetAsync($"/repos/{repo}/actions/runs?created=%3E%3D{sinceStr}&per_page={PerPage}&page={page}", ct);
+            CheckRateLimit(response);
+            response.EnsureSuccessStatusCode();
+            var body = await response.Content.ReadFromJsonAsync<WorkflowRunsResponseDto>(JsonOptions, ct)
+                ?? new WorkflowRunsResponseDto([]);
+
+            foreach (var run in body.WorkflowRuns)
+            {
+                results.Add(new GitHubWorkflowRunRecord(
+                    repo, run.Id, run.Name, run.Conclusion ?? run.Status,
+                    InstantPattern.ExtendedIso.Parse(run.CreatedAt).Value));
+            }
+
+            if (body.WorkflowRuns.Count < PerPage) break;
+            page++;
+        }
+        return results;
+    }
+
+    private sealed record WorkflowRunsResponseDto(List<WorkflowRunDto> WorkflowRuns);
+    private sealed record WorkflowRunDto(long Id, string Name, string Status, string? Conclusion, string CreatedAt);
 
     private sealed record PullRequestDto(
         int Number, string Title, PullRequestUserDto User, string State,
