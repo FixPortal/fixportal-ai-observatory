@@ -123,4 +123,44 @@ public class GitHubActivityClientTests
 
         await act.Should().ThrowAsync<HttpRequestException>();
     }
+
+    [Fact]
+    public async Task GetCommitsAsync_FetchesShaAuthorDateAndChurnStats()
+    {
+        var handler = new StubHandler(req =>
+        {
+            var url = req.RequestUri!.ToString();
+            if (url.Contains("/commits/abc123"))
+            {
+                return JsonResponse("""{"sha":"abc123","stats":{"additions":10,"deletions":2}}""");
+            }
+            return JsonResponse("""
+                [{"sha":"abc123","commit":{"author":{"name":"chris","date":"2026-07-01T09:00:00Z"}}}]
+                """);
+        });
+        var sut = CreateSut(handler);
+
+        var result = await sut.GetCommitsAsync("fix-portal/example", new LocalDate(2026, 7, 1), TestContext.Current.CancellationToken);
+
+        var commit = result.Single();
+        commit.Sha.Should().Be("abc123");
+        commit.Author.Should().Be("chris");
+        commit.Additions.Should().Be(10);
+        commit.Deletions.Should().Be(2);
+    }
+
+    [Fact]
+    public async Task GetCommitsAsync_PassesSinceAsQueryParam()
+    {
+        var handler = new StubHandler(req =>
+        {
+            if (req.RequestUri!.ToString().Contains("/commits/")) return JsonResponse("""{"sha":"x","stats":{"additions":0,"deletions":0}}""");
+            return JsonResponse("[]");
+        });
+        var sut = CreateSut(handler);
+
+        await sut.GetCommitsAsync("fix-portal/example", new LocalDate(2026, 7, 1), TestContext.Current.CancellationToken);
+
+        handler.RequestedUrls.Should().Contain(u => u.Contains("since=2026-07-01"));
+    }
 }

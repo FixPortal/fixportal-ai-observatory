@@ -84,8 +84,39 @@ public class GitHubActivityClient(HttpClient http, ILogger<GitHubActivityClient>
         }
     }
 
-    public Task<IReadOnlyList<GitHubCommitRecord>> GetCommitsAsync(string repo, LocalDate since, CancellationToken ct = default) =>
-        throw new NotImplementedException("Added in Task 7");
+    public async Task<IReadOnlyList<GitHubCommitRecord>> GetCommitsAsync(string repo, LocalDate since, CancellationToken ct = default)
+    {
+        var sinceStr = LocalDatePattern.Iso.Format(since);
+        var results = new List<GitHubCommitRecord>();
+        var page = 1;
+        while (true)
+        {
+            var response = await http.GetAsync($"/repos/{repo}/commits?since={sinceStr}&per_page={PerPage}&page={page}", ct);
+            CheckRateLimit(response);
+            response.EnsureSuccessStatusCode();
+            var commits = await response.Content.ReadFromJsonAsync<List<CommitListDto>>(JsonOptions, ct) ?? [];
+
+            foreach (var c in commits)
+            {
+                // Per-commit call needed for churn stats — the list endpoint omits them.
+                // Personal-scale repo volume keeps this within the rate-limit budget.
+                var detailResponse = await http.GetAsync($"/repos/{repo}/commits/{c.Sha}", ct);
+                CheckRateLimit(detailResponse);
+                detailResponse.EnsureSuccessStatusCode();
+                var detail = await detailResponse.Content.ReadFromJsonAsync<CommitDetailDto>(JsonOptions, ct)
+                    ?? new CommitDetailDto(c.Sha, new CommitStatsDto(0, 0));
+
+                results.Add(new GitHubCommitRecord(
+                    repo, c.Sha, c.Commit.Author.Name,
+                    InstantPattern.ExtendedIso.Parse(c.Commit.Author.Date).Value,
+                    detail.Stats.Additions, detail.Stats.Deletions));
+            }
+
+            if (commits.Count < PerPage) break;
+            page++;
+        }
+        return results;
+    }
 
     public Task<IReadOnlyList<GitHubWorkflowRunRecord>> GetWorkflowRunsAsync(string repo, LocalDate since, CancellationToken ct = default) =>
         throw new NotImplementedException("Added in Task 8");
@@ -95,4 +126,9 @@ public class GitHubActivityClient(HttpClient http, ILogger<GitHubActivityClient>
         string CreatedAt, string? MergedAt, string? ClosedAt);
     private sealed record PullRequestUserDto(string Login);
     private sealed record ReviewDto(string SubmittedAt);
+    private sealed record CommitListDto(string Sha, CommitInnerDto Commit);
+    private sealed record CommitInnerDto(CommitAuthorDto Author);
+    private sealed record CommitAuthorDto(string Name, string Date);
+    private sealed record CommitDetailDto(string Sha, CommitStatsDto Stats);
+    private sealed record CommitStatsDto(int Additions, int Deletions);
 }
