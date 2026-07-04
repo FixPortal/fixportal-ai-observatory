@@ -103,6 +103,42 @@ export const getActivityDaily = (from?: string, to?: string) =>
 export const getActivityByProject = (from?: string, to?: string) =>
   getJson<ProjectActivity[]>('/activity/by-project', { from, to })
 
+export interface GitHubPr {
+  repo: string
+  number: number
+  title: string
+  author: string
+  state: 'open' | 'merged' | 'closed'
+  createdAt: string
+  mergedAt: string | null
+  reviewCount: number
+  turnaroundHours: number | null
+}
+
+export interface GitHubCommitSummary {
+  repo: string
+  commitCount: number
+  additions: number
+  deletions: number
+}
+
+export interface GitHubCiSummary {
+  repo: string
+  workflowName: string
+  totalRuns: number
+  failedRuns: number
+  successRate: number
+}
+
+export const getGitHubPrs = (from?: string, to?: string) =>
+  getJson<GitHubPr[]>('/github/prs', { from, to })
+
+export const getGitHubCommitSummary = (from?: string, to?: string) =>
+  getJson<GitHubCommitSummary[]>('/github/commits/summary', { from, to })
+
+export const getGitHubCi = (from?: string, to?: string) =>
+  getJson<GitHubCiSummary[]>('/github/ci', { from, to })
+
 export const acknowledgeInsight = async (id: string): Promise<void> => {
   await request(`/insights/${id}/acknowledge`, { method: 'POST' })
 }
