@@ -10,4 +10,9 @@ public class IngestOptions
     // down across a midnight — or ran before a provider's daily totals settled — backfills
     // the missed day on a later cycle. Already-recorded days are cheap no-ops (dedup).
     public int LookbackDays { get; set; } = 3;
+
+    // owner/repo pairs to poll for PR/commit/CI activity. Empty disables the
+    // GitHub Activity client entirely (see Program.cs) — there is no out-of-repo
+    // hook holding this filter, unlike Claude Activity's project allowlist.
+    public string[] GitHubRepoAllowlist { get; set; } = [];
 }
