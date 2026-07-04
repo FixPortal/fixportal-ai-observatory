@@ -29,16 +29,18 @@ public class GitHubIngestionService(
         {
             try
             {
-                var hasData = await repository.HasAnyDataForRepoAsync(repo, ct);
-                var since = hasData ? date : date.PlusDays(-BackfillDays);
+                var status = await repository.GetBackfillStatusAsync(repo, ct);
+                var prsSince = status.HasPullRequests ? date : date.PlusDays(-BackfillDays);
+                var commitsSince = status.HasCommits ? date : date.PlusDays(-BackfillDays);
+                var runsSince = status.HasWorkflowRuns ? date : date.PlusDays(-BackfillDays);
 
-                var prs = await client.GetPullRequestsAsync(repo, since, ct);
+                var prs = await client.GetPullRequestsAsync(repo, prsSince, ct);
                 foreach (var pr in prs) await repository.UpsertPullRequestAsync(pr, now, ct);
 
-                var commits = await client.GetCommitsAsync(repo, since, ct);
+                var commits = await client.GetCommitsAsync(repo, commitsSince, ct);
                 foreach (var c in commits) await repository.UpsertCommitAsync(c, now, ct);
 
-                var runs = await client.GetWorkflowRunsAsync(repo, since, ct);
+                var runs = await client.GetWorkflowRunsAsync(repo, runsSince, ct);
                 foreach (var r in runs) await repository.UpsertWorkflowRunAsync(r, now, ct);
 
                 logger.LogInformation(

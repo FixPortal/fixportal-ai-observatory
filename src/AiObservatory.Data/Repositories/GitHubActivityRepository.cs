@@ -39,8 +39,9 @@ public class GitHubActivityRepository(AiObservatoryDbContext ctx) : IGitHubActiv
                 "Status" = EXCLUDED."Status"
             """, ct);
 
-    public async Task<bool> HasAnyDataForRepoAsync(string repo, CancellationToken ct = default) =>
-        await ctx.GitHubPullRequests.AsNoTracking().AnyAsync(p => p.Repo == repo, ct)
-        || await ctx.GitHubCommits.AsNoTracking().AnyAsync(c => c.Repo == repo, ct)
-        || await ctx.GitHubWorkflowRuns.AsNoTracking().AnyAsync(r => r.Repo == repo, ct);
+    public async Task<GitHubBackfillStatus> GetBackfillStatusAsync(string repo, CancellationToken ct = default) =>
+        new(
+            await ctx.GitHubPullRequests.AsNoTracking().AnyAsync(p => p.Repo == repo, ct),
+            await ctx.GitHubCommits.AsNoTracking().AnyAsync(c => c.Repo == repo, ct),
+            await ctx.GitHubWorkflowRuns.AsNoTracking().AnyAsync(r => r.Repo == repo, ct));
 }
