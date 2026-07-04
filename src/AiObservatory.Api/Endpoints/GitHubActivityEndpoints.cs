@@ -21,7 +21,10 @@ public static class GitHubActivityEndpoints
 
             var prs = await db.GitHubPullRequests
                 .AsNoTracking()
-                .Where(p => p.CreatedAt >= startInstant && p.CreatedAt < endInstant)
+                .Where(p =>
+                    (p.CreatedAt >= startInstant && p.CreatedAt < endInstant) ||
+                    (p.MergedAt != null && p.MergedAt >= startInstant && p.MergedAt < endInstant) ||
+                    (p.FirstReviewAt != null && p.FirstReviewAt >= startInstant && p.FirstReviewAt < endInstant))
                 .OrderByDescending(p => p.CreatedAt)
                 .ToListAsync(ct);
 
