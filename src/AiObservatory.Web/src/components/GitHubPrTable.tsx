@@ -3,33 +3,7 @@ import type { GitHubPr } from '../api/client'
 import { filterPrs, sortPrs } from './githubSort'
 import type { PrSortField, SortDirection } from './githubSort'
 import SearchIcon from '../design/SearchIcon'
-
-interface SortableHeaderProps {
-  field: PrSortField
-  label: string
-  sortField: PrSortField
-  sortDirection: SortDirection
-  onSort: (field: PrSortField) => void
-}
-
-const SortableHeader = ({ field, label, sortField, sortDirection, onSort }: SortableHeaderProps) => {
-  const isActive = sortField === field
-  let ariaSort: 'ascending' | 'descending' | 'none' = 'none'
-  if (isActive) ariaSort = sortDirection === 'asc' ? 'ascending' : 'descending'
-  let indicatorSymbol = '↕'
-  if (isActive) indicatorSymbol = sortDirection === 'asc' ? '▲' : '▼'
-
-  return (
-    <th className="sortable-header" aria-sort={ariaSort}>
-      <button type="button" className="sortable-header__content" onClick={() => onSort(field)}>
-        {label}
-        <span className={`sort-indicator ${isActive ? 'sort-indicator--active' : ''}`} aria-hidden="true">
-          {indicatorSymbol}
-        </span>
-      </button>
-    </th>
-  )
-}
+import GitHubSortableHeader from './GitHubSortableHeader'
 
 export default function GitHubPrTable({ prs }: { prs: GitHubPr[] }) {
   const [searchQuery, setSearchQuery] = useState('')
@@ -69,13 +43,13 @@ export default function GitHubPrTable({ prs }: { prs: GitHubPr[] }) {
         <table className="model-table">
           <thead>
             <tr>
-              <SortableHeader field="repo" label="Repo" sortField={sortField} sortDirection={sortDirection} onSort={handleSort} />
+              <GitHubSortableHeader field="repo" label="Repo" sortField={sortField} sortDirection={sortDirection} onSort={handleSort} />
               <th>Title</th>
               <th>Author</th>
               <th>State</th>
-              <SortableHeader field="createdAt" label="Created" sortField={sortField} sortDirection={sortDirection} onSort={handleSort} />
-              <SortableHeader field="reviewCount" label="Reviews" sortField={sortField} sortDirection={sortDirection} onSort={handleSort} />
-              <SortableHeader field="turnaroundHours" label="Turnaround" sortField={sortField} sortDirection={sortDirection} onSort={handleSort} />
+              <GitHubSortableHeader field="createdAt" label="Created" sortField={sortField} sortDirection={sortDirection} onSort={handleSort} />
+              <GitHubSortableHeader field="reviewCount" label="Reviews" sortField={sortField} sortDirection={sortDirection} onSort={handleSort} />
+              <GitHubSortableHeader field="turnaroundHours" label="Turnaround" sortField={sortField} sortDirection={sortDirection} onSort={handleSort} />
             </tr>
           </thead>
           <tbody>

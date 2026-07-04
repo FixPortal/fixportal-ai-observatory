@@ -2,6 +2,7 @@ import { useState, useMemo } from 'react'
 import type { GitHubCommitSummary } from '../api/client'
 import { sortCommitSummaries } from './githubSort'
 import type { CommitSortField, SortDirection } from './githubSort'
+import GitHubSortableHeader from './GitHubSortableHeader'
 
 export default function GitHubCommitTable({ summary }: { summary: GitHubCommitSummary[] }) {
   const [sortField, setSortField] = useState<CommitSortField>('commitCount')
@@ -23,12 +24,8 @@ export default function GitHubCommitTable({ summary }: { summary: GitHubCommitSu
     <table className="project-table">
       <thead>
         <tr>
-          <th>
-            <button type="button" onClick={() => handleSort('repo')}>Repo</button>
-          </th>
-          <th>
-            <button type="button" onClick={() => handleSort('commitCount')}>Commits</button>
-          </th>
+          <GitHubSortableHeader field="repo" label="Repo" sortField={sortField} sortDirection={sortDirection} onSort={handleSort} />
+          <GitHubSortableHeader field="commitCount" label="Commits" sortField={sortField} sortDirection={sortDirection} onSort={handleSort} />
           <th>Churn</th>
         </tr>
       </thead>

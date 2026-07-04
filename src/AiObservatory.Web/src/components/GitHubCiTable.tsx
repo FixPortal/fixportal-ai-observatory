@@ -2,6 +2,7 @@ import { useState, useMemo } from 'react'
 import type { GitHubCiSummary } from '../api/client'
 import { sortCiSummaries } from './githubSort'
 import type { CiSortField, SortDirection } from './githubSort'
+import GitHubSortableHeader from './GitHubSortableHeader'
 
 const SUCCESS_RATE_WARN_THRESHOLD = 80
 
@@ -25,11 +26,11 @@ export default function GitHubCiTable({ ci }: { ci: GitHubCiSummary[] }) {
     <table className="project-table">
       <thead>
         <tr>
-          <th><button type="button" onClick={() => handleSort('repo')}>Repo</button></th>
+          <GitHubSortableHeader field="repo" label="Repo" sortField={sortField} sortDirection={sortDirection} onSort={handleSort} />
           <th>Workflow</th>
-          <th><button type="button" onClick={() => handleSort('totalRuns')}>Runs</button></th>
+          <GitHubSortableHeader field="totalRuns" label="Runs" sortField={sortField} sortDirection={sortDirection} onSort={handleSort} />
           <th>Failed</th>
-          <th><button type="button" onClick={() => handleSort('successRate')}>Success rate</button></th>
+          <GitHubSortableHeader field="successRate" label="Success rate" sortField={sortField} sortDirection={sortDirection} onSort={handleSort} />
         </tr>
       </thead>
       <tbody>
