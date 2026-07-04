@@ -2,6 +2,7 @@ using AiObservatory.Data;
 using AiObservatory.Ingest;
 using AiObservatory.Ingest.Services.Anthropic;
 using AiObservatory.Ingest.Services.Copilot;
+using AiObservatory.Ingest.Services.GitHub;
 using AiObservatory.Ingest.Services.Google;
 using AiObservatory.Ingest.Services.OpenAi;
 using Microsoft.Extensions.DependencyInjection;
@@ -95,6 +96,23 @@ var host = Host.CreateDefaultBuilder(args)
                 c.DefaultRequestHeaders.Add("Authorization", $"Bearer {openAiAdminKey}");
             });
             services.AddScoped<OpenAiIngestionService>();
+        }
+
+        // GitHub Activity — enabled when GITHUB_TOKEN is set AND at least one repo is
+        // allowlisted. Reuses the same GITHUB_TOKEN as Copilot metrics; this PAT now also
+        // needs contents:read, pull-requests:read, actions:read (in addition to
+        // manage_billing:copilot if Copilot metrics are also enabled).
+        var githubRepoAllowlist = cfg.GetSection($"{IngestOptions.SectionName}:GitHubRepoAllowlist").Get<string[]>() ?? [];
+        if (IsConfigured(githubToken) && githubRepoAllowlist.Length > 0)
+        {
+            services.AddHttpClient<IGitHubActivityClient, GitHubActivityClient>(c =>
+            {
+                c.BaseAddress = new Uri("https://api.github.com");
+                c.DefaultRequestHeaders.Add("Authorization", $"Bearer {githubToken}");
+                c.DefaultRequestHeaders.Add("User-Agent", "fpaiobs-ingest");
+                c.DefaultRequestHeaders.Add("X-GitHub-Api-Version", "2022-11-28");
+            });
+            services.AddScoped<GitHubIngestionService>();
         }
 
         services.AddHostedService<ProviderPollingWorkerService>();
