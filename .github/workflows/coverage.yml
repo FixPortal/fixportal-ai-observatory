@@ -1,5 +1,10 @@
 name: coverage
 
+# Standalone (not the shared fixportal-workflows reusable) because this suite's
+# tests run against a real Postgres: they read TEST_DB_CONNECTION. Service
+# containers can't be toggled by a reusable-workflow input, so the Postgres
+# setup lives here, mirroring ci.yml. Report-only.
+
 on:
   pull_request:
     branches: [main]
@@ -16,6 +21,64 @@ permissions:
 
 jobs:
   coverage:
-    uses: FixPortal/fixportal-workflows/.github/workflows/dotnet-coverage.yml@main
-    with:
-      solution: AiObservatory.slnx
+    runs-on: blacksmith-4vcpu-ubuntu-2404
+    continue-on-error: true
+    services:
+      postgres:
+        # ECR Public mirror of the official image (un-throttled anonymous pulls);
+        # Docker Hub periodically throttles runner service-container pulls.
+        image: public.ecr.aws/docker/library/postgres:16
+        env:
+          POSTGRES_DB: aiobs_test
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+    env:
+      GITHUB_PACKAGES_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      TEST_DB_CONNECTION: "Host=localhost;Database=aiobs_test;Username=postgres;Password=postgres"
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-dotnet@v5
+        with:
+          dotnet-version: 10.0.x
+
+      - name: Restore
+        run: dotnet restore AiObservatory.slnx
+
+      - name: Build
+        run: dotnet build AiObservatory.slnx --configuration Release --no-restore
+
+      - name: Test with coverage
+        run: >
+          dotnet test AiObservatory.slnx
+          --configuration Release
+          --no-build
+          --collect:"XPlat Code Coverage"
+          --results-directory ./TestResults
+
+      - name: Generate coverage report
+        if: always()
+        uses: danielpalme/ReportGenerator-GitHub-Action@5
+        with:
+          reports: '**/coverage.cobertura.xml'
+          targetdir: artifacts/coverage-report
+          reporttypes: Html;MarkdownSummaryGithub;Cobertura
+
+      - name: Add coverage summary
+        if: always()
+        run: cat artifacts/coverage-report/SummaryGithub.md >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload coverage report
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: coverage-report
+          path: artifacts/coverage-report
