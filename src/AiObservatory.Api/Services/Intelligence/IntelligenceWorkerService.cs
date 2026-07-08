@@ -1,8 +1,4 @@
-using AiObservatory.Api.Services;
 using AiObservatory.Data.Repositories;
-using Microsoft.Extensions.DependencyInjection;
-using Microsoft.Extensions.Hosting;
-using Microsoft.Extensions.Logging;
 using NodaTime;
 
 namespace AiObservatory.Api.Services.Intelligence;

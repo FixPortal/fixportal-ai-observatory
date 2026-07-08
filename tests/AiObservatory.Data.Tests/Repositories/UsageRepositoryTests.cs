@@ -1,10 +1,8 @@
-using AiObservatory.Data;
 using AiObservatory.Data.Entities;
 using AiObservatory.Data.Repositories;
 using AwesomeAssertions;
 using Microsoft.EntityFrameworkCore;
 using NodaTime;
-using Xunit;
 
 namespace AiObservatory.Data.Tests.Repositories;
 
@@ -191,7 +189,7 @@ public class UsageRepositoryTests : IAsyncLifetime
     [Fact]
     public async Task UpsertDailyAggregate_creates_then_replaces()
     {
-        var date = new NodaTime.LocalDate(2026, 6, 1);
+        var date = new LocalDate(2026, 6, 1);
 
         await _repo.UpsertDailyAggregateAsync(date, Provider.Anthropic, "claude-sonnet-4-6",
             inputTokens: 1000, outputTokens: 500, cacheReadTokens: 100, cacheWriteTokens: 50, costUsd: 0.005m,

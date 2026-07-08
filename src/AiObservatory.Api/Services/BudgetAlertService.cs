@@ -1,6 +1,5 @@
 using AiObservatory.Data.Entities;
 using AiObservatory.Data.Repositories;
-using Microsoft.Extensions.Logging;
 using NodaTime;
 
 namespace AiObservatory.Api.Services;

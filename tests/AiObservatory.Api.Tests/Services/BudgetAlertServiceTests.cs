@@ -1,12 +1,10 @@
 using AiObservatory.Api.Services;
 using AiObservatory.Data.Entities;
 using AiObservatory.Data.Repositories;
-using AwesomeAssertions;
 using Microsoft.Extensions.Logging.Abstractions;
 using NodaTime;
 using NodaTime.Testing;
 using NSubstitute;
-using Xunit;
 
 namespace AiObservatory.Api.Tests.Services;
 

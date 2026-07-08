@@ -3,9 +3,6 @@ using AiObservatory.Ingest.Services.Copilot;
 using AiObservatory.Ingest.Services.Google;
 using AiObservatory.Ingest.Services.GitHub;
 using AiObservatory.Ingest.Services.OpenAi;
-using Microsoft.Extensions.DependencyInjection;
-using Microsoft.Extensions.Hosting;
-using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using NodaTime;
 

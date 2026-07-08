@@ -1,7 +1,6 @@
 using AiObservatory.Data.Entities;
 using AiObservatory.Data.Repositories;
 using AiObservatory.Ingest.Services.Anthropic;
-using AwesomeAssertions;
 using Microsoft.Extensions.Logging.Abstractions;
 using NodaTime;
 using NodaTime.Testing;
