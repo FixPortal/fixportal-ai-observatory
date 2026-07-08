@@ -63,7 +63,10 @@ public class GitHubActivityClientTests
     {
         var handler = new StubHandler(req =>
         {
-            if (req.RequestUri!.ToString().Contains("/reviews")) return JsonResponse("[]");
+            if (req.RequestUri!.ToString().Contains("/reviews"))
+            {
+                return JsonResponse("[]");
+            }
             return JsonResponse("""
                 [{"number":1,"title":"WIP","user":{"login":"chris"},"state":"open",
                   "created_at":"2026-07-01T09:00:00Z","updated_at":"2026-07-01T09:00:00Z","merged_at":null,"closed_at":null}]
@@ -106,7 +109,10 @@ public class GitHubActivityClientTests
     {
         var handler = new StubHandler(req =>
         {
-            if (req.RequestUri!.ToString().Contains("/reviews")) return JsonResponse("[]");
+            if (req.RequestUri!.ToString().Contains("/reviews"))
+            {
+                return JsonResponse("[]");
+            }
             
             // Page 1: a full 100-row page (forces a second page request); page 2: short page, stop.
             if (req.RequestUri!.ToString().Contains("page=2"))
@@ -133,7 +139,10 @@ public class GitHubActivityClientTests
         // trigger an early break before the next (older-updated) page is even requested.
         var handler = new StubHandler(req =>
         {
-            if (req.RequestUri!.ToString().Contains("/reviews")) return JsonResponse("[]");
+            if (req.RequestUri!.ToString().Contains("/reviews"))
+            {
+                return JsonResponse("[]");
+            }
             if (req.RequestUri!.ToString().Contains("page=2"))
             {
                 return JsonResponse("""[]""");
@@ -157,7 +166,10 @@ public class GitHubActivityClientTests
     {
         var handler = new StubHandler(req =>
         {
-            if (req.RequestUri!.ToString().Contains("/reviews")) return JsonResponse("[]");
+            if (req.RequestUri!.ToString().Contains("/reviews"))
+            {
+                return JsonResponse("[]");
+            }
             return JsonResponse("""
                 [{"number":42,"title":"Add feature","user":{"login":"chris"},"state":"closed",
                   "created_at":"2026-07-01T09:00:00Z","updated_at":"2026-07-01T10:00:00Z","merged_at":"2026-07-01T10:00:00Z","closed_at":"2026-07-01T10:00:00Z"}]
@@ -175,7 +187,10 @@ public class GitHubActivityClientTests
     {
         var handler = new StubHandler(req =>
         {
-            if (req.RequestUri!.ToString().Contains("/reviews")) return JsonResponse("[]");
+            if (req.RequestUri!.ToString().Contains("/reviews"))
+            {
+                return JsonResponse("[]");
+            }
             return JsonResponse("""
                 [{"number":43,"title":"Abandoned","user":{"login":"chris"},"state":"closed",
                   "created_at":"2026-07-01T09:00:00Z","updated_at":"2026-07-01T10:00:00Z","merged_at":null,"closed_at":"2026-07-01T10:00:00Z"}]
@@ -240,7 +255,10 @@ public class GitHubActivityClientTests
     {
         var handler = new StubHandler(req =>
         {
-            if (req.RequestUri!.ToString().Contains("/commits/")) return JsonResponse("""{"sha":"x","stats":{"additions":0,"deletions":0}}""");
+            if (req.RequestUri!.ToString().Contains("/commits/"))
+            {
+                return JsonResponse("""{"sha":"x","stats":{"additions":0,"deletions":0}}""");
+            }
             return JsonResponse("[]");
         });
         var sut = CreateSut(handler);

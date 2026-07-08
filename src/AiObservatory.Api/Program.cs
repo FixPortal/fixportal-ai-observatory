@@ -16,7 +16,9 @@ using NodaTime.Serialization.SystemTextJson;
 var builder = WebApplication.CreateBuilder(args);
 
 if (!string.IsNullOrEmpty(builder.Configuration["APPLICATIONINSIGHTS_CONNECTION_STRING"]))
+{
     builder.Services.AddApplicationInsightsTelemetry();
+}
 builder.Services.AddOpenApi();
 
 builder.Services.ConfigureHttpJsonOptions(o =>

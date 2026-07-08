@@ -17,10 +17,14 @@ public static class CavemanEndpoints
             CancellationToken ct) =>
         {
             if (req.Sessions is not { Count: > 0 })
+            {
                 return Results.Ok(new { Upserted = 0 });
+            }
 
             if (req.Sessions.Count > 1000)
+            {
                 return Results.BadRequest("Cannot upsert more than 1000 sessions at once.");
+            }
 
             var now = clock.GetCurrentInstant();
 
@@ -28,16 +32,24 @@ public static class CavemanEndpoints
             foreach (var s in req.Sessions)
             {
                 if (string.IsNullOrWhiteSpace(s.SessionId) || s.SessionId.Length > 200)
+                {
                     return Results.BadRequest($"SessionId invalid: '{s.SessionId}'");
+                }
                 if (s.OutputTokens < 0 || s.EstSavedTokens < 0 || s.EstSavedUsd < 0)
+                {
                     return Results.BadRequest("Token counts and cost must be non-negative.");
+                }
                 var occurredAt = Instant.FromDateTimeOffset(s.OccurredAtUtc);
                 if (occurredAt > now + Duration.FromMinutes(5))
+                {
                     return Results.BadRequest($"OccurredAtUtc must not be in the future: {s.OccurredAtUtc}");
+                }
                 // In-batch dedup guard (mirrors ActivityEndpoints): two entries sharing a
                 // not-yet-persisted SessionId would both insert and violate the unique index.
                 if (!seenSessionIds.Add(s.SessionId))
+                {
                     return Results.BadRequest($"Duplicate SessionId in batch: '{s.SessionId}'");
+                }
             }
 
             var sessionIds = req.Sessions.Select(s => s.SessionId).ToList();

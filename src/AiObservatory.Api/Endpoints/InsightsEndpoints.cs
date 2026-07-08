@@ -66,8 +66,14 @@ public static class InsightsEndpoints
                 .Select(i => new { i.Title, i.Body })
                 .FirstOrDefaultAsync(ct);
 
-            if (insight is null) return Results.NotFound();
-            if (!client.IsConfigured) return Results.Problem("ANTHROPIC_API_KEY is not configured.", statusCode: 503);
+            if (insight is null)
+            {
+                return Results.NotFound();
+            }
+            if (!client.IsConfigured)
+            {
+                return Results.Problem("ANTHROPIC_API_KEY is not configured.", statusCode: 503);
+            }
 
             var explanation = await client.GenerateExplanationAsync(insight.Title, insight.Body, ct);
             return Results.Ok(new { explanation });

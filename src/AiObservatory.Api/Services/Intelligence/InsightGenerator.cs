@@ -26,7 +26,10 @@ public sealed class InsightGenerator(
 {
     public async Task<int> GenerateForDateAsync(LocalDate analysisDate, CancellationToken ct = default)
     {
-        if (!client.IsConfigured) return 0;
+        if (!client.IsConfigured)
+        {
+            return 0;
+        }
         var today = clock.GetCurrentInstant().InUtc().Date;
         var from = analysisDate.PlusDays(-29);
 
