@@ -2,6 +2,7 @@ using System.Net;
 using AiObservatory.Ingest.Services.Anthropic;
 using AwesomeAssertions;
 using Microsoft.Extensions.Logging.Abstractions;
+using Microsoft.Extensions.Options;
 using NodaTime;
 
 namespace AiObservatory.Ingest.Tests.Services;
@@ -16,6 +17,16 @@ public class AnthropicUsageClientTests
                 Content = new StringContent(json, System.Text.Encoding.UTF8, "application/json"),
             });
     }
+
+    private static readonly AnthropicPricingOptions TestPricing = new()
+    {
+        Pricing =
+        [
+            new AnthropicPricingEntry("claude-sonnet-5", 2.0m, 10.0m, 0.20m, 2.50m, EffectiveTo: new LocalDate(2026, 8, 31)),
+            new AnthropicPricingEntry("claude-sonnet-5", 3.0m, 15.0m, 0.30m, 3.75m, EffectiveFrom: new LocalDate(2026, 9, 1)),
+        ],
+        FallbackPricing = new PricingRates4(3.0m, 15.0m, 0.30m, 3.75m),
+    };
 
     private static AnthropicUsageClient CreateSut(LocalDate bucketDate, string model)
     {
@@ -41,7 +52,7 @@ public class AnthropicUsageClientTests
             }
             """;
         var http = new HttpClient(new StubHandler(json)) { BaseAddress = new Uri("https://api.anthropic.com") };
-        return new AnthropicUsageClient(http, NullLogger<AnthropicUsageClient>.Instance);
+        return new AnthropicUsageClient(http, NullLogger<AnthropicUsageClient>.Instance, Options.Create(TestPricing));
     }
 
     [Fact]
@@ -64,5 +75,16 @@ public class AnthropicUsageClientTests
         var records = await sut.GetUsageAsync(date, TestContext.Current.CancellationToken);
 
         records.Single().CostUsd.Should().Be(18.0m); // $3 input + $15 output per 1M tokens
+    }
+
+    [Fact]
+    public async Task GetUsageAsync_falls_back_to_fallback_pricing_for_unknown_model()
+    {
+        var date = new LocalDate(2026, 7, 1);
+        var sut = CreateSut(date, "claude-unknown-model");
+
+        var records = await sut.GetUsageAsync(date, TestContext.Current.CancellationToken);
+
+        records.Single().CostUsd.Should().Be(18.0m); // fallback: $3 input + $15 output per 1M tokens
     }
 }

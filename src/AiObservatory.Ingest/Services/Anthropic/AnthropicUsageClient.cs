@@ -1,6 +1,7 @@
 using System.Net.Http.Json;
 using System.Text.Json;
 using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Options;
 using NodaTime;
 using NodaTime.Text;
 
@@ -9,31 +10,11 @@ namespace AiObservatory.Ingest.Services.Anthropic;
 // Calls GET https://api.anthropic.com/v1/organizations/usage_report/messages
 // Requires an API key with workspace admin access (ANTHROPIC_BILLING_KEY env var).
 // See https://docs.anthropic.com/en/api/usage for the current response schema.
-public class AnthropicUsageClient(HttpClient http, ILogger<AnthropicUsageClient> logger) : IAnthropicUsageClient
+public class AnthropicUsageClient(HttpClient http, ILogger<AnthropicUsageClient> logger, IOptions<AnthropicPricingOptions> pricingOptions) : IAnthropicUsageClient
 {
     // Requesting more pages than this for a single day's usage indicates the pagination
     // token is not advancing (e.g. an API change) — bail rather than loop unbounded.
     private const int MaxPages = 100;
-
-    // Per-1M token rates (USD). Anthropic usage API returns token counts but not cost.
-    // Keys are model-id prefixes; longest match wins (see ComputeCost).
-    private static readonly Dictionary<string, (decimal Input, decimal Output, decimal CacheRead, decimal CacheWrite)> Pricing = new()
-    {
-        ["claude-3-5-sonnet"] = (3.0m, 15.0m, 0.30m, 3.75m),
-        ["claude-3-5-haiku"] = (0.8m, 4.0m, 0.08m, 1.00m),
-        ["claude-opus-4"] = (15.0m, 75.0m, 1.50m, 18.75m),
-        ["claude-sonnet-4"] = (3.0m, 15.0m, 0.30m, 3.75m),
-        ["claude-sonnet-5"] = (3.0m, 15.0m, 0.30m, 3.75m),
-        ["claude-haiku-4"] = (0.8m, 4.0m, 0.08m, 1.00m),
-        ["claude-3-opus"] = (15.0m, 75.0m, 1.50m, 18.75m),
-        ["claude-3-sonnet"] = (3.0m, 15.0m, 0.30m, 3.75m),
-        ["claude-3-haiku"] = (0.25m, 1.25m, 0.03m, 0.3125m),
-    };
-
-    // Sonnet 5 introductory rate, in effect through this date inclusive (Anthropic-announced).
-    private static readonly LocalDate Sonnet5IntroPricingEndsOn = new(2026, 8, 31);
-    private static readonly (decimal Input, decimal Output, decimal CacheRead, decimal CacheWrite) Sonnet5IntroPricing =
-        (2.0m, 10.0m, 0.20m, 2.50m);
 
     public async Task<IReadOnlyList<AnthropicUsageRecord>> GetUsageAsync(
         LocalDate date, CancellationToken ct = default)
@@ -107,33 +88,26 @@ public class AnthropicUsageClient(HttpClient http, ILogger<AnthropicUsageClient>
 
     private decimal ComputeCost(string model, LocalDate usageDate, long input, long output, long cacheRead, long cacheWrite)
     {
-        // Longest matching prefix wins (same fix as OpenAiUsageClient). The tiers here
-        // don't currently share price-differing prefixes, but Contains + FirstOrDefault
-        // is the same latent trap, so resolve to the most specific key defensively.
-        var match = Pricing
-            .Where(kv => model.StartsWith(kv.Key, StringComparison.OrdinalIgnoreCase))
-            .OrderByDescending(kv => kv.Key.Length)
-            .Select(kv => ((decimal, decimal, decimal, decimal)?)kv.Value)
+        // Longest matching prefix wins; among ties for a given date, a dated (bounded)
+        // entry beats an always-on one — this is how the Sonnet-5 intro-pricing window
+        // is expressed as data instead of a special-cased branch.
+        var match = pricingOptions.Value.Pricing
+            .Where(e => model.StartsWith(e.ModelPrefix, StringComparison.OrdinalIgnoreCase))
+            .Where(e => (e.EffectiveFrom is null || usageDate >= e.EffectiveFrom)
+                     && (e.EffectiveTo is null || usageDate <= e.EffectiveTo))
+            .OrderByDescending(e => e.ModelPrefix.Length)
+            .ThenByDescending(e => e.EffectiveFrom is not null || e.EffectiveTo is not null)
             .FirstOrDefault();
 
-        decimal ir, or, crr, cwr;
         if (match is null)
         {
-            // Unknown model — surface it instead of silently mis-costing at Sonnet rates.
-            logger.LogWarning("No Anthropic pricing entry for model '{Model}'; defaulting to Sonnet rates. Add an explicit entry to keep cost accurate.", model);
-            (ir, or, crr, cwr) = (3.0m, 15.0m, 0.30m, 3.75m);
+            // Unknown model — surface it instead of silently mis-costing at the fallback rate.
+            logger.LogWarning("No Anthropic pricing entry for model '{Model}'; using fallback rates. Add an explicit entry to keep cost accurate.", model);
         }
-        else
-        {
-            (ir, or, crr, cwr) = match.Value;
-            // Sonnet 5 launched with introductory pricing through 2026-08-31; usage billed
-            // for that window gets the lower rate regardless of when this code runs.
-            if (model.StartsWith("claude-sonnet-5", StringComparison.OrdinalIgnoreCase)
-                && usageDate <= Sonnet5IntroPricingEndsOn)
-            {
-                (ir, or, crr, cwr) = Sonnet5IntroPricing;
-            }
-        }
+
+        var (ir, or, crr, cwr) = match is null
+            ? pricingOptions.Value.FallbackPricing
+            : new PricingRates4(match.Input, match.Output, match.CacheRead, match.CacheWrite);
 
         return input / 1_000_000m * ir + output / 1_000_000m * or
              + cacheRead / 1_000_000m * crr + cacheWrite / 1_000_000m * cwr;
