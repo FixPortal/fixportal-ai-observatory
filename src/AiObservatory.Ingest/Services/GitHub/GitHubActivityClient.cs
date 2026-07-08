@@ -61,7 +61,10 @@ public class GitHubActivityClient(HttpClient http, ILogger<GitHubActivityClient>
                     firstReviewAt, reviewCount));
             }
 
-            if (reachedOlderThanSince || prs.Count < PerPage) break;
+            if (reachedOlderThanSince || prs.Count < PerPage)
+            {
+                break;
+            }
             page++;
         }
         return results;
@@ -73,7 +76,10 @@ public class GitHubActivityClient(HttpClient http, ILogger<GitHubActivityClient>
         CheckRateLimit(response);
         response.EnsureSuccessStatusCode();
         var reviews = await response.Content.ReadFromJsonAsync<List<ReviewDto>>(JsonOptions, ct) ?? [];
-        if (reviews.Count == 0) return (0, null);
+        if (reviews.Count == 0)
+        {
+            return (0, null);
+        }
 
         // Pending reviews (not yet submitted) omit submitted_at entirely — only submitted
         // reviews count toward FirstReviewAt, but ReviewCount still reflects every review.
@@ -126,7 +132,10 @@ public class GitHubActivityClient(HttpClient http, ILogger<GitHubActivityClient>
                     detail.Stats.Additions, detail.Stats.Deletions));
             }
 
-            if (commits.Count < PerPage) break;
+            if (commits.Count < PerPage)
+            {
+                break;
+            }
             page++;
         }
         return results;
@@ -152,7 +161,10 @@ public class GitHubActivityClient(HttpClient http, ILogger<GitHubActivityClient>
                     InstantPattern.ExtendedIso.Parse(run.CreatedAt).Value));
             }
 
-            if (body.WorkflowRuns.Count < PerPage) break;
+            if (body.WorkflowRuns.Count < PerPage)
+            {
+                break;
+            }
             page++;
         }
         return results;

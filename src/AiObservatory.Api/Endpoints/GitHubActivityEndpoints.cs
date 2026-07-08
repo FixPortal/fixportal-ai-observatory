@@ -22,9 +22,9 @@ public static class GitHubActivityEndpoints
             var prs = await db.GitHubPullRequests
                 .AsNoTracking()
                 .Where(p =>
-                    (p.CreatedAt >= startInstant && p.CreatedAt < endInstant) ||
-                    (p.MergedAt != null && p.MergedAt >= startInstant && p.MergedAt < endInstant) ||
-                    (p.FirstReviewAt != null && p.FirstReviewAt >= startInstant && p.FirstReviewAt < endInstant))
+                    p.CreatedAt >= startInstant && p.CreatedAt < endInstant ||
+                    p.MergedAt != null && p.MergedAt >= startInstant && p.MergedAt < endInstant ||
+                    p.FirstReviewAt != null && p.FirstReviewAt >= startInstant && p.FirstReviewAt < endInstant)
                 .OrderByDescending(p => p.CreatedAt)
                 .ToListAsync(ct);
 
@@ -94,7 +94,10 @@ public static class GitHubActivityEndpoints
 
     public static double? ComputeTurnaroundHours(Instant createdAt, Instant? firstReviewAt)
     {
-        if (firstReviewAt is not { } reviewedAt) return null;
+        if (firstReviewAt is not { } reviewedAt)
+        {
+            return null;
+        }
         return Math.Round((reviewedAt - createdAt).TotalHours, 1);
     }
 

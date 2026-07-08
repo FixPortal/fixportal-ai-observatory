@@ -9,7 +9,10 @@ public sealed class EmailAlertNotifier(ISmtpClient smtpClient, IConfiguration co
     public async Task NotifyAsync(BudgetAlertPayload payload, CancellationToken ct = default)
     {
         var to = config["BUDGET_ALERT_EMAIL_TO"];
-        if (string.IsNullOrEmpty(to)) return;
+        if (string.IsNullOrEmpty(to))
+        {
+            return;
+        }
 
         var host = config["BUDGET_ALERT_SMTP_HOST"] ?? "smtp.office365.com";
         var port = int.TryParse(config["BUDGET_ALERT_SMTP_PORT"], out var p) ? p : 587;
@@ -21,7 +24,9 @@ public sealed class EmailAlertNotifier(ISmtpClient smtpClient, IConfiguration co
         {
             await smtpClient.ConnectAsync(host, port, SecureSocketOptions.StartTls, ct);
             if (!string.IsNullOrEmpty(user))
+            {
                 await smtpClient.AuthenticateAsync(user, pass, ct);
+            }
 
             using var message = new MimeMessage();
             message.From.Add(MailboxAddress.Parse(from));
@@ -40,7 +45,9 @@ public sealed class EmailAlertNotifier(ISmtpClient smtpClient, IConfiguration co
             // Disconnect even if authenticate/send throws — otherwise the scoped SMTP client
             // is returned to the container still connected.
             if (smtpClient.IsConnected)
+            {
                 await smtpClient.DisconnectAsync(true, ct);
+            }
         }
     }
 }

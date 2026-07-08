@@ -3,6 +3,12 @@
     <ManagePackageVersionsCentrally>true</ManagePackageVersionsCentrally>
   </PropertyGroup>
   <ItemGroup>
+    <!-- Shared house code-style + analyzer config. GlobalPackageReference applies
+         to every project as a PrivateAssets=all dev dependency; ships the global
+         AnalyzerConfig (all rule severities) and the bundled analyzers. -->
+    <GlobalPackageReference Include="FixPortal.CodeStyle" Version="0.1.6" />
+  </ItemGroup>
+  <ItemGroup>
     <!-- xUnit v3 -->
     <PackageVersion Include="Microsoft.OpenApi" Version="2.7.5" />
     <PackageVersion Include="xunit.v3" Version="3.2.2" />

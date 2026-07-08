@@ -237,7 +237,10 @@ public static class ActivityEndpoints
     public static long MergeIntervalSeconds(IEnumerable<(Instant Start, Instant End)> spans)
     {
         var ordered = spans.Where(s => s.End > s.Start).OrderBy(s => s.Start).ToList();
-        if (ordered.Count == 0) return 0;
+        if (ordered.Count == 0)
+        {
+            return 0;
+        }
 
         var total = Duration.Zero;
         var (curStart, curEnd) = ordered[0];

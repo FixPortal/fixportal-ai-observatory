@@ -24,12 +24,17 @@ public class AnthropicIntelligenceClient
         _client = !string.IsNullOrWhiteSpace(apiKey) ? new AnthropicClient(new APIAuthentication(apiKey)) : null;
         _logger = logger;
         if (!IsConfigured)
+        {
             _logger.LogWarning("ANTHROPIC_API_KEY not set — AI insights and explanations are disabled.");
+        }
     }
 
     public virtual async Task<string> GenerateExplanationAsync(string title, string body, CancellationToken ct = default)
     {
-        if (_client is null) throw new InvalidOperationException("ANTHROPIC_API_KEY is not configured.");
+        if (_client is null)
+        {
+            throw new InvalidOperationException("ANTHROPIC_API_KEY is not configured.");
+        }
         var prompt = $"""
             An AI cost analysis system flagged this insight about API usage patterns:
 
@@ -63,7 +68,10 @@ public class AnthropicIntelligenceClient
 
     public virtual async Task<string> GenerateInsightsJsonAsync(string prompt, CancellationToken ct = default)
     {
-        if (_client is null) throw new InvalidOperationException("ANTHROPIC_API_KEY is not configured.");
+        if (_client is null)
+        {
+            throw new InvalidOperationException("ANTHROPIC_API_KEY is not configured.");
+        }
         var client = _client;
 
         var insightSchema = JsonNode.Parse("""

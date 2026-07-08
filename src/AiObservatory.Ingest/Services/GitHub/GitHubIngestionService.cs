@@ -35,13 +35,22 @@ public class GitHubIngestionService(
                 var runsSince = SinceDate(status.HasWorkflowRuns);
 
                 var prs = await client.GetPullRequestsAsync(repo, prsSince, ct);
-                foreach (var pr in prs) await repository.UpsertPullRequestAsync(pr, now, ct);
+                foreach (var pr in prs)
+                {
+                    await repository.UpsertPullRequestAsync(pr, now, ct);
+                }
 
                 var commits = await client.GetCommitsAsync(repo, commitsSince, ct);
-                foreach (var c in commits) await repository.UpsertCommitAsync(c, now, ct);
+                foreach (var c in commits)
+                {
+                    await repository.UpsertCommitAsync(c, now, ct);
+                }
 
                 var runs = await client.GetWorkflowRunsAsync(repo, runsSince, ct);
-                foreach (var r in runs) await repository.UpsertWorkflowRunAsync(r, now, ct);
+                foreach (var r in runs)
+                {
+                    await repository.UpsertWorkflowRunAsync(r, now, ct);
+                }
 
                 logger.LogInformation(
                     "GitHub: ingested {PrCount} PRs, {CommitCount} commits, {RunCount} workflow runs for {Repo}",
