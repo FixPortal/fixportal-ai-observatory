@@ -51,7 +51,7 @@ public class EmailAlertNotifierTests
             .Build();
 
         var sut = new EmailAlertNotifier(smtp, config);
-        await sut.NotifyAsync(MakePayload("Anthropic"), TestContext.Current.CancellationToken);
+        await sut.NotifyAsync(MakePayload(), TestContext.Current.CancellationToken);
 
         await smtp.Received(1).ConnectAsync("smtp.example.com", 587, SecureSocketOptions.StartTls, Arg.Any<CancellationToken>());
         await smtp.Received(1).AuthenticateAsync("obs@example.com", "secret", Arg.Any<CancellationToken>());

@@ -2,8 +2,6 @@ using System.Text.Json.Nodes;
 using Anthropic.SDK;
 using Anthropic.SDK.Constants;
 using Anthropic.SDK.Messaging;
-using Microsoft.Extensions.Configuration;
-using Microsoft.Extensions.Logging;
 using CommonFunction = Anthropic.SDK.Common.Function;
 using CommonTool = Anthropic.SDK.Common.Tool;
 

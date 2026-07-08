@@ -1,10 +1,8 @@
-using AiObservatory.Data;
 using AiObservatory.Data.Repositories;
 using AwesomeAssertions;
 using Microsoft.EntityFrameworkCore;
 using NodaTime;
 using Npgsql;
-using Xunit;
 
 namespace AiObservatory.Data.Tests.Repositories;
 

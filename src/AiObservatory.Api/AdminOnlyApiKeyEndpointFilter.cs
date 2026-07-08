@@ -1,7 +1,3 @@
-using Microsoft.AspNetCore.Http;
-using Microsoft.Extensions.Configuration;
-using Microsoft.Extensions.Hosting;
-
 namespace AiObservatory.Api;
 
 // Stricter sibling of ApiKeyEndpointFilter for GET routes whose data is more

@@ -1,6 +1,4 @@
-using System.Net.Http.Json;
 using Microsoft.Extensions.Caching.Memory;
-using Microsoft.Extensions.Logging;
 
 namespace AiObservatory.Api.Services.Fx;
 

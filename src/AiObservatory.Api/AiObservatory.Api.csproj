@@ -10,6 +10,7 @@
       <PrivateAssets>all</PrivateAssets>
     </PackageReference>
     <PackageReference Include="MailKit" />
+    <PackageReference Include="Microsoft.OpenApi" />
     <PackageReference Include="NodaTime.Serialization.SystemTextJson" />
   </ItemGroup>
 

@@ -1,11 +1,9 @@
 using System.Security.Claims;
-using AiObservatory.Api;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Http.HttpResults;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Hosting;
 using NSubstitute;
-using Xunit;
 
 namespace AiObservatory.Api.Tests;
 

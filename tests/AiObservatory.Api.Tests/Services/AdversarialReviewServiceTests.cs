@@ -6,7 +6,6 @@ using Microsoft.AspNetCore.Http;
 using NodaTime;
 using NodaTime.Testing;
 using NSubstitute;
-using Xunit;
 
 namespace AiObservatory.Api.Tests.Services;
 

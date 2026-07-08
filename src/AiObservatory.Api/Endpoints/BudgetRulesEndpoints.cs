@@ -1,7 +1,6 @@
 using AiObservatory.Data;
 using AiObservatory.Data.Entities;
 using Microsoft.EntityFrameworkCore;
-using Microsoft.Extensions.Configuration;
 
 namespace AiObservatory.Api.Endpoints;
 

@@ -1,7 +1,3 @@
-using Microsoft.AspNetCore.Http;
-using Microsoft.Extensions.Configuration;
-using Microsoft.Extensions.Hosting;
-
 namespace AiObservatory.Api;
 
 public class ApiKeyEndpointFilter(IConfiguration config, IHostEnvironment env) : IEndpointFilter

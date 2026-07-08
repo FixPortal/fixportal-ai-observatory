@@ -1,5 +1,4 @@
 using System.Net;
-using System.Net.Http.Headers;
 using AiObservatory.Ingest.Services.GitHub;
 using AwesomeAssertions;
 using Microsoft.Extensions.Logging.Abstractions;
@@ -105,11 +104,10 @@ public class GitHubActivityClientTests
     [Fact]
     public async Task GetPullRequestsAsync_PaginatesUntilShortPage()
     {
-        var callCount = 0;
         var handler = new StubHandler(req =>
         {
             if (req.RequestUri!.ToString().Contains("/reviews")) return JsonResponse("[]");
-            callCount++;
+            
             // Page 1: a full 100-row page (forces a second page request); page 2: short page, stop.
             if (req.RequestUri!.ToString().Contains("page=2"))
             {

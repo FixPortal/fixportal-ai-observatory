@@ -1,9 +1,9 @@
 using System.Net.Http.Json;
 using System.Text.Json;
-using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using NodaTime;
 using NodaTime.Text;
+// ReSharper disable NotAccessedPositionalProperty.Local; unused fields kept for shape-fidelity with the API response.
 
 namespace AiObservatory.Ingest.Services.Anthropic;
 

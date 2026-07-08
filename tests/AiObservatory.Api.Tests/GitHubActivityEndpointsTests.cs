@@ -1,7 +1,6 @@
 using AiObservatory.Api.Endpoints;
 using AwesomeAssertions;
 using NodaTime;
-using Xunit;
 
 namespace AiObservatory.Api.Tests;
 
