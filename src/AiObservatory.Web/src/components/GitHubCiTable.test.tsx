@@ -33,6 +33,9 @@ describe('GitHubCiTable', () => {
   it('prefers the loading state over the error state when both are set', () => {
     render(<GitHubCiTable ci={[]} isLoading isError />)
     expect(screen.getByText('Loading CI activity...')).toBeInTheDocument()
+    // Precedence, not just presence: a regression that rendered both would still pass
+    // the assertion above, so pin that the error copy is genuinely absent.
+    expect(screen.queryByText('Couldn’t load CI activity.')).not.toBeInTheDocument()
   })
 
   it('marks low success rates without emoji glyphs', () => {
