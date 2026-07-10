@@ -10,14 +10,14 @@ public class GitHubActivityRepository(AiObservatoryDbContext ctx) : IGitHubActiv
             INSERT INTO "GitHubPullRequests"
                 ("Id", "Repo", "Number", "Title", "Author", "State", "CreatedAt", "MergedAt", "ClosedAt", "FirstReviewAt", "ReviewCount", "IngestedAt")
             VALUES
-                (gen_random_uuid(), {r.Repo}, {r.Number}, {r.Title}, {r.Author}, {r.State}, {r.CreatedAt}, {r.MergedAt}, {r.ClosedAt}, {r.FirstReviewAt}, {r.ReviewCount}, {ingestedAt})
+                ({Guid.NewGuid()}, {Truncate(r.Repo, 200)}, {r.Number}, {Truncate(r.Title, 500)}, {Truncate(r.Author, 200)}, {Truncate(r.State, 20)}, {r.CreatedAt}, {r.MergedAt}, {r.ClosedAt}, {r.FirstReviewAt}, {r.ReviewCount}, {ingestedAt})
             ON CONFLICT ("Repo", "Number") DO UPDATE SET
                 "Title" = EXCLUDED."Title",
                 "State" = EXCLUDED."State",
                 "MergedAt" = EXCLUDED."MergedAt",
                 "ClosedAt" = EXCLUDED."ClosedAt",
-                "FirstReviewAt" = EXCLUDED."FirstReviewAt",
-                "ReviewCount" = EXCLUDED."ReviewCount"
+                "FirstReviewAt" = COALESCE(EXCLUDED."FirstReviewAt", "GitHubPullRequests"."FirstReviewAt"),
+                "ReviewCount" = GREATEST(EXCLUDED."ReviewCount", "GitHubPullRequests"."ReviewCount")
             """, ct);
 
     public Task UpsertCommitAsync(GitHubCommitRecord r, Instant ingestedAt, CancellationToken ct = default) =>
@@ -25,7 +25,7 @@ public class GitHubActivityRepository(AiObservatoryDbContext ctx) : IGitHubActiv
             INSERT INTO "GitHubCommits"
                 ("Id", "Repo", "Sha", "Author", "CommittedAt", "Additions", "Deletions", "IngestedAt")
             VALUES
-                (gen_random_uuid(), {r.Repo}, {r.Sha}, {r.Author}, {r.CommittedAt}, {r.Additions}, {r.Deletions}, {ingestedAt})
+                ({Guid.NewGuid()}, {Truncate(r.Repo, 200)}, {Truncate(r.Sha, 64)}, {Truncate(r.Author, 200)}, {r.CommittedAt}, {r.Additions}, {r.Deletions}, {ingestedAt})
             ON CONFLICT ("Repo", "Sha") DO NOTHING
             """, ct);
 
@@ -34,8 +34,9 @@ public class GitHubActivityRepository(AiObservatoryDbContext ctx) : IGitHubActiv
             INSERT INTO "GitHubWorkflowRuns"
                 ("Id", "Repo", "RunId", "WorkflowName", "Status", "CreatedAt", "IngestedAt")
             VALUES
-                (gen_random_uuid(), {r.Repo}, {r.RunId}, {r.WorkflowName}, {r.Status}, {r.CreatedAt}, {ingestedAt})
+                ({Guid.NewGuid()}, {Truncate(r.Repo, 200)}, {r.RunId}, {Truncate(r.WorkflowName, 200)}, {Truncate(r.Status, 20)}, {r.CreatedAt}, {ingestedAt})
             ON CONFLICT ("Repo", "RunId") DO UPDATE SET
+                "WorkflowName" = EXCLUDED."WorkflowName",
                 "Status" = EXCLUDED."Status"
             """, ct);
 
@@ -44,4 +45,7 @@ public class GitHubActivityRepository(AiObservatoryDbContext ctx) : IGitHubActiv
             await ctx.GitHubPullRequests.AsNoTracking().AnyAsync(p => p.Repo == repo, ct),
             await ctx.GitHubCommits.AsNoTracking().AnyAsync(c => c.Repo == repo, ct),
             await ctx.GitHubWorkflowRuns.AsNoTracking().AnyAsync(r => r.Repo == repo, ct));
+
+    private static string Truncate(string value, int maxLength) =>
+        value.Length <= maxLength ? value : value[..maxLength];
 }

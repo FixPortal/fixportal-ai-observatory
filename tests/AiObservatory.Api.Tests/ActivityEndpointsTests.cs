@@ -151,6 +151,69 @@ public class ActivityEndpointsTests
         ActivityEndpoints.MergeIntervalSeconds([valid, zeroLength, inverted]).Should().Be(3600);
     }
 
+    [Theory]
+    [InlineData("fix-portal")]
+    [InlineData("fix-portal/fixportal-ai-observatory")]
+    [InlineData("chris-fixportal/tooling")]
+    public void IsAllowedProject_WhenProjectMatchesAllowedOwner_ReturnsTrue(string project)
+    {
+        ActivityEndpoints.IsAllowedProject(project).Should().BeTrue();
+    }
+
+    [Theory]
+    [InlineData("fix-portal-other/example")]
+    [InlineData("other/fix-portal")]
+    [InlineData("claude-review")]
+    public void IsAllowedProject_WhenProjectDoesNotMatchAllowedOwner_ReturnsFalse(string project)
+    {
+        ActivityEndpoints.IsAllowedProject(project).Should().BeFalse();
+    }
+
+    [Fact]
+    public void BuildDailyActivityResponses_WhenSessionCrossesUtcMidnight_SplitsWallClockAcrossBothDays()
+    {
+        var sessions = new[]
+        {
+            new ActivityEndpoints.ActivitySessionSlice(
+                "fix-portal/example",
+                Instant.FromUtc(2026, 7, 1, 23, 0),
+                Instant.FromUtc(2026, 7, 2, 3, 0),
+                ActiveSeconds: 14_400),
+        };
+
+        var result = ActivityEndpoints.BuildDailyActivityResponses(sessions, new LocalDate(2026, 7, 1), new LocalDate(2026, 7, 2));
+
+        result.Should().HaveCount(2);
+        result[0].Date.Should().Be("2026-07-01");
+        result[0].WallClockSeconds.Should().Be(3_600);
+        result[0].ActiveSeconds.Should().Be(3_600);
+        result[1].Date.Should().Be("2026-07-02");
+        result[1].WallClockSeconds.Should().Be(10_800);
+        result[1].ActiveSeconds.Should().Be(10_800);
+    }
+
+    [Fact]
+    public void BuildDailyActivityResponses_FiltersDisallowedProjects()
+    {
+        var sessions = new[]
+        {
+            new ActivityEndpoints.ActivitySessionSlice(
+                "fix-portal/example",
+                Instant.FromUtc(2026, 7, 1, 9, 0),
+                Instant.FromUtc(2026, 7, 1, 10, 0),
+                ActiveSeconds: 3_600),
+            new ActivityEndpoints.ActivitySessionSlice(
+                "other/example",
+                Instant.FromUtc(2026, 7, 1, 11, 0),
+                Instant.FromUtc(2026, 7, 1, 12, 0),
+                ActiveSeconds: 3_600),
+        };
+
+        var result = ActivityEndpoints.BuildDailyActivityResponses(sessions, new LocalDate(2026, 7, 1), new LocalDate(2026, 7, 1));
+
+        result.Single().ActiveSeconds.Should().Be(3_600);
+    }
+
     private static readonly LocalDate Today = new(2026, 7, 1);
 
     [Fact]

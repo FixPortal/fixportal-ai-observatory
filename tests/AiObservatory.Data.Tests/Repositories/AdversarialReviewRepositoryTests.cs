@@ -26,7 +26,7 @@ public class AdversarialReviewRepositoryTests : IAsyncLifetime
         // Keep the "_test" marker (DisposeAsync only drops a _test database).
         _connStr = new NpgsqlConnectionStringBuilder(baseConn)
         {
-            Database = "aiobs_test_adversarial"
+            Database = $"aiobs_test_adversarial_{Guid.NewGuid():N}"
         }.ConnectionString;
         var options = new DbContextOptionsBuilder<AiObservatoryDbContext>()
             .UseNpgsql(_connStr, o => o.UseNodaTime())
@@ -38,11 +38,14 @@ public class AdversarialReviewRepositoryTests : IAsyncLifetime
 
     public async ValueTask DisposeAsync()
     {
-        if (_connStr.Contains("_test", StringComparison.OrdinalIgnoreCase))
+        if (_ctx is not null && _connStr?.Contains("_test", StringComparison.OrdinalIgnoreCase) == true)
         {
             await _ctx.Database.EnsureDeletedAsync();
         }
-        await _ctx.DisposeAsync();
+        if (_ctx is not null)
+        {
+            await _ctx.DisposeAsync();
+        }
     }
 
     private static AdversarialReviewRun Run(

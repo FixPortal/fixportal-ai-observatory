@@ -6,6 +6,8 @@ namespace AiObservatory.Api.Endpoints;
 
 public static class GitHubActivityEndpoints
 {
+    private static readonly string[] TerminalFailureStatuses = ["failure", "timed_out", "startup_failure"];
+
     public static void MapGitHubActivityEndpoints(this IEndpointRouteBuilder app)
     {
         app.MapGet("/github/prs", async (
@@ -21,6 +23,7 @@ public static class GitHubActivityEndpoints
 
             var prs = await db.GitHubPullRequests
                 .AsNoTracking()
+                .Where(p => ActivityEndpoints.AllowedProjectOwners.Any(o => p.Repo == o || p.Repo.StartsWith(o + "/")))
                 .Where(p =>
                     p.CreatedAt >= startInstant && p.CreatedAt < endInstant ||
                     p.MergedAt != null && p.MergedAt >= startInstant && p.MergedAt < endInstant ||
@@ -49,6 +52,7 @@ public static class GitHubActivityEndpoints
 
             var byRepo = await db.GitHubCommits
                 .AsNoTracking()
+                .Where(c => ActivityEndpoints.AllowedProjectOwners.Any(o => c.Repo == o || c.Repo.StartsWith(o + "/")))
                 .Where(c => c.CommittedAt >= startInstant && c.CommittedAt < endInstant)
                 .GroupBy(c => c.Repo)
                 .Select(g => new GitHubCommitSummaryResponse(g.Key, g.Count(), g.Sum(c => c.Additions), g.Sum(c => c.Deletions)))
@@ -71,6 +75,7 @@ public static class GitHubActivityEndpoints
 
             var grouped = await db.GitHubWorkflowRuns
                 .AsNoTracking()
+                .Where(r => ActivityEndpoints.AllowedProjectOwners.Any(o => r.Repo == o || r.Repo.StartsWith(o + "/")))
                 .Where(r => r.CreatedAt >= startInstant && r.CreatedAt < endInstant)
                 .GroupBy(r => new { r.Repo, r.WorkflowName })
                 .Select(g => new
@@ -78,7 +83,7 @@ public static class GitHubActivityEndpoints
                     g.Key.Repo,
                     g.Key.WorkflowName,
                     Total = g.Count(),
-                    Failed = g.Count(r => r.Status == "failure"),
+                    Failed = g.Count(r => TerminalFailureStatuses.Contains(r.Status)),
                     Succeeded = g.Count(r => r.Status == "success"),
                 })
                 .OrderByDescending(r => r.Total)
@@ -105,6 +110,9 @@ public static class GitHubActivityEndpoints
     // runs count toward the total but are neither a success nor a (terminal) failure.
     public static double ComputeSuccessRate(int total, int succeeded) =>
         total > 0 ? Math.Round(succeeded * 100.0 / total, 1) : 0;
+
+    public static bool IsTerminalFailure(string status) =>
+        TerminalFailureStatuses.Contains(status);
 }
 
 public sealed record GitHubPrResponse(

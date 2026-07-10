@@ -14,6 +14,7 @@ public class GitHubActivityClient(HttpClient http, ILogger<GitHubActivityClient>
     // callers (e.g. the Copilot client sharing the same token) within the hour window.
     private const int RateLimitFloor = 50;
     private const int PerPage = 100;
+    private const int GitHubSearchResultCap = 1000;
 
     private static readonly JsonSerializerOptions JsonOptions = new() { PropertyNamingPolicy = JsonNamingPolicy.SnakeCaseLower };
 
@@ -30,7 +31,7 @@ public class GitHubActivityClient(HttpClient http, ILogger<GitHubActivityClient>
             // predates `since`, every PR on every later page is even less recently updated, so
             // the outer loop can stop instead of paging through a repo's entire PR history on
             // every 3-day poll.
-            var response = await http.GetAsync($"/repos/{repo}/pulls?state=all&sort=updated&direction=desc&per_page={PerPage}&page={page}", ct);
+            using var response = await http.GetAsync($"/repos/{repo}/pulls?state=all&sort=updated&direction=desc&per_page={PerPage}&page={page}", ct);
             CheckRateLimit(response);
             response.EnsureSuccessStatusCode();
             var prs = await response.Content.ReadFromJsonAsync<List<PullRequestDto>>(JsonOptions, ct) ?? [];
@@ -54,7 +55,7 @@ public class GitHubActivityClient(HttpClient http, ILogger<GitHubActivityClient>
                 // the entity/frontend rather than passing the raw 2-way API value through.
                 var state = mergedAt is not null ? "merged" : pr.State;
                 results.Add(new GitHubPullRequestRecord(
-                    repo, pr.Number, pr.Title, pr.User.Login, state,
+                    Truncate(repo, 200), pr.Number, Truncate(pr.Title, 500), Truncate(pr.User.Login, 200), Truncate(state, 20),
                     createdAt,
                     mergedAt,
                     pr.ClosedAt is null ? null : InstantPattern.ExtendedIso.Parse(pr.ClosedAt).Value,
@@ -72,10 +73,22 @@ public class GitHubActivityClient(HttpClient http, ILogger<GitHubActivityClient>
 
     private async Task<(int ReviewCount, Instant? FirstReviewAt)> GetReviewSummaryAsync(string repo, int number, CancellationToken ct)
     {
-        var response = await http.GetAsync($"/repos/{repo}/pulls/{number}/reviews", ct);
-        CheckRateLimit(response);
-        response.EnsureSuccessStatusCode();
-        var reviews = await response.Content.ReadFromJsonAsync<List<ReviewDto>>(JsonOptions, ct) ?? [];
+        var reviews = new List<ReviewDto>();
+        var page = 1;
+        while (true)
+        {
+            using var response = await http.GetAsync($"/repos/{repo}/pulls/{number}/reviews?per_page={PerPage}&page={page}", ct);
+            CheckRateLimit(response);
+            response.EnsureSuccessStatusCode();
+            var pageReviews = await response.Content.ReadFromJsonAsync<List<ReviewDto>>(JsonOptions, ct) ?? [];
+            reviews.AddRange(pageReviews);
+            if (pageReviews.Count < PerPage)
+            {
+                break;
+            }
+            page++;
+        }
+
         if (reviews.Count == 0)
         {
             return (0, null);
@@ -111,7 +124,7 @@ public class GitHubActivityClient(HttpClient http, ILogger<GitHubActivityClient>
         var page = 1;
         while (true)
         {
-            var response = await http.GetAsync($"/repos/{repo}/commits?since={sinceStr}&per_page={PerPage}&page={page}", ct);
+            using var response = await http.GetAsync($"/repos/{repo}/commits?since={sinceStr}&per_page={PerPage}&page={page}", ct);
             CheckRateLimit(response);
             response.EnsureSuccessStatusCode();
             var commits = await response.Content.ReadFromJsonAsync<List<CommitListDto>>(JsonOptions, ct) ?? [];
@@ -120,14 +133,14 @@ public class GitHubActivityClient(HttpClient http, ILogger<GitHubActivityClient>
             {
                 // Per-commit call needed for churn stats — the list endpoint omits them.
                 // Personal-scale repo volume keeps this within the rate-limit budget.
-                var detailResponse = await http.GetAsync($"/repos/{repo}/commits/{c.Sha}", ct);
+                using var detailResponse = await http.GetAsync($"/repos/{repo}/commits/{c.Sha}", ct);
                 CheckRateLimit(detailResponse);
                 detailResponse.EnsureSuccessStatusCode();
                 var detail = await detailResponse.Content.ReadFromJsonAsync<CommitDetailDto>(JsonOptions, ct)
                     ?? new CommitDetailDto(c.Sha, new CommitStatsDto(0, 0));
 
                 results.Add(new GitHubCommitRecord(
-                    repo, c.Sha, c.Commit.Author.Name,
+                    Truncate(repo, 200), Truncate(c.Sha, 64), Truncate(c.Commit.Author.Name, 200),
                     InstantPattern.ExtendedIso.Parse(c.Commit.Author.Date).Value,
                     detail.Stats.Additions, detail.Stats.Deletions));
             }
@@ -148,7 +161,7 @@ public class GitHubActivityClient(HttpClient http, ILogger<GitHubActivityClient>
         var page = 1;
         while (true)
         {
-            var response = await http.GetAsync($"/repos/{repo}/actions/runs?created=%3E%3D{sinceStr}&per_page={PerPage}&page={page}", ct);
+            using var response = await http.GetAsync($"/repos/{repo}/actions/runs?created=%3E%3D{sinceStr}&per_page={PerPage}&page={page}", ct);
             CheckRateLimit(response);
             response.EnsureSuccessStatusCode();
             var body = await response.Content.ReadFromJsonAsync<WorkflowRunsResponseDto>(JsonOptions, ct)
@@ -157,7 +170,7 @@ public class GitHubActivityClient(HttpClient http, ILogger<GitHubActivityClient>
             foreach (var run in body.WorkflowRuns)
             {
                 results.Add(new GitHubWorkflowRunRecord(
-                    repo, run.Id, run.Name, run.Conclusion ?? run.Status,
+                    Truncate(repo, 200), run.Id, Truncate(run.Name ?? "(unnamed)", 200), Truncate(run.Conclusion ?? run.Status, 20),
                     InstantPattern.ExtendedIso.Parse(run.CreatedAt).Value));
             }
 
@@ -165,13 +178,21 @@ public class GitHubActivityClient(HttpClient http, ILogger<GitHubActivityClient>
             {
                 break;
             }
+            if (page * PerPage >= GitHubSearchResultCap)
+            {
+                logger.LogWarning("GitHub workflow-runs result cap reached for {Repo}; narrowing the backfill window may be required", repo);
+                break;
+            }
             page++;
         }
         return results;
     }
 
+    private static string Truncate(string value, int maxLength) =>
+        value.Length <= maxLength ? value : value[..maxLength];
+
     private sealed record WorkflowRunsResponseDto(List<WorkflowRunDto> WorkflowRuns);
-    private sealed record WorkflowRunDto(long Id, string Name, string Status, string? Conclusion, string CreatedAt);
+    private sealed record WorkflowRunDto(long Id, string? Name, string Status, string? Conclusion, string CreatedAt);
 
     private sealed record PullRequestDto(
         int Number, string Title, PullRequestUserDto User, string State,

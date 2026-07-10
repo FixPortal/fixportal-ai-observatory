@@ -183,6 +183,60 @@ public class GitHubActivityClientTests
     }
 
     [Fact]
+    public async Task GetPullRequestsAsync_TruncatesExternalStringsToDatabaseLimits()
+    {
+        var longTitle = new string('t', 600);
+        var longAuthor = new string('a', 250);
+        var handler = new StubHandler(req =>
+        {
+            if (req.RequestUri!.ToString().Contains("/reviews"))
+            {
+                return JsonResponse("[]");
+            }
+            return JsonResponse($$"""
+                [{"number":42,"title":"{{longTitle}}","user":{"login":"{{longAuthor}}"},"state":"open",
+                  "created_at":"2026-07-01T09:00:00Z","updated_at":"2026-07-01T10:00:00Z","merged_at":null,"closed_at":null}]
+                """);
+        });
+        var sut = CreateSut(handler);
+
+        var result = await sut.GetPullRequestsAsync("fix-portal/example", new LocalDate(2026, 7, 1), TestContext.Current.CancellationToken);
+
+        var pr = result.Single();
+        pr.Title.Should().HaveLength(500);
+        pr.Author.Should().HaveLength(200);
+    }
+
+    [Fact]
+    public async Task GetPullRequestsAsync_PaginatesReviewsUntilShortPage()
+    {
+        var handler = new StubHandler(req =>
+        {
+            var url = req.RequestUri!.ToString();
+            if (url.Contains("/reviews") && url.Contains("page=2"))
+            {
+                return JsonResponse("""[{"submitted_at":"2026-07-01T14:00:00Z"}]""");
+            }
+            if (url.Contains("/reviews"))
+            {
+                var page = string.Join(",", Enumerable.Range(1, 100).Select(_ => """{"submitted_at":"2026-07-01T12:00:00Z"}"""));
+                return JsonResponse($"[{page}]");
+            }
+            return JsonResponse("""
+                [{"number":42,"title":"Add feature","user":{"login":"chris"},"state":"open",
+                  "created_at":"2026-07-01T09:00:00Z","updated_at":"2026-07-01T10:00:00Z","merged_at":null,"closed_at":null}]
+                """);
+        });
+        var sut = CreateSut(handler);
+
+        var result = await sut.GetPullRequestsAsync("fix-portal/example", new LocalDate(2026, 7, 1), TestContext.Current.CancellationToken);
+
+        result.Single().ReviewCount.Should().Be(101);
+        handler.RequestedUrls.Should().Contain(u => u.Contains("/pulls/42/reviews?per_page=100&page=1"));
+        handler.RequestedUrls.Should().Contain(u => u.Contains("/pulls/42/reviews?per_page=100&page=2"));
+    }
+
+    [Fact]
     public async Task GetPullRequestsAsync_WhenPrClosedWithoutMerge_ReturnsStateClosed()
     {
         var handler = new StubHandler(req =>
@@ -251,6 +305,27 @@ public class GitHubActivityClientTests
     }
 
     [Fact]
+    public async Task GetCommitsAsync_TruncatesExternalStringsToDatabaseLimits()
+    {
+        var longAuthor = new string('a', 250);
+        var handler = new StubHandler(req =>
+        {
+            var url = req.RequestUri!.ToString();
+            if (url.Contains("/commits/abc123"))
+            {
+                return JsonResponse("""{"sha":"abc123","stats":{"additions":10,"deletions":2}}""");
+            }
+            return JsonResponse(
+                "[{\"sha\":\"abc123\",\"commit\":{\"author\":{\"name\":\"" + longAuthor + "\",\"date\":\"2026-07-01T09:00:00Z\"}}}]");
+        });
+        var sut = CreateSut(handler);
+
+        var result = await sut.GetCommitsAsync("fix-portal/example", new LocalDate(2026, 7, 1), TestContext.Current.CancellationToken);
+
+        result.Single().Author.Should().HaveLength(200);
+    }
+
+    [Fact]
     public async Task GetCommitsAsync_PassesSinceAsQueryParam()
     {
         var handler = new StubHandler(req =>
@@ -296,5 +371,32 @@ public class GitHubActivityClientTests
         var result = await sut.GetWorkflowRunsAsync("fix-portal/example", new LocalDate(2026, 7, 1), TestContext.Current.CancellationToken);
 
         result.Single().Status.Should().Be("in_progress");
+    }
+
+    [Fact]
+    public async Task GetWorkflowRunsAsync_WhenNameIsNull_UsesPlaceholder()
+    {
+        var handler = new StubHandler(_ => JsonResponse("""
+            {"workflow_runs":[{"id":124,"name":null,"status":"in_progress","conclusion":null,"created_at":"2026-07-01T09:00:00Z"}]}
+            """));
+        var sut = CreateSut(handler);
+
+        var result = await sut.GetWorkflowRunsAsync("fix-portal/example", new LocalDate(2026, 7, 1), TestContext.Current.CancellationToken);
+
+        result.Single().WorkflowName.Should().Be("(unnamed)");
+    }
+
+    [Fact]
+    public async Task GetWorkflowRunsAsync_TruncatesExternalStringsToDatabaseLimits()
+    {
+        var longName = new string('w', 250);
+        var handler = new StubHandler(_ => JsonResponse($$"""
+            {"workflow_runs":[{"id":124,"name":"{{longName}}","status":"in_progress","conclusion":null,"created_at":"2026-07-01T09:00:00Z"}]}
+            """));
+        var sut = CreateSut(handler);
+
+        var result = await sut.GetWorkflowRunsAsync("fix-portal/example", new LocalDate(2026, 7, 1), TestContext.Current.CancellationToken);
+
+        result.Single().WorkflowName.Should().HaveLength(200);
     }
 }

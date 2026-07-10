@@ -19,6 +19,8 @@ services:
     build:
       context: .
       dockerfile: src/AiObservatory.Api/Dockerfile
+      args:
+        GITHUB_PACKAGES_TOKEN: ${GITHUB_PACKAGES_TOKEN:-}
     environment:
       ASPNETCORE_ENVIRONMENT: Development
       ASPNETCORE_URLS: http://+:8080

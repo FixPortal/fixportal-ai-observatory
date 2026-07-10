@@ -144,22 +144,12 @@ public static class ActivityEndpoints
 
             var sessions = await db.ClaudeActivitySessions
                 .AsNoTracking()
-                .Where(s => s.StartedAt >= startInstant && s.StartedAt < endInstant)
-                .Select(s => new { s.StartedAt, s.LastSeenAt, s.ActiveSeconds })
+                .Where(s => s.LastSeenAt > startInstant && s.StartedAt < endInstant)
+                .Where(s => AllowedProjectOwners.Any(o => s.Project == o || s.Project.StartsWith(o + "/")))
+                .Select(s => new ActivitySessionSlice(s.Project, s.StartedAt, s.LastSeenAt, s.ActiveSeconds))
                 .ToListAsync(ct);
 
-            // In-memory grouping: LocalDatePattern.Iso.Format(Instant) isn't SQL-
-            // translatable, and this is personal-scale data (one user's local
-            // sessions), so a client-side GroupBy is fine — revisit with a SQL
-            // GROUP BY if row count ever grows past a single user's history.
-            var byDate = sessions
-                .GroupBy(s => LocalDatePattern.Iso.Format(s.StartedAt.InUtc().Date))
-                .Select(g => new DailyActivityResponse(
-                    g.Key,
-                    g.Sum(s => s.ActiveSeconds),
-                    MergeIntervalSeconds(g.Select(s => (s.StartedAt, s.LastSeenAt)))))
-                .OrderBy(d => d.Date)
-                .ToList();
+            var byDate = BuildDailyActivityResponses(sessions, start, end);
 
             return Results.Ok(byDate);
         }).AddEndpointFilter<AdminOnlyApiKeyEndpointFilter>();
@@ -182,7 +172,7 @@ public static class ActivityEndpoints
             var sessions = await db.ClaudeActivitySessions
                 .AsNoTracking()
                 .Where(s => s.StartedAt >= startInstant && s.StartedAt < endInstant)
-                .Where(s => AllowedProjectOwners.Any(o => s.Project.StartsWith(o + "/")))
+                .Where(s => AllowedProjectOwners.Any(o => s.Project == o || s.Project.StartsWith(o + "/")))
                 .Select(s => new { s.SessionId, s.Project, s.ActiveSeconds })
                 .ToListAsync(ct);
 
@@ -208,9 +198,7 @@ public static class ActivityEndpoints
             AiObservatoryDbContext db,
             CancellationToken ct) =>
         {
-            var deleted = await db.ClaudeActivitySessions
-                .Where(s => !AllowedProjectOwners.Any(o => s.Project.StartsWith(o + "/")))
-                .ExecuteDeleteAsync(ct);
+            var deleted = await DeleteDisallowedProjectSessionsAsync(db, ct);
 
             return Results.Ok(new { deletedSessions = deleted });
         }).AddEndpointFilter<AdminOnlyApiKeyEndpointFilter>();
@@ -220,6 +208,60 @@ public static class ActivityEndpoints
     // else (scratch folders, other orgs, non-git dirs falling back to a leaf folder name)
     // is ingestion noise and stays out of the Project breakdown/treemap.
     public static readonly string[] AllowedProjectOwners = ["fix-portal", "chris-fixportal"];
+
+    public sealed record ActivitySessionSlice(string Project, Instant StartedAt, Instant LastSeenAt, long ActiveSeconds);
+
+    public static bool IsAllowedProject(string project) =>
+        AllowedProjectOwners.Any(o => project == o || project.StartsWith(o + "/", StringComparison.Ordinal));
+
+    public static Task<int> DeleteDisallowedProjectSessionsAsync(AiObservatoryDbContext db, CancellationToken ct = default) =>
+        db.ClaudeActivitySessions
+            .Where(s => !AllowedProjectOwners.Any(o => s.Project == o || s.Project.StartsWith(o + "/")))
+            .ExecuteDeleteAsync(ct);
+
+    public static List<DailyActivityResponse> BuildDailyActivityResponses(
+        IEnumerable<ActivitySessionSlice> sessions,
+        LocalDate start,
+        LocalDate end)
+    {
+        var startInstant = start.AtStartOfDayInZone(DateTimeZone.Utc).ToInstant();
+        var endInstant = end.PlusDays(1).AtStartOfDayInZone(DateTimeZone.Utc).ToInstant();
+        var slices = new List<(LocalDate Date, Instant Start, Instant End, long ActiveSeconds)>();
+
+        foreach (var session in sessions.Where(s => IsAllowedProject(s.Project) && s.LastSeenAt > s.StartedAt))
+        {
+            var clippedStart = Max(session.StartedAt, startInstant);
+            var clippedEnd = Min(session.LastSeenAt, endInstant);
+            if (clippedEnd <= clippedStart)
+            {
+                continue;
+            }
+
+            var totalSeconds = (session.LastSeenAt - session.StartedAt).TotalSeconds;
+            var cursor = clippedStart;
+            while (cursor < clippedEnd)
+            {
+                var date = cursor.InUtc().Date;
+                var nextMidnight = date.PlusDays(1).AtStartOfDayInZone(DateTimeZone.Utc).ToInstant();
+                var fragmentEnd = Min(clippedEnd, nextMidnight);
+                var fragmentSeconds = (fragmentEnd - cursor).TotalSeconds;
+                var activeSeconds = totalSeconds > 0
+                    ? (long)Math.Round(session.ActiveSeconds * fragmentSeconds / totalSeconds, MidpointRounding.AwayFromZero)
+                    : 0;
+                slices.Add((date, cursor, fragmentEnd, activeSeconds));
+                cursor = fragmentEnd;
+            }
+        }
+
+        return slices
+            .GroupBy(s => s.Date)
+            .Select(g => new DailyActivityResponse(
+                LocalDatePattern.Iso.Format(g.Key),
+                g.Sum(s => s.ActiveSeconds),
+                MergeIntervalSeconds(g.Select(s => (s.Start, s.End)))))
+            .OrderBy(d => d.Date)
+            .ToList();
+    }
 
     public static bool ShouldReplaceExisting(ClaudeActivitySession existing, long newActiveSeconds, Instant newLastSeenAt) =>
         newActiveSeconds > existing.ActiveSeconds || newLastSeenAt > existing.LastSeenAt;
@@ -259,6 +301,10 @@ public static class ActivityEndpoints
         total += curEnd - curStart;
         return (long)total.TotalSeconds;
     }
+
+    private static Instant Min(Instant a, Instant b) => a < b ? a : b;
+
+    private static Instant Max(Instant a, Instant b) => a > b ? a : b;
 
     public static bool TryParseDateRange(
         string? from, string? to, LocalDate today,

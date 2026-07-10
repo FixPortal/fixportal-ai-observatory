@@ -7,9 +7,9 @@ import { useGitHubPrs, useGitHubCommitSummary, useGitHubCi, localDate } from '..
 
 export default function GitHubPage() {
   const { from, to, preset, setPreset, setCustom } = useDateRange()
-  const { prs, isError: prsError } = useGitHubPrs(from, to)
-  const { summary, isError: summaryError } = useGitHubCommitSummary(from, to)
-  const { ci, isError: ciError } = useGitHubCi(from, to)
+  const { prs, isError: prsError, isLoading: prsLoading } = useGitHubPrs(from, to)
+  const { summary, isError: summaryError, isLoading: summaryLoading } = useGitHubCommitSummary(from, to)
+  const { ci, isError: ciError, isLoading: ciLoading } = useGitHubCi(from, to)
   const rangeLabel = `${localDate(from)} to ${localDate(to)}`
   const isError = prsError || summaryError || ciError
 
@@ -26,16 +26,16 @@ export default function GitHubPage() {
       )}
       <div className="panel">
         <div className="panel-title">Pull requests — {rangeLabel}</div>
-        <GitHubPrTable prs={prs} />
+        <GitHubPrTable prs={prs} isError={prsError} isLoading={prsLoading} />
       </div>
       <div className="main-grid">
         <div className="panel">
           <div className="panel-title">Commits by repo</div>
-          <GitHubCommitTable summary={summary} />
+          <GitHubCommitTable summary={summary} isError={summaryError} isLoading={summaryLoading} />
         </div>
         <div className="panel">
           <div className="panel-title">CI health</div>
-          <GitHubCiTable ci={ci} />
+          <GitHubCiTable ci={ci} isError={ciError} isLoading={ciLoading} />
         </div>
       </div>
     </div>

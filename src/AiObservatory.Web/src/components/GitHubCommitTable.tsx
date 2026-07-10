@@ -4,7 +4,13 @@ import { sortCommitSummaries } from './githubSort'
 import type { CommitSortField, SortDirection } from './githubSort'
 import GitHubSortableHeader from './GitHubSortableHeader'
 
-export default function GitHubCommitTable({ summary }: { summary: GitHubCommitSummary[] }) {
+interface GitHubCommitTableProps {
+  summary: GitHubCommitSummary[]
+  isLoading?: boolean
+  isError?: boolean
+}
+
+export default function GitHubCommitTable({ summary, isLoading = false, isError = false }: GitHubCommitTableProps) {
   const [sortField, setSortField] = useState<CommitSortField>('commitCount')
   const [sortDirection, setSortDirection] = useState<SortDirection>('desc')
 
@@ -13,6 +19,8 @@ export default function GitHubCommitTable({ summary }: { summary: GitHubCommitSu
     [summary, sortField, sortDirection],
   )
 
+  if (isLoading) return <p className="panel-empty">Loading commit activity...</p>
+  if (isError) return <p className="panel-empty">Couldn’t load commit activity.</p>
   if (summary.length === 0) return <p className="panel-empty">No commit activity for this period.</p>
 
   const handleSort = (field: CommitSortField) => {

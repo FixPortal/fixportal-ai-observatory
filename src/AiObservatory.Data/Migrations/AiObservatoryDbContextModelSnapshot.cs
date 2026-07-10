@@ -286,8 +286,8 @@ namespace AiObservatory.Data.Migrations
 
                     b.Property<string>("Sha")
                         .IsRequired()
-                        .HasMaxLength(40)
-                        .HasColumnType("character varying(40)");
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)");
 
                     b.HasKey("Id");
 

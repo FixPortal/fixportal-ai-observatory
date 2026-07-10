@@ -50,4 +50,23 @@ public class GitHubActivityEndpointsTests
     {
         GitHubActivityEndpoints.ComputeSuccessRate(total: 3, succeeded: 3).Should().Be(100.0);
     }
+
+    [Theory]
+    [InlineData("failure")]
+    [InlineData("timed_out")]
+    [InlineData("startup_failure")]
+    public void IsTerminalFailure_WhenStatusIsTerminalFailure_ReturnsTrue(string status)
+    {
+        GitHubActivityEndpoints.IsTerminalFailure(status).Should().BeTrue();
+    }
+
+    [Theory]
+    [InlineData("success")]
+    [InlineData("cancelled")]
+    [InlineData("in_progress")]
+    [InlineData("queued")]
+    public void IsTerminalFailure_WhenStatusIsNotTerminalFailure_ReturnsFalse(string status)
+    {
+        GitHubActivityEndpoints.IsTerminalFailure(status).Should().BeFalse();
+    }
 }
