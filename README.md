@@ -161,7 +161,11 @@ Depth is expressed through borders only — no box shadows anywhere.
 The fastest way to see a populated dashboard — one command, no local
 .NET / Node / PostgreSQL setup needed:
 
-```bash
+```powershell
+$env:GITHUB_PACKAGES_TOKEN = "<github-token-with-read-packages>"
+```
+
+```powershell
 docker compose up --build
 ```
 
@@ -190,6 +194,11 @@ docker compose down -v
 - .NET 10 SDK
 - Node 22+
 - PostgreSQL 16 (or Docker)
+- `GITHUB_PACKAGES_TOKEN` set to a GitHub token with `read:packages` access to the `FixPortal` organization.
+
+```powershell
+$env:GITHUB_PACKAGES_TOKEN = "<github-token-with-read-packages>"
+```
 
 ### Backend
 

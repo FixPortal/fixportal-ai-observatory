@@ -120,6 +120,43 @@ public class GitHubIngestionServiceTests
     }
 
     [Fact]
+    public async Task IngestSinceAsync_WhenOneRepoTimesOut_SkipsItAndContinuesWithNextRepo()
+    {
+        var client = Substitute.For<IGitHubActivityClient>();
+        var repo = Substitute.For<IGitHubActivityRepository>();
+        repo.GetBackfillStatusAsync(Arg.Any<string>(), Arg.Any<CancellationToken>()).Returns(FullyBackfilled);
+        client.GetPullRequestsAsync("fix-portal/slow", Arg.Any<LocalDate>(), Arg.Any<CancellationToken>())
+            .Returns(Task.FromException<IReadOnlyList<GitHubPullRequestRecord>>(new TaskCanceledException("client timeout")));
+        client.GetPullRequestsAsync("fix-portal/ok", Arg.Any<LocalDate>(), Arg.Any<CancellationToken>()).Returns([]);
+        client.GetCommitsAsync(Arg.Any<string>(), Arg.Any<LocalDate>(), Arg.Any<CancellationToken>()).Returns([]);
+        client.GetWorkflowRunsAsync(Arg.Any<string>(), Arg.Any<LocalDate>(), Arg.Any<CancellationToken>()).Returns([]);
+
+        var sut = new GitHubIngestionService(client, repo, Options("fix-portal/slow", "fix-portal/ok"), NullLogger<GitHubIngestionService>.Instance, Clock);
+
+        var failedCount = await sut.IngestSinceAsync(new LocalDate(2026, 7, 1), TestContext.Current.CancellationToken);
+
+        await client.Received(1).GetPullRequestsAsync("fix-portal/ok", Arg.Any<LocalDate>(), Arg.Any<CancellationToken>());
+        failedCount.Should().Be(1);
+    }
+
+    [Fact]
+    public async Task IngestSinceAsync_WhenCancellationTokenIsCancelled_RethrowsCancellation()
+    {
+        using var cts = new CancellationTokenSource();
+        await cts.CancelAsync();
+        var client = Substitute.For<IGitHubActivityClient>();
+        var repo = Substitute.For<IGitHubActivityRepository>();
+        repo.GetBackfillStatusAsync(Arg.Any<string>(), Arg.Any<CancellationToken>())
+            .Returns(Task.FromCanceled<GitHubBackfillStatus>(cts.Token));
+
+        var sut = new GitHubIngestionService(client, repo, Options("fix-portal/example"), NullLogger<GitHubIngestionService>.Instance, Clock);
+
+        var act = () => sut.IngestSinceAsync(new LocalDate(2026, 7, 1), cts.Token);
+
+        await act.Should().ThrowAsync<OperationCanceledException>();
+    }
+
+    [Fact]
     public async Task IngestSinceAsync_WhenRateLimitExceeded_AbortsRemainingReposWithoutThrowing()
     {
         var client = Substitute.For<IGitHubActivityClient>();

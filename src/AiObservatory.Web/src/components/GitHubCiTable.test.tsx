@@ -19,4 +19,11 @@ describe('GitHubCiTable', () => {
     render(<GitHubCiTable ci={[]} />)
     expect(screen.getByText('No CI activity for this period.')).toBeInTheDocument()
   })
+
+  it('marks low success rates without emoji glyphs', () => {
+    render(<GitHubCiTable ci={ci} />)
+
+    expect(screen.getByText('70%')).toBeInTheDocument()
+    expect(screen.queryByText(/⚠/u)).not.toBeInTheDocument()
+  })
 })

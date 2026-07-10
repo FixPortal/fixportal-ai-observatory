@@ -49,13 +49,13 @@ public class ProviderPollingWorkerService(
         var sp = scope.ServiceProvider;
 
         await TryIngestAsync<AnthropicIngestionService>(sp, "Anthropic",
-            (s, d) => s.IngestAsync(d, ct), dates);
+            (s, d) => s.IngestAsync(d, ct), dates, ct);
         await TryIngestAsync<CopilotIngestionService>(sp, "Copilot",
-            (s, d) => s.IngestAsync(d, ct), dates);
+            (s, d) => s.IngestAsync(d, ct), dates, ct);
         await TryIngestAsync<GoogleIngestionService>(sp, "Google",
-            (s, d) => s.IngestAsync(d, ct), dates);
+            (s, d) => s.IngestAsync(d, ct), dates, ct);
         await TryIngestAsync<OpenAiIngestionService>(sp, "OpenAI",
-            (s, d) => s.IngestAsync(d, ct), dates);
+            (s, d) => s.IngestAsync(d, ct), dates, ct);
         // GitHub takes a since-date RANGE per call (unlike the other providers'
         // single-day calls), so it's invoked once per cycle with the earliest
         // lookback date, not once per date in `dates`.
@@ -67,12 +67,13 @@ public class ProviderPollingWorkerService(
                 {
                     throw new InvalidOperationException($"All {failed} configured GitHub repos failed to ingest this cycle");
                 }
-            }, [dates[0]]);
+            }, [dates[0]], ct);
     }
 
     private async Task TryIngestAsync<TService>(
         IServiceProvider sp, string name,
-        Func<TService, LocalDate, Task> action, IReadOnlyList<LocalDate> dates)
+        Func<TService, LocalDate, Task> action, IReadOnlyList<LocalDate> dates,
+        CancellationToken ct)
         where TService : class
     {
         var service = sp.GetService<TService>();
@@ -88,7 +89,7 @@ public class ProviderPollingWorkerService(
             }
             _consecutiveFailures[name] = 0;
         }
-        catch (OperationCanceledException)
+        catch (OperationCanceledException) when (ct.IsCancellationRequested)
         {
             throw;
         }

@@ -1,5 +1,7 @@
 FROM mcr.microsoft.com/dotnet/sdk:10.0 AS build
 WORKDIR /src
+ARG GITHUB_PACKAGES_TOKEN
+ENV GITHUB_PACKAGES_TOKEN=$GITHUB_PACKAGES_TOKEN
 COPY ["src/AiObservatory.Api/AiObservatory.Api.csproj", "src/AiObservatory.Api/"]
 COPY ["src/AiObservatory.Data/AiObservatory.Data.csproj", "src/AiObservatory.Data/"]
 COPY ["Directory.Build.props", "."]

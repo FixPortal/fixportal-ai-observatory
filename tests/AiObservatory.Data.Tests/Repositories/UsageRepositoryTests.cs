@@ -3,6 +3,7 @@ using AiObservatory.Data.Repositories;
 using AwesomeAssertions;
 using Microsoft.EntityFrameworkCore;
 using NodaTime;
+using Npgsql;
 
 namespace AiObservatory.Data.Tests.Repositories;
 
@@ -16,8 +17,12 @@ public class UsageRepositoryTests : IAsyncLifetime
 
     public async ValueTask InitializeAsync()
     {
-        _connStr = Environment.GetEnvironmentVariable("TEST_DB_CONNECTION")
+        var baseConn = Environment.GetEnvironmentVariable("TEST_DB_CONNECTION")
             ?? "Host=localhost;Database=aiobs_test;Username=postgres;Password=postgres";
+        _connStr = new NpgsqlConnectionStringBuilder(baseConn)
+        {
+            Database = $"aiobs_test_usage_{Guid.NewGuid():N}"
+        }.ConnectionString;
         var options = new DbContextOptionsBuilder<AiObservatoryDbContext>()
             .UseNpgsql(_connStr, o => o.UseNodaTime())
             .Options;
@@ -28,11 +33,14 @@ public class UsageRepositoryTests : IAsyncLifetime
 
     public async ValueTask DisposeAsync()
     {
-        if (_connStr.Contains("_test", StringComparison.OrdinalIgnoreCase))
+        if (_ctx is not null && _connStr?.Contains("_test", StringComparison.OrdinalIgnoreCase) == true)
         {
             await _ctx.Database.EnsureDeletedAsync();
         }
-        await _ctx.DisposeAsync();
+        if (_ctx is not null)
+        {
+            await _ctx.DisposeAsync();
+        }
     }
 
     [Fact]

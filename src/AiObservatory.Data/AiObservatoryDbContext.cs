@@ -107,7 +107,7 @@ public class AiObservatoryDbContext(DbContextOptions<AiObservatoryDbContext> opt
         modelBuilder.Entity<GitHubCommit>(b =>
         {
             b.Property(c => c.Repo).HasMaxLength(200).IsRequired();
-            b.Property(c => c.Sha).HasMaxLength(40).IsRequired();
+            b.Property(c => c.Sha).HasMaxLength(64).IsRequired();
             b.Property(c => c.Author).HasMaxLength(200).IsRequired();
             b.HasIndex(c => new { c.Repo, c.Sha }).IsUnique();
             b.HasIndex(c => c.CommittedAt);

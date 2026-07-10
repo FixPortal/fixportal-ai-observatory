@@ -16,7 +16,12 @@ export function sortPrs(prs: GitHubPr[], field: PrSortField, direction: SortDire
     if (field === 'repo') comparison = a.repo.localeCompare(b.repo)
     else if (field === 'createdAt') comparison = a.createdAt.localeCompare(b.createdAt)
     else if (field === 'reviewCount') comparison = a.reviewCount - b.reviewCount
-    else comparison = (a.turnaroundHours ?? -1) - (b.turnaroundHours ?? -1)
+    else {
+      if (a.turnaroundHours == null && b.turnaroundHours == null) return 0
+      if (a.turnaroundHours == null) return 1
+      if (b.turnaroundHours == null) return -1
+      comparison = a.turnaroundHours - b.turnaroundHours
+    }
     return direction === 'asc' ? comparison : -comparison
   })
 }

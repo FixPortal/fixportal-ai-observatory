@@ -27,23 +27,17 @@ var host = Host.CreateDefaultBuilder(args)
 
         services.Configure<IngestOptions>(cfg.GetSection(IngestOptions.SectionName));
 
-        services.AddOptions<AnthropicPricingOptions>()
-            .Bind(cfg.GetSection(AnthropicPricingOptions.SectionName))
-            .ValidateDataAnnotations()
-            .Validate(o => o.Pricing.Count > 0, $"{AnthropicPricingOptions.SectionName}:Pricing must have at least one entry")
-            .ValidateOnStart();
-
-        services.AddOptions<OpenAiPricingOptions>()
-            .Bind(cfg.GetSection(OpenAiPricingOptions.SectionName))
-            .ValidateDataAnnotations()
-            .Validate(o => o.Pricing.Count > 0, $"{OpenAiPricingOptions.SectionName}:Pricing must have at least one entry")
-            .ValidateOnStart();
-
         // Anthropic — enabled when ANTHROPIC_BILLING_KEY is set.
         // Requires a workspace admin API key (different from the standard API key).
         var anthropicKey = cfg["ANTHROPIC_BILLING_KEY"];
         if (IsConfigured(anthropicKey))
         {
+            services.AddOptions<AnthropicPricingOptions>()
+                .Bind(cfg.GetSection(AnthropicPricingOptions.SectionName))
+                .ValidateDataAnnotations()
+                .Validate(o => o.Pricing.Count > 0, $"{AnthropicPricingOptions.SectionName}:Pricing must have at least one entry")
+                .ValidateOnStart();
+
             services.AddHttpClient<IAnthropicUsageClient, AnthropicUsageClient>(c =>
             {
                 c.BaseAddress = new Uri("https://api.anthropic.com");
@@ -100,6 +94,12 @@ var host = Host.CreateDefaultBuilder(args)
         var openAiAdminKey = cfg["OPENAI_ADMIN_KEY"];
         if (IsConfigured(openAiAdminKey))
         {
+            services.AddOptions<OpenAiPricingOptions>()
+                .Bind(cfg.GetSection(OpenAiPricingOptions.SectionName))
+                .ValidateDataAnnotations()
+                .Validate(o => o.Pricing.Count > 0, $"{OpenAiPricingOptions.SectionName}:Pricing must have at least one entry")
+                .ValidateOnStart();
+
             services.AddHttpClient<IOpenAiUsageClient, OpenAiUsageClient>(c =>
             {
                 c.BaseAddress = new Uri("https://api.openai.com");

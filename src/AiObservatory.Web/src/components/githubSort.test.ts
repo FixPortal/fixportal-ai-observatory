@@ -35,6 +35,17 @@ describe('sortPrs', () => {
     const result = sortPrs([a, b], 'reviewCount', 'asc')
     expect(result[0].number).toBe(2)
   })
+
+  it('sorts missing turnaround values last in both directions', () => {
+    const unreviewed = pr({ number: 1, turnaroundHours: null })
+    const fast = pr({ number: 2, turnaroundHours: 1 })
+    const slow = pr({ number: 3, turnaroundHours: 10 })
+
+    expect(sortPrs([unreviewed, slow, fast], 'turnaroundHours', 'asc').map((p) => p.number))
+      .toEqual([2, 3, 1])
+    expect(sortPrs([unreviewed, slow, fast], 'turnaroundHours', 'desc').map((p) => p.number))
+      .toEqual([3, 2, 1])
+  })
 })
 
 describe('sortCommitSummaries', () => {

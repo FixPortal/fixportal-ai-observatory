@@ -3,18 +3,13 @@ import type { ValueType } from 'recharts/types/component/DefaultTooltipContent'
 import { useActivityDaily } from '../api/queries'
 import { formatActiveTime } from '../lib/duration'
 import { formatShortDate } from '../lib/format'
+import { toActivityChartRows, type ActivityChartRow } from './activityTrendRows'
 
 const TEXT_MUTED = 'var(--text-muted)'
 
-interface ChartRow {
-  date: string
-  wallClockMinutes: number
-  overlapMinutes: number
-}
-
 const ChartInner = lazy(() =>
   import('recharts').then(({ BarChart, Bar, XAxis, YAxis, Tooltip, Legend, ResponsiveContainer }) => ({
-    default: function Inner({ byDate }: { byDate: ChartRow[] }) {
+    default: function Inner({ byDate }: { byDate: ActivityChartRow[] }) {
       return (
         <ResponsiveContainer width="100%" height={160}>
           <BarChart data={byDate}>
@@ -28,7 +23,7 @@ const ChartInner = lazy(() =>
               formatter={(v: ValueType | undefined) => formatActiveTime(Number(Array.isArray(v) ? v[0] : v ?? 0) * 60)}
             />
             <Legend wrapperStyle={{ fontSize: 11, color: TEXT_MUTED }} />
-            <Bar dataKey="wallClockMinutes" name="Wall-clock" stackId="time" fill="var(--brand)" />
+            <Bar dataKey="wallClockMinutes" name="Active time" stackId="time" fill="var(--brand)" />
             <Bar dataKey="overlapMinutes" name="Parallel sessions" stackId="time" fill="var(--text-muted)" />
           </BarChart>
         </ResponsiveContainer>
@@ -46,13 +41,7 @@ export default function ActivityTrendChart({ from, to }: Props) {
   const { daily, isError } = useActivityDaily(from, to)
 
   const byDate = useMemo(
-    () => daily
-      .toSorted((a, b) => a.date.localeCompare(b.date))
-      .map((d) => ({
-        date: d.date,
-        wallClockMinutes: Math.round(d.wallClockSeconds / 60),
-        overlapMinutes: Math.round((d.activeSeconds - d.wallClockSeconds) / 60),
-      })),
+    () => toActivityChartRows(daily),
     [daily],
   )
 

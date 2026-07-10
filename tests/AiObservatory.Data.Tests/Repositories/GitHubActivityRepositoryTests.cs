@@ -18,7 +18,7 @@ public class GitHubActivityRepositoryTests : IAsyncLifetime
     {
         var baseConn = Environment.GetEnvironmentVariable("TEST_DB_CONNECTION")
             ?? "Host=localhost;Database=aiobs_test;Username=postgres;Password=postgres";
-        _connStr = new NpgsqlConnectionStringBuilder(baseConn) { Database = "aiobs_test_github" }.ConnectionString;
+        _connStr = new NpgsqlConnectionStringBuilder(baseConn) { Database = $"aiobs_test_github_{Guid.NewGuid():N}" }.ConnectionString;
         var options = new DbContextOptionsBuilder<AiObservatoryDbContext>()
             .UseNpgsql(_connStr, o => o.UseNodaTime())
             .Options;
@@ -29,11 +29,14 @@ public class GitHubActivityRepositoryTests : IAsyncLifetime
 
     public async ValueTask DisposeAsync()
     {
-        if (_connStr.Contains("_test", StringComparison.OrdinalIgnoreCase))
+        if (_ctx is not null && _connStr?.Contains("_test", StringComparison.OrdinalIgnoreCase) == true)
         {
             await _ctx.Database.EnsureDeletedAsync();
         }
-        await _ctx.DisposeAsync();
+        if (_ctx is not null)
+        {
+            await _ctx.DisposeAsync();
+        }
     }
 
     private static GitHubPullRequestRecord Pr(string state = "open", int reviewCount = 0, Instant? firstReviewAt = null) =>
@@ -69,6 +72,42 @@ public class GitHubActivityRepositoryTests : IAsyncLifetime
     }
 
     [Fact]
+    public async Task UpsertPullRequestAsync_WhenRepolledWithMissingReviewData_KeepsExistingReviewMetrics()
+    {
+        var ct = TestContext.Current.CancellationToken;
+        var firstReviewAt = Instant.FromUtc(2026, 7, 1, 11, 0);
+        await _repo.UpsertPullRequestAsync(Pr(reviewCount: 4, firstReviewAt: firstReviewAt), Instant.FromUtc(2026, 7, 1, 10, 0), ct);
+
+        await _repo.UpsertPullRequestAsync(Pr(state: "merged", reviewCount: 0, firstReviewAt: null), Instant.FromUtc(2026, 7, 2, 10, 0), ct);
+
+        var stored = await _ctx.GitHubPullRequests.SingleAsync(ct);
+        stored.State.Should().Be("merged");
+        stored.ReviewCount.Should().Be(4);
+        stored.FirstReviewAt.Should().Be(firstReviewAt);
+    }
+
+    [Fact]
+    public async Task UpsertPullRequestAsync_TruncatesExternalStringsToDatabaseLimits()
+    {
+        var ct = TestContext.Current.CancellationToken;
+        var record = Pr() with
+        {
+            Repo = new string('r', 250),
+            Title = new string('t', 600),
+            Author = new string('a', 250),
+            State = new string('s', 25),
+        };
+
+        await _repo.UpsertPullRequestAsync(record, Instant.FromUtc(2026, 7, 1, 10, 0), ct);
+
+        var stored = await _ctx.GitHubPullRequests.SingleAsync(ct);
+        stored.Repo.Should().HaveLength(200);
+        stored.Title.Should().HaveLength(500);
+        stored.Author.Should().HaveLength(200);
+        stored.State.Should().HaveLength(20);
+    }
+
+    [Fact]
     public async Task UpsertCommitAsync_WhenRepolled_IsNoOpNotDuplicate()
     {
         var ct = TestContext.Current.CancellationToken;
@@ -82,6 +121,32 @@ public class GitHubActivityRepositoryTests : IAsyncLifetime
     }
 
     [Fact]
+    public async Task UpsertCommitAsync_AcceptsSixtyFourCharacterSha()
+    {
+        var ct = TestContext.Current.CancellationToken;
+        var sha256 = new string('a', 64);
+        var commit = new GitHubCommitRecord("fix-portal/example", sha256, "chris", Instant.FromUtc(2026, 7, 1, 9, 0), 10, 2);
+
+        await _repo.UpsertCommitAsync(commit, Instant.FromUtc(2026, 7, 1, 10, 0), ct);
+
+        var stored = await _ctx.GitHubCommits.SingleAsync(ct);
+        stored.Sha.Should().Be(sha256);
+    }
+
+    [Fact]
+    public async Task UpsertCommitAsync_TruncatesExternalStringsToDatabaseLimits()
+    {
+        var ct = TestContext.Current.CancellationToken;
+        var commit = new GitHubCommitRecord(new string('r', 250), "abc123", new string('a', 250), Instant.FromUtc(2026, 7, 1, 9, 0), 10, 2);
+
+        await _repo.UpsertCommitAsync(commit, Instant.FromUtc(2026, 7, 1, 10, 0), ct);
+
+        var stored = await _ctx.GitHubCommits.SingleAsync(ct);
+        stored.Repo.Should().HaveLength(200);
+        stored.Author.Should().HaveLength(200);
+    }
+
+    [Fact]
     public async Task UpsertWorkflowRunAsync_WhenStatusChanges_UpdatesStatus()
     {
         var ct = TestContext.Current.CancellationToken;
@@ -92,6 +157,34 @@ public class GitHubActivityRepositoryTests : IAsyncLifetime
 
         var stored = await _ctx.GitHubWorkflowRuns.SingleAsync(ct);
         stored.Status.Should().Be("success");
+    }
+
+    [Fact]
+    public async Task UpsertWorkflowRunAsync_WhenWorkflowNameChanges_UpdatesWorkflowName()
+    {
+        var ct = TestContext.Current.CancellationToken;
+        var run = new GitHubWorkflowRunRecord("fix-portal/example", 999, "old.yml", "in_progress", Instant.FromUtc(2026, 7, 1, 9, 0));
+
+        await _repo.UpsertWorkflowRunAsync(run, Instant.FromUtc(2026, 7, 1, 9, 0), ct);
+        await _repo.UpsertWorkflowRunAsync(run with { WorkflowName = "new.yml", Status = "success" }, Instant.FromUtc(2026, 7, 1, 9, 5), ct);
+
+        var stored = await _ctx.GitHubWorkflowRuns.SingleAsync(ct);
+        stored.WorkflowName.Should().Be("new.yml");
+        stored.Status.Should().Be("success");
+    }
+
+    [Fact]
+    public async Task UpsertWorkflowRunAsync_TruncatesExternalStringsToDatabaseLimits()
+    {
+        var ct = TestContext.Current.CancellationToken;
+        var run = new GitHubWorkflowRunRecord(new string('r', 250), 999, new string('w', 250), new string('s', 25), Instant.FromUtc(2026, 7, 1, 9, 0));
+
+        await _repo.UpsertWorkflowRunAsync(run, Instant.FromUtc(2026, 7, 1, 9, 0), ct);
+
+        var stored = await _ctx.GitHubWorkflowRuns.SingleAsync(ct);
+        stored.Repo.Should().HaveLength(200);
+        stored.WorkflowName.Should().HaveLength(200);
+        stored.Status.Should().HaveLength(20);
     }
 
     [Fact]

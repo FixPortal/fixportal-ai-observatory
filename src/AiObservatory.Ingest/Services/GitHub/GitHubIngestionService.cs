@@ -24,8 +24,9 @@ public class GitHubIngestionService(
     {
         var now = clock.GetCurrentInstant();
         var failedRepoCount = 0;
-        foreach (var repo in options.Value.GitHubRepoAllowlist)
+        foreach (var configuredRepo in options.Value.GitHubRepoAllowlist)
         {
+            var repo = configuredRepo.ToLowerInvariant();
             try
             {
                 var status = await repository.GetBackfillStatusAsync(repo, ct);
@@ -61,7 +62,7 @@ public class GitHubIngestionService(
                 logger.LogWarning("GitHub: aborting remaining repos this poll cycle due to rate limit");
                 return failedRepoCount;
             }
-            catch (OperationCanceledException)
+            catch (OperationCanceledException) when (ct.IsCancellationRequested)
             {
                 throw;
             }

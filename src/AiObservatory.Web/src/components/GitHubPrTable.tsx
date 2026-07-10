@@ -5,7 +5,13 @@ import type { PrSortField, SortDirection } from './githubSort'
 import SearchIcon from '../design/SearchIcon'
 import GitHubSortableHeader from './GitHubSortableHeader'
 
-export default function GitHubPrTable({ prs }: { prs: GitHubPr[] }) {
+interface GitHubPrTableProps {
+  prs: GitHubPr[]
+  isLoading?: boolean
+  isError?: boolean
+}
+
+export default function GitHubPrTable({ prs, isLoading = false, isError = false }: GitHubPrTableProps) {
   const [searchQuery, setSearchQuery] = useState('')
   const [sortField, setSortField] = useState<PrSortField>('createdAt')
   const [sortDirection, setSortDirection] = useState<SortDirection>('desc')
@@ -15,6 +21,8 @@ export default function GitHubPrTable({ prs }: { prs: GitHubPr[] }) {
     [prs, searchQuery, sortField, sortDirection],
   )
 
+  if (isLoading) return <p className="panel-empty">Loading PR activity...</p>
+  if (isError) return <p className="panel-empty">Couldn’t load PR activity.</p>
   if (prs.length === 0) return <p className="panel-empty">No PR activity for this period.</p>
 
   const handleSort = (field: PrSortField) => {

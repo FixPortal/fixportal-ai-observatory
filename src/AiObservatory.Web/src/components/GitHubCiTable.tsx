@@ -6,7 +6,13 @@ import GitHubSortableHeader from './GitHubSortableHeader'
 
 const SUCCESS_RATE_WARN_THRESHOLD = 80
 
-export default function GitHubCiTable({ ci }: { ci: GitHubCiSummary[] }) {
+interface GitHubCiTableProps {
+  ci: GitHubCiSummary[]
+  isLoading?: boolean
+  isError?: boolean
+}
+
+export default function GitHubCiTable({ ci, isLoading = false, isError = false }: GitHubCiTableProps) {
   const [sortField, setSortField] = useState<CiSortField>('successRate')
   const [sortDirection, setSortDirection] = useState<SortDirection>('asc')
 
@@ -15,6 +21,8 @@ export default function GitHubCiTable({ ci }: { ci: GitHubCiSummary[] }) {
     [ci, sortField, sortDirection],
   )
 
+  if (isLoading) return <p className="panel-empty">Loading CI activity...</p>
+  if (isError) return <p className="panel-empty">Couldn’t load CI activity.</p>
   if (ci.length === 0) return <p className="panel-empty">No CI activity for this period.</p>
 
   const handleSort = (field: CiSortField) => {
@@ -41,7 +49,7 @@ export default function GitHubCiTable({ ci }: { ci: GitHubCiSummary[] }) {
             <td>{c.totalRuns}</td>
             <td>{c.failedRuns}</td>
             <td style={{ color: c.successRate < SUCCESS_RATE_WARN_THRESHOLD ? 'var(--danger, #d33)' : undefined }}>
-              {c.successRate < SUCCESS_RATE_WARN_THRESHOLD ? '⚠ ' : ''}{c.successRate.toFixed(0)}%
+              {c.successRate.toFixed(0)}%
             </td>
           </tr>
         ))}
