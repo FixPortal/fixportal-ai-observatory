@@ -1,4 +1,5 @@
 using System.Globalization;
+using System.Linq.Expressions;
 using AiObservatory.Data;
 using AiObservatory.Data.Entities;
 using Microsoft.EntityFrameworkCore;
@@ -145,7 +146,7 @@ public static class ActivityEndpoints
             var sessions = await db.ClaudeActivitySessions
                 .AsNoTracking()
                 .Where(s => s.LastSeenAt > startInstant && s.StartedAt < endInstant)
-                .Where(s => AllowedProjectOwners.Any(o => s.Project == o || s.Project.StartsWith(o + "/")))
+                .Where(IsAllowedProjectPredicate)
                 .Select(s => new ActivitySessionSlice(s.Project, s.StartedAt, s.LastSeenAt, s.ActiveSeconds))
                 .ToListAsync(ct);
 
@@ -172,7 +173,7 @@ public static class ActivityEndpoints
             var sessions = await db.ClaudeActivitySessions
                 .AsNoTracking()
                 .Where(s => s.StartedAt >= startInstant && s.StartedAt < endInstant)
-                .Where(s => AllowedProjectOwners.Any(o => s.Project == o || s.Project.StartsWith(o + "/")))
+                .Where(IsAllowedProjectPredicate)
                 .Select(s => new { s.SessionId, s.Project, s.ActiveSeconds })
                 .ToListAsync(ct);
 
@@ -211,12 +212,29 @@ public static class ActivityEndpoints
 
     public sealed record ActivitySessionSlice(string Project, Instant StartedAt, Instant LastSeenAt, long ActiveSeconds);
 
+    // Single source for the SQL-translatable allowlist rule, reused by every EF query
+    // below instead of each carrying its own copy of the Any(...)/StartsWith(...) text.
+    // IsAllowedProject (below) intentionally stays a separate, ordinal-comparison
+    // implementation for the in-memory path — see its own comment.
+    public static readonly Expression<Func<ClaudeActivitySession, bool>> IsAllowedProjectPredicate =
+        s => AllowedProjectOwners.Any(o => s.Project == o || s.Project.StartsWith(o + "/"));
+
+    // Negation of IsAllowedProjectPredicate, built once from the same expression body so
+    // the "disallowed" side of the rule can never drift from the "allowed" side.
+    private static readonly Expression<Func<ClaudeActivitySession, bool>> IsDisallowedProjectPredicate =
+        Expression.Lambda<Func<ClaudeActivitySession, bool>>(
+            Expression.Not(IsAllowedProjectPredicate.Body), IsAllowedProjectPredicate.Parameters[0]);
+
+    // In-memory counterpart of IsAllowedProjectPredicate. Kept as its own implementation
+    // (not derived from the expression above) because it deliberately uses an ordinal
+    // StartsWith — culture-sensitive comparison would be wrong here — whereas SQL
+    // translation via Npgsql is byte/ordinal-equivalent regardless.
     public static bool IsAllowedProject(string project) =>
         AllowedProjectOwners.Any(o => project == o || project.StartsWith(o + "/", StringComparison.Ordinal));
 
     public static Task<int> DeleteDisallowedProjectSessionsAsync(AiObservatoryDbContext db, CancellationToken ct = default) =>
         db.ClaudeActivitySessions
-            .Where(s => !AllowedProjectOwners.Any(o => s.Project == o || s.Project.StartsWith(o + "/")))
+            .Where(IsDisallowedProjectPredicate)
             .ExecuteDeleteAsync(ct);
 
     public static List<DailyActivityResponse> BuildDailyActivityResponses(

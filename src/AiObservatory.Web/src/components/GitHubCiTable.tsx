@@ -1,10 +1,25 @@
 import { useState, useMemo } from 'react'
+import type { CSSProperties } from 'react'
 import type { GitHubCiSummary } from '../api/client'
 import { sortCiSummaries } from './githubSort'
 import type { CiSortField, SortDirection } from './githubSort'
 import GitHubSortableHeader from './GitHubSortableHeader'
 
 const SUCCESS_RATE_WARN_THRESHOLD = 80
+
+// Visually-hidden but screen-reader-visible text, so the low-success-rate warning
+// isn't conveyed by red text alone (WCAG 1.4.1 use-of-color).
+const srOnlyStyle: CSSProperties = {
+  position: 'absolute',
+  width: 1,
+  height: 1,
+  padding: 0,
+  margin: -1,
+  overflow: 'hidden',
+  clip: 'rect(0, 0, 0, 0)',
+  whiteSpace: 'nowrap',
+  border: 0,
+}
 
 interface GitHubCiTableProps {
   ci: GitHubCiSummary[]
@@ -50,6 +65,7 @@ export default function GitHubCiTable({ ci, isLoading = false, isError = false }
             <td>{c.failedRuns}</td>
             <td style={{ color: c.successRate < SUCCESS_RATE_WARN_THRESHOLD ? 'var(--danger, #d33)' : undefined }}>
               {c.successRate.toFixed(0)}%
+              {c.successRate < SUCCESS_RATE_WARN_THRESHOLD && <span style={srOnlyStyle}> (low success rate)</span>}
             </td>
           </tr>
         ))}

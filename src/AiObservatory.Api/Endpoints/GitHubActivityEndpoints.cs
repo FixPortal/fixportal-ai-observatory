@@ -1,4 +1,6 @@
+using System.Linq.Expressions;
 using AiObservatory.Data;
+using AiObservatory.Data.Entities;
 using Microsoft.EntityFrameworkCore;
 using NodaTime;
 
@@ -7,6 +9,25 @@ namespace AiObservatory.Api.Endpoints;
 public static class GitHubActivityEndpoints
 {
     private static readonly string[] TerminalFailureStatuses = ["failure", "timed_out", "startup_failure"];
+
+    // Same allowlist rule as ActivityEndpoints.IsAllowedProjectPredicate, but PRs/
+    // commits/CI runs are three unrelated entity types (no shared interface) that each
+    // expose a plain string Repo — so the one shared predicate body is spliced onto
+    // each entity's own Repo access via IsAllowedRepo<T> rather than duplicated per query.
+    private static readonly Expression<Func<string, bool>> RepoAllowedTemplate =
+        repo => ActivityEndpoints.AllowedProjectOwners.Any(o => repo == o || repo.StartsWith(o + "/"));
+
+    private static Expression<Func<T, bool>> IsAllowedRepo<T>(Expression<Func<T, string>> repoSelector)
+    {
+        var body = new ReplaceParameterVisitor(RepoAllowedTemplate.Parameters[0], repoSelector.Body)
+            .Visit(RepoAllowedTemplate.Body)!;
+        return Expression.Lambda<Func<T, bool>>(body, repoSelector.Parameters[0]);
+    }
+
+    private sealed class ReplaceParameterVisitor(ParameterExpression from, Expression to) : ExpressionVisitor
+    {
+        protected override Expression VisitParameter(ParameterExpression node) => node == from ? to : node;
+    }
 
     public static void MapGitHubActivityEndpoints(this IEndpointRouteBuilder app)
     {
@@ -23,7 +44,7 @@ public static class GitHubActivityEndpoints
 
             var prs = await db.GitHubPullRequests
                 .AsNoTracking()
-                .Where(p => ActivityEndpoints.AllowedProjectOwners.Any(o => p.Repo == o || p.Repo.StartsWith(o + "/")))
+                .Where(IsAllowedRepo<GitHubPullRequest>(p => p.Repo))
                 .Where(p =>
                     p.CreatedAt >= startInstant && p.CreatedAt < endInstant ||
                     p.MergedAt != null && p.MergedAt >= startInstant && p.MergedAt < endInstant ||
@@ -52,7 +73,7 @@ public static class GitHubActivityEndpoints
 
             var byRepo = await db.GitHubCommits
                 .AsNoTracking()
-                .Where(c => ActivityEndpoints.AllowedProjectOwners.Any(o => c.Repo == o || c.Repo.StartsWith(o + "/")))
+                .Where(IsAllowedRepo<GitHubCommit>(c => c.Repo))
                 .Where(c => c.CommittedAt >= startInstant && c.CommittedAt < endInstant)
                 .GroupBy(c => c.Repo)
                 .Select(g => new GitHubCommitSummaryResponse(g.Key, g.Count(), g.Sum(c => c.Additions), g.Sum(c => c.Deletions)))
@@ -75,7 +96,7 @@ public static class GitHubActivityEndpoints
 
             var grouped = await db.GitHubWorkflowRuns
                 .AsNoTracking()
-                .Where(r => ActivityEndpoints.AllowedProjectOwners.Any(o => r.Repo == o || r.Repo.StartsWith(o + "/")))
+                .Where(IsAllowedRepo<GitHubWorkflowRun>(r => r.Repo))
                 .Where(r => r.CreatedAt >= startInstant && r.CreatedAt < endInstant)
                 .GroupBy(r => new { r.Repo, r.WorkflowName })
                 .Select(g => new

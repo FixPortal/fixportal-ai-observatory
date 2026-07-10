@@ -14,7 +14,8 @@ public class GitHubActivityClient(HttpClient http, ILogger<GitHubActivityClient>
     // callers (e.g. the Copilot client sharing the same token) within the hour window.
     private const int RateLimitFloor = 50;
     private const int PerPage = 100;
-    private const int GitHubSearchResultCap = 1000;
+    // Caps the Actions list-runs endpoint (not the Search API, which this client never calls).
+    private const int WorkflowRunsPaginationCap = 1000;
 
     private static readonly JsonSerializerOptions JsonOptions = new() { PropertyNamingPolicy = JsonNamingPolicy.SnakeCaseLower };
 
@@ -178,7 +179,7 @@ public class GitHubActivityClient(HttpClient http, ILogger<GitHubActivityClient>
             {
                 break;
             }
-            if (page * PerPage >= GitHubSearchResultCap)
+            if (page * PerPage >= WorkflowRunsPaginationCap)
             {
                 logger.LogWarning("GitHub workflow-runs result cap reached for {Repo}; narrowing the backfill window may be required", repo);
                 break;

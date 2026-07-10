@@ -17,6 +17,9 @@ export function sortPrs(prs: GitHubPr[], field: PrSortField, direction: SortDire
     else if (field === 'createdAt') comparison = a.createdAt.localeCompare(b.createdAt)
     else if (field === 'reviewCount') comparison = a.reviewCount - b.reviewCount
     else {
+      // Nulls (no review yet) always sort last, in both directions — these three
+      // returns deliberately bypass the `direction === 'asc' ? ... : -comparison`
+      // flip below, so don't fold them into `comparison`.
       if (a.turnaroundHours == null && b.turnaroundHours == null) return 0
       if (a.turnaroundHours == null) return 1
       if (b.turnaroundHours == null) return -1

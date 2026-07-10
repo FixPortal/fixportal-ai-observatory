@@ -20,10 +20,31 @@ describe('GitHubCiTable', () => {
     expect(screen.getByText('No CI activity for this period.')).toBeInTheDocument()
   })
 
+  it('shows a loading state', () => {
+    render(<GitHubCiTable ci={[]} isLoading />)
+    expect(screen.getByText('Loading CI activity...')).toBeInTheDocument()
+  })
+
+  it('shows an error state', () => {
+    render(<GitHubCiTable ci={[]} isError />)
+    expect(screen.getByText('Couldn’t load CI activity.')).toBeInTheDocument()
+  })
+
+  it('prefers the loading state over the error state when both are set', () => {
+    render(<GitHubCiTable ci={[]} isLoading isError />)
+    expect(screen.getByText('Loading CI activity...')).toBeInTheDocument()
+  })
+
   it('marks low success rates without emoji glyphs', () => {
     render(<GitHubCiTable ci={ci} />)
 
     expect(screen.getByText('70%')).toBeInTheDocument()
     expect(screen.queryByText(/⚠/u)).not.toBeInTheDocument()
+  })
+
+  it('gives low success rates a non-color text cue for accessibility', () => {
+    render(<GitHubCiTable ci={ci} />)
+
+    expect(screen.getByText('(low success rate)')).toBeInTheDocument()
   })
 })
