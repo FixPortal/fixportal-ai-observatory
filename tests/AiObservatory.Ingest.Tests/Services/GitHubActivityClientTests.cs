@@ -436,6 +436,14 @@ public class GitHubActivityClientTests
         var result = await sut.GetWorkflowRunsAsync("fix-portal/example", new LocalDate(2026, 7, 1), TestContext.Current.CancellationToken);
 
         result.Should().HaveCount(1000); // 10 pages * 100, then the cap stops it
+        // Since every stub response is a full page, a client that refetched page 1 forever
+        // would also return 1000 rows - so pin that pagination actually advanced 1..10 and
+        // stopped at the cap rather than requesting an 11th page.
+        foreach (var page in Enumerable.Range(1, 10))
+        {
+            handler.RequestedUrls.Should().Contain(u => u.Contains($"page={page}", StringComparison.Ordinal));
+        }
+        handler.RequestedUrls.Should().NotContain(u => u.Contains("page=11", StringComparison.Ordinal));
         logger.Warnings.Should().ContainSingle(w => w.Contains("result cap", StringComparison.OrdinalIgnoreCase));
     }
 }
