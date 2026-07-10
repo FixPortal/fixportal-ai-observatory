@@ -38,13 +38,19 @@ public class AdversarialReviewRepositoryTests : IAsyncLifetime
 
     public async ValueTask DisposeAsync()
     {
-        if (_ctx is not null && _connStr?.Contains("_test", StringComparison.OrdinalIgnoreCase) == true)
+        try
         {
-            await _ctx.Database.EnsureDeletedAsync();
+            if (_ctx is not null && _connStr?.Contains("_test", StringComparison.OrdinalIgnoreCase) == true)
+            {
+                await _ctx.Database.EnsureDeletedAsync();
+            }
         }
-        if (_ctx is not null)
+        finally
         {
-            await _ctx.DisposeAsync();
+            if (_ctx is not null)
+            {
+                await _ctx.DisposeAsync();
+            }
         }
     }
 

@@ -1,6 +1,7 @@
 using System.Net;
 using AiObservatory.Ingest.Services.GitHub;
 using AwesomeAssertions;
+using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
 using NodaTime;
 
@@ -29,8 +30,28 @@ public class GitHubActivityClientTests
         return response;
     }
 
-    private static GitHubActivityClient CreateSut(StubHandler handler) =>
-        new(new HttpClient(handler) { BaseAddress = new Uri("https://api.github.com") }, NullLogger<GitHubActivityClient>.Instance);
+    private static GitHubActivityClient CreateSut(StubHandler handler, ILogger<GitHubActivityClient>? logger = null) =>
+        new(new HttpClient(handler) { BaseAddress = new Uri("https://api.github.com") }, logger ?? NullLogger<GitHubActivityClient>.Instance);
+
+    // Captures Warning-level log entries so pagination-cap tests can assert the
+    // client actually logged, without wrestling ILogger's generic Log<TState> overload
+    // through a mocking library.
+    private sealed class CapturingLogger : ILogger<GitHubActivityClient>
+    {
+        public List<string> Warnings { get; } = [];
+
+        public IDisposable? BeginScope<TState>(TState state) where TState : notnull => null;
+
+        public bool IsEnabled(LogLevel logLevel) => true;
+
+        public void Log<TState>(LogLevel logLevel, EventId eventId, TState state, Exception? exception, Func<TState, Exception?, string> formatter)
+        {
+            if (logLevel == LogLevel.Warning)
+            {
+                Warnings.Add(formatter(state, exception));
+            }
+        }
+    }
 
     [Fact]
     public async Task GetPullRequestsAsync_ParsesFieldsAndFetchesReviewCount()
@@ -398,5 +419,23 @@ public class GitHubActivityClientTests
         var result = await sut.GetWorkflowRunsAsync("fix-portal/example", new LocalDate(2026, 7, 1), TestContext.Current.CancellationToken);
 
         result.Single().WorkflowName.Should().HaveLength(200);
+    }
+
+    [Fact]
+    public async Task GetWorkflowRunsAsync_WhenPaginationCapReached_StopsPagingAndLogsWarning()
+    {
+        // WorkflowRunsPaginationCap is 1000 and PerPage is 100: every page returned here is
+        // a full 100-row page, so the client never sees a short page to stop on naturally —
+        // only the `page * PerPage >= WorkflowRunsPaginationCap` check (hit at page 10) does.
+        var fullPage = string.Join(",", Enumerable.Range(1, 100).Select(i =>
+            $$"""{"id":{{i}},"name":"CI","status":"completed","conclusion":"success","created_at":"2026-07-01T09:00:00Z"}"""));
+        var handler = new StubHandler(_ => JsonResponse($$"""{"workflow_runs":[{{fullPage}}]}"""));
+        var logger = new CapturingLogger();
+        var sut = CreateSut(handler, logger);
+
+        var result = await sut.GetWorkflowRunsAsync("fix-portal/example", new LocalDate(2026, 7, 1), TestContext.Current.CancellationToken);
+
+        result.Should().HaveCount(1000); // 10 pages * 100, then the cap stops it
+        logger.Warnings.Should().ContainSingle(w => w.Contains("result cap", StringComparison.OrdinalIgnoreCase));
     }
 }
