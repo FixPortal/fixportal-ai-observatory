@@ -99,7 +99,8 @@ export default function Dashboard() {
           </button>
         ))}
       </nav>
-      <main className="dashboard__main" id="dashboard-tabpanel" role="tabpanel" aria-labelledby={`dashboard-tab-${tab}`}>
+      <main className="dashboard__main">
+      <div id="dashboard-tabpanel" role="tabpanel" aria-labelledby={`dashboard-tab-${tab}`}>
         {isError && <ErrorBanner error={error} />}
         {!isError && isLoading && (
           <output className="loading-banner" aria-live="polite">
@@ -144,6 +145,7 @@ export default function Dashboard() {
         {tab === 'reporting' && <ReportingPage />}
         {tab === 'activity' && <ActivityPage />}
         {tab === 'github' && <GitHubPage />}
+      </div>
       </main>
       <Footer />
     </div>

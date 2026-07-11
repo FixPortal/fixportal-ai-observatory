@@ -69,7 +69,7 @@ export function groupRuns(runs: AdversarialReviewRun[]): RunGroup[] {
       participants[0].recordedAt,
     )
     participants.sort(sortParticipants)
-    const reviewerVendors = new Set(participants.filter(p => p.role === 'reviewer').map(p => p.reviewer))
+    const reviewerVendors = new Set(participants.flatMap(p => (p.role === 'reviewer' ? [p.reviewer] : [])))
     const hasJudge = participants.some(p => p.role === 'judge')
     const reviewerCount = reviewerVendors.size
     const isComplete = reviewerCount >= 3 && hasJudge
