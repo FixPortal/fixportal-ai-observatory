@@ -129,7 +129,7 @@ body {
   gap: var(--space-4);
 }
 .card-label {
-  font-size: 0.65rem;
+  font-size: 0.75rem; /* >=12px, was 0.65rem/10.4px — sub-minimum body text */
   letter-spacing: 0.06em;
   text-transform: uppercase;
   color: var(--text-muted);
@@ -144,7 +144,7 @@ body {
 }
 .card-value--model { font-size: 0.95rem; }
 .card-value--lead { font-size: 2rem; } /* spend leads the summary row */
-.card-sub { font-size: 0.72rem; color: var(--text-muted); margin-top: var(--space-1); }
+.card-sub { font-size: 0.75rem; color: var(--text-muted); margin-top: var(--space-1); } /* >=12px, was 0.72rem/11.5px */
 .card-delta--up   { color: var(--bad-text); }
 .card-delta--down { color: var(--ok-text); }
 
@@ -595,7 +595,7 @@ body {
 }
 .site-footer__attrib {
   font-family: var(--font-mono);
-  font-size: 0.6875rem;        /* 11px */
+  font-size: 0.75rem;           /* 12px, was 0.6875rem/11px */
   line-height: 1.6;
   color: var(--text-muted);
 }

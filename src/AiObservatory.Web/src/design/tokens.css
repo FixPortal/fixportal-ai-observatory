@@ -14,7 +14,10 @@
   --border-strong: #cbd5e1;
   --text: #1f2937;
   --text-muted: #6b7280;
-  --text-faint: #94a3b8;
+  /* AA-contrast fix (was #94a3b8, 2.41:1 on --app-bg — WCAG fail). #5b6b82
+     gives ~5.1:1 on #f7f8fa. Same failure exists in fixportal-ci-frontend's
+     own copy of this token — needs the same fix there, out of scope here. */
+  --text-faint: #5b6b82;
 
   /* Sidebar — IDE chrome, theme-invariant. See system.md § Sidebar is
      IDE-style chrome. Never override under [data-theme="dark"]. */
