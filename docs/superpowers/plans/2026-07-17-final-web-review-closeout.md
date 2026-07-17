@@ -44,7 +44,7 @@ Expected: exit 0 with dependencies matching `package-lock.json`.
 Run:
 
 ```powershell
-npm run doctor -- --verbose
+npx --no-install react-doctor --verbose
 ```
 
 Expected: five findings, including `Dashboard.tsx` reporting a noninteractive `<nav>` with `role="tablist"`.
@@ -72,7 +72,7 @@ Do not change CSS, tab buttons, keyboard handling, focus management, or panel AR
 Run:
 
 ```powershell
-npm run doctor -- --verbose
+npx --no-install react-doctor --verbose
 ```
 
 Expected: four findings remain; no finding references `Dashboard.tsx` or the tablist container.
@@ -156,14 +156,12 @@ These retain the existing effect behavior while satisfying the useful inconsiste
 
 - [ ] **Step 4: Make review fixture IDs deterministic**
 
-Add a module-level counter above `run()` in `adversarialReviewGrouping.test.ts` and replace `Math.random()`:
+Replace `Math.random()` with a fixed fixture value in `adversarialReviewGrouping.test.ts`:
 
 ```ts
-let nextRunId = 1
-
 function run(p: Partial<AdversarialReviewRun>): AdversarialReviewRun {
   return {
-    id: `run-${nextRunId++}`,
+    id: 'test-run',
 ```
 
 Keep the rest of the fixture unchanged.
@@ -270,7 +268,7 @@ npm run build
 Expected: TypeScript and Vite production build succeed.
 
 ```powershell
-npm run doctor -- --verbose
+npx --no-install react-doctor --verbose
 ```
 
 Expected: four documented findings remain: three bounded `find()` scans and one non-actionable JSX-prop heuristic. No accessibility finding remains.
@@ -357,7 +355,7 @@ Expected: branch publishes successfully and tracks `origin/reviewer-findings-bat
 - [ ] **Step 4: Open the PR ready for review**
 
 ```powershell
-gh pr create --base main --head reviewer-findings-batch4 --title "chore(web): close final audit findings" --body "## Summary`n- correct the dashboard tablist semantics`n- calibrate noisy SonarJS rules and make residual fixes`n- close remaining AI and React Doctor findings with evidence`n`n## Verification`n- npm run lint`n- npm test`n- npm run build`n- npm run doctor -- --verbose"
+gh pr create --base main --head reviewer-findings-batch4 --title "chore(web): close final audit findings" --body "## Summary`n- correct the dashboard tablist semantics`n- calibrate noisy SonarJS rules and make residual fixes`n- close remaining AI and React Doctor findings with evidence`n`n## Verification`n- npm run lint`n- npm test`n- npm run build`n- npx --no-install react-doctor --verbose"
 ```
 
 Expected: a PR URL. The command deliberately omits `--draft`.
