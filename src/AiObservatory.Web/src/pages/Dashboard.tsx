@@ -80,7 +80,7 @@ export default function Dashboard() {
         </span>
         <ThemeToggle value={mode} onChange={setMode} />
       </header>
-      <nav className="page-nav" role="tablist" aria-label="Dashboard sections">
+      <div className="page-nav" role="tablist" aria-label="Dashboard sections">
         {visibleTabs.map((t, i) => (
           <button
             key={t.id}
@@ -98,7 +98,7 @@ export default function Dashboard() {
             {t.label}
           </button>
         ))}
-      </nav>
+      </div>
       <main className="dashboard__main">
       <div id="dashboard-tabpanel" role="tabpanel" aria-labelledby={`dashboard-tab-${tab}`}>
         {isError && <ErrorBanner error={error} />}
