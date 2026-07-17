@@ -60,7 +60,7 @@ export default function DateRangePicker({ from, to, preset, onPreset, onCustom }
   }
 
   useEffect(() => {
-    if (!popoverOpen) return
+    if (!popoverOpen) return undefined
 
     function onKeyDown(e: KeyboardEvent) {
       if (e.key === 'Escape') setPopoverOpen(false)

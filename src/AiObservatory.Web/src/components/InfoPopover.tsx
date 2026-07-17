@@ -11,7 +11,7 @@ export function InfoPopover({ id, title, children }: Props) {
   const ref = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
-    if (!open) return
+    if (!open) return undefined
     const onOutside = (e: MouseEvent) => {
       if (!ref.current?.contains(e.target as Node)) setOpen(false)
     }

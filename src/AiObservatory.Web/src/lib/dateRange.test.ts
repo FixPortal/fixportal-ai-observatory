@@ -10,8 +10,7 @@ describe('useDateRange', () => {
   it('defaults to 31-day preset', () => {
     const { result } = renderHook(() => useDateRange())
     expect(result.current.preset).toBe(31)
-    const to = result.current.to
-    const from = result.current.from
+    const { to, from } = result.current
     const diffDays = Math.round((to.getTime() - from.getTime()) / 86400000)
     expect(diffDays).toBe(30) // 31 days inclusive = 30 day difference
   })

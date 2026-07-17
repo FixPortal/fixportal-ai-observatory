@@ -33,6 +33,11 @@ export default defineConfig([
                                                      // lib globals. tsc + typescript-eslint catch
                                                      // genuine reference errors; this rule cannot
                                                      // see types.
+      'sonarjs/no-duplicate-string': 'off',           // local UI copy and test fixtures are clearer inline
+      'sonarjs/shorthand-property-grouping': 'off',   // property ordering is formatting, not correctness
+      'sonarjs/no-nested-conditional': 'off',         // concise JSX state rendering is idiomatic here
+      'sonarjs/max-union-size': 'off',                // literal unions are the intended TypeScript model
+      'sonarjs/elseif-without-else': 'off',           // guard-style keyboard handlers are already exhaustive
       '@typescript-eslint/no-unused-vars': [
         'error',
         { argsIgnorePattern: '^_', varsIgnorePattern: '^_' },

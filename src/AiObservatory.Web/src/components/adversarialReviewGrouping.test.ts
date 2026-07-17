@@ -2,9 +2,13 @@ import { test, expect } from 'vitest'
 import { groupRuns, formatSeconds, formatMinutes, bankersRound } from './adversarialReviewGrouping'
 import type { AdversarialReviewRun } from '../api/client'
 
+let nextRunId = 1
+
 function run(p: Partial<AdversarialReviewRun>): AdversarialReviewRun {
+  const id = `run-${nextRunId}`
+  nextRunId += 1
   return {
-    id: Math.random().toString(36).slice(2),
+    id,
     reviewer: 'anthropic', model: 'claude-sonnet-4-6', role: 'reviewer', repo: 'r', summary: null,
     inputTokens: 0, outputTokens: 0, costUsd: 0, reviewDurationMs: 0,
     issuesRaised: 0, issuesAccepted: 0, costPerAcceptedFinding: null, chunkCount: null,
