@@ -46,8 +46,8 @@ public class EventsEndpointsWafTests(AiObservatoryApiFactory factory)
         using var client = factory.CreateAdminClient();
         var raw = """{"Provider":"anthropic","Model":"m","InputTokens":1,"OutputTokens":1,"CacheReadTokens":0,"CacheWriteTokens":0,"CostUsd":0.01,"RawPayload":"not json"}""";
 
-        var response = await client.PostAsync("/api/events",
-            new StringContent(raw, Encoding.UTF8, "application/json"), TestContext.Current.CancellationToken);
+        using var content = new StringContent(raw, Encoding.UTF8, "application/json");
+        var response = await client.PostAsync("/api/events", content, TestContext.Current.CancellationToken);
 
         response.StatusCode.Should().Be(HttpStatusCode.BadRequest);
     }
@@ -58,8 +58,8 @@ public class EventsEndpointsWafTests(AiObservatoryApiFactory factory)
         using var client = factory.CreateAdminClient();
         var raw = """{"Provider":"not-a-real-provider","Model":"m","InputTokens":1,"OutputTokens":1,"CacheReadTokens":0,"CacheWriteTokens":0,"CostUsd":0.01,"RawPayload":"{}"}""";
 
-        var response = await client.PostAsync("/api/events",
-            new StringContent(raw, Encoding.UTF8, "application/json"), TestContext.Current.CancellationToken);
+        using var content = new StringContent(raw, Encoding.UTF8, "application/json");
+        var response = await client.PostAsync("/api/events", content, TestContext.Current.CancellationToken);
 
         response.StatusCode.Should().Be(HttpStatusCode.BadRequest);
     }
