@@ -7,14 +7,6 @@ on:
   pull_request:
     branches: [main]
   workflow_dispatch:
-    inputs:
-      environment:
-        description: Target environment
-        required: false
-        type: choice
-        options:
-          - fixportal-dev
-          - fixportal-prod
 
 concurrency:
   group: ci-${{ github.ref }}
