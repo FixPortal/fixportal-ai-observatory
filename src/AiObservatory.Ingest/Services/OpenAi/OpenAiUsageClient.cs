@@ -12,6 +12,11 @@ namespace AiObservatory.Ingest.Services.OpenAi;
 // See https://platform.openai.com/docs/api-reference/usage for the schema.
 public class OpenAiUsageClient(HttpClient http, ILogger<OpenAiUsageClient> logger, IOptions<OpenAiPricingOptions> pricingOptions) : IOpenAiUsageClient
 {
+    // Requesting more pages than this for a single day's usage indicates the pagination
+    // token is not advancing (e.g. an API change) — bail rather than loop unbounded.
+    // Mirrors AnthropicUsageClient.MaxPages.
+    private const int MaxPages = 100;
+
     public async Task<IReadOnlyList<OpenAiUsageRecord>> GetDailyUsageAsync(
         LocalDate date, CancellationToken ct = default)
     {
@@ -23,9 +28,16 @@ public class OpenAiUsageClient(HttpClient http, ILogger<OpenAiUsageClient> logge
 
         string? nextPage = null;
         bool hasMore = true;
+        int page = 0;
 
         while (hasMore)
         {
+            if (++page > MaxPages)
+            {
+                logger.LogWarning("OpenAI usage pagination exceeded {MaxPages} pages for {Date}; stopping", MaxPages, date);
+                break;
+            }
+
             var url = $"/v1/organization/usage/completions?start_time={startTime}&end_time={endTime}&bucket_width=1d&group_by[]=model&limit=100";
             if (!string.IsNullOrEmpty(nextPage))
             {

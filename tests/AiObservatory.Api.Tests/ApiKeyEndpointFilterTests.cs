@@ -1,4 +1,5 @@
 using System.Security.Claims;
+using AwesomeAssertions;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Http.HttpResults;
 using Microsoft.Extensions.Configuration;
@@ -50,15 +51,15 @@ public class ApiKeyEndpointFilterTests
         var result = await _sut.InvokeAsync(context, Next);
 
         // Assert
-        Assert.Equal(expectNext, nextCalled);
+        nextCalled.Should().Be(expectNext);
         if (expectNext)
         {
-            Assert.IsType<Ok>(result);
+            result.Should().BeOfType<Ok>();
         }
         else
         {
-            var statusResult = Assert.IsType<StatusCodeHttpResult>(result);
-            Assert.Equal(expectedStatus, statusResult.StatusCode);
+            var statusResult = result.Should().BeOfType<StatusCodeHttpResult>().Subject;
+            statusResult.StatusCode.Should().Be(expectedStatus);
         }
     }
 
@@ -88,8 +89,8 @@ public class ApiKeyEndpointFilterTests
         var result = await _sut.InvokeAsync(context, Next);
 
         // Assert
-        Assert.True(nextCalled);
-        Assert.IsType<Ok>(result);
+        nextCalled.Should().BeTrue();
+        result.Should().BeOfType<Ok>();
     }
 
     [Fact]
@@ -117,8 +118,8 @@ public class ApiKeyEndpointFilterTests
         var result = await _sut.InvokeAsync(context, Next);
 
         // Assert
-        Assert.False(nextCalled);
-        Assert.IsType<UnauthorizedHttpResult>(result);
+        nextCalled.Should().BeFalse();
+        result.Should().BeOfType<UnauthorizedHttpResult>();
     }
 
     [Fact]
@@ -144,8 +145,8 @@ public class ApiKeyEndpointFilterTests
         var result = await _sut.InvokeAsync(context, Next);
 
         // Assert
-        Assert.True(nextCalled);
-        Assert.IsType<Ok>(result);
+        nextCalled.Should().BeTrue();
+        result.Should().BeOfType<Ok>();
     }
 
     [Fact]
@@ -171,8 +172,8 @@ public class ApiKeyEndpointFilterTests
         var result = await _sut.InvokeAsync(context, Next);
 
         // Assert
-        Assert.True(nextCalled);
-        Assert.IsType<Ok>(result);
+        nextCalled.Should().BeTrue();
+        result.Should().BeOfType<Ok>();
     }
 
     [Fact]
@@ -198,8 +199,8 @@ public class ApiKeyEndpointFilterTests
         var result = await _sut.InvokeAsync(context, Next);
 
         // Assert
-        Assert.False(nextCalled);
-        Assert.IsType<UnauthorizedHttpResult>(result);
+        nextCalled.Should().BeFalse();
+        result.Should().BeOfType<UnauthorizedHttpResult>();
     }
 
     [Fact]
@@ -225,8 +226,8 @@ public class ApiKeyEndpointFilterTests
         var result = await _sut.InvokeAsync(context, Next);
 
         // Assert
-        Assert.False(nextCalled);
-        Assert.IsType<UnauthorizedHttpResult>(result);
+        nextCalled.Should().BeFalse();
+        result.Should().BeOfType<UnauthorizedHttpResult>();
     }
 
     [Theory]
@@ -259,8 +260,8 @@ public class ApiKeyEndpointFilterTests
         var result = await _sut.InvokeAsync(context, Next);
 
         // Assert
-        Assert.True(nextCalled);
-        Assert.IsType<Ok>(result);
+        nextCalled.Should().BeTrue();
+        result.Should().BeOfType<Ok>();
     }
 
     [Fact]
@@ -285,8 +286,8 @@ public class ApiKeyEndpointFilterTests
         var result = await _sut.InvokeAsync(context, Next);
 
         // Assert
-        Assert.True(nextCalled);
-        Assert.IsType<Ok>(result);
+        nextCalled.Should().BeTrue();
+        result.Should().BeOfType<Ok>();
     }
 
     [Fact]
@@ -311,8 +312,8 @@ public class ApiKeyEndpointFilterTests
         var result = await _sut.InvokeAsync(context, Next);
 
         // Assert
-        Assert.False(nextCalled);
-        Assert.IsType<UnauthorizedHttpResult>(result);
+        nextCalled.Should().BeFalse();
+        result.Should().BeOfType<UnauthorizedHttpResult>();
     }
 
     [Fact]
@@ -337,7 +338,7 @@ public class ApiKeyEndpointFilterTests
         var result = await _sut.InvokeAsync(context, Next);
 
         // Assert
-        Assert.False(nextCalled);
-        Assert.IsType<UnauthorizedHttpResult>(result);
+        nextCalled.Should().BeFalse();
+        result.Should().BeOfType<UnauthorizedHttpResult>();
     }
 }

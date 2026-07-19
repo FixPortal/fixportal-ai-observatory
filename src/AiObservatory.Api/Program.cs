@@ -82,16 +82,7 @@ builder.Services.AddRateLimiter(o =>
 // Docker self-host topology) so the rate limiter partitions by the real client IP
 // rather than collapsing every proxied caller onto the bridge IP. Only proxies on
 // private networks are trusted, so a public client cannot spoof the header.
-builder.Services.Configure<ForwardedHeadersOptions>(o =>
-{
-    o.ForwardedHeaders = ForwardedHeaders.XForwardedFor;
-    o.ForwardLimit = 1;
-    o.KnownIPNetworks.Clear();
-    o.KnownProxies.Clear();
-    o.KnownIPNetworks.Add(new System.Net.IPNetwork(System.Net.IPAddress.Parse("10.0.0.0"), 8));
-    o.KnownIPNetworks.Add(new System.Net.IPNetwork(System.Net.IPAddress.Parse("172.16.0.0"), 12));
-    o.KnownIPNetworks.Add(new System.Net.IPNetwork(System.Net.IPAddress.Parse("192.168.0.0"), 16));
-});
+builder.Services.Configure<ForwardedHeadersOptions>(Program.ConfigureForwardedHeaders);
 
 builder.Services.AddCors(o => o.AddDefaultPolicy(p =>
     p.WithOrigins(builder.Configuration["SWA_ORIGIN"] ?? "https://fpaiobs-swa.azurestaticapps.net")
@@ -307,3 +298,22 @@ api.MapSubscriptionsEndpoints();
 api.MapBudgetRulesEndpoints();
 
 await app.RunAsync();
+
+// Test-enabling: `public partial class Program` exposes the top-level-statement entry
+// point so WebApplicationFactory<Program> can host it; ConfigureForwardedHeaders is
+// pulled out to a named, independently testable method (same body as before, no
+// behaviour change) so a spoofed-XFF test can build the exact same ForwardedHeadersOptions
+// without spinning up the whole app.
+public partial class Program
+{
+    public static void ConfigureForwardedHeaders(ForwardedHeadersOptions o)
+    {
+        o.ForwardedHeaders = ForwardedHeaders.XForwardedFor;
+        o.ForwardLimit = 1;
+        o.KnownIPNetworks.Clear();
+        o.KnownProxies.Clear();
+        o.KnownIPNetworks.Add(new System.Net.IPNetwork(System.Net.IPAddress.Parse("10.0.0.0"), 8));
+        o.KnownIPNetworks.Add(new System.Net.IPNetwork(System.Net.IPAddress.Parse("172.16.0.0"), 12));
+        o.KnownIPNetworks.Add(new System.Net.IPNetwork(System.Net.IPAddress.Parse("192.168.0.0"), 16));
+    }
+}
