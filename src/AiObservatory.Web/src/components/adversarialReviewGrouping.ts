@@ -1,6 +1,12 @@
 import type { AdversarialReviewRun } from '../api/client'
 
-const REVIEWER_ORDER = ['anthropic', 'google', 'openai']
+const REVIEWER_ORDER = ['anthropic', 'google', 'openai', 'moonshot']
+
+// A "complete" panel is one reviewer per vendor across the full cross-vendor
+// roster, plus the adjudicating judge. The v2 panel spans four vendors
+// (Anthropic, Google, OpenAI, Moonshot); pre-Moonshot runs therefore read as
+// "N of 4".
+const EXPECTED_REVIEWER_VENDORS = REVIEWER_ORDER.length
 
 export interface RunGroup {
   runId: string
@@ -72,10 +78,10 @@ export function groupRuns(runs: AdversarialReviewRun[]): RunGroup[] {
     const reviewerVendors = new Set(participants.flatMap(p => (p.role === 'reviewer' ? [p.reviewer] : [])))
     const hasJudge = participants.some(p => p.role === 'judge')
     const reviewerCount = reviewerVendors.size
-    const isComplete = reviewerCount >= 3 && hasJudge
+    const isComplete = reviewerCount >= EXPECTED_REVIEWER_VENDORS && hasJudge
     const statusReason = isComplete
       ? 'complete'
-      : `${reviewerCount} of 3 reviewers${hasJudge ? '' : ' · no judge'}`
+      : `${reviewerCount} of ${EXPECTED_REVIEWER_VENDORS} reviewers${hasJudge ? '' : ' · no judge'}`
 
     groups.push({
       runId,

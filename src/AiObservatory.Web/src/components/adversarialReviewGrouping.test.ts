@@ -31,14 +31,21 @@ test('sums per-column totals across participants', () => {
   expect(groups[0].totals).toEqual({ raised: 9, accepted: 7, costUsd: 0.6, durationMs: 3000 })
 })
 
-test('flags incomplete when fewer than 3 reviewer vendors', () => {
+test('flags incomplete when fewer than 4 reviewer vendors', () => {
   const groups = groupRuns([run({ runId: 'R1', reviewer: 'anthropic', role: 'reviewer' })])
   expect(groups[0].isComplete).toBe(false)
-  expect(groups[0].statusReason).toContain('1 of 3')
+  expect(groups[0].statusReason).toContain('1 of 4')
 })
 
-test('complete needs 3 reviewer vendors and a judge', () => {
+test('a pre-Moonshot 3-vendor run reads as incomplete (3 of 4)', () => {
   const base = ['anthropic', 'google', 'openai'].map(v => run({ runId: 'R1', reviewer: v, role: 'reviewer' }))
+  const withJudge = groupRuns([...base, run({ runId: 'R1', reviewer: 'anthropic', role: 'judge' })])[0]
+  expect(withJudge.isComplete).toBe(false)
+  expect(withJudge.statusReason).toContain('3 of 4')
+})
+
+test('complete needs 4 reviewer vendors and a judge', () => {
+  const base = ['anthropic', 'google', 'openai', 'moonshot'].map(v => run({ runId: 'R1', reviewer: v, role: 'reviewer' }))
   expect(groupRuns(base)[0].isComplete).toBe(false) // no judge yet
   expect(groupRuns([...base, run({ runId: 'R1', reviewer: 'anthropic', role: 'judge' })])[0].isComplete).toBe(true)
 })
