@@ -18,6 +18,31 @@ public class OpenAiUsageClientTests
             });
     }
 
+    // Simulates a buggy/never-resolving OpenAI API: has_more is always true and next_page
+    // always advances, so the loop never terminates on its own. Also counts requests so
+    // the test can assert the client actually stopped, not merely that it eventually
+    // returned (a hang would time out the test instead).
+    private sealed class NeverResolvingHandler : HttpMessageHandler
+    {
+        public int RequestCount { get; private set; }
+
+        protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken ct)
+        {
+            RequestCount++;
+            var json = $$"""
+                {
+                  "data": [],
+                  "has_more": true,
+                  "next_page": "page-{{RequestCount}}"
+                }
+                """;
+            return Task.FromResult(new HttpResponseMessage(HttpStatusCode.OK)
+            {
+                Content = new StringContent(json, System.Text.Encoding.UTF8, "application/json"),
+            });
+        }
+    }
+
     private static readonly OpenAiPricingOptions TestPricing = new()
     {
         Pricing =
@@ -77,5 +102,22 @@ public class OpenAiUsageClientTests
         var records = await sut.GetDailyUsageAsync(date, TestContext.Current.CancellationToken);
 
         records.Single().CostUsd.Should().Be(12.5m); // fallback: $2.50 input + $10 output per 1M tokens
+    }
+
+    [Fact]
+    public async Task GetDailyUsageAsync_WhenHasMoreNeverResolves_StopsAtMaxPages()
+    {
+        // Production bug (AIO backlog): the while(hasMore) loop had no page cap, unlike the
+        // sibling AnthropicUsageClient (MaxPages=100) — a stuck has_more from a buggy/
+        // misbehaving API would loop the whole poll cycle indefinitely. This drives that
+        // exact scenario and asserts the client bails out instead of hanging.
+        var handler = new NeverResolvingHandler();
+        var http = new HttpClient(handler) { BaseAddress = new Uri("https://api.openai.com") };
+        var sut = new OpenAiUsageClient(http, NullLogger<OpenAiUsageClient>.Instance, Options.Create(TestPricing));
+
+        var records = await sut.GetDailyUsageAsync(new LocalDate(2026, 7, 1), TestContext.Current.CancellationToken);
+
+        records.Should().BeEmpty();
+        handler.RequestCount.Should().Be(100);
     }
 }

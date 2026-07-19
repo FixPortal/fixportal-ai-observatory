@@ -1,0 +1,132 @@
+using AiObservatory.Data;
+using Microsoft.AspNetCore.Hosting;
+using Microsoft.AspNetCore.Mvc.Testing;
+using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Hosting;
+using Npgsql;
+
+namespace AiObservatory.Api.Tests;
+
+/// <summary>
+/// WebApplicationFactory harness for AiObservatory.Api. Boots the real Program.cs
+/// composition root (migrations, seed-route mapping, rate limiter, ForwardedHeaders,
+/// API-key guard) against a throwaway per-instance Postgres database — same
+/// TEST_DB_CONNECTION-env-var-plus-random-database-name pattern the Data.Tests already
+/// use, so no new infra dependency is introduced.
+/// </summary>
+/// <remarks>
+/// Defaults to Development with a valid admin key, so most endpoint tests never need to
+/// think about the startup guards. Set <see cref="Environment"/> / <see cref="ApiKeyOverride"/>
+/// / <see cref="DbConnectionOverride"/> and read <see cref="Services"/> (or call
+/// <see cref="WebApplicationFactory{TEntryPoint}.CreateClient()"/>) to exercise
+/// Production-only / misconfigured-startup behaviour — do that on a throwaway instance,
+/// not the shared collection fixture.
+/// </remarks>
+public sealed class AiObservatoryApiFactory : WebApplicationFactory<Program>, IAsyncLifetime
+{
+    public const string AdminKey = "test-admin-key-0123456789";
+    public const string ReadOnlyKey = "test-readonly-key-0123456789";
+
+    public string Environment { get; set; } = Environments.Development;
+    public string? ApiKeyOverride { get; set; } = AdminKey;
+    public string? ReadOnlyKeyOverride { get; set; } = ReadOnlyKey;
+
+    private string? _dbConnectionOverride;
+    private bool _dbConnectionOverrideSet;
+    private readonly string _connectionString;
+
+    public AiObservatoryApiFactory()
+    {
+        var baseConn = System.Environment.GetEnvironmentVariable("TEST_DB_CONNECTION")
+            ?? "Host=localhost;Database=aiobs_test;Username=postgres;Password=postgres";
+        _connectionString = new NpgsqlConnectionStringBuilder(baseConn)
+        {
+            Database = $"aiobs_test_api_{Guid.NewGuid():N}"
+        }.ConnectionString;
+    }
+
+    /// Explicitly override DB_CONNECTION (e.g. to null, to drive the missing-config guard).
+    /// Leave unset to use the auto-provisioned per-instance throwaway database.
+    public void SetDbConnection(string? value)
+    {
+        _dbConnectionOverride = value;
+        _dbConnectionOverrideSet = true;
+    }
+
+    protected override void ConfigureWebHost(IWebHostBuilder builder)
+    {
+        // Belt-and-braces: this is the documented WebApplicationFactory mechanism for
+        // environment selection. ConfigureAppConfiguration callbacks registered here were
+        // separately found NOT to reliably apply before Program.cs's own top-level
+        // builder.Configuration[...] reads for this minimal-hosting (top-level-statement)
+        // entry point — see CreateHost below, which drives DB_CONNECTION/API-key config via
+        // process environment variables instead.
+        builder.UseEnvironment(Environment);
+    }
+
+    protected override IHost CreateHost(IHostBuilder builder)
+    {
+        // Runs once per EnsureServer(), strictly after every test-side property override
+        // (Environment/ApiKeyOverride/etc. — set via object initializer or after
+        // construction) and strictly before builder.Build() triggers Program.Main.
+        System.Environment.SetEnvironmentVariable("ASPNETCORE_ENVIRONMENT", Environment);
+        System.Environment.SetEnvironmentVariable(
+            "DB_CONNECTION", _dbConnectionOverrideSet ? _dbConnectionOverride : _connectionString);
+        System.Environment.SetEnvironmentVariable("OBSERVATORY_API_KEY", ApiKeyOverride);
+        System.Environment.SetEnvironmentVariable("OBSERVATORY_READONLY_API_KEY", ReadOnlyKeyOverride);
+        System.Environment.SetEnvironmentVariable("SWA_ORIGIN", "https://example.test");
+        return base.CreateHost(builder);
+    }
+
+    /// <summary>GET/read client carrying the readonly key.</summary>
+    public HttpClient CreateReadOnlyClient()
+    {
+        var client = CreateClient();
+        client.DefaultRequestHeaders.Add("X-Observatory-Key", ReadOnlyKey);
+        return client;
+    }
+
+    /// <summary>Client carrying the admin key — required for every write.</summary>
+    public HttpClient CreateAdminClient()
+    {
+        var client = CreateClient();
+        client.DefaultRequestHeaders.Add("X-Observatory-Key", AdminKey);
+        return client;
+    }
+
+    public async ValueTask InitializeAsync()
+    {
+        // Force host construction (and Program.cs's own MigrateAsync) up front so the
+        // schema exists before any test seeds rows directly via a fresh DbContext.
+        using var scope = Services.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<AiObservatoryDbContext>();
+        await db.Database.MigrateAsync();
+    }
+
+    public override async ValueTask DisposeAsync()
+    {
+        try
+        {
+            var options = new DbContextOptionsBuilder<AiObservatoryDbContext>()
+                .UseNpgsql(_connectionString, o => o.UseNodaTime())
+                .Options;
+            await using var ctx = new AiObservatoryDbContext(options);
+            await ctx.Database.EnsureDeletedAsync();
+        }
+        catch
+        {
+            // Best-effort cleanup; a leaked throwaway DB doesn't fail the test.
+        }
+        await base.DisposeAsync();
+    }
+}
+
+/// <summary>
+/// Shared collection: one factory (one throwaway Postgres DB, one migrated schema) reused
+/// across every endpoint-validation test class that only needs the default Development +
+/// valid-admin-key configuration. Startup-guard / misconfiguration tests must NOT join this
+/// collection — they need their own factory instance with a non-default Environment/key.
+/// </summary>
+[CollectionDefinition("ApiFactory")]
+public class ApiFactoryCollection : ICollectionFixture<AiObservatoryApiFactory>;
