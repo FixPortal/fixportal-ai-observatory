@@ -83,7 +83,9 @@ public sealed class AiObservatoryApiFactory : WebApplicationFactory<Program>, IA
     public HttpClient CreateReadOnlyClient()
     {
         var client = CreateClient();
-        client.DefaultRequestHeaders.Add("X-Observatory-Key", ReadOnlyKey);
+        // Send whatever key the server was actually configured with, so the client stays
+        // in sync when a test customises ReadOnlyKeyOverride (defaults to ReadOnlyKey).
+        client.DefaultRequestHeaders.Add("X-Observatory-Key", ReadOnlyKeyOverride);
         return client;
     }
 
@@ -91,7 +93,9 @@ public sealed class AiObservatoryApiFactory : WebApplicationFactory<Program>, IA
     public HttpClient CreateAdminClient()
     {
         var client = CreateClient();
-        client.DefaultRequestHeaders.Add("X-Observatory-Key", AdminKey);
+        // Mirror the server's configured admin key (defaults to AdminKey) rather than the
+        // const, so an ApiKeyOverride-driven test doesn't silently send a mismatched key.
+        client.DefaultRequestHeaders.Add("X-Observatory-Key", ApiKeyOverride);
         return client;
     }
 

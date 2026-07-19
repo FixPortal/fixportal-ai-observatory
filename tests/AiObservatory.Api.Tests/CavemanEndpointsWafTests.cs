@@ -109,10 +109,11 @@ public class CavemanEndpointsWafTests(AiObservatoryApiFactory factory)
         var first = DateTimeOffset.UtcNow.AddMinutes(-10);
         var newer = DateTimeOffset.UtcNow.AddMinutes(-1);
 
-        await client.PostAsJsonAsync(
+        var seed = await client.PostAsJsonAsync(
             "/api/caveman-sessions",
             new { Sessions = new[] { Session(sessionId, first, outputTokens: 100) } },
             TestContext.Current.CancellationToken);
+        seed.EnsureSuccessStatusCode();
 
         var response = await client.PostAsJsonAsync(
             "/api/caveman-sessions",

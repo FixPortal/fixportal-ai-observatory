@@ -112,7 +112,7 @@ public class OpenAiUsageClientTests
         // misbehaving API would loop the whole poll cycle indefinitely. This drives that
         // exact scenario and asserts the client bails out instead of hanging.
         var handler = new NeverResolvingHandler();
-        var http = new HttpClient(handler) { BaseAddress = new Uri("https://api.openai.com") };
+        using var http = new HttpClient(handler) { BaseAddress = new Uri("https://api.openai.com") };
         var sut = new OpenAiUsageClient(http, NullLogger<OpenAiUsageClient>.Instance, Options.Create(TestPricing));
 
         var records = await sut.GetDailyUsageAsync(new LocalDate(2026, 7, 1), TestContext.Current.CancellationToken);

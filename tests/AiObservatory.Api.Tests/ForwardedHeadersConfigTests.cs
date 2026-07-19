@@ -44,7 +44,7 @@ public class ForwardedHeadersConfigTests
         using var host = await BuildTestHostAsync(remoteIp: System.Net.IPAddress.Parse("8.8.8.8"));
         var client = host.GetTestClient();
 
-        var request = new HttpRequestMessage(HttpMethod.Get, "/");
+        using var request = new HttpRequestMessage(HttpMethod.Get, "/");
         request.Headers.Add("X-Forwarded-For", "1.2.3.4"); // attacker-controlled
 
         var response = await client.SendAsync(request, TestContext.Current.CancellationToken);
@@ -61,7 +61,7 @@ public class ForwardedHeadersConfigTests
         using var host = await BuildTestHostAsync(remoteIp: System.Net.IPAddress.Parse("10.0.5.7"));
         var client = host.GetTestClient();
 
-        var request = new HttpRequestMessage(HttpMethod.Get, "/");
+        using var request = new HttpRequestMessage(HttpMethod.Get, "/");
         request.Headers.Add("X-Forwarded-For", "203.0.113.9"); // real client IP, forwarded by the trusted nginx sidecar
 
         var response = await client.SendAsync(request, TestContext.Current.CancellationToken);
