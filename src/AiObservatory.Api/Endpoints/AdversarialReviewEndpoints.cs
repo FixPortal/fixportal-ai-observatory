@@ -5,15 +5,15 @@ namespace AiObservatory.Api.Endpoints;
 
 public static class AdversarialReviewEndpoints
 {
+    // Returning the builder is the standard fluent endpoint-mapping convention.
+    // ReSharper disable once UnusedMethodReturnValue.Global
     public static IEndpointRouteBuilder MapAdversarialReviewEndpoints(this IEndpointRouteBuilder app)
     {
-        app.MapPost("/adversarial-review/runs", async (
+        app.MapPost("/adversarial-review/runs", (
             AdversarialReviewRunRequest req,
             AdversarialReviewService svc,
-            HttpContext ctx) =>
-        {
-            return await svc.RecordRunAsync(req, ctx.RequestAborted);
-        }).WithName("RecordAdversarialReviewRun");
+            HttpContext ctx) => svc.RecordRunAsync(req, ctx.RequestAborted))
+            .WithName("RecordAdversarialReviewRun");
 
         app.MapGet("/adversarial-review/runs", async (
             string? runId,

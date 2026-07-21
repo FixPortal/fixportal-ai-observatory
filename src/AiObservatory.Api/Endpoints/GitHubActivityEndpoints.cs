@@ -6,6 +6,9 @@ using NodaTime;
 
 namespace AiObservatory.Api.Endpoints;
 
+// Response record properties are consumed by ASP.NET Core JSON serialization.
+// ReSharper disable NotAccessedPositionalProperty.Global
+
 public static class GitHubActivityEndpoints
 {
     private static readonly string[] TerminalFailureStatuses = ["failure", "timed_out", "startup_failure"];
@@ -104,7 +107,7 @@ public static class GitHubActivityEndpoints
                     g.Key.Repo,
                     g.Key.WorkflowName,
                     Total = g.Count(),
-                    Failed = g.Count(r => TerminalFailureStatuses.Contains(r.Status)),
+                    Failed = g.Count(r => Enumerable.Contains(TerminalFailureStatuses, r.Status)),
                     Succeeded = g.Count(r => r.Status == "success"),
                 })
                 .OrderByDescending(r => r.Total)

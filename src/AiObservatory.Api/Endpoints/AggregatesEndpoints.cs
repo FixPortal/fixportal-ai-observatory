@@ -10,6 +10,8 @@ namespace AiObservatory.Api.Endpoints;
 
 public static class AggregatesEndpoints
 {
+    // Returning the builder is the standard fluent endpoint-mapping convention.
+    // ReSharper disable once UnusedMethodReturnValue.Global
     public static IEndpointRouteBuilder MapAggregatesEndpoints(this IEndpointRouteBuilder app)
     {
         app.MapGet("/aggregates", GetAggregatesAsync);

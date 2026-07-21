@@ -2,6 +2,9 @@ using AiObservatory.Data.Entities;
 
 namespace AiObservatory.Data.Repositories;
 
+// Projection record properties are consumed by JSON serialization.
+// ReSharper disable NotAccessedPositionalProperty.Global
+
 public record AdversarialReviewStats(
     string Reviewer,
     string Model,

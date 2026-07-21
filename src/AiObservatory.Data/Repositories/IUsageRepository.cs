@@ -3,6 +3,9 @@ using NodaTime;
 
 namespace AiObservatory.Data.Repositories;
 
+// Projection record properties are consumed by JSON serialization.
+// ReSharper disable NotAccessedPositionalProperty.Global
+
 /// <summary>
 /// Outcome of <see cref="IUsageRepository.RecordEventAsync"/>: the id of the stored
 /// event, or of the previously stored event when the submission was a duplicate.

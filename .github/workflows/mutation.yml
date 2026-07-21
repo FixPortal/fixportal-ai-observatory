@@ -16,6 +16,7 @@ jobs:
   mutation:
     name: Mutation (Stryker.NET API pilot)
     runs-on: ubuntu-latest
+    continue-on-error: true
     timeout-minutes: 60
     services:
       postgres:

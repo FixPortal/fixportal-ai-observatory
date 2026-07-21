@@ -4,6 +4,10 @@ using NodaTime;
 
 namespace AiObservatory.Api.Services;
 
+// Request properties are consumed by endpoint binding and service validation.
+// EventType is retained as part of the external ingestion contract.
+// ReSharper disable NotAccessedPositionalProperty.Global
+
 public class AdversarialReviewService(IAdversarialReviewRepository repo, IClock clock)
 {
     private static readonly Dictionary<string, string> ModelAliases = new(StringComparer.OrdinalIgnoreCase)
@@ -26,7 +30,7 @@ public class AdversarialReviewService(IAdversarialReviewRepository repo, IClock 
         {
             return trimmed;
         }
-        return ModelAliases.TryGetValue(trimmed, out var canonical) ? canonical : trimmed;
+        return ModelAliases.GetValueOrDefault(trimmed, trimmed);
     }
 
     private const int SummaryMaxLength = 80;

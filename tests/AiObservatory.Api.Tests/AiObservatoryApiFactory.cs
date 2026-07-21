@@ -30,6 +30,8 @@ public sealed class AiObservatoryApiFactory : WebApplicationFactory<Program>, IA
 
     public string Environment { get; set; } = Environments.Development;
     public string? ApiKeyOverride { get; set; } = AdminKey;
+    // Mutable test-fixture seam used by consumers even though the in-repo tests keep the default.
+    // ReSharper disable once AutoPropertyCanBeMadeGetOnly.Global
     public string? ReadOnlyKeyOverride { get; set; } = ReadOnlyKey;
 
     private string? _dbConnectionOverride;

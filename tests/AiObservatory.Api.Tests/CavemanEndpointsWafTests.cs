@@ -1,7 +1,6 @@
 using System.Net;
 using System.Net.Http.Json;
 using AiObservatory.Data;
-using AiObservatory.Data.Entities;
 using AwesomeAssertions;
 using Microsoft.Extensions.DependencyInjection;
 using NodaTime;

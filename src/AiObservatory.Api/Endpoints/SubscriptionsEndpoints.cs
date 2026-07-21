@@ -5,8 +5,13 @@ using NodaTime;
 
 namespace AiObservatory.Api.Endpoints;
 
+// Request records are instantiated by ASP.NET Core model binding.
+// ReSharper disable ClassNeverInstantiated.Global
+
 public static class SubscriptionsEndpoints
 {
+    // Returning the builder is the standard fluent endpoint-mapping convention.
+    // ReSharper disable once UnusedMethodReturnValue.Global
     public static IEndpointRouteBuilder MapSubscriptionsEndpoints(this IEndpointRouteBuilder app)
     {
         app.MapGet("/subscriptions", GetSubscriptionsAsync);
@@ -129,7 +134,7 @@ public static class SubscriptionsEndpoints
             return Results.BadRequest("CostAmount must be non-negative");
         }
 
-        currency = (req.Currency ?? "").ToUpperInvariant();
+        currency = req.Currency.ToUpperInvariant();
         return currency is not ("GBP" or "USD")
             ? Results.BadRequest("Currency must be GBP or USD")
             : null;

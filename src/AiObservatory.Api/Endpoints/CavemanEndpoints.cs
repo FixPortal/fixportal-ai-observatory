@@ -6,6 +6,11 @@ using Npgsql;
 
 namespace AiObservatory.Api.Endpoints;
 
+// Response record properties are consumed by ASP.NET Core JSON serialization, while
+// request records are instantiated by model binding.
+// ReSharper disable NotAccessedPositionalProperty.Global
+// ReSharper disable ClassNeverInstantiated.Global
+
 public static class CavemanEndpoints
 {
     public static void MapCavemanEndpoints(this IEndpointRouteBuilder app)

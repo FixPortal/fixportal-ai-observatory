@@ -9,6 +9,11 @@ using Npgsql;
 
 namespace AiObservatory.Api.Endpoints;
 
+// Request records are instantiated by ASP.NET Core model binding; response record
+// properties are consumed by JSON serialization.
+// ReSharper disable ClassNeverInstantiated.Global
+// ReSharper disable NotAccessedPositionalProperty.Global
+
 public static class ActivityEndpoints
 {
     public static void MapActivityEndpoints(this IEndpointRouteBuilder app)

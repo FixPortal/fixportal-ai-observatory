@@ -15,6 +15,7 @@
     <PackageReference Include="NodaTime.Testing" />
     <PackageReference Include="Npgsql.EntityFrameworkCore.PostgreSQL" />
     <PackageReference Include="NSubstitute" />
+    <PackageReference Include="Testcontainers.PostgreSql" />
     <PackageReference Include="xunit.v3" />
     <PackageReference Include="xunit.runner.visualstudio">
       <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
@@ -28,6 +29,10 @@
 
   <ItemGroup>
     <ProjectReference Include="..\..\src\AiObservatory.Data\AiObservatory.Data.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Compile Include="..\PostgresTestAssemblyFixture.cs" Link="PostgresTestAssemblyFixture.cs" />
   </ItemGroup>
 
 </Project>

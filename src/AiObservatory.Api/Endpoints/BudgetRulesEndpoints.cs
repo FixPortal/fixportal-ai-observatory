@@ -4,8 +4,13 @@ using Microsoft.EntityFrameworkCore;
 
 namespace AiObservatory.Api.Endpoints;
 
+// Request records are instantiated by ASP.NET Core model binding.
+// ReSharper disable ClassNeverInstantiated.Global
+
 public static class BudgetRulesEndpoints
 {
+    // Returning the builder is the standard fluent endpoint-mapping convention.
+    // ReSharper disable once UnusedMethodReturnValue.Global
     public static IEndpointRouteBuilder MapBudgetRulesEndpoints(this IEndpointRouteBuilder app)
     {
         app.MapGet("/budget-rules", async (AiObservatoryDbContext db) =>

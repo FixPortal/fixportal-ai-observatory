@@ -151,6 +151,8 @@ public class GitHubIngestionServiceTests
 
         var sut = new GitHubIngestionService(client, repo, Options("fix-portal/example"), NullLogger<GitHubIngestionService>.Instance, Clock);
 
+        // The delegate is awaited before the owning using scope disposes the token source.
+        // ReSharper disable once AccessToDisposedClosure
         var act = () => sut.IngestSinceAsync(new LocalDate(2026, 7, 1), cts.Token);
 
         await act.Should().ThrowAsync<OperationCanceledException>();
