@@ -60,16 +60,18 @@ jobs:
       - name: Summarize
         if: always()
         shell: pwsh
+        env:
+          STRYKER_OUTCOME: ${{ steps.stryker.outcome }}
         run: |
           $latest = Get-ChildItem StrykerOutput -Directory -ErrorAction SilentlyContinue | Sort-Object LastWriteTime -Descending | Select-Object -First 1
           if (-not $latest) {
-            "Mutation report was not produced (Stryker outcome: ${{ steps.stryker.outcome }})." | Out-File -FilePath $env:GITHUB_STEP_SUMMARY -Append
-            exit 0
+            "Mutation report was not produced (Stryker outcome: $env:STRYKER_OUTCOME)." | Out-File -FilePath $env:GITHUB_STEP_SUMMARY -Append
+            exit 1
           }
           $report = Join-Path $latest.FullName 'reports/mutation-report.json'
           if (-not (Test-Path -LiteralPath $report)) {
-            "Mutation JSON report was not produced (Stryker outcome: ${{ steps.stryker.outcome }})." | Out-File -FilePath $env:GITHUB_STEP_SUMMARY -Append
-            exit 0
+            "Mutation JSON report was not produced (Stryker outcome: $env:STRYKER_OUTCOME)." | Out-File -FilePath $env:GITHUB_STEP_SUMMARY -Append
+            exit 1
           }
           $jsonSummary = Join-Path $latest.FullName 'reports/mutation-summary.json'
           $mdSummary = Join-Path $latest.FullName 'reports/mutation-summary.md'
