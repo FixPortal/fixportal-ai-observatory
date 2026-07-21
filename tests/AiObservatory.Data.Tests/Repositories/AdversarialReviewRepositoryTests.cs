@@ -13,6 +13,7 @@ namespace AiObservatory.Data.Tests.Repositories;
 // runs separate test classes in parallel, so sharing one database meant one
 // class could DROP it mid-migrate in the other (CI: 57P01 / "index ... does
 // not exist"). MigrateAsync creates this database on first use.
+[Trait("Category", "Integration")]
 public class AdversarialReviewRepositoryTests : IAsyncLifetime
 {
     private string _connStr = null!;

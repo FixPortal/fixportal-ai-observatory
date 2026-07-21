@@ -28,6 +28,17 @@ trim_trailing_whitespace = false
 [**/Migrations/**]
 generated_code = true
 
+# Fixed upstream API endpoints are protocol constants, not deploy-time paths.
+[src/AiObservatory.Ingest/Program.cs]
+dotnet_diagnostic.S1075.severity = none
+
+[src/AiObservatory.Api/Services/Fx/FxRateProvider.cs]
+dotnet_diagnostic.S1075.severity = none
+
+# Local-only credential used by EF design-time tooling; never loaded at runtime.
+[src/AiObservatory.Data/AiObservatoryDbContextFactory.cs]
+dotnet_diagnostic.S2068.severity = none
+
 #### C# files (formatter keys only) ####
 [*.cs]
 end_of_line = crlf

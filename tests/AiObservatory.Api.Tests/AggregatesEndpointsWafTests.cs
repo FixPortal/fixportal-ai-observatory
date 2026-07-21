@@ -13,6 +13,7 @@ namespace AiObservatory.Api.Tests;
 /// LocalDate ISO-format regression guard (the fix for a real chart-axis-scrambling bug —
 /// LocalDate.ToString() with no explicit pattern used the server culture's long-date format).
 /// </summary>
+[Trait("Category", "Integration")]
 [Collection("ApiFactory")]
 public class AggregatesEndpointsWafTests(AiObservatoryApiFactory factory)
 {

@@ -9,6 +9,7 @@ namespace AiObservatory.Data.Tests.Repositories;
 
 // Requires TEST_DB_CONNECTION env var pointing at a real PostgreSQL instance.
 // Example: "Host=localhost;Database=aiobs_test;Username=postgres;Password=postgres"
+[Trait("Category", "Integration")]
 public class UsageRepositoryTests : IAsyncLifetime
 {
     private string _connStr = null!;

@@ -8,6 +8,7 @@ namespace AiObservatory.Api.Tests;
 /// AIO-H3: /api/subscriptions validation branches (currency allowlist, BillingDay range,
 /// negative CostAmount/extra-usage). WebApplicationFactory end-to-end.
 /// </summary>
+[Trait("Category", "Integration")]
 [Collection("ApiFactory")]
 public class SubscriptionsEndpointsWafTests(AiObservatoryApiFactory factory)
 {

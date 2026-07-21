@@ -50,6 +50,7 @@ public class AdversarialReviewService(IAdversarialReviewRepository repo, IClock 
         return trimmed[..cut];
     }
 
+#pragma warning disable S3776 // Linear request guards are clearer here than fragmented validation helpers.
     public async Task<IResult> RecordRunAsync(AdversarialReviewRunRequest req, CancellationToken ct)
     {
         if (string.IsNullOrWhiteSpace(req.Reviewer))
@@ -152,6 +153,7 @@ public class AdversarialReviewService(IAdversarialReviewRepository repo, IClock 
             ? Results.Ok(new { Id = id, Updated = true })
             : Results.Created($"/api/adversarial-review/runs/{id}", new { Id = id });
     }
+#pragma warning restore S3776
 }
 
 public record AdversarialReviewRunRequest(

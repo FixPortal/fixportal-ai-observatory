@@ -335,12 +335,31 @@ serves GETs without a key in development mode.
 
 ### Tests
 
-```powershell
-dotnet test                        # all .NET tests
-cd src/AiObservatory.Web && npm test   # Vitest unit tests
-npm run doctor                         # React Doctor diagnostics
+Run unit tests without PostgreSQL:
 
-docker run -d --name aiobs-test-pg -e POSTGRES_DB=aiobs_test -e POSTGRES_USER=postgres -e POSTGRES_PASSWORD=postgres -p 5432:5432 postgres:16 # spin up a local docker postgres if you want to unit test all locally
+```powershell
+dotnet test AiObservatory.slnx --filter "Category!=Integration"
+```
+
+Run PostgreSQL integration tests after setting `TEST_DB_CONNECTION` or starting
+the local test container:
+
+```powershell
+docker run -d --name aiobs-test-pg -e POSTGRES_DB=aiobs_test -e POSTGRES_USER=postgres -e POSTGRES_PASSWORD=postgres -p 5432:5432 postgres:16
+```
+
+```powershell
+dotnet test AiObservatory.slnx --filter "Category=Integration"
+```
+
+Run frontend tests and diagnostics:
+
+```powershell
+npm --prefix src/AiObservatory.Web test
+```
+
+```powershell
+npm --prefix src/AiObservatory.Web run doctor
 ```
 
 ## CI / CD

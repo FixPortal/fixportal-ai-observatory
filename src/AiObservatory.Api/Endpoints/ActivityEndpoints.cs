@@ -13,120 +13,7 @@ public static class ActivityEndpoints
 {
     public static void MapActivityEndpoints(this IEndpointRouteBuilder app)
     {
-        app.MapPost("/activity/sessions", async (
-            ActivitySessionsRequest req,
-            AiObservatoryDbContext db,
-            IClock clock,
-            CancellationToken ct) =>
-        {
-            if (req.Sessions is not { Count: > 0 })
-            {
-                return Results.Ok(new { Upserted = 0 });
-            }
-
-            if (req.Sessions.Count > 1000)
-            {
-                return Results.BadRequest("Cannot upsert more than 1000 sessions at once.");
-            }
-
-            var now = clock.GetCurrentInstant();
-            var seenSessionIds = new HashSet<string>();
-            foreach (var s in req.Sessions)
-            {
-                if (string.IsNullOrWhiteSpace(s.SessionId) || s.SessionId.Length > 200)
-                {
-                    return Results.BadRequest($"SessionId invalid: '{s.SessionId}'");
-                }
-                if (string.IsNullOrWhiteSpace(s.Project) || s.Project.Length > 200)
-                {
-                    return Results.BadRequest($"Project invalid: '{s.Project}'");
-                }
-                if (s.ActiveSeconds < 0)
-                {
-                    return Results.BadRequest("ActiveSeconds must be non-negative.");
-                }
-                if (s.LastSeenAtUtc < s.StartedAtUtc)
-                {
-                    return Results.BadRequest($"LastSeenAtUtc must not be before StartedAtUtc: '{s.SessionId}'");
-                }
-                // Hoisted from the mutation loop: a bad row must fail BEFORE any earlier row
-                // is committed (the update path uses ExecuteUpdateAsync, which writes
-                // immediately), so validation happens entirely up-front.
-                var startedAt = Instant.FromDateTimeOffset(s.StartedAtUtc);
-                var lastSeenAt = Instant.FromDateTimeOffset(s.LastSeenAtUtc);
-                if (startedAt > now + Duration.FromMinutes(5) || lastSeenAt > now + Duration.FromMinutes(5))
-                {
-                    return Results.BadRequest($"Timestamps must not be in the future: '{s.SessionId}'");
-                }
-                if (s.ActiveSeconds > (lastSeenAt - startedAt).TotalSeconds)
-                {
-                    return Results.BadRequest($"ActiveSeconds exceeds elapsed time for session '{s.SessionId}'");
-                }
-                if (!seenSessionIds.Add(s.SessionId))
-                {
-                    return Results.BadRequest($"Duplicate SessionId in batch: '{s.SessionId}'");
-                }
-            }
-
-            var sessionIds = req.Sessions.Select(s => s.SessionId).ToList();
-            var existing = await db.ClaudeActivitySessions
-                .Where(s => sessionIds.Contains(s.SessionId))
-                .ToDictionaryAsync(s => s.SessionId, ct);
-
-            // One transaction so the ExecuteUpdateAsync writes and the deferred inserts commit
-            // atomically — a unique-violation race on a concurrently-inserted SessionId rolls
-            // the whole batch back rather than leaving it half-applied.
-            await using var tx = await db.Database.BeginTransactionAsync(ct);
-            var upserted = 0;
-            foreach (var s in req.Sessions)
-            {
-                var startedAt = Instant.FromDateTimeOffset(s.StartedAtUtc);
-                var lastSeenAt = Instant.FromDateTimeOffset(s.LastSeenAtUtc);
-
-                if (existing.TryGetValue(s.SessionId, out var current))
-                {
-                    if (!ShouldReplaceExisting(current, s.ActiveSeconds, lastSeenAt))
-                    {
-                        continue;
-                    }
-
-                    var (mergedAs, mergedLs) = MergeActivity(current, s.ActiveSeconds, lastSeenAt);
-                    await db.ClaudeActivitySessions
-                        .Where(x => x.SessionId == s.SessionId)
-                        .ExecuteUpdateAsync(upd => upd
-                            .SetProperty(p => p.ActiveSeconds, mergedAs)
-                            .SetProperty(p => p.LastSeenAt, mergedLs), ct);
-                }
-                else
-                {
-                    db.ClaudeActivitySessions.Add(new ClaudeActivitySession
-                    {
-                        SessionId = s.SessionId,
-                        Project = s.Project,
-                        StartedAt = startedAt,
-                        LastSeenAt = lastSeenAt,
-                        ActiveSeconds = s.ActiveSeconds,
-                        IngestedAt = now,
-                    });
-                }
-                upserted++;
-            }
-
-            try
-            {
-                await db.SaveChangesAsync(ct);
-                await tx.CommitAsync(ct);
-            }
-            catch (DbUpdateException ex) when (
-                ex.InnerException is PostgresException { SqlState: PostgresErrorCodes.UniqueViolation })
-            {
-                // A concurrent request inserted one of these SessionIds between the existence
-                // snapshot and SaveChanges. The merge is monotonic, so a retry converges.
-                await tx.RollbackAsync(ct);
-                return Results.Conflict("Concurrent write to one or more sessions; retry.");
-            }
-            return Results.Ok(new { Upserted = upserted });
-        });
+        app.MapPost("/activity/sessions", UpsertActivitySessionsAsync);
 
         app.MapGet("/activity/daily", async (
             AiObservatoryDbContext db,
@@ -203,6 +90,153 @@ public static class ActivityEndpoints
 
             return Results.Ok(new { deletedSessions = deleted });
         }).AddEndpointFilter<AdminOnlyApiKeyEndpointFilter>();
+    }
+
+    private static async Task<IResult> UpsertActivitySessionsAsync(
+        ActivitySessionsRequest req,
+        AiObservatoryDbContext db,
+        IClock clock,
+        CancellationToken ct)
+    {
+        if (req.Sessions is not { Count: > 0 })
+        {
+            return Results.Ok(new { Upserted = 0 });
+        }
+
+        if (req.Sessions.Count > 1000)
+        {
+            return Results.BadRequest("Cannot upsert more than 1000 sessions at once.");
+        }
+
+        var now = clock.GetCurrentInstant();
+        var validationError = ValidateSessions(req.Sessions, now);
+        if (validationError is not null)
+        {
+            return Results.BadRequest(validationError);
+        }
+
+        var sessionIds = req.Sessions.Select(s => s.SessionId).ToList();
+        var existing = await db.ClaudeActivitySessions
+            .Where(s => sessionIds.Contains(s.SessionId))
+            .ToDictionaryAsync(s => s.SessionId, ct);
+
+        // One transaction so the ExecuteUpdateAsync writes and the deferred inserts commit
+        // atomically — a unique-violation race on a concurrently-inserted SessionId rolls
+        // the whole batch back rather than leaving it half-applied.
+        await using var tx = await db.Database.BeginTransactionAsync(ct);
+        var upserted = await UpsertSessionsAsync(req.Sessions, existing, db, now, ct);
+
+        try
+        {
+            await db.SaveChangesAsync(ct);
+            await tx.CommitAsync(ct);
+        }
+        catch (DbUpdateException ex) when (
+            ex.InnerException is PostgresException { SqlState: PostgresErrorCodes.UniqueViolation })
+        {
+            // A concurrent request inserted one of these SessionIds between the existence
+            // snapshot and SaveChanges. The merge is monotonic, so a retry converges.
+            await tx.RollbackAsync(ct);
+            return Results.Conflict("Concurrent write to one or more sessions; retry.");
+        }
+        return Results.Ok(new { Upserted = upserted });
+    }
+
+    private static string? ValidateSessions(IReadOnlyCollection<ActivitySessionRequest> sessions, Instant now)
+    {
+        var seenSessionIds = new HashSet<string>();
+        foreach (var session in sessions)
+        {
+            var error = ValidateSession(session, now);
+            if (error is not null)
+            {
+                return error;
+            }
+            if (!seenSessionIds.Add(session.SessionId))
+            {
+                return $"Duplicate SessionId in batch: '{session.SessionId}'";
+            }
+        }
+
+        return null;
+    }
+
+    private static string? ValidateSession(ActivitySessionRequest session, Instant now)
+    {
+        if (string.IsNullOrWhiteSpace(session.SessionId) || session.SessionId.Length > 200)
+        {
+            return $"SessionId invalid: '{session.SessionId}'";
+        }
+        if (string.IsNullOrWhiteSpace(session.Project) || session.Project.Length > 200)
+        {
+            return $"Project invalid: '{session.Project}'";
+        }
+        if (session.ActiveSeconds < 0)
+        {
+            return "ActiveSeconds must be non-negative.";
+        }
+        if (session.LastSeenAtUtc < session.StartedAtUtc)
+        {
+            return $"LastSeenAtUtc must not be before StartedAtUtc: '{session.SessionId}'";
+        }
+
+        // A bad row must fail before any earlier row is committed because
+        // ExecuteUpdateAsync writes immediately.
+        var startedAt = Instant.FromDateTimeOffset(session.StartedAtUtc);
+        var lastSeenAt = Instant.FromDateTimeOffset(session.LastSeenAtUtc);
+        if (startedAt > now + Duration.FromMinutes(5) || lastSeenAt > now + Duration.FromMinutes(5))
+        {
+            return $"Timestamps must not be in the future: '{session.SessionId}'";
+        }
+
+        return session.ActiveSeconds > (lastSeenAt - startedAt).TotalSeconds
+            ? $"ActiveSeconds exceeds elapsed time for session '{session.SessionId}'"
+            : null;
+    }
+
+    private static async Task<int> UpsertSessionsAsync(
+        IEnumerable<ActivitySessionRequest> sessions,
+        IReadOnlyDictionary<string, ClaudeActivitySession> existing,
+        AiObservatoryDbContext db,
+        Instant now,
+        CancellationToken ct)
+    {
+        var upserted = 0;
+        foreach (var session in sessions)
+        {
+            var startedAt = Instant.FromDateTimeOffset(session.StartedAtUtc);
+            var lastSeenAt = Instant.FromDateTimeOffset(session.LastSeenAtUtc);
+
+            if (existing.TryGetValue(session.SessionId, out var current))
+            {
+                if (!ShouldReplaceExisting(current, session.ActiveSeconds, lastSeenAt))
+                {
+                    continue;
+                }
+
+                var (mergedAs, mergedLs) = MergeActivity(current, session.ActiveSeconds, lastSeenAt);
+                await db.ClaudeActivitySessions
+                    .Where(x => x.SessionId == session.SessionId)
+                    .ExecuteUpdateAsync(upd => upd
+                        .SetProperty(p => p.ActiveSeconds, mergedAs)
+                        .SetProperty(p => p.LastSeenAt, mergedLs), ct);
+            }
+            else
+            {
+                db.ClaudeActivitySessions.Add(new ClaudeActivitySession
+                {
+                    SessionId = session.SessionId,
+                    Project = session.Project,
+                    StartedAt = startedAt,
+                    LastSeenAt = lastSeenAt,
+                    ActiveSeconds = session.ActiveSeconds,
+                    IngestedAt = now,
+                });
+            }
+            upserted++;
+        }
+
+        return upserted;
     }
 
     // Only these two GitHub accounts are "real" projects for the dashboard — everything

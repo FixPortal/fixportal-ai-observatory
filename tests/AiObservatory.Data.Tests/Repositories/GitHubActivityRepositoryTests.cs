@@ -8,6 +8,7 @@ namespace AiObservatory.Data.Tests.Repositories;
 
 // Requires TEST_DB_CONNECTION env var pointing at a real PostgreSQL instance.
 // Own database (aiobs_test_github), same isolation rationale as AdversarialReviewRepositoryTests.
+[Trait("Category", "Integration")]
 public class GitHubActivityRepositoryTests : IAsyncLifetime
 {
     private string _connStr = null!;

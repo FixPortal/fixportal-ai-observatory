@@ -49,34 +49,7 @@ public class AnthropicUsageClient(HttpClient http, ILogger<AnthropicUsageClient>
             var response = await http.GetFromJsonAsync<AnthropicUsageApiResponse>(url, options, ct);
             foreach (var bucket in response?.Data ?? [])
             {
-                LocalDate parsedDate = date;
-                if (bucket.StartingAt is { Length: >= 10 } startingAt)
-                {
-                    var parseResult = LocalDatePattern.Iso.Parse(startingAt[..10]);
-                    if (parseResult.Success)
-                    {
-                        parsedDate = parseResult.Value;
-                    }
-                }
-
-                // The usage report nests per-model token counts inside each bucket's
-                // results[] array; the bucket itself carries only the time window.
-                foreach (var r in bucket.Results ?? [])
-                {
-                    var model = r.Model ?? "unknown";
-                    var costUsd = ComputeCost(model, parsedDate, r.InputTokens, r.OutputTokens,
-                        r.CacheReadInputTokens, r.CacheCreationInputTokens);
-
-                    allRecords.Add(new AnthropicUsageRecord(
-                        Date: parsedDate,
-                        Model: model,
-                        InputTokens: r.InputTokens,
-                        OutputTokens: r.OutputTokens,
-                        CacheReadTokens: r.CacheReadInputTokens,
-                        CacheWriteTokens: r.CacheCreationInputTokens,
-                        CostUsd: costUsd,
-                        RawJson: JsonSerializer.Serialize(r, options)));
-                }
+                AddBucketRecords(bucket, date, options, allRecords);
             }
 
             hasMore = response?.HasMore == true && !string.IsNullOrEmpty(response.NextPage);
@@ -84,6 +57,45 @@ public class AnthropicUsageClient(HttpClient http, ILogger<AnthropicUsageClient>
         }
 
         return allRecords;
+    }
+
+    private void AddBucketRecords(
+        AnthropicUsageBucket bucket,
+        LocalDate fallbackDate,
+        JsonSerializerOptions options,
+        ICollection<AnthropicUsageRecord> records)
+    {
+        var date = ParseBucketDate(bucket.StartingAt, fallbackDate);
+
+        // The usage report nests per-model token counts inside each bucket's
+        // results[] array; the bucket itself carries only the time window.
+        foreach (var result in bucket.Results ?? [])
+        {
+            var model = result.Model ?? "unknown";
+            var costUsd = ComputeCost(model, date, result.InputTokens, result.OutputTokens,
+                result.CacheReadInputTokens, result.CacheCreationInputTokens);
+
+            records.Add(new AnthropicUsageRecord(
+                Date: date,
+                Model: model,
+                InputTokens: result.InputTokens,
+                OutputTokens: result.OutputTokens,
+                CacheReadTokens: result.CacheReadInputTokens,
+                CacheWriteTokens: result.CacheCreationInputTokens,
+                CostUsd: costUsd,
+                RawJson: JsonSerializer.Serialize(result, options)));
+        }
+    }
+
+    private static LocalDate ParseBucketDate(string? startingAt, LocalDate fallback)
+    {
+        if (startingAt is not { Length: >= 10 })
+        {
+            return fallback;
+        }
+
+        var parsed = LocalDatePattern.Iso.Parse(startingAt[..10]);
+        return parsed.Success ? parsed.Value : fallback;
     }
 
     private decimal ComputeCost(string model, LocalDate usageDate, long input, long output, long cacheRead, long cacheWrite)

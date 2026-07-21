@@ -32,6 +32,7 @@ public class StartupGuardsTests
             $"the exception chain should mention OBSERVATORY_API_KEY; got: {thrown}");
     }
 
+    [Trait("Category", "Integration")]
     [Fact]
     public async Task Startup_WhenApiKeyIsPlaceholder_SucceedsInDevelopment()
     {
@@ -76,6 +77,7 @@ public class StartupGuardsTests
         return ex.InnerException is not null && ExceptionChainContains(ex.InnerException, fragment);
     }
 
+    [Trait("Category", "Integration")]
     [Fact]
     public async Task DevSeedRoute_Returns404InProduction()
     {
@@ -88,6 +90,7 @@ public class StartupGuardsTests
         response.StatusCode.Should().Be(HttpStatusCode.NotFound);
     }
 
+    [Trait("Category", "Integration")]
     [Fact]
     public async Task DevSeedRoute_IsReachableInDevelopment()
     {

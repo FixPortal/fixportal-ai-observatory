@@ -16,6 +16,7 @@ namespace AiObservatory.Api.Tests;
 /// had aggregated. Own throwaway factory: this test intentionally mutates every seeded
 /// table, so it must not share the collection-fixture DB with the endpoint-validation suite.
 /// </summary>
+[Trait("Category", "Integration")]
 public class DevSeedEndpointTests
 {
     [Fact]
@@ -58,8 +59,8 @@ public class DevSeedEndpointTests
             await db.SaveChangesAsync(TestContext.Current.CancellationToken);
         }
 
-        // The first seed call above already planted its own 2 Subscriptions/2 BudgetRules;
-        // "before" here is that set PLUS the one Subscription/BudgetRule just added directly.
+        // The baseline contains the two seeded subscriptions and budget rules, plus the
+        // subscription and budget rule added directly above.
         var beforeSubscriptionIds = await GetSubscriptionIdsAsync(factory);
         var beforeBudgetRuleIds = await GetBudgetRuleIdsAsync(factory);
         beforeSubscriptionIds.Should().HaveCount(3);

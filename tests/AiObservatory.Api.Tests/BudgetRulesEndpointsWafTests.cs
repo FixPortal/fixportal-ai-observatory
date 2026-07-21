@@ -8,6 +8,7 @@ namespace AiObservatory.Api.Tests;
 /// AIO-H3: POST /api/budget-rules ThresholdUsd>0 guard. A zero/negative threshold would
 /// fire a spurious alert (Insight row + email) every single evaluation cycle until deleted.
 /// </summary>
+[Trait("Category", "Integration")]
 [Collection("ApiFactory")]
 public class BudgetRulesEndpointsWafTests(AiObservatoryApiFactory factory)
 {

@@ -306,6 +306,8 @@ await app.RunAsync();
 // without spinning up the whole app.
 public partial class Program
 {
+    protected Program() { }
+
     public static void ConfigureForwardedHeaders(ForwardedHeadersOptions o)
     {
         o.ForwardedHeaders = ForwardedHeaders.XForwardedFor;
