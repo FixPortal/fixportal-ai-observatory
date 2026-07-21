@@ -24,7 +24,15 @@ public sealed class PostgresTestAssemblyFixture : IAsyncLifetime
             .WithDatabase("postgres")
             .Build();
 
-        await _container.StartAsync();
+        try
+        {
+            await _container.StartAsync();
+        }
+        catch (Exception ex)
+        {
+            throw new InvalidOperationException(
+                "Failed to start PostgreSQL for tests. Start Docker or set TEST_DB_CONNECTION.", ex);
+        }
         Environment.SetEnvironmentVariable("TEST_DB_CONNECTION", _container.GetConnectionString());
     }
 
