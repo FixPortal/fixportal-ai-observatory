@@ -43,7 +43,7 @@ jobs:
       GITHUB_PACKAGES_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       TEST_DB_CONNECTION: "Host=localhost;Database=aiobs_test;Username=postgres;Password=postgres"
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@v7.0.1
         with:
           persist-credentials: false
 
