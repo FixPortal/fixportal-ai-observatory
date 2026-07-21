@@ -6,7 +6,7 @@
 
 **Architecture:** Preserve the existing application and project boundaries. Centralize dependency policy, reuse the shared architecture-rule package, repair the existing automation in place, and make coverage measure the complete frontend source tree.
 
-**Tech Stack:** .NET 10, ASP.NET Core Minimal APIs, EF Core 10/Npgsql, xUnit v3, AwesomeAssertions, NSubstitute, React 19, TypeScript 7, Vite 8, Vitest 4, GitHub Actions, Stryker.NET.
+**Tech Stack:** .NET 10, ASP.NET Core Minimal APIs, EF Core 10/Npgsql, xUnit v3, AwesomeAssertions, NSubstitute, React 19, TypeScript 6, Vite 8, Vitest 4, GitHub Actions, Stryker.NET.
 
 ## Global Constraints
 
@@ -210,7 +210,7 @@ npm install @azure/msal-browser@5.17.1 @azure/msal-react@5.5.3 @fontsource/ibm-p
 Run in `src/AiObservatory.Web`:
 
 ```powershell
-npm install --save-dev @eslint/js@10.0.1 @testing-library/jest-dom@7.0.0 @testing-library/react@16.3.2 @testing-library/user-event@14.6.1 @types/node@26.1.1 @types/react@19.2.17 @types/react-dom@19.2.3 @vitejs/plugin-react@6.0.3 @vitest/coverage-v8@4.1.10 eslint@10.7.0 eslint-plugin-react-hooks@7.1.1 eslint-plugin-react-refresh@0.5.3 eslint-plugin-sonarjs@4.2.0 globals@17.7.0 jsdom@29.1.1 react-doctor@0.8.3 rollup-plugin-visualizer@7.0.1 typescript@7.0.2 typescript-eslint@8.65.0 vite@8.1.5 vitest@4.1.10
+npm install --save-dev @eslint/js@10.0.1 @testing-library/jest-dom@7.0.0 @testing-library/react@16.3.2 @testing-library/user-event@14.6.1 @types/node@26.1.1 @types/react@19.2.17 @types/react-dom@19.2.3 @vitejs/plugin-react@6.0.3 @vitest/coverage-v8@4.1.10 eslint@10.7.0 eslint-plugin-react-hooks@7.1.1 eslint-plugin-react-refresh@0.5.3 eslint-plugin-sonarjs@4.2.0 globals@17.7.0 jsdom@29.1.1 react-doctor@0.8.3 rollup-plugin-visualizer@7.0.1 typescript@6.0.3 typescript-eslint@8.65.0 vite@8.1.5 vitest@4.1.10
 ```
 
 Then pin ArchUnitTS exactly:

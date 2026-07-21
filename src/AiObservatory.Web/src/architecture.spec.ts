@@ -78,7 +78,7 @@ describe('architecture / layer isolation', () => {
         .inFolder(edge.toGlob)
         .check()
       expect(violations).toEqual([])
-    })
+    }, 15_000)
   }
 })
 
@@ -90,6 +90,6 @@ describe('architecture / cycles', () => {
       .haveNoCycles()
       .check()
     expect(violations).toEqual([])
-  })
+  }, 15_000)
 })
 

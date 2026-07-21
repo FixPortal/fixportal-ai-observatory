@@ -57,7 +57,7 @@ APIs cannot see.
 | Component | Requirement |
 |---|---|
 | .NET SDK | 10 (no down-level targets) |
-| Node | 22+ |
+| Node | 24+ |
 | PostgreSQL | 16 |
 | Azure | App Service F1 + Static Web App Free tier |
 
@@ -192,7 +192,7 @@ docker compose down -v
 ### Prerequisites (manual setup)
 
 - .NET 10 SDK
-- Node 22+
+- Node 24+
 - PostgreSQL 16 (or Docker)
 - `GITHUB_PACKAGES_TOKEN` set to a GitHub token with `read:packages` access to the `FixPortal` organization.
 

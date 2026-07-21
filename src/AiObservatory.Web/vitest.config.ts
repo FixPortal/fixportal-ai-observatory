@@ -13,12 +13,13 @@ export default defineConfig({
     coverage: {
       provider: 'v8',
       reporter: ['text', 'html'],
-      // Thresholds set to floor(actual) capped at 70. Measured 2026-06-15.
+      include: ['src/**'],
+      // Thresholds set to floor(full-source actual). Measured 2026-07-21.
       thresholds: {
-        statements: 70,
-        branches: 70,
-        functions: 70,
-        lines: 70,
+        statements: 25,
+        branches: 19,
+        functions: 19,
+        lines: 25,
       },
     },
   },
