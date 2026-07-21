@@ -10,7 +10,6 @@ permissions:
   packages: read
 
 env:
-  GITHUB_PACKAGES_TOKEN: ${{ secrets.GITHUB_TOKEN }}
   TEST_DB_CONNECTION: "Host=localhost;Database=aiobs_test;Username=postgres;Password=postgres"
 
 jobs:
@@ -48,6 +47,8 @@ jobs:
 
       - name: Restore
         run: dotnet restore AiObservatory.slnx
+        env:
+          GITHUB_PACKAGES_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Restore dotnet tools
         run: dotnet tool restore
