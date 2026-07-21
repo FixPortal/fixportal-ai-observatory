@@ -1,7 +1,7 @@
 using AiObservatory.Ingest.Services.Anthropic;
 using AiObservatory.Ingest.Services.Copilot;
-using AiObservatory.Ingest.Services.Google;
 using AiObservatory.Ingest.Services.GitHub;
+using AiObservatory.Ingest.Services.Google;
 using AiObservatory.Ingest.Services.OpenAi;
 using Microsoft.Extensions.Options;
 using NodaTime;

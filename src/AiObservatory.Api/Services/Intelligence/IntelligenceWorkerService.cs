@@ -47,7 +47,7 @@ public class IntelligenceWorkerService(
             }
 
             var start = latestPeriodEnd.HasValue ? latestPeriodEnd.Value.PlusDays(1) : yesterday;
-            
+
             // Limit catch-up to a maximum of 7 days to prevent flooding on startup
             if (start < yesterday.PlusDays(-7))
             {

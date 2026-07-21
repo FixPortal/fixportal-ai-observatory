@@ -50,7 +50,8 @@ public class OpenAiUsageClient(HttpClient http, ILogger<OpenAiUsageClient> logge
             {
                 foreach (var result in bucket.Results ?? [])
                 {
-                    if (string.IsNullOrEmpty(result.Model)) { continue; }
+                    if (string.IsNullOrEmpty(result.Model))
+                    { continue; }
 
                     var cost = ComputeCost(result.Model, date, result.InputTokens, result.OutputTokens, result.InputCachedTokens);
 

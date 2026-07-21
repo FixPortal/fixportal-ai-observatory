@@ -79,6 +79,7 @@ In `Directory.Packages.props`, enable transitive pinning and replace the
     <PackageVersion Include="FixPortal.CodeStyle" Version="0.1.9" />
     <PackageVersion Include="FixPortal.CodeStyle.ArchRules" Version="0.1.9" />
     <PackageVersion Include="System.Security.Cryptography.Xml" Version="10.0.10" />
+    <PackageVersion Include="Microsoft.OpenApi" Version="2.7.5" />
 ```
 
 - [ ] **Step 2: Update NuGet versions and remove unused OpenAPI references**
@@ -105,9 +106,10 @@ Set these central versions:
 <PackageVersion Include="Microsoft.Extensions.Options.DataAnnotations" Version="10.0.10" />
 ```
 
-Delete the unused `Microsoft.OpenApi` package version and references. Remove
-`VersionOverride` from the two `Microsoft.EntityFrameworkCore.Relational`
-references so central package management owns the version.
+Keep `Microsoft.OpenApi` 2.7.5 as a central transitive security pin, but delete
+its unused direct project references. Remove `VersionOverride` from the two
+`Microsoft.EntityFrameworkCore.Relational` references so central package
+management owns the version.
 
 - [ ] **Step 3: Consume the shared architecture-rule package**
 

@@ -1,3 +1,4 @@
+using System.Threading.RateLimiting;
 using AiObservatory.Api;
 using AiObservatory.Api.Endpoints;
 using AiObservatory.Api.Services;
@@ -5,7 +6,6 @@ using AiObservatory.Api.Services.Fx;
 using AiObservatory.Api.Services.Intelligence;
 using AiObservatory.Data;
 using AiObservatory.Data.Entities;
-using System.Threading.RateLimiting;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.AspNetCore.HttpOverrides;
 using Microsoft.EntityFrameworkCore;

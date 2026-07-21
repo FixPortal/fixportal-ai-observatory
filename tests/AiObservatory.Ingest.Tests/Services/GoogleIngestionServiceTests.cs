@@ -26,6 +26,7 @@ public class GoogleIngestionServiceTests
 
         await _repo.Received(1).RecordEventAsync(
             Arg.Is<UsageEvent>(e =>
+                e != null &&
                 e.Provider == Provider.Google &&
                 e.Model == "gemini-2.5-pro" &&
                 e.CostUsd == 2.50m &&

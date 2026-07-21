@@ -55,6 +55,7 @@ public class AdversarialReviewServiceTests
             .Which.StatusCode.Should().Be(201);
         await _repo.Received(1).RecordRunAsync(
             Arg.Is<AdversarialReviewRun>(r =>
+                r != null &&
                 r.Reviewer == "anthropic" &&
                 r.Model == "claude-sonnet-4-6" &&
                 r.CostPerAcceptedFinding == 0.12m / 3m),
@@ -83,7 +84,7 @@ public class AdversarialReviewServiceTests
         await CreateSut().RecordRunAsync(ValidRequest() with { ChunkCount = 21 }, CancellationToken.None);
 
         await _repo.Received(1).RecordRunAsync(
-            Arg.Is<AdversarialReviewRun>(r => r.ChunkCount == 21),
+            Arg.Is<AdversarialReviewRun>(r => r != null && r.ChunkCount == 21),
             Arg.Any<CancellationToken>());
     }
 
@@ -115,7 +116,7 @@ public class AdversarialReviewServiceTests
             CancellationToken.None);
 
         await _repo.Received(1).RecordRunAsync(
-            Arg.Is<AdversarialReviewRun>(r => r.CostPerAcceptedFinding == expected),
+            Arg.Is<AdversarialReviewRun>(r => r != null && r.CostPerAcceptedFinding == expected),
             Arg.Any<CancellationToken>());
     }
 
@@ -185,7 +186,7 @@ public class AdversarialReviewServiceTests
         await CreateSut().RecordRunAsync(ValidRequest(reviewer: "Anthropic"), CancellationToken.None);
 
         await _repo.Received(1).RecordRunAsync(
-            Arg.Is<AdversarialReviewRun>(r => r.Reviewer == "anthropic"),
+            Arg.Is<AdversarialReviewRun>(r => r != null && r.Reviewer == "anthropic"),
             Arg.Any<CancellationToken>());
     }
 
@@ -198,7 +199,7 @@ public class AdversarialReviewServiceTests
         await CreateSut().RecordRunAsync(ValidRequest(), CancellationToken.None);
 
         await _repo.Received(1).RecordRunAsync(
-            Arg.Is<AdversarialReviewRun>(r => r.RecordedAt == _clock.GetCurrentInstant()),
+            Arg.Is<AdversarialReviewRun>(r => r != null && r.RecordedAt == _clock.GetCurrentInstant()),
             Arg.Any<CancellationToken>());
     }
 
@@ -216,7 +217,7 @@ public class AdversarialReviewServiceTests
         await CreateSut().RecordRunAsync(ValidRequest(model: input), CancellationToken.None);
 
         await _repo.Received(1).RecordRunAsync(
-            Arg.Is<AdversarialReviewRun>(r => r.Model == expected),
+            Arg.Is<AdversarialReviewRun>(r => r != null && r.Model == expected),
             Arg.Any<CancellationToken>());
     }
 
@@ -232,7 +233,7 @@ public class AdversarialReviewServiceTests
         await CreateSut().RecordRunAsync(ValidRequest(reviewer: "openai", model: model), CancellationToken.None);
 
         await _repo.Received(1).RecordRunAsync(
-            Arg.Is<AdversarialReviewRun>(r => r.Model == model),
+            Arg.Is<AdversarialReviewRun>(r => r != null && r.Model == model),
             Arg.Any<CancellationToken>());
     }
 
@@ -261,7 +262,7 @@ public class AdversarialReviewServiceTests
 
         result.Should().BeAssignableTo<IStatusCodeHttpResult>().Which.StatusCode.Should().Be(201);
         await _repo.Received(1).RecordRunAsync(
-            Arg.Is<AdversarialReviewRun>(r => r.Role == "judge" && r.Repo == "fixportal-engine"),
+            Arg.Is<AdversarialReviewRun>(r => r != null && r.Role == "judge" && r.Repo == "fixportal-engine"),
             Arg.Any<CancellationToken>());
     }
 
@@ -274,7 +275,7 @@ public class AdversarialReviewServiceTests
         await CreateSut().RecordRunAsync(ValidRequest(summary: "  Verifying adjusted formatting  "), CancellationToken.None);
 
         await _repo.Received(1).RecordRunAsync(
-            Arg.Is<AdversarialReviewRun>(r => r.Summary == "Verifying adjusted formatting"),
+            Arg.Is<AdversarialReviewRun>(r => r != null && r.Summary == "Verifying adjusted formatting"),
             Arg.Any<CancellationToken>());
     }
 
@@ -290,7 +291,7 @@ public class AdversarialReviewServiceTests
         await CreateSut().RecordRunAsync(ValidRequest(summary: summary), CancellationToken.None);
 
         await _repo.Received(1).RecordRunAsync(
-            Arg.Is<AdversarialReviewRun>(r => r.Summary == null),
+            Arg.Is<AdversarialReviewRun>(r => r != null && r.Summary == null),
             Arg.Any<CancellationToken>());
     }
 
@@ -303,7 +304,7 @@ public class AdversarialReviewServiceTests
         await CreateSut().RecordRunAsync(ValidRequest(summary: new string('x', 200)), CancellationToken.None);
 
         await _repo.Received(1).RecordRunAsync(
-            Arg.Is<AdversarialReviewRun>(r => r.Summary != null && r.Summary.Length == 80),
+            Arg.Is<AdversarialReviewRun>(r => r != null && r.Summary != null && r.Summary.Length == 80),
             Arg.Any<CancellationToken>());
     }
 
@@ -320,7 +321,7 @@ public class AdversarialReviewServiceTests
         // Result is exactly the 79 ASCII chars — the trailing high surrogate was
         // dropped rather than split, so no lone surrogate remains.
         await _repo.Received(1).RecordRunAsync(
-            Arg.Is<AdversarialReviewRun>(r => r.Summary == new string('x', 79)),
+            Arg.Is<AdversarialReviewRun>(r => r != null && r.Summary == new string('x', 79)),
             Arg.Any<CancellationToken>());
     }
 

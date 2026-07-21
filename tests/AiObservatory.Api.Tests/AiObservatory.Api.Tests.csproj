@@ -7,6 +7,7 @@
 
   <ItemGroup>
     <PackageReference Include="AwesomeAssertions" />
+    <PackageReference Include="FixPortal.CodeStyle.ArchRules" />
     <PackageReference Include="MailKit" />
     <PackageReference Include="Microsoft.AspNetCore.Mvc.Testing" />
     <PackageReference Include="Microsoft.AspNetCore.TestHost" />
@@ -15,11 +16,7 @@
       <PrivateAssets>all</PrivateAssets>
     </PackageReference>
     <PackageReference Include="Microsoft.NET.Test.Sdk" />
-    <!-- Unify EF Core Relational to the version AiObservatory.Api pulls via
-         EntityFrameworkCore.Design (10.0.8); the Npgsql provider chain would
-         otherwise drag in 10.0.4 and trip MSB3277. -->
     <PackageReference Include="Microsoft.EntityFrameworkCore.Relational" />
-    <PackageReference Include="Microsoft.OpenApi" />
     <PackageReference Include="NodaTime.Testing" />
     <PackageReference Include="NSubstitute" />
     <PackageReference Include="Npgsql.EntityFrameworkCore.PostgreSQL" />

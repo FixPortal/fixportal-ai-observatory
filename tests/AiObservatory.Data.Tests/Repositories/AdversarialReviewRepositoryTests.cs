@@ -58,12 +58,12 @@ public class AdversarialReviewRepositoryTests : IAsyncLifetime
         string runId, string reviewer, string role, string model,
         decimal costUsd = 0.10m, int raised = 3, int accepted = 2, int? chunkCount = null,
         Instant? recordedAt = null) => new()
-    {
-        RunId = runId, Reviewer = reviewer, Role = role, Model = model,
-        IssuesRaised = role == "judge" ? 0 : raised, IssuesAccepted = role == "judge" ? 0 : accepted,
-        CostUsd = costUsd, ReviewDurationMs = 1000, ChunkCount = chunkCount,
-        RecordedAt = recordedAt ?? Instant.FromUtc(2026, 6, 27, 12, 0)
-    };
+        {
+            RunId = runId, Reviewer = reviewer, Role = role, Model = model,
+            IssuesRaised = role == "judge" ? 0 : raised, IssuesAccepted = role == "judge" ? 0 : accepted,
+            CostUsd = costUsd, ReviewDurationMs = 1000, ChunkCount = chunkCount,
+            RecordedAt = recordedAt ?? Instant.FromUtc(2026, 6, 27, 12, 0)
+        };
 
     [Fact]
     public async Task Four_participants_sharing_one_runId_all_persist()

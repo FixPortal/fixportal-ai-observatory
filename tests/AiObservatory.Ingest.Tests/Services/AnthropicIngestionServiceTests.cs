@@ -34,6 +34,7 @@ public class AnthropicIngestionServiceTests
 
         await _repo.Received(1).RecordEventAsync(
             Arg.Is<UsageEvent>(e =>
+                e != null &&
                 e.Provider == Provider.Anthropic &&
                 e.Model == "claude-sonnet-4-6" &&
                 e.InputTokens == 10_000 &&

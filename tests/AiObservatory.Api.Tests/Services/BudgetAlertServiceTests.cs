@@ -29,11 +29,11 @@ public class BudgetAlertServiceTests
         await sut.CheckAndAlertAsync(TestContext.Current.CancellationToken);
 
         await _repo.Received(1).AddInsightAsync(
-            Arg.Is<Insight>(i => i.InsightType == InsightType.BudgetAlert && i.Title.Contains("Budget")),
+            Arg.Is<Insight>(i => i != null && i.InsightType == InsightType.BudgetAlert && i.Title.Contains("Budget")),
             Arg.Any<CancellationToken>());
         await _repo.Received(1).SetBudgetRuleTriggeredAsync(rule.Id, Arg.Any<Instant>(), Arg.Any<CancellationToken>());
         await _notifier.Received(1).NotifyAsync(
-            Arg.Is<BudgetAlertPayload>(p => p.ThresholdUsd == rule.ThresholdUsd),
+            Arg.Is<BudgetAlertPayload>(p => p != null && p.ThresholdUsd == rule.ThresholdUsd),
             Arg.Any<CancellationToken>());
     }
 
@@ -143,9 +143,9 @@ public class BudgetAlertServiceTests
 
         // Fail only for the "all providers" (Provider == null) payload; the Google-scoped
         // rule's notification succeeds.
-        _notifier.NotifyAsync(Arg.Is<BudgetAlertPayload>(p => p.Provider == "all"), Arg.Any<CancellationToken>())
+        _notifier.NotifyAsync(Arg.Is<BudgetAlertPayload>(p => p != null && p.Provider == "all"), Arg.Any<CancellationToken>())
             .Returns(Task.FromException(new InvalidOperationException("SMTP unreachable")));
-        _notifier.NotifyAsync(Arg.Is<BudgetAlertPayload>(p => p.Provider != "all"), Arg.Any<CancellationToken>())
+        _notifier.NotifyAsync(Arg.Is<BudgetAlertPayload>(p => p != null && p.Provider != "all"), Arg.Any<CancellationToken>())
             .Returns(Task.CompletedTask);
 
         var sut = new BudgetAlertService(_repo, _clock, _notifier, NullLogger<BudgetAlertService>.Instance);
