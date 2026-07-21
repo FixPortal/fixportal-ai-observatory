@@ -78,7 +78,9 @@ CodeQL default setup is already active and requires no committed workflow.
 
 Vitest coverage will explicitly include `src/**`. The measured baseline with
 that denominator is 25.65% statements, 19.73% branches, 19.70% functions, and
-25.55% lines, so initial integer thresholds are 25, 19, 19, and 25 respectively.
+25.71% lines, so initial integer thresholds are 25, 19, 19, and 25 respectively.
+TypeScript remains on 6.0.3 because the current `typescript-eslint` peer range is
+`<6.1`; TypeScript 7 will wait for toolchain support rather than being forced.
 This prevents untested files from disappearing from the denominator without
 pretending the current suite has 70% whole-application coverage. Architecture
 tests receive a targeted 15-second timeout because coverage instrumentation
