@@ -36,8 +36,7 @@ public class ApiKeyEndpointFilterTests
         _config["OBSERVATORY_API_KEY"].Returns((string?)null);
         _config["OBSERVATORY_READONLY_API_KEY"].Returns((string?)null);
 
-        var httpContext = new DefaultHttpContext();
-        httpContext.Request.Method = method;
+        var httpContext = CreateHttpContext(method);
         var context = EndpointFilterInvocationContext.Create(httpContext);
 
         var nextCalled = false;
@@ -73,9 +72,7 @@ public class ApiKeyEndpointFilterTests
         _config["OBSERVATORY_API_KEY"].Returns("admin-key-12345");
         _config["OBSERVATORY_READONLY_API_KEY"].Returns((string?)null);
 
-        var httpContext = new DefaultHttpContext();
-        httpContext.Request.Method = "GET";
-        httpContext.Request.Headers["X-Observatory-Key"] = "admin-key-12345";
+        var httpContext = CreateHttpContext("GET", "admin-key-12345");
         var context = EndpointFilterInvocationContext.Create(httpContext);
 
         var nextCalled = false;
@@ -102,9 +99,7 @@ public class ApiKeyEndpointFilterTests
         _config["OBSERVATORY_API_KEY"].Returns("admin-key-12345");
         _config["OBSERVATORY_READONLY_API_KEY"].Returns((string?)null);
 
-        var httpContext = new DefaultHttpContext();
-        httpContext.Request.Method = "GET";
-        httpContext.Request.Headers["X-Observatory-Key"] = "wrong-key-12345";
+        var httpContext = CreateHttpContext("GET", "wrong-key-12345");
         var context = EndpointFilterInvocationContext.Create(httpContext);
 
         var nextCalled = false;
@@ -129,9 +124,7 @@ public class ApiKeyEndpointFilterTests
         _config["OBSERVATORY_API_KEY"].Returns("admin-key-12345");
         _config["OBSERVATORY_READONLY_API_KEY"].Returns("readonly-key-12345");
 
-        var httpContext = new DefaultHttpContext();
-        httpContext.Request.Method = "GET";
-        httpContext.Request.Headers["X-Observatory-Key"] = "readonly-key-12345";
+        var httpContext = CreateHttpContext("GET", "readonly-key-12345");
         var context = EndpointFilterInvocationContext.Create(httpContext);
 
         var nextCalled = false;
@@ -156,9 +149,7 @@ public class ApiKeyEndpointFilterTests
         _config["OBSERVATORY_API_KEY"].Returns("admin-key-12345");
         _config["OBSERVATORY_READONLY_API_KEY"].Returns("readonly-key-12345");
 
-        var httpContext = new DefaultHttpContext();
-        httpContext.Request.Method = "GET";
-        httpContext.Request.Headers["X-Observatory-Key"] = "admin-key-12345";
+        var httpContext = CreateHttpContext("GET", "admin-key-12345");
         var context = EndpointFilterInvocationContext.Create(httpContext);
 
         var nextCalled = false;
@@ -183,9 +174,7 @@ public class ApiKeyEndpointFilterTests
         _config["OBSERVATORY_API_KEY"].Returns("admin-key-12345");
         _config["OBSERVATORY_READONLY_API_KEY"].Returns("readonly-key-12345");
 
-        var httpContext = new DefaultHttpContext();
-        httpContext.Request.Method = "GET";
-        httpContext.Request.Headers["X-Observatory-Key"] = "wrong-key-12345";
+        var httpContext = CreateHttpContext("GET", "wrong-key-12345");
         var context = EndpointFilterInvocationContext.Create(httpContext);
 
         var nextCalled = false;
@@ -210,9 +199,7 @@ public class ApiKeyEndpointFilterTests
         _config["OBSERVATORY_API_KEY"].Returns("admin-key-12345");
         _config["OBSERVATORY_READONLY_API_KEY"].Returns("readonly-key-12345");
 
-        var httpContext = new DefaultHttpContext();
-        httpContext.Request.Method = "GET";
-        httpContext.Request.Headers["X-Observatory-Key"] = "short"; // wrong length
+        var httpContext = CreateHttpContext("GET", "short"); // wrong length
         var context = EndpointFilterInvocationContext.Create(httpContext);
 
         var nextCalled = false;
@@ -241,12 +228,8 @@ public class ApiKeyEndpointFilterTests
         _config["OBSERVATORY_API_KEY"].Returns("admin-key-12345");
         _config["OBSERVATORY_READONLY_API_KEY"].Returns("readonly-key-12345");
 
-        var httpContext = new DefaultHttpContext
-        {
-            User = new ClaimsPrincipal(new ClaimsIdentity(
-                [new Claim(ClaimTypes.Name, "chris")], authenticationType: "Bearer")),
-        };
-        httpContext.Request.Method = method;
+        var httpContext = CreateHttpContext(method, user: new ClaimsPrincipal(new ClaimsIdentity(
+            [new Claim(ClaimTypes.Name, "chris")], authenticationType: "Bearer")));
         var context = EndpointFilterInvocationContext.Create(httpContext);
 
         var nextCalled = false;
@@ -270,9 +253,7 @@ public class ApiKeyEndpointFilterTests
         // Arrange
         _config["OBSERVATORY_API_KEY"].Returns("admin-key-12345");
 
-        var httpContext = new DefaultHttpContext();
-        httpContext.Request.Method = "POST";
-        httpContext.Request.Headers["X-Observatory-Key"] = "admin-key-12345";
+        var httpContext = CreateHttpContext("POST", "admin-key-12345");
         var context = EndpointFilterInvocationContext.Create(httpContext);
 
         var nextCalled = false;
@@ -296,9 +277,7 @@ public class ApiKeyEndpointFilterTests
         // Arrange
         _config["OBSERVATORY_API_KEY"].Returns("admin-key-12345");
 
-        var httpContext = new DefaultHttpContext();
-        httpContext.Request.Method = "POST";
-        httpContext.Request.Headers["X-Observatory-Key"] = "wrong-admin-key";
+        var httpContext = CreateHttpContext("POST", "wrong-admin-key");
         var context = EndpointFilterInvocationContext.Create(httpContext);
 
         var nextCalled = false;
@@ -322,9 +301,7 @@ public class ApiKeyEndpointFilterTests
         // Arrange
         _config["OBSERVATORY_API_KEY"].Returns("admin-key-12345");
 
-        var httpContext = new DefaultHttpContext();
-        httpContext.Request.Method = "POST";
-        httpContext.Request.Headers["X-Observatory-Key"] = "short"; // wrong length
+        var httpContext = CreateHttpContext("POST", "short"); // wrong length
         var context = EndpointFilterInvocationContext.Create(httpContext);
 
         var nextCalled = false;
@@ -340,5 +317,22 @@ public class ApiKeyEndpointFilterTests
         // Assert
         nextCalled.Should().BeFalse();
         result.Should().BeOfType<UnauthorizedHttpResult>();
+    }
+    private static DefaultHttpContext CreateHttpContext(
+        string method,
+        string? key = null,
+        ClaimsPrincipal? user = null)
+    {
+        var context = new DefaultHttpContext
+        {
+            Request = { Method = method },
+            User = user ?? new ClaimsPrincipal(),
+        };
+        if (key is not null)
+        {
+            context.Request.Headers["X-Observatory-Key"] = key;
+        }
+
+        return context;
     }
 }

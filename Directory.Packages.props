@@ -4,8 +4,8 @@
     <CentralPackageTransitivePinningEnabled>true</CentralPackageTransitivePinningEnabled>
   </PropertyGroup>
   <ItemGroup>
-    <PackageVersion Include="FixPortal.CodeStyle" Version="0.1.9" />
-    <PackageVersion Include="FixPortal.CodeStyle.ArchRules" Version="0.1.9" />
+    <PackageVersion Include="FixPortal.CodeStyle" Version="0.1.10" />
+    <PackageVersion Include="FixPortal.CodeStyle.ArchRules" Version="0.1.10" />
     <!-- xUnit v3 -->
     <PackageVersion Include="Microsoft.OpenApi" Version="2.7.5" />
     <PackageVersion Include="xunit.v3" Version="3.2.2" />
@@ -17,6 +17,7 @@
     <PackageVersion Include="NSubstitute" Version="6.0.0" />
     <PackageVersion Include="AwesomeAssertions" Version="9.5.0" />
     <PackageVersion Include="NodaTime.Testing" Version="3.3.3" />
+    <PackageVersion Include="Testcontainers.PostgreSql" Version="4.13.0" />
     <!-- WebApplicationFactory / bare TestServer harness for the Api endpoint layer -->
     <PackageVersion Include="Microsoft.AspNetCore.Mvc.Testing" Version="10.0.10" />
     <PackageVersion Include="Microsoft.AspNetCore.TestHost" Version="10.0.10" />

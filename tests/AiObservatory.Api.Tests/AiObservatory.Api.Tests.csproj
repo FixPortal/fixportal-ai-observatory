@@ -21,6 +21,7 @@
     <PackageReference Include="NSubstitute" />
     <PackageReference Include="Npgsql.EntityFrameworkCore.PostgreSQL" />
     <PackageReference Include="TngTech.ArchUnitNET.xUnitV3" />
+    <PackageReference Include="Testcontainers.PostgreSql" />
     <PackageReference Include="xunit.v3" />
     <PackageReference Include="xunit.runner.visualstudio">
       <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
@@ -35,6 +36,10 @@
   <ItemGroup>
     <ProjectReference Include="..\..\src\AiObservatory.Api\AiObservatory.Api.csproj" />
     <ProjectReference Include="..\..\src\AiObservatory.Ingest\AiObservatory.Ingest.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Compile Include="..\PostgresTestAssemblyFixture.cs" Link="PostgresTestAssemblyFixture.cs" />
   </ItemGroup>
 
 </Project>

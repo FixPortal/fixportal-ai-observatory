@@ -36,7 +36,7 @@ public class UsageRepositoryTests : IAsyncLifetime
     {
         try
         {
-            if (_ctx is not null && _connStr?.Contains("_test", StringComparison.OrdinalIgnoreCase) == true)
+            if (_ctx is not null && _connStr.Contains("_test", StringComparison.OrdinalIgnoreCase))
             {
                 await _ctx.Database.EnsureDeletedAsync();
             }

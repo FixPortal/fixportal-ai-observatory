@@ -8,6 +8,8 @@ namespace AiObservatory.Api.Endpoints;
 
 public static class InsightsEndpoints
 {
+    // Returning the builder is the standard fluent endpoint-mapping convention.
+    // ReSharper disable once UnusedMethodReturnValue.Global
     public static IEndpointRouteBuilder MapInsightsEndpoints(this IEndpointRouteBuilder app)
     {
         app.MapGet("/insights", async (AiObservatoryDbContext db) =>

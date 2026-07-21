@@ -1,6 +1,5 @@
-# Formatter-only keys. All analyzer/style RULES come from the FixPortal.CodeStyle
-# package's global config — do not duplicate them here. Add a local rule override
-# ONLY for a genuine project-specific need, with a comment why.
+# Formatter keys and project-specific overrides. Analyzer/style rules come from
+# FixPortal.CodeStyle, except for documented formatter compatibility entries.
 
 root = true
 
@@ -45,6 +44,13 @@ end_of_line = crlf
 indent_size = 4
 indent_style = space
 tab_width = 4
+
+# dotnet format 10.0.204 requires these preferences in a hierarchical
+# .editorconfig to activate the IDE0011 and IDE0049 fixers. The package remains
+# the rule source of truth.
+csharp_prefer_braces = true:error
+dotnet_style_predefined_type_for_locals_parameters_members = true:error
+dotnet_style_predefined_type_for_member_access = true:error
 
 # New line preferences
 csharp_new_line_before_catch = true

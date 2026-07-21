@@ -25,6 +25,8 @@ public class StartupGuardsTests
             ApiKeyOverride = apiKey,
         };
 
+        // The delegate is invoked before the await-using scope disposes the factory.
+        // ReSharper disable once AccessToDisposedClosure
         var thrown = Record.Exception(() => factory.Services);
 
         thrown.Should().NotBeNull();
@@ -42,6 +44,8 @@ public class StartupGuardsTests
             ApiKeyOverride = "change-me",
         };
 
+        // The delegate is invoked before the await-using scope disposes the factory.
+        // ReSharper disable once AccessToDisposedClosure
         var act = () => factory.Services;
 
         act.Should().NotThrow();
@@ -53,6 +57,8 @@ public class StartupGuardsTests
         await using var factory = new AiObservatoryApiFactory { Environment = Environments.Development };
         factory.SetDbConnection(null);
 
+        // The delegate is invoked before the await-using scope disposes the factory.
+        // ReSharper disable once AccessToDisposedClosure
         var thrown = Record.Exception(() => factory.Services);
 
         thrown.Should().NotBeNull();

@@ -304,6 +304,8 @@ await app.RunAsync();
 // pulled out to a named, independently testable method (same body as before, no
 // behaviour change) so a spoofed-XFF test can build the exact same ForwardedHeadersOptions
 // without spinning up the whole app.
+// Required as the WebApplicationFactory<TEntryPoint> marker for integration tests.
+// ReSharper disable once ClassNeverInstantiated.Global
 public partial class Program
 {
     protected Program() { }

@@ -6,6 +6,9 @@ using NodaTime;
 
 namespace AiObservatory.Api.Endpoints;
 
+// Request records are instantiated by ASP.NET Core model binding.
+// ReSharper disable ClassNeverInstantiated.Global
+
 public static class EventsEndpoints
 {
     public static void MapEventsEndpoints(this IEndpointRouteBuilder app)
