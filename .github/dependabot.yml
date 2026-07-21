@@ -77,3 +77,17 @@ updates:
         update-types:
           - minor
           - patch
+    ignore:
+      # TypeScript 7 is the Go compiler rewrite and ships with no public
+      # compiler API. typescript-eslint parses through that API, so it cannot
+      # support TS 7 and closed the request as not planned
+      # (typescript-eslint#12518); forcing the install past the peer range
+      # crashes eslint rather than merely warning. Microsoft expects the new
+      # API in TS 7.1.
+      #
+      # Unblock when BOTH hold: TS 7.1 ships the API, and typescript-eslint
+      # releases a `typescript` peer range admitting >= 7. The typescript-eslint
+      # bump that does so still arrives as its own PR, so the signal survives
+      # this ignore. Drop this entry then.
+      - dependency-name: typescript
+        update-types: ["version-update:semver-major"]
