@@ -6,4 +6,8 @@
     <LangVersion>latest</LangVersion>
     <EnforceCodeStyleInBuild>true</EnforceCodeStyleInBuild>
   </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="FixPortal.CodeStyle" PrivateAssets="all" />
+  </ItemGroup>
 </Project>

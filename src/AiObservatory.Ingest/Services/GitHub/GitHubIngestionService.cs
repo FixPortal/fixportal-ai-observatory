@@ -57,9 +57,9 @@ public class GitHubIngestionService(
                     "GitHub: ingested {PrCount} PRs, {CommitCount} commits, {RunCount} workflow runs for {Repo}",
                     prs.Count, commits.Count, runs.Count, repo);
             }
-            catch (GitHubRateLimitExceededException)
+            catch (GitHubRateLimitExceededException ex)
             {
-                logger.LogWarning("GitHub: aborting remaining repos this poll cycle due to rate limit");
+                logger.LogWarning(ex, "GitHub: aborting remaining repos this poll cycle due to rate limit");
                 return failedRepoCount;
             }
             catch (OperationCanceledException) when (ct.IsCancellationRequested)

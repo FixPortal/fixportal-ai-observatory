@@ -1,9 +1,10 @@
-using ArchUnitNET.Domain;
-using ArchUnitNET.Loader;
-using ArchUnitNET.xUnitV3;
 using AiObservatory.Api.Services;
 using AiObservatory.Data;
 using AiObservatory.Ingest;
+using ArchUnitNET.Domain;
+using ArchUnitNET.Loader;
+using ArchUnitNET.xUnitV3;
+using FixPortal.CodeStyle.ArchRules;
 using static ArchUnitNET.Fluent.ArchRuleDefinition;
 
 namespace AiObservatory.Api.Tests;

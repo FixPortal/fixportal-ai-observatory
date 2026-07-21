@@ -44,7 +44,8 @@ public class AdminOnlyApiKeyEndpointFilterTests
         var context = BuildContext("GET", "admin-key-12345");
 
         var nextCalled = false;
-        ValueTask<object?> Next(EndpointFilterInvocationContext _) { nextCalled = true; return ValueTask.FromResult<object?>(Results.Ok()); }
+        ValueTask<object?> Next(EndpointFilterInvocationContext _)
+        { nextCalled = true; return ValueTask.FromResult<object?>(Results.Ok()); }
 
         var result = await _sut.InvokeAsync(context, Next);
 
@@ -62,7 +63,8 @@ public class AdminOnlyApiKeyEndpointFilterTests
         var context = BuildContext("GET", "readonly-key-12345");
 
         var nextCalled = false;
-        ValueTask<object?> Next(EndpointFilterInvocationContext _) { nextCalled = true; return ValueTask.FromResult<object?>(Results.Ok()); }
+        ValueTask<object?> Next(EndpointFilterInvocationContext _)
+        { nextCalled = true; return ValueTask.FromResult<object?>(Results.Ok()); }
 
         var result = await _sut.InvokeAsync(context, Next);
 
@@ -77,7 +79,8 @@ public class AdminOnlyApiKeyEndpointFilterTests
         var context = BuildContext("GET");
 
         var nextCalled = false;
-        ValueTask<object?> Next(EndpointFilterInvocationContext _) { nextCalled = true; return ValueTask.FromResult<object?>(Results.Ok()); }
+        ValueTask<object?> Next(EndpointFilterInvocationContext _)
+        { nextCalled = true; return ValueTask.FromResult<object?>(Results.Ok()); }
 
         var result = await _sut.InvokeAsync(context, Next);
 
@@ -92,7 +95,8 @@ public class AdminOnlyApiKeyEndpointFilterTests
         var context = BuildContext("GET", authenticated: true);
 
         var nextCalled = false;
-        ValueTask<object?> Next(EndpointFilterInvocationContext _) { nextCalled = true; return ValueTask.FromResult<object?>(Results.Ok()); }
+        ValueTask<object?> Next(EndpointFilterInvocationContext _)
+        { nextCalled = true; return ValueTask.FromResult<object?>(Results.Ok()); }
 
         var result = await _sut.InvokeAsync(context, Next);
 
@@ -111,7 +115,8 @@ public class AdminOnlyApiKeyEndpointFilterTests
         var context = BuildContext("GET");
 
         var nextCalled = false;
-        ValueTask<object?> Next(EndpointFilterInvocationContext _) { nextCalled = true; return ValueTask.FromResult<object?>(Results.Ok()); }
+        ValueTask<object?> Next(EndpointFilterInvocationContext _)
+        { nextCalled = true; return ValueTask.FromResult<object?>(Results.Ok()); }
 
         var result = await _sut.InvokeAsync(context, Next);
 

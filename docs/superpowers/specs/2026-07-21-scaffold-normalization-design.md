@@ -16,9 +16,9 @@ The normalization will:
   layout;
 - update direct NuGet and npm dependencies to current compatible releases,
   including Node 24 in local and CI build images;
-- pin the vulnerable transitive `System.Security.Cryptography.Xml` dependency
-  to a fixed .NET 10 release and refresh the npm lock file so the current
-  `brace-expansion` advisory is removed;
+- pin the vulnerable transitive `System.Security.Cryptography.Xml` and
+  `Microsoft.OpenApi` dependencies to compatible fixed releases and refresh the
+  npm lock file so the current `brace-expansion` advisory is removed;
 - reference `FixPortal.CodeStyle` through `Directory.Build.props` with its
   version managed centrally;
 - replace the repository's duplicate `FixPortalArchRules` implementation with

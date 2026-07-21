@@ -26,7 +26,7 @@ public class GoogleBillingClient(HttpClient http, string billingAccountId) : IGo
         LocalDate date, CancellationToken ct = default)
     {
         var dateStr = LocalDatePattern.Iso.Format(date);
-        
+
         var credential = await GoogleCredential.GetApplicationDefaultAsync(ct);
         if (credential.IsCreateScopedRequired)
         {

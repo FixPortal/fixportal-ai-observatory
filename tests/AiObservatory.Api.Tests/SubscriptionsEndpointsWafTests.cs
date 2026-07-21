@@ -13,14 +13,14 @@ public class SubscriptionsEndpointsWafTests(AiObservatoryApiFactory factory)
 {
     private static object ValidBody(
         string provider = "anthropic", string currency = "USD", int billingDay = 1, decimal costAmount = 10m) => new
-    {
-        Provider = provider,
-        Name = "Test subscription",
-        CostAmount = costAmount,
-        Currency = currency,
-        BillingDay = billingDay,
-        ActiveFrom = "2026-01-01",
-    };
+        {
+            Provider = provider,
+            Name = "Test subscription",
+            CostAmount = costAmount,
+            Currency = currency,
+            BillingDay = billingDay,
+            ActiveFrom = "2026-01-01",
+        };
 
     [Theory]
     [InlineData("EUR")]
