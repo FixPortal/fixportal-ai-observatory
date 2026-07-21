@@ -7,16 +7,40 @@ on:
 
 permissions:
   contents: read
+  packages: read
+
+env:
+  GITHUB_PACKAGES_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+  TEST_DB_CONNECTION: "Host=localhost;Database=aiobs_test;Username=postgres;Password=postgres"
 
 jobs:
   mutation:
+    name: Mutation (Stryker.NET API pilot)
     runs-on: ubuntu-latest
-    continue-on-error: true
+    timeout-minutes: 60
+    services:
+      postgres:
+        image: public.ecr.aws/docker/library/postgres:16
+        env:
+          POSTGRES_DB: aiobs_test
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
 
     steps:
       - uses: actions/checkout@v7
         with:
           fetch-depth: 0
+
+      - name: Lint workflows (actionlint)
+        uses: raven-actions/actionlint@3d39aea434753780c3b3d4a1a31c854b4dbf49d7 # v2
+        with:
+          shellcheck: true
 
       - uses: actions/setup-dotnet@v6
         with:
@@ -24,22 +48,29 @@ jobs:
 
       - name: Restore
         run: dotnet restore AiObservatory.slnx
-        env:
-          GITHUB_PACKAGES_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Restore dotnet tools
         run: dotnet tool restore
 
       - name: Run Stryker
+        id: stryker
+        timeout-minutes: 45
         run: dotnet stryker --config-file stryker-config.json
 
       - name: Summarize
         if: always()
         shell: pwsh
         run: |
-          $latest = Get-ChildItem StrykerOutput -Directory | Sort-Object LastWriteTime -Descending | Select-Object -First 1
-          if (-not $latest) { throw "No StrykerOutput directory found." }
+          $latest = Get-ChildItem StrykerOutput -Directory -ErrorAction SilentlyContinue | Sort-Object LastWriteTime -Descending | Select-Object -First 1
+          if (-not $latest) {
+            "Mutation report was not produced (Stryker outcome: ${{ steps.stryker.outcome }})." | Out-File -FilePath $env:GITHUB_STEP_SUMMARY -Append
+            exit 0
+          }
           $report = Join-Path $latest.FullName 'reports/mutation-report.json'
+          if (-not (Test-Path -LiteralPath $report)) {
+            "Mutation JSON report was not produced (Stryker outcome: ${{ steps.stryker.outcome }})." | Out-File -FilePath $env:GITHUB_STEP_SUMMARY -Append
+            exit 0
+          }
           $jsonSummary = Join-Path $latest.FullName 'reports/mutation-summary.json'
           $mdSummary = Join-Path $latest.FullName 'reports/mutation-summary.md'
           .\scripts\summarize-stryker.ps1 -ReportPath $report -JsonOutputPath $jsonSummary -MarkdownOutputPath $mdSummary | Out-File -FilePath $env:GITHUB_STEP_SUMMARY -Append

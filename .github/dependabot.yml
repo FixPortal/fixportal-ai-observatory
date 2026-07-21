@@ -28,6 +28,7 @@ updates:
           - "Xunit*"
       testing:
         patterns:
+          - "Microsoft.NET.Test.Sdk"
           - "NSubstitute*"
           - "AwesomeAssertions*"
           - "coverlet*"
@@ -52,7 +53,27 @@ updates:
     open-pull-requests-limit: 5
     commit-message:
       prefix: ci
+      include: scope
     groups:
       github-actions:
         patterns:
           - "*"
+
+  - package-ecosystem: npm
+    directory: /src/AiObservatory.Web
+    schedule:
+      interval: weekly
+      day: monday
+      time: "06:00"
+      timezone: Europe/London
+    open-pull-requests-limit: 10
+    commit-message:
+      prefix: chore
+      include: scope
+    groups:
+      npm-minor-and-patch:
+        patterns:
+          - "*"
+        update-types:
+          - minor
+          - patch
