@@ -327,17 +327,6 @@ public static class ActivityEndpoints
             .ToList();
     }
 
-    public static bool ShouldReplaceExisting(ClaudeActivitySession existing, long newActiveSeconds, Instant newLastSeenAt) =>
-        newActiveSeconds > existing.ActiveSeconds || newLastSeenAt > existing.LastSeenAt;
-
-    // Per-field monotonic merge: ShouldReplaceExisting fires when EITHER field is newer,
-    // so an update must not blindly overwrite both — that can regress whichever field the
-    // incoming row didn't actually improve.
-    public static (long ActiveSeconds, Instant LastSeenAt) MergeActivity(
-        ClaudeActivitySession existing, long newActiveSeconds, Instant newLastSeenAt) =>
-        (Math.Max(existing.ActiveSeconds, newActiveSeconds),
-         newLastSeenAt > existing.LastSeenAt ? newLastSeenAt : existing.LastSeenAt);
-
     // Wall-clock time actually spent: merges overlapping session spans instead of
     // summing them, so N parallel sessions covering the same hour count as one hour.
     public static long MergeIntervalSeconds(IEnumerable<(Instant Start, Instant End)> spans)
