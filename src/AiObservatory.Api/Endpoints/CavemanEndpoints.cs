@@ -38,12 +38,13 @@ public static class CavemanEndpoints
         }
 
         var sessionIds = req.Sessions.Select(s => s.SessionId).ToList();
-        var existing = await db.CavemanSessions
+        var existingSessionIds = await db.CavemanSessions
             .Where(s => sessionIds.Contains(s.SessionId))
-            .ToDictionaryAsync(s => s.SessionId, s => s.OccurredAt, ct);
+            .Select(s => s.SessionId)
+            .ToHashSetAsync(ct);
 
         await using var tx = await db.Database.BeginTransactionAsync(ct);
-        var upserted = await UpsertSessionsAsync(req.Sessions, existing, db, ct);
+        var upserted = await UpsertSessionsAsync(req.Sessions, existingSessionIds, db, ct);
 
         try
         {
@@ -90,7 +91,7 @@ public static class CavemanEndpoints
 
     private static async Task<int> UpsertSessionsAsync(
         IEnumerable<CavemanSessionRequest> sessions,
-        IReadOnlyDictionary<string, Instant> existing,
+        IReadOnlySet<string> existingSessionIds,
         AiObservatoryDbContext db,
         CancellationToken ct)
     {
@@ -99,17 +100,12 @@ public static class CavemanEndpoints
         {
             var occurredAt = Instant.FromDateTimeOffset(session.OccurredAtUtc);
 
-            if (existing.TryGetValue(session.SessionId, out var existingOccurredAt))
+            if (existingSessionIds.Contains(session.SessionId))
             {
-                // Last-write-wins by event time: ignore a replayed/stale batch so it
-                // can't regress a newer snapshot's fields (mode / tokens / savings).
-                if (occurredAt < existingOccurredAt)
-                {
-                    continue;
-                }
-
-                await db.CavemanSessions
-                    .Where(x => x.SessionId == session.SessionId)
+                // Evaluate LWW against the live row so a concurrent newer write cannot
+                // be regressed by this request's preloaded existence snapshot.
+                var updated = await db.CavemanSessions
+                    .Where(x => x.SessionId == session.SessionId && x.OccurredAt <= occurredAt)
                     .ExecuteUpdateAsync(upd => upd
                         .SetProperty(p => p.OccurredAt, occurredAt)
                         .SetProperty(p => p.Mode, session.Mode)
@@ -117,6 +113,10 @@ public static class CavemanEndpoints
                         .SetProperty(p => p.OutputTokens, session.OutputTokens)
                         .SetProperty(p => p.EstSavedTokens, session.EstSavedTokens)
                         .SetProperty(p => p.EstSavedUsd, session.EstSavedUsd), ct);
+                if (updated == 0)
+                {
+                    continue;
+                }
             }
             else
             {

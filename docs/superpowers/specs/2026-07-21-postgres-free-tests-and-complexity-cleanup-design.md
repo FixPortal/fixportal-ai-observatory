@@ -37,8 +37,9 @@ The global S3776 threshold remains unchanged.
 
 The npm configuration ignores TypeScript major-version updates until TypeScript
 7.1 restores the compiler API and `typescript-eslint` publishes a compatible
-peer range, matching the established `fixportal-learning` policy. Dependabot PR
-#85 is closed because forcing TypeScript 7.0.2 would make ESLint unusable.
+peer range, matching the established `fixportal-learning` policy. Dependabot
+pull request 85 is closed because forcing TypeScript 7.0.2 would make ESLint
+unusable.
 
 ## Verification
 
