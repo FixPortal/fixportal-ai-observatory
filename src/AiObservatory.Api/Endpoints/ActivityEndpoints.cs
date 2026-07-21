@@ -116,15 +116,16 @@ public static class ActivityEndpoints
         }
 
         var sessionIds = req.Sessions.Select(s => s.SessionId).ToList();
-        var existing = await db.ClaudeActivitySessions
+        var existingSessionIds = await db.ClaudeActivitySessions
             .Where(s => sessionIds.Contains(s.SessionId))
-            .ToDictionaryAsync(s => s.SessionId, ct);
+            .Select(s => s.SessionId)
+            .ToHashSetAsync(ct);
 
         // One transaction so the ExecuteUpdateAsync writes and the deferred inserts commit
         // atomically — a unique-violation race on a concurrently-inserted SessionId rolls
         // the whole batch back rather than leaving it half-applied.
         await using var tx = await db.Database.BeginTransactionAsync(ct);
-        var upserted = await UpsertSessionsAsync(req.Sessions, existing, db, now, ct);
+        var upserted = await UpsertSessionsAsync(req.Sessions, existingSessionIds, db, now, ct);
 
         try
         {
@@ -196,7 +197,7 @@ public static class ActivityEndpoints
 
     private static async Task<int> UpsertSessionsAsync(
         IEnumerable<ActivitySessionRequest> sessions,
-        IReadOnlyDictionary<string, ClaudeActivitySession> existing,
+        IReadOnlySet<string> existingSessionIds,
         AiObservatoryDbContext db,
         Instant now,
         CancellationToken ct)
@@ -204,22 +205,12 @@ public static class ActivityEndpoints
         var upserted = 0;
         foreach (var session in sessions)
         {
-            var startedAt = Instant.FromDateTimeOffset(session.StartedAtUtc);
-            var lastSeenAt = Instant.FromDateTimeOffset(session.LastSeenAtUtc);
-
-            if (existing.TryGetValue(session.SessionId, out var current))
+            if (existingSessionIds.Contains(session.SessionId))
             {
-                if (!ShouldReplaceExisting(current, session.ActiveSeconds, lastSeenAt))
+                if (!await UpdateExistingSessionAsync(session, db, ct))
                 {
                     continue;
                 }
-
-                var (mergedAs, mergedLs) = MergeActivity(current, session.ActiveSeconds, lastSeenAt);
-                await db.ClaudeActivitySessions
-                    .Where(x => x.SessionId == session.SessionId)
-                    .ExecuteUpdateAsync(upd => upd
-                        .SetProperty(p => p.ActiveSeconds, mergedAs)
-                        .SetProperty(p => p.LastSeenAt, mergedLs), ct);
             }
             else
             {
@@ -227,8 +218,8 @@ public static class ActivityEndpoints
                 {
                     SessionId = session.SessionId,
                     Project = session.Project,
-                    StartedAt = startedAt,
-                    LastSeenAt = lastSeenAt,
+                    StartedAt = Instant.FromDateTimeOffset(session.StartedAtUtc),
+                    LastSeenAt = Instant.FromDateTimeOffset(session.LastSeenAtUtc),
                     ActiveSeconds = session.ActiveSeconds,
                     IngestedAt = now,
                 });
@@ -237,6 +228,27 @@ public static class ActivityEndpoints
         }
 
         return upserted;
+    }
+
+    private static async Task<bool> UpdateExistingSessionAsync(
+        ActivitySessionRequest session,
+        AiObservatoryDbContext db,
+        CancellationToken ct)
+    {
+        var lastSeenAt = Instant.FromDateTimeOffset(session.LastSeenAtUtc);
+
+        // Evaluate freshness and merge against the live row in one statement so
+        // a concurrent newer write cannot be regressed by this request's snapshot.
+        var updated = await db.ClaudeActivitySessions
+            .Where(x => x.SessionId == session.SessionId
+                && (x.ActiveSeconds < session.ActiveSeconds || x.LastSeenAt < lastSeenAt))
+            .ExecuteUpdateAsync(upd => upd
+                .SetProperty(p => p.ActiveSeconds,
+                    p => p.ActiveSeconds > session.ActiveSeconds ? p.ActiveSeconds : session.ActiveSeconds)
+                .SetProperty(p => p.LastSeenAt,
+                    p => p.LastSeenAt > lastSeenAt ? p.LastSeenAt : lastSeenAt), ct);
+
+        return updated > 0;
     }
 
     // Only these two GitHub accounts are "real" projects for the dashboard — everything

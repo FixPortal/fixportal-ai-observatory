@@ -349,6 +349,10 @@ docker run -d --name aiobs-test-pg -e POSTGRES_DB=aiobs_test -e POSTGRES_USER=po
 ```
 
 ```powershell
+while ($true) { docker exec aiobs-test-pg pg_isready -U postgres -d aiobs_test; if ($LASTEXITCODE -eq 0) { break }; Start-Sleep -Seconds 1 }
+```
+
+```powershell
 dotnet test AiObservatory.slnx --filter "Category=Integration"
 ```
 
