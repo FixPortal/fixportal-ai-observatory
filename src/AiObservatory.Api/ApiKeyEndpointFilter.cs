@@ -12,77 +12,82 @@ public class ApiKeyEndpointFilter(IConfiguration config, IHostEnvironment env) :
             return await next(context);
         }
 
-        var method = context.HttpContext.Request.Method;
-        var isGet = HttpMethods.IsGet(method);
-
         var expectedAdmin = config["OBSERVATORY_API_KEY"];
         var expectedReadonly = config["OBSERVATORY_READONLY_API_KEY"];
 
-        if (isGet)
-        {
-            if (string.IsNullOrEmpty(expectedReadonly))
-            {
-                // A configured admin key still works on GET even when the readonly key
-                // hasn't been set — otherwise admin-only routes (e.g. the Activity
-                // endpoints) become unreachable in a deploy that never set
-                // OBSERVATORY_READONLY_API_KEY, despite the caller holding a valid
-                // admin key. Once an admin key exists to check against, a non-matching
-                // key is a plain auth failure (401), not a 503 — the 503 fallback below
-                // is reserved for the case where no key at all is configured.
-                if (!string.IsNullOrEmpty(expectedAdmin))
-                {
-                    if (context.HttpContext.Request.Headers.TryGetValue("X-Observatory-Key", out var providedAdminKey)
-                        && ApiKeyComparer.FixedTimeEquals(providedAdminKey.ToString(), expectedAdmin))
-                    {
-                        return await next(context);
-                    }
+        return HttpMethods.IsGet(context.HttpContext.Request.Method)
+            ? await AuthorizeGetAsync(context, next, expectedAdmin, expectedReadonly)
+            : await AuthorizeAdminAsync(context, next, expectedAdmin);
+    }
 
-                    return Results.Unauthorized();
+    private async ValueTask<object?> AuthorizeGetAsync(
+        EndpointFilterInvocationContext context,
+        EndpointFilterDelegate next,
+        string? expectedAdmin,
+        string? expectedReadonly)
+    {
+        if (string.IsNullOrEmpty(expectedReadonly))
+        {
+            // A configured admin key still works on GET even when the readonly key
+            // hasn't been set — otherwise admin-only routes become unreachable.
+            if (!string.IsNullOrEmpty(expectedAdmin))
+            {
+                if (HasMatchingKey(context, expectedAdmin))
+                {
+                    return await next(context);
                 }
 
-                // Fail closed: a missing read-only key must NOT silently open the GET
-                // surface (raw usage telemetry) to anonymous callers. Only local dev is
-                // allowed to run keyless; any other environment treats the absent key as
-                // a misconfiguration and refuses, mirroring the admin-path 503 below.
-                return env.IsDevelopment()
-                    ? await next(context)
-                    : Results.StatusCode(503);
-            }
-
-            if (!context.HttpContext.Request.Headers.TryGetValue("X-Observatory-Key", out var providedGet))
-            {
                 return Results.Unauthorized();
             }
 
-            var providedGetString = providedGet.ToString();
-            var matchesReadonly = ApiKeyComparer.FixedTimeEquals(providedGetString, expectedReadonly);
-            var matchesAdmin = !string.IsNullOrEmpty(expectedAdmin) && ApiKeyComparer.FixedTimeEquals(providedGetString, expectedAdmin);
-
-            if (!matchesReadonly && !matchesAdmin)
-            {
-                return Results.Unauthorized();
-            }
-
-            return await next(context);
+            // Fail closed: a missing read-only key must not silently open raw telemetry.
+            return await ContinueInDevelopmentAsync(context, next);
         }
 
-        if (string.IsNullOrEmpty(expectedAdmin))
+        if (!context.HttpContext.Request.Headers.TryGetValue("X-Observatory-Key", out var provided))
         {
-            // No admin key configured. Mirror the GET branch (and AdminOnlyApiKeyEndpointFilter):
-            // a keyless local dev box still serves writes so machine callers (observe-stop /
-            // sweeper / gemini hooks) POSTing without a token work; any other environment treats
-            // the absent key as a misconfiguration and refuses.
-            return env.IsDevelopment()
-                ? await next(context)
-                : Results.StatusCode(503);
+            return Results.Unauthorized();
         }
 
-        if (!context.HttpContext.Request.Headers.TryGetValue("X-Observatory-Key", out var provided)
-            || !ApiKeyComparer.FixedTimeEquals(provided.ToString(), expectedAdmin))
+        var providedKey = provided.ToString();
+        var matchesReadonly = ApiKeyComparer.FixedTimeEquals(providedKey, expectedReadonly);
+        var matchesAdmin = !string.IsNullOrEmpty(expectedAdmin)
+            && ApiKeyComparer.FixedTimeEquals(providedKey, expectedAdmin);
+
+        if (!matchesReadonly && !matchesAdmin)
         {
             return Results.Unauthorized();
         }
 
         return await next(context);
     }
+
+    private async ValueTask<object?> AuthorizeAdminAsync(
+        EndpointFilterInvocationContext context,
+        EndpointFilterDelegate next,
+        string? expectedAdmin)
+    {
+        if (string.IsNullOrEmpty(expectedAdmin))
+        {
+            return await ContinueInDevelopmentAsync(context, next);
+        }
+
+        if (!HasMatchingKey(context, expectedAdmin))
+        {
+            return Results.Unauthorized();
+        }
+
+        return await next(context);
+    }
+
+    private async ValueTask<object?> ContinueInDevelopmentAsync(
+        EndpointFilterInvocationContext context,
+        EndpointFilterDelegate next) =>
+        env.IsDevelopment()
+            ? await next(context)
+            : Results.StatusCode(503);
+
+    private static bool HasMatchingKey(EndpointFilterInvocationContext context, string expected) =>
+        context.HttpContext.Request.Headers.TryGetValue("X-Observatory-Key", out var provided)
+        && ApiKeyComparer.FixedTimeEquals(provided.ToString(), expected);
 }

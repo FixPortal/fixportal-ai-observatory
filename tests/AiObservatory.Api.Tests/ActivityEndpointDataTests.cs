@@ -9,6 +9,7 @@ using Npgsql;
 namespace AiObservatory.Api.Tests;
 
 // Requires TEST_DB_CONNECTION env var pointing at a real PostgreSQL instance.
+[Trait("Category", "Integration")]
 public class ActivityEndpointDataTests : IAsyncLifetime
 {
     private string _connStr = null!;

@@ -13,7 +13,7 @@ public class GitHubActivityClientTests
     {
         public List<string> RequestedUrls { get; } = [];
 
-        protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken ct)
+        protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
         {
             RequestedUrls.Add(request.RequestUri!.ToString());
             return Task.FromResult(respond(request));

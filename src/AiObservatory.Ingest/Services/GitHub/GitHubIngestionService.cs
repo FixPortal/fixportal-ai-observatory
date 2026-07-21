@@ -20,6 +20,7 @@ public class GitHubIngestionService(
     // the caller (ProviderPollingWorkerService) can decide whether the whole provider should
     // be treated as failed for its escalation alerting — a single flaky repo among several
     // healthy ones must not trip that, but every configured repo failing should.
+#pragma warning disable S3776 // One linear per-repository orchestration flow keeps failure policy visible.
     public async Task<int> IngestSinceAsync(LocalDate date, CancellationToken ct = default)
     {
         var now = clock.GetCurrentInstant();
@@ -74,4 +75,5 @@ public class GitHubIngestionService(
         }
         return failedRepoCount;
     }
+#pragma warning restore S3776
 }

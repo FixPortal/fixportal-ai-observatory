@@ -13,6 +13,7 @@ namespace AiObservatory.Api.Tests;
 /// last-write-wins stale-skip (a replayed/stale batch must not regress a newer snapshot).
 /// WebApplicationFactory end-to-end — this endpoint had zero test coverage at any level.
 /// </summary>
+[Trait("Category", "Integration")]
 [Collection("ApiFactory")]
 public class CavemanEndpointsWafTests(AiObservatoryApiFactory factory)
 {

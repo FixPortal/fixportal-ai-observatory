@@ -47,20 +47,7 @@ public class GitHubActivityClient(HttpClient http, ILogger<GitHubActivityClient>
                     break;
                 }
 
-                var createdAt = InstantPattern.ExtendedIso.Parse(pr.CreatedAt).Value;
-
-                var (reviewCount, firstReviewAt) = await GetReviewSummaryAsync(repo, pr.Number, ct);
-                Instant? mergedAt = pr.MergedAt is null ? null : InstantPattern.ExtendedIso.Parse(pr.MergedAt).Value;
-                // GitHub's REST API only ever returns "open"/"closed" for `state` — mergedness
-                // is signaled separately via `merged_at`. Derive the 3-way state promised by
-                // the entity/frontend rather than passing the raw 2-way API value through.
-                var state = mergedAt is not null ? "merged" : pr.State;
-                results.Add(new GitHubPullRequestRecord(
-                    Truncate(repo, 200), pr.Number, Truncate(pr.Title, 500), Truncate(pr.User.Login, 200), Truncate(state, 20),
-                    createdAt,
-                    mergedAt,
-                    pr.ClosedAt is null ? null : InstantPattern.ExtendedIso.Parse(pr.ClosedAt).Value,
-                    firstReviewAt, reviewCount));
+                results.Add(await CreatePullRequestRecordAsync(repo, pr, ct));
             }
 
             if (reachedOlderThanSince || prs.Count < PerPage)
@@ -70,6 +57,32 @@ public class GitHubActivityClient(HttpClient http, ILogger<GitHubActivityClient>
             page++;
         }
         return results;
+    }
+
+    private async Task<GitHubPullRequestRecord> CreatePullRequestRecordAsync(
+        string repo,
+        PullRequestDto pullRequest,
+        CancellationToken ct)
+    {
+        var createdAt = InstantPattern.ExtendedIso.Parse(pullRequest.CreatedAt).Value;
+        var (reviewCount, firstReviewAt) = await GetReviewSummaryAsync(repo, pullRequest.Number, ct);
+        Instant? mergedAt = pullRequest.MergedAt is null
+            ? null
+            : InstantPattern.ExtendedIso.Parse(pullRequest.MergedAt).Value;
+
+        // GitHub returns only open/closed in state; mergedness is carried separately.
+        var state = mergedAt is not null ? "merged" : pullRequest.State;
+        return new GitHubPullRequestRecord(
+            Truncate(repo, 200),
+            pullRequest.Number,
+            Truncate(pullRequest.Title, 500),
+            Truncate(pullRequest.User.Login, 200),
+            Truncate(state, 20),
+            createdAt,
+            mergedAt,
+            pullRequest.ClosedAt is null ? null : InstantPattern.ExtendedIso.Parse(pullRequest.ClosedAt).Value,
+            firstReviewAt,
+            reviewCount);
     }
 
     private async Task<(int ReviewCount, Instant? FirstReviewAt)> GetReviewSummaryAsync(string repo, int number, CancellationToken ct)

@@ -12,6 +12,7 @@ namespace AiObservatory.Api.Tests;
 /// 201 Created for a genuinely new one). WebApplicationFactory end-to-end — these branches
 /// live in the minimal-API handler itself, unreachable from a unit test.
 /// </summary>
+[Trait("Category", "Integration")]
 [Collection("ApiFactory")]
 public class EventsEndpointsWafTests(AiObservatoryApiFactory factory)
 {
