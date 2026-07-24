@@ -256,10 +256,16 @@ public static class ActivityEndpoints
         return updated > 0;
     }
 
-    // Only these two GitHub accounts are "real" projects for the dashboard — everything
+    // Only these GitHub accounts are "real" projects for the dashboard — everything
     // else (scratch folders, other orgs, non-git dirs falling back to a leaf folder name)
     // is ingestion noise and stays out of the Project breakdown/treemap.
-    public static readonly string[] AllowedProjectOwners = ["fix-portal", "chris-fixportal"];
+    //
+    // `FixPortal` is the live org every repo's origin actually resolves to, so it MUST be
+    // present and MUST keep this exact casing — the comparison below is ordinal, and a
+    // lowercase entry would silently drop every real session. `fix-portal` is retained
+    // only so historical rows stay visible. This list must remain a subset of the
+    // producer-side allowlist in the out-of-repo observe-sweep.ps1 hook.
+    public static readonly string[] AllowedProjectOwners = ["FixPortal", "fix-portal"];
 
     public sealed record ActivitySessionSlice(string Project, Instant StartedAt, Instant LastSeenAt, long ActiveSeconds);
 

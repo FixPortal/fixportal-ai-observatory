@@ -44,20 +44,23 @@ public class ActivityEndpointDataTests : IAsyncLifetime
     {
         var ct = TestContext.Current.CancellationToken;
         _ctx.ClaudeActivitySessions.AddRange(
-            Session("allowed-owner", "fix-portal"),
-            Session("allowed-repo", "fix-portal/example"),
+            Session("allowed-legacy-owner", "fix-portal"),
+            Session("allowed-legacy-repo", "fix-portal/example"),
+            // The live org — the SQL predicate must match it, and must match it case-sensitively.
+            Session("allowed-org-repo", "FixPortal/example"),
             Session("wrong-prefix", "fix-portal-other/example"),
-            Session("wrong-case", "FIX-PORTAL/example"));
+            Session("wrong-case", "FIX-PORTAL/example"),
+            Session("retired-personal-owner", "chris-fixportal/tooling"));
         await _ctx.SaveChangesAsync(ct);
 
         var deleted = await ActivityEndpoints.DeleteDisallowedProjectSessionsAsync(_ctx, ct);
 
-        deleted.Should().Be(2);
+        deleted.Should().Be(3);
         var remaining = await _ctx.ClaudeActivitySessions
             .OrderBy(s => s.SessionId)
             .Select(s => s.SessionId)
             .ToListAsync(ct);
-        remaining.Should().Equal("allowed-owner", "allowed-repo");
+        remaining.Should().Equal("allowed-legacy-owner", "allowed-legacy-repo", "allowed-org-repo");
     }
 
     private static ClaudeActivitySession Session(string id, string project) =>
