@@ -71,9 +71,10 @@ public class ActivityEndpointsTests
     }
 
     [Theory]
+    [InlineData("FixPortal")]
+    [InlineData("FixPortal/fixportal-ai-observatory")]
     [InlineData("fix-portal")]
     [InlineData("fix-portal/fixportal-ai-observatory")]
-    [InlineData("chris-fixportal/tooling")]
     public void IsAllowedProject_WhenProjectMatchesAllowedOwner_ReturnsTrue(string project)
     {
         ActivityEndpoints.IsAllowedProject(project).Should().BeTrue();
@@ -83,6 +84,8 @@ public class ActivityEndpointsTests
     [InlineData("fix-portal-other/example")]
     [InlineData("other/fix-portal")]
     [InlineData("claude-review")]
+    [InlineData("chris-fixportal/tooling")]
+    [InlineData("fixportal/example")]
     public void IsAllowedProject_WhenProjectDoesNotMatchAllowedOwner_ReturnsFalse(string project)
     {
         ActivityEndpoints.IsAllowedProject(project).Should().BeFalse();

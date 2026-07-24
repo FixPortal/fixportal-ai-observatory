@@ -27,6 +27,13 @@ var host = Host.CreateDefaultBuilder(args)
 
         services.Configure<IngestOptions>(cfg.GetSection(IngestOptions.SectionName));
 
+        // The allowlist may arrive as a delimited scalar (deployed Key Vault reference)
+        // rather than an array, which plain section binding cannot handle. Resolve it
+        // once here and post-configure it in, so the registration gate below and every
+        // consumer of IngestOptions see the same value.
+        var githubRepoAllowlist = IngestOptions.ResolveGitHubRepoAllowlist(cfg);
+        services.PostConfigure<IngestOptions>(o => o.GitHubRepoAllowlist = githubRepoAllowlist);
+
         // Anthropic — enabled when ANTHROPIC_BILLING_KEY is set.
         // Requires a workspace admin API key (different from the standard API key).
         var anthropicKey = cfg["ANTHROPIC_BILLING_KEY"];
@@ -112,7 +119,6 @@ var host = Host.CreateDefaultBuilder(args)
         // allowlisted. Reuses the same GITHUB_TOKEN as Copilot metrics; this PAT now also
         // needs contents:read, pull-requests:read, actions:read (in addition to
         // manage_billing:copilot if Copilot metrics are also enabled).
-        var githubRepoAllowlist = cfg.GetSection($"{IngestOptions.SectionName}:{nameof(IngestOptions.GitHubRepoAllowlist)}").Get<string[]>() ?? [];
         if (IsConfigured(githubToken) && githubRepoAllowlist.Length > 0)
         {
             services.AddHttpClient<IGitHubActivityClient, GitHubActivityClient>(c =>

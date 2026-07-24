@@ -221,6 +221,42 @@ Run EF Core migrations on first launch or after pulling new migrations:
 dotnet ef database update --project ../AiObservatory.Data --startup-project .
 ```
 
+### Ingest worker configuration
+
+Each provider arm of `AiObservatory.Ingest` stays disabled until its credential is
+present, so an unconfigured worker is a no-op rather than an error:
+
+| Setting | Enables | Notes |
+|---|---|---|
+| `ANTHROPIC_BILLING_KEY` | Anthropic usage | Workspace **admin** key, not a standard API key |
+| `OPENAI_ADMIN_KEY` | OpenAI usage | Admin key with `openai.usage.read` |
+| `GOOGLE_BILLING_ACCOUNT_ID` | Google billing | Also needs `GOOGLE_APPLICATION_CREDENTIALS` |
+| `GITHUB_TOKEN` + `COPILOT_ORG` | Copilot seat metrics | Token needs `manage_billing:copilot` |
+| `GITHUB_TOKEN` + `Ingest__GitHubRepoAllowlist` | GitHub PR/commit/CI activity | Token additionally needs `contents:read`, `pull-requests:read`, `actions:read` |
+
+`Ingest__GitHubRepoAllowlist` is the repo scope for GitHub activity ingestion, and
+**both** it and `GITHUB_TOKEN` must be set — an empty allowlist leaves the GitHub
+Activity client unregistered, which is why that dashboard section renders empty
+rather than failing. It binds from either shape:
+
+- **Locally** — an array in `appsettings.Development.json` or user secrets:
+  `"Ingest": { "GitHubRepoAllowlist": ["FixPortal/example"] }`
+- **Deployed** — a single comma-delimited value, because App Service surfaces a
+  Key Vault reference as one scalar app setting:
+  `Ingest__GitHubRepoAllowlist=FixPortal/one,FixPortal/two`
+
+The deployed list lives in Key Vault as `github-repo-allowlist` rather than in this
+repo, because most of the repos it names are private and this repo is public. Set it
+with:
+
+```powershell
+az keyvault secret set --vault-name fpaiobs-kv -n github-repo-allowlist --value "FixPortal/one,FixPortal/two"
+```
+
+Entries that are not well-formed `owner/repo` are discarded, so an unresolved
+`@Microsoft.KeyVault(...)` reference degrades to "GitHub activity off" instead of
+polling a garbage repo.
+
 ### Frontend
 
 ```powershell

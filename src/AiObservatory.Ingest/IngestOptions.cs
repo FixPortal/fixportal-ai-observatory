@@ -17,5 +17,51 @@ public class IngestOptions
     // owner/repo pairs to poll for PR/commit/CI activity. Empty disables the
     // GitHub Activity client entirely (see Program.cs) — there is no out-of-repo
     // hook holding this filter, unlike Claude Activity's project allowlist.
+    //
+    // Most repos in the allowlist are private, so the list is NOT committed to this
+    // (public) repo. It is supplied at deploy time as a single delimited value —
+    // see ResolveGitHubRepoAllowlist below and infra/modules/ingest.bicep.
     public string[] GitHubRepoAllowlist { get; set; } = [];
+
+    // Binds the allowlist from either shape: a JSON/indexed-env array
+    // (Ingest:GitHubRepoAllowlist:0, :1, ...) for local development, or a single
+    // comma/semicolon/newline-delimited string for the deployed Key Vault secret.
+    // App Service surfaces a KV reference as one scalar app setting, so the array
+    // form alone cannot express it.
+    public static string[] ResolveGitHubRepoAllowlist(IConfiguration cfg)
+    {
+        var key = $"{SectionName}:{nameof(GitHubRepoAllowlist)}";
+
+        var asArray = cfg.GetSection(key).Get<string[]>() ?? [];
+        if (asArray.Length > 0)
+        {
+            return Clean(asArray);
+        }
+
+        var asScalar = cfg[key];
+        return string.IsNullOrWhiteSpace(asScalar)
+            ? []
+            : Clean(asScalar.Split([',', ';', '\n', '\r'], StringSplitOptions.RemoveEmptyEntries));
+    }
+
+    // Keeps only well-formed "owner/repo" entries. This also discards an unresolved
+    // "@Microsoft.KeyVault(...)" reference, which App Service leaves in place verbatim
+    // when the secret is absent or unreadable — splitting that on ',' would otherwise
+    // register the GitHub client with garbage repos and 404 hourly forever.
+    private static string[] Clean(IEnumerable<string> values) =>
+    [
+        .. values
+            .Select(v => v.Trim())
+            .Where(IsOwnerRepo)
+            .Distinct(StringComparer.OrdinalIgnoreCase),
+    ];
+
+    private static bool IsOwnerRepo(string value)
+    {
+        var parts = value.Split('/');
+        return parts.Length == 2
+            && parts[0].Length > 0
+            && parts[1].Length > 0
+            && !value.StartsWith('@');
+    }
 }
