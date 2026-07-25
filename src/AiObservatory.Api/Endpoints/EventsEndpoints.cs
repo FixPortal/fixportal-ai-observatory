@@ -84,7 +84,10 @@ public static class EventsEndpoints
             // the fallback, which the warning below makes visible rather than silent.
             var model = req.Model ?? string.Empty;
 
-            if (options.Match(model, usageDate) is null)
+            // Resolved once and reused for both the warning and the rates — ResolveRates
+            // would repeat the same prefix/date scan.
+            var match = options.Match(model, usageDate);
+            if (match is null)
             {
                 // Fallback rates are a guess. Say so, with the model, rather than letting a
                 // renamed model quietly accrue cost at Sonnet prices.
@@ -94,7 +97,7 @@ public static class EventsEndpoints
             }
 
             costUsd = AnthropicPricingResolver.ComputeCost(
-                options.ResolveRates(model, usageDate),
+                match?.ToRates() ?? options.FallbackPricing,
                 req.InputTokens, req.OutputTokens, req.CacheReadTokens, req.CacheWriteTokens);
         }
 

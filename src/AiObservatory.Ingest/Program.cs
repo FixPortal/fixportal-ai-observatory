@@ -50,6 +50,10 @@ var host = Host.CreateDefaultBuilder(args)
                 .Bind(cfg.GetSection(AnthropicPricingOptions.SectionName))
                 .ValidateDataAnnotations()
                 .Validate(o => o.Pricing.Count > 0, $"{AnthropicPricingOptions.SectionName}:Pricing must have at least one entry")
+                // An unmatched model prices at FallbackPricing, so a zeroed fallback would
+                // silently record every unknown model at $0 — the opposite of failing closed.
+                .Validate(o => o.FallbackPricing.Input > 0 && o.FallbackPricing.Output > 0,
+                    $"{AnthropicPricingOptions.SectionName}:FallbackPricing must have positive Input and Output rates")
                 .ValidateOnStart();
 
             services.AddHttpClient<IAnthropicUsageClient, AnthropicUsageClient>(c =>

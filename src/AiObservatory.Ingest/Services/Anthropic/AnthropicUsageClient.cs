@@ -113,9 +113,7 @@ public class AnthropicUsageClient(HttpClient http, ILogger<AnthropicUsageClient>
             logger.LogWarning("No Anthropic pricing entry for model '{Model}'; using fallback rates. Add an explicit entry to keep cost accurate.", model);
         }
 
-        var rates = match is null
-            ? options.FallbackPricing
-            : new PricingRates4(match.Input, match.Output, match.CacheRead, match.CacheWrite);
+        var rates = match?.ToRates() ?? options.FallbackPricing;
 
         return AnthropicPricingResolver.ComputeCost(rates, input, output, cacheRead, cacheWrite);
     }
