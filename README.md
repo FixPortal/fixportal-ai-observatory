@@ -139,7 +139,16 @@ Provider colours are categorical, not semantic:
 | anthropic | `#7c3aed` (violet) | `#a78bfa` |
 | google | `#0284c7` (sky) | `#38bdf8` |
 | copilot | `#db2777` (rose) | `#f472b6` |
+| openai | `#ea580c` (orange) | `#fb923c` |
+| moonshot | `#65a30d` (lime) | `#a3e635` |
 | other | `#64748b` (slate) | `#94a3b8` |
+| judge | `#d97706` (amber) | `#fbbf24` |
+
+Adding a provider means three edits in step — a `--provider-<key>` pair in
+`index.css`, an entry in `src/config/providers.ts`, and the key in
+`BACKEND_PROVIDERS` in `src/config/providers.test.ts`. That test fails if the
+frontend list drifts from the backend `Provider` enum or if a `colorVar` names a
+variable no theme defines.
 
 Theming uses `[data-theme="light|dark|system"]` on `<html>`, persisted to `localStorage`.
 
@@ -307,10 +316,38 @@ curl -X POST http://localhost:5000/api/events \
   }'
 ```
 
-Valid providers: `anthropic`, `google`, `copilot`, `openai`. The optional
-`eventKey` is an idempotency key — a duplicate key for the same provider is
-silently ignored. The optional `occurredAtUtc` backfills the event onto the
+Valid providers: `anthropic`, `google`, `copilot`, `openai`, `moonshot`. The
+optional `eventKey` is an idempotency key — a duplicate key for the same provider
+is silently ignored. The optional `occurredAtUtc` backfills the event onto the
 correct historical day.
+
+### Subscription-billed providers (Copilot, Moonshot)
+
+Not every provider is metered. Copilot and Moonshot are flat-rate subscriptions,
+so their events carry `costUsd: 0` and their tokens measure **utilisation, not
+spend** — the money is the `Subscription` row, and the token stream shows how
+much of it is being used. Both declare `cacheSavingsPerToken: null` in
+`src/config/providers.ts` for the same reason: a cache read on a flat plan saves
+context, not money.
+
+Moonshot usage comes from Kimi Code rather than a billing API. Kimi Code
+authenticates through the Allegretto OAuth subscription against
+`api.kimi.com/coding/v1`, and there is no metered `api.moonshot.ai` account
+behind it, so there is nothing for the `AiObservatory.Ingest` worker to poll.
+Instead the local sweeper reads each session's wire log at
+`~/.kimi-code/sessions/<workspace>/<session>/agents/<agent>/wire.jsonl` and posts
+the `usage.record` lines. Two things matter when reading that file:
+
+- Take **only** `type == "usage.record"`. The same figures also appear on
+  `context.append_loop_event` (`event.type == "step.end"`) lines; counting both
+  doubles every session.
+- Take **every** `usage.record`, both `usageScope` values. `session`-scope
+  records are additional spend (context compaction and similar), not a running
+  total of the `turn` records — filtering to `turn` alone silently under-counts.
+
+The usage object is `{ inputOther, output, inputCacheRead, inputCacheCreation }`,
+which maps onto `inputTokens` / `outputTokens` / `cacheReadTokens` /
+`cacheWriteTokens` respectively.
 
 A [Postman collection](docs/ai-observatory.postman_collection.json) covering all
 endpoints ships in `docs/`. Import it into Postman, set the `base_url` and

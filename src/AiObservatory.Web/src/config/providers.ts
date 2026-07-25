@@ -48,6 +48,16 @@ export const PROVIDERS: ProviderConfig[] = [
     cacheSavingsPerToken: 0.00000125,  // $1.25 per 1M (gpt-4o basis: 50% discount on $2.50/1M input)
     badgeStyle: { color: 'var(--provider-openai)', background: 'rgba(234,88,12,.12)' },
   },
+  {
+    key: 'moonshot',
+    displayName: 'Moonshot',
+    colorVar: 'var(--provider-moonshot)',
+    // Deliberate null, same rationale as Copilot: Kimi Code authenticates through the
+    // Allegretto OAuth subscription (flat rate), not metered Moonshot API credits, so a
+    // cache read saves no money — only context. Tokens are tracked for utilisation.
+    cacheSavingsPerToken: null,
+    badgeStyle: { color: 'var(--provider-moonshot)', background: 'rgba(101,163,13,.12)' },
+  },
 ]
 
 /** Stable display order for provider filter chips and dropdowns. */
