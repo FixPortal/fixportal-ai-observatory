@@ -3,6 +3,13 @@
     <IsPackable>false</IsPackable>
   </PropertyGroup>
   <ItemGroup>
+    <!-- The single Anthropic rate table. Flowed to the output of every referencing app so
+         the API and the Ingest worker load the same physical file (see AnthropicPricing.cs). -->
+    <Content Include="pricing.anthropic.json">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </Content>
+  </ItemGroup>
+  <ItemGroup>
     <PackageReference Include="Microsoft.EntityFrameworkCore" />
     <PackageReference Include="Microsoft.EntityFrameworkCore.Relational" />
     <PackageReference Include="NodaTime" />

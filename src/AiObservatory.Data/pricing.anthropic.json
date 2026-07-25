@@ -1,0 +1,42 @@
+{
+  "_comment": [
+    "THE Anthropic rate table. One physical file, copied to the output of every app that",
+    "references AiObservatory.Data and loaded via AddJsonFile, so the API and the Ingest",
+    "worker cannot hold divergent copies. Do not paste these rates into an appsettings.json.",
+    "",
+    "Resolution is longest-prefix, date-windowed, dated-beats-undated -- see",
+    "AiObservatory.Data.Pricing.AnthropicPricingResolver. A time-bounded price is expressed",
+    "as two rows sharing a ModelPrefix (see claude-sonnet-5 below), never as a code branch.",
+    "",
+    "CacheWrite is the FIVE-MINUTE rate (1.25x input). Anthropic bills one-hour cache writes",
+    "at 2x input, and the schema does not yet carry the 5m/1h split -- see docs/pricing-plan.md.",
+    "",
+    "Verified against https://platform.claude.com/docs/en/about-claude/pricing on 2026-07-25.",
+    "The section key is 'Ingest:Anthropic' for compatibility with deployed configuration."
+  ],
+  "Ingest": {
+    "Anthropic": {
+      "Pricing": [
+        { "ModelPrefix": "claude-3-5-sonnet", "Input": 3.0, "Output": 15.0, "CacheRead": 0.30, "CacheWrite": 3.75 },
+        { "ModelPrefix": "claude-3-5-haiku", "Input": 0.8, "Output": 4.0, "CacheRead": 0.08, "CacheWrite": 1.00 },
+        { "ModelPrefix": "claude-fable-5", "Input": 10.0, "Output": 50.0, "CacheRead": 1.00, "CacheWrite": 12.50 },
+        { "ModelPrefix": "claude-mythos-5", "Input": 10.0, "Output": 50.0, "CacheRead": 1.00, "CacheWrite": 12.50 },
+        { "ModelPrefix": "claude-opus-5", "Input": 5.0, "Output": 25.0, "CacheRead": 0.50, "CacheWrite": 6.25 },
+        { "ModelPrefix": "claude-opus-4-8", "Input": 5.0, "Output": 25.0, "CacheRead": 0.50, "CacheWrite": 6.25 },
+        { "ModelPrefix": "claude-opus-4-7", "Input": 5.0, "Output": 25.0, "CacheRead": 0.50, "CacheWrite": 6.25 },
+        { "ModelPrefix": "claude-opus-4-6", "Input": 5.0, "Output": 25.0, "CacheRead": 0.50, "CacheWrite": 6.25 },
+        { "ModelPrefix": "claude-opus-4-5", "Input": 5.0, "Output": 25.0, "CacheRead": 0.50, "CacheWrite": 6.25 },
+        { "ModelPrefix": "claude-opus-4", "Input": 15.0, "Output": 75.0, "CacheRead": 1.50, "CacheWrite": 18.75 },
+        { "ModelPrefix": "claude-sonnet-4", "Input": 3.0, "Output": 15.0, "CacheRead": 0.30, "CacheWrite": 3.75 },
+        { "ModelPrefix": "claude-sonnet-5", "Input": 2.0, "Output": 10.0, "CacheRead": 0.20, "CacheWrite": 2.50, "EffectiveTo": "2026-08-31" },
+        { "ModelPrefix": "claude-sonnet-5", "Input": 3.0, "Output": 15.0, "CacheRead": 0.30, "CacheWrite": 3.75, "EffectiveFrom": "2026-09-01" },
+        { "ModelPrefix": "claude-haiku-4-5", "Input": 1.0, "Output": 5.0, "CacheRead": 0.10, "CacheWrite": 1.25 },
+        { "ModelPrefix": "claude-haiku-4", "Input": 0.8, "Output": 4.0, "CacheRead": 0.08, "CacheWrite": 1.00 },
+        { "ModelPrefix": "claude-3-opus", "Input": 15.0, "Output": 75.0, "CacheRead": 1.50, "CacheWrite": 18.75 },
+        { "ModelPrefix": "claude-3-sonnet", "Input": 3.0, "Output": 15.0, "CacheRead": 0.30, "CacheWrite": 3.75 },
+        { "ModelPrefix": "claude-3-haiku", "Input": 0.25, "Output": 1.25, "CacheRead": 0.03, "CacheWrite": 0.3125 }
+      ],
+      "FallbackPricing": { "Input": 3.0, "Output": 15.0, "CacheRead": 0.30, "CacheWrite": 3.75 }
+    }
+  }
+}
