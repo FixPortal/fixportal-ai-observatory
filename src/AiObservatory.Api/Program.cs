@@ -62,6 +62,10 @@ builder.Services.AddSingleton<IClock>(SystemClock.Instance);
 builder.Services.AddOptions<AnthropicPricingOptions>()
     .Bind(builder.Configuration.GetSection(AnthropicPricingOptions.SectionName))
     .Validate(o => o.Pricing.Count > 0, $"{AnthropicPricingOptions.SectionName}:Pricing must have at least one entry")
+    // An unmatched model prices at FallbackPricing, so a zeroed fallback would silently
+    // record every unknown model at $0 — the opposite of failing closed.
+    .Validate(o => o.FallbackPricing.Input > 0 && o.FallbackPricing.Output > 0,
+        $"{AnthropicPricingOptions.SectionName}:FallbackPricing must have positive Input and Output rates")
     .ValidateOnStart();
 
 builder.Services.AddTransient<MailKit.Net.Smtp.ISmtpClient, MailKit.Net.Smtp.SmtpClient>();

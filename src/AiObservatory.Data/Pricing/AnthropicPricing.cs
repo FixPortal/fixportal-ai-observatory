@@ -63,6 +63,14 @@ public static class AnthropicPricingResolver
             .ThenByDescending(e => e.EffectiveFrom is not null || e.EffectiveTo is not null)
             .FirstOrDefault();
 
+    /// <summary>The rate columns of a matched entry.</summary>
+    /// <remarks>
+    /// Lets a caller that already holds a <see cref="Match"/> result — because it wants to
+    /// log or branch on a miss — turn it into rates without resolving a second time.
+    /// </remarks>
+    public static PricingRates4 ToRates(this AnthropicPricingEntry entry) =>
+        new(entry.Input, entry.Output, entry.CacheRead, entry.CacheWrite);
+
     /// <summary>
     /// Rates for <paramref name="model"/> on <paramref name="usageDate"/>, falling back to
     /// <see cref="AnthropicPricingOptions.FallbackPricing"/> when no entry matches.
@@ -70,13 +78,8 @@ public static class AnthropicPricingResolver
     public static PricingRates4 ResolveRates(
         this AnthropicPricingOptions options,
         string model,
-        LocalDate usageDate)
-    {
-        var match = options.Match(model, usageDate);
-        return match is null
-            ? options.FallbackPricing
-            : new PricingRates4(match.Input, match.Output, match.CacheRead, match.CacheWrite);
-    }
+        LocalDate usageDate) =>
+        options.Match(model, usageDate)?.ToRates() ?? options.FallbackPricing;
 
     /// <summary>Cost in USD for a token quantity at the given rates (rates are per million).</summary>
     public static decimal ComputeCost(
