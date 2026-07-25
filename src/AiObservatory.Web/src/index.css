@@ -56,6 +56,12 @@
   --provider-google: #0284c7;
   --provider-copilot: #db2777;
   --provider-openai: #ea580c;
+  /* Lime, not teal/green/indigo/fuchsia: those are all spoken for semantically
+     (brand teal, ok green, info indigo, and fuchsia as the dark-theme warn
+     border). Lime is the nearest free hue that stays separable from the four
+     categorical colours above, and semantic ok-green never appears as a chart
+     fill, so the two cannot be confused at a swatch. */
+  --provider-moonshot: #65a30d;
   --provider-other: #64748b;
   --provider-judge: #d97706;
 }
@@ -65,6 +71,7 @@
   --provider-google: #38bdf8;
   --provider-copilot: #f472b6;
   --provider-openai: #fb923c;
+  --provider-moonshot: #a3e635;
   --provider-other: #94a3b8;
   --provider-judge: #fbbf24;
 }
