@@ -45,8 +45,11 @@ public class IngestOptionsTests
 
     // App Service leaves an unresolvable Key Vault reference in place as a literal string.
     // Splitting it on ',' must not produce a repo the GitHub client then 404s on hourly.
+    // Both reference forms are covered: VaultName/SecretName has no '/' at all, SecretUri
+    // has several — neither yields exactly two segments.
     [Theory]
     [InlineData("@Microsoft.KeyVault(VaultName=kv;SecretName=github-repo-allowlist)")]
+    [InlineData("@Microsoft.KeyVault(SecretUri=https://kv.vault.azure.net/secrets/github-repo-allowlist/)")]
     [InlineData("not-an-owner-repo")]
     [InlineData("too/many/segments")]
     [InlineData("/leading-slash")]
