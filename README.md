@@ -266,6 +266,58 @@ Entries that are not well-formed `owner/repo` are discarded, so an unresolved
 `@Microsoft.KeyVault(...)` reference degrades to "GitHub activity off" instead of
 polling a garbage repo.
 
+#### Inert arms, and why `SecretNotFound` is expected
+
+`ANTHROPIC_BILLING_KEY` and `COPILOT_ORG` have no Key Vault secret in this
+deployment, so inspecting the running app's Key Vault references reports
+`SecretNotFound` for both. **The absent secret is the designed state, not a
+fault** — which is a separate question from whether the arm behind it still
+works (for Copilot, it does not; see below).
+`Program.cs` treats an unresolved `@Microsoft.KeyVault(...)` literal as unset
+precisely so that an absent optional secret leaves the arm unregistered, rather
+than enabling it with a garbage credential and 401-ing every hour.
+
+They are inert for **different** reasons, and only one of them is sound code:
+
+- **Anthropic — correct code, wrong fit.**
+  `/v1/organizations/usage_report/messages` is grouped and filtered entirely by
+  API-traffic dimensions (`api_key_id`, `workspace_id`, `service_account_id`,
+  `service_tier`), so usage billed against a Claude plan does not appear in it.
+  The arm would work for an organisation billed through the API.
+
+  Note the narrower scope of that claim: Anthropic *does* expose subscription
+  usage via a **different** endpoint,
+  [`/v1/organizations/usage_report/claude_code`](https://platform.claude.com/docs/en/api/admin/usage_report),
+  which reports `customer_type: "api" | "subscription"` with per-model token
+  breakdowns. It requires an organisation Admin key and its `subscription_type`
+  admits only `enterprise` and `team`, so a personal Pro/Max deployment still
+  cannot use it — but "Anthropic exposes no subscription usage at all" would be
+  wrong, and this arm is worth revisiting on a Team upgrade.
+
+- **Copilot — the endpoint no longer exists.**
+  `CopilotUsageClient.cs:23` calls `/orgs/{org}/copilot/metrics`, which GitHub
+  [retired on 2 April 2026](https://github.blog/changelog/2026-01-29-closing-down-notice-of-legacy-copilot-metrics-apis/).
+  The current REST API exposes organization metrics only under
+  [`/orgs/{org}/copilot/metrics/reports/*`](https://docs.github.com/en/rest/copilot/copilot-usage-metrics).
+  Enabling `COPILOT_ORG` today produces failed requests, not ingestion. This arm
+  needs retargeting before it could be used, and even then the reports endpoints
+  return engagement metrics — active users, suggestions, acceptances — never
+  token-level data.
+
+Anthropic usage here comes from the local sweeper reading
+`~/.claude/projects/**/*.jsonl` instead.
+
+Two things to know before enabling either arm:
+
+- **The Anthropic arm and the local sweeper do not deduplicate against each
+  other.** The unique index is `(Provider, EventKey)`; the sweeper writes
+  `anthropic:<session>:<model>:<in>-<out>` while the worker writes
+  `anthropic:<date>:<model>`. Run both over overlapping usage and the aggregates
+  count it twice.
+- An absent *optional* secret is not the same failure as a *required* setting
+  left unset. `Ingest__GitHubRepoAllowlist` was the latter — a real defect that
+  silently disabled GitHub activity. These two are the former.
+
 ### Frontend
 
 ```powershell

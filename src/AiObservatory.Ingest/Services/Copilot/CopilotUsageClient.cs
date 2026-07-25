@@ -5,11 +5,19 @@ using NodaTime.Text;
 
 namespace AiObservatory.Ingest.Services.Copilot;
 
-// Calls GET https://api.github.com/orgs/{org}/copilot/metrics?since=YYYY-MM-DD&until=YYYY-MM-DD
+// RETIRED ENDPOINT — this client does not work as written.
+//
+// It calls GET https://api.github.com/orgs/{org}/copilot/metrics, which GitHub shut down
+// on 2 April 2026:
+//   https://github.blog/changelog/2026-01-29-closing-down-notice-of-legacy-copilot-metrics-apis/
+// Organization metrics now live under /orgs/{org}/copilot/metrics/reports/* :
+//   https://docs.github.com/en/rest/copilot/copilot-usage-metrics
+// Setting COPILOT_ORG today therefore produces failed requests, not ingestion. The arm
+// stays disabled (no `copilot-org` Key Vault secret) and must be retargeted before use.
+//
 // Requires GITHUB_TOKEN with manage_billing:copilot scope and COPILOT_ORG org name.
 // Returns aggregate activity metrics; token-level data is not available via this API —
 // use the session-end extension (see docs) for per-session token tracking.
-// See https://docs.github.com/en/rest/copilot/copilot-usage for the current response schema.
 public class CopilotUsageClient(HttpClient http, string org) : ICopilotUsageClient
 {
     public async Task<CopilotUsageRecord?> GetDailyUsageAsync(LocalDate date, CancellationToken ct = default)

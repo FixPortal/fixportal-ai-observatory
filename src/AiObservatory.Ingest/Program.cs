@@ -1,4 +1,5 @@
 using AiObservatory.Data;
+using AiObservatory.Data.Pricing;
 using AiObservatory.Ingest;
 using AiObservatory.Ingest.Services.Anthropic;
 using AiObservatory.Ingest.Services.Copilot;

@@ -1,5 +1,6 @@
 using System.Net.Http.Json;
 using System.Text.Json;
+using AiObservatory.Data.Pricing;
 using Microsoft.Extensions.Options;
 using NodaTime;
 using NodaTime.Text;
@@ -100,16 +101,11 @@ public class AnthropicUsageClient(HttpClient http, ILogger<AnthropicUsageClient>
 
     private decimal ComputeCost(string model, LocalDate usageDate, long input, long output, long cacheRead, long cacheWrite)
     {
-        // Longest matching prefix wins; among ties for a given date, a dated (bounded)
-        // entry beats an always-on one — this is how the Sonnet-5 intro-pricing window
-        // is expressed as data instead of a special-cased branch.
-        var match = pricingOptions.Value.Pricing
-            .Where(e => model.StartsWith(e.ModelPrefix, StringComparison.OrdinalIgnoreCase))
-            .Where(e => (e.EffectiveFrom is null || usageDate >= e.EffectiveFrom)
-                     && (e.EffectiveTo is null || usageDate <= e.EffectiveTo))
-            .OrderByDescending(e => e.ModelPrefix.Length)
-            .ThenByDescending(e => e.EffectiveFrom is not null || e.EffectiveTo is not null)
-            .FirstOrDefault();
+        // Resolution (longest prefix, date-windowed, dated-beats-undated) lives in
+        // AiObservatory.Data.Pricing so that this arm and any historical re-cost cannot
+        // drift apart. Only the warning stays here, where there is a logger.
+        var options = pricingOptions.Value;
+        var match = options.Match(model, usageDate);
 
         if (match is null)
         {
@@ -117,12 +113,11 @@ public class AnthropicUsageClient(HttpClient http, ILogger<AnthropicUsageClient>
             logger.LogWarning("No Anthropic pricing entry for model '{Model}'; using fallback rates. Add an explicit entry to keep cost accurate.", model);
         }
 
-        var (ir, or, crr, cwr) = match is null
-            ? pricingOptions.Value.FallbackPricing
+        var rates = match is null
+            ? options.FallbackPricing
             : new PricingRates4(match.Input, match.Output, match.CacheRead, match.CacheWrite);
 
-        return input / 1_000_000m * ir + output / 1_000_000m * or
-             + cacheRead / 1_000_000m * crr + cacheWrite / 1_000_000m * cwr;
+        return AnthropicPricingResolver.ComputeCost(rates, input, output, cacheRead, cacheWrite);
     }
 
     private sealed record AnthropicUsageApiResponse(List<AnthropicUsageBucket>? Data, bool? HasMore, string? NextPage);
