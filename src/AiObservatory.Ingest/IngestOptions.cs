@@ -44,10 +44,12 @@ public class IngestOptions
             : Clean(asScalar.Split([',', ';', '\n', '\r'], StringSplitOptions.RemoveEmptyEntries));
     }
 
-    // Keeps only well-formed "owner/repo" entries. This also discards an unresolved
-    // "@Microsoft.KeyVault(...)" reference, which App Service leaves in place verbatim
-    // when the secret is absent or unreadable — splitting that on ',' would otherwise
-    // register the GitHub client with garbage repos and 404 hourly forever.
+    // Keeps only well-formed "owner/repo" entries. The exactly-two-segments rule is also
+    // what discards an unresolved "@Microsoft.KeyVault(...)" reference, which App Service
+    // leaves in place verbatim when the secret is absent or unreadable: the
+    // VaultName/SecretName form contains no '/' at all, and the SecretUri form contains
+    // several. Without that, splitting the literal on ',' would register the GitHub client
+    // with garbage repos and 404 hourly forever.
     private static string[] Clean(IEnumerable<string> values) =>
     [
         .. values
@@ -59,9 +61,6 @@ public class IngestOptions
     private static bool IsOwnerRepo(string value)
     {
         var parts = value.Split('/');
-        return parts.Length == 2
-            && parts[0].Length > 0
-            && parts[1].Length > 0
-            && !value.StartsWith('@');
+        return parts.Length == 2 && parts[0].Length > 0 && parts[1].Length > 0;
     }
 }
