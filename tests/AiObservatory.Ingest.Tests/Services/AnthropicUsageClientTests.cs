@@ -1,4 +1,5 @@
 using System.Net;
+using AiObservatory.Data.Pricing;
 using AiObservatory.Ingest.Services.Anthropic;
 using AwesomeAssertions;
 using Microsoft.Extensions.Logging.Abstractions;
