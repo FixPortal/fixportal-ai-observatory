@@ -6,6 +6,7 @@ using AiObservatory.Api.Services.Fx;
 using AiObservatory.Api.Services.Intelligence;
 using AiObservatory.Data;
 using AiObservatory.Data.Entities;
+using AiObservatory.Data.Pricing;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.AspNetCore.HttpOverrides;
 using Microsoft.EntityFrameworkCore;
@@ -14,6 +15,17 @@ using NodaTime;
 using NodaTime.Serialization.SystemTextJson;
 
 var builder = WebApplication.CreateBuilder(args);
+
+// The shared Anthropic rate table that ships with AiObservatory.Data. The API prices
+// Anthropic events at ingest (see EventsEndpoints.RecordEventAsync), so it needs the same
+// rates as the Ingest worker — from the same physical file, so they cannot drift.
+//
+// Resolved against AppContext.BaseDirectory (where the build drops it), NOT the content
+// root: WebApplicationFactory points the content root at the project's SOURCE directory,
+// so a relative path resolves somewhere the file has never existed and every WAF test
+// fails at host construction. Absolute-from-the-assembly works for both.
+builder.Configuration.AddJsonFile(
+    Path.Combine(AppContext.BaseDirectory, "pricing.anthropic.json"), optional: false, reloadOnChange: false);
 
 if (!string.IsNullOrEmpty(builder.Configuration["APPLICATIONINSIGHTS_CONNECTION_STRING"]))
 {
@@ -44,6 +56,14 @@ if (!builder.Environment.IsDevelopment() && (string.IsNullOrWhiteSpace(adminKey)
         "OBSERVATORY_API_KEY must be set to a non-default value outside Development.");
 }
 builder.Services.AddSingleton<IClock>(SystemClock.Instance);
+
+// Bound unconditionally: Anthropic events are priced server-side at ingest, so a missing
+// or empty table is a boot-time failure rather than a silent fallback to wrong rates.
+builder.Services.AddOptions<AnthropicPricingOptions>()
+    .Bind(builder.Configuration.GetSection(AnthropicPricingOptions.SectionName))
+    .Validate(o => o.Pricing.Count > 0, $"{AnthropicPricingOptions.SectionName}:Pricing must have at least one entry")
+    .ValidateOnStart();
+
 builder.Services.AddTransient<MailKit.Net.Smtp.ISmtpClient, MailKit.Net.Smtp.SmtpClient>();
 builder.Services.AddTransient<IAlertNotifier, EmailAlertNotifier>();
 builder.Services.AddScoped<BudgetAlertService>();

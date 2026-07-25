@@ -9,6 +9,12 @@ using AiObservatory.Ingest.Services.OpenAi;
 using NodaTime;
 
 var host = Host.CreateDefaultBuilder(args)
+    // Anthropic rates come from the shared table that ships with AiObservatory.Data, not
+    // from this worker's appsettings, so the worker and the API cannot drift apart.
+    // Resolved against AppContext.BaseDirectory (where the build drops it) rather than the
+    // content root, which a test host or a non-default working directory can move.
+    .ConfigureAppConfiguration(cfg => cfg.AddJsonFile(
+        Path.Combine(AppContext.BaseDirectory, "pricing.anthropic.json"), optional: false, reloadOnChange: false))
     .ConfigureServices((ctx, services) =>
     {
         var cfg = ctx.Configuration;

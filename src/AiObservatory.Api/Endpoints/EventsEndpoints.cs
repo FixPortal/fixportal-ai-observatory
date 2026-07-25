@@ -1,7 +1,9 @@
 using System.Text.Json;
 using AiObservatory.Data;
 using AiObservatory.Data.Entities;
+using AiObservatory.Data.Pricing;
 using AiObservatory.Data.Repositories;
+using Microsoft.Extensions.Options;
 using NodaTime;
 
 namespace AiObservatory.Api.Endpoints;
@@ -29,6 +31,8 @@ public static class EventsEndpoints
         UsageEventRequest req,
         IUsageRepository repo,
         IClock clock,
+        IOptions<AnthropicPricingOptions> anthropicPricing,
+        ILoggerFactory loggerFactory,
         HttpContext ctx)
     {
         if (!Enum.TryParse<Provider>(req.Provider, ignoreCase: true, out var provider)
@@ -65,6 +69,35 @@ public static class EventsEndpoints
             return Results.BadRequest("OccurredAtUtc must not be in the future");
         }
 
+        // Anthropic events are priced HERE, from the shared rate table, and the caller's
+        // CostUsd is ignored. Clients used to price their own events, which put a second
+        // rate table (and a second copy of the resolution rules) in every producer — the
+        // drift that made months of recorded spend wrong. Every other provider still
+        // supplies its own cost: Copilot and Moonshot are flat-rate subscriptions with no
+        // per-token price to apply, and Google/OpenAI report billed figures directly.
+        var costUsd = req.CostUsd;
+        if (provider == Provider.Anthropic)
+        {
+            var usageDate = occurredAt.InUtc().Date;
+            var options = anthropicPricing.Value;
+            // Model is optional on the wire; an absent one matches no prefix and prices at
+            // the fallback, which the warning below makes visible rather than silent.
+            var model = req.Model ?? string.Empty;
+
+            if (options.Match(model, usageDate) is null)
+            {
+                // Fallback rates are a guess. Say so, with the model, rather than letting a
+                // renamed model quietly accrue cost at Sonnet prices.
+                loggerFactory.CreateLogger("AiObservatory.Api.Pricing").LogWarning(
+                    "No Anthropic pricing entry for model '{Model}' on {UsageDate}; using fallback rates. Add an entry to pricing.anthropic.json.",
+                    model, usageDate);
+            }
+
+            costUsd = AnthropicPricingResolver.ComputeCost(
+                options.ResolveRates(model, usageDate),
+                req.InputTokens, req.OutputTokens, req.CacheReadTokens, req.CacheWriteTokens);
+        }
+
         var evt = new UsageEvent
         {
             Provider = provider,
@@ -75,7 +108,7 @@ public static class EventsEndpoints
             OutputTokens = req.OutputTokens,
             CacheReadTokens = req.CacheReadTokens,
             CacheWriteTokens = req.CacheWriteTokens,
-            CostUsd = req.CostUsd,
+            CostUsd = costUsd,
             RawPayload = rawPayload,
             EventKey = eventKey
         };
