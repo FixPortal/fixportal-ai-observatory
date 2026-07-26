@@ -59,8 +59,12 @@ bank transaction id. Its `Source` column is provenance only — `manual` / `csv`
 This is enforced as a test, not a convention (§8), so a future change cannot
 quietly reintroduce it.
 
-A read-only share-link holder can see spend figures. That is consistent with
-"linkage, not amounts" and was confirmed.
+A read-only share-link holder does **not** see the Spend tab. The shipped tab is
+`readonlyHidden: true`, matching Activity and GitHub — the share link exists to show
+token usage, not household spend. (This corrects the design's original statement that
+a read-only holder could see spend figures; the human partner ruled, during the phase-1
+final whole-branch review, that the tab stays hidden and the spec is amended rather than
+the code changed.)
 
 ## 4. Architecture
 
