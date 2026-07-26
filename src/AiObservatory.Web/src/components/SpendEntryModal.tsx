@@ -18,7 +18,13 @@ export default function SpendEntryModal({ categories, vendors, from, to, onClose
   const minDate = localDate(from)
   const maxDate = localDate(to)
   const qc = useQueryClient()
-  const [occurredOn, setOccurredOn] = useState(() => localDate(new Date()))
+  // Clamped into [minDate, maxDate]: "today" can fall outside the mounted bounds if the
+  // dashboard is left open past midnight, and an untouched form must still be valid --
+  // see the range check in handleSave, which this clamp is not a substitute for.
+  const [occurredOn, setOccurredOn] = useState(() => {
+    const today = localDate(new Date())
+    return today < minDate ? minDate : today > maxDate ? maxDate : today
+  })
   const [vendorId, setVendorId] = useState(vendors[0]?.id ?? '')
   const [categoryId, setCategoryId] = useState(vendors[0]?.defaultCategoryId ?? categories[0]?.id ?? '')
   const [amount, setAmount] = useState('')

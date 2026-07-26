@@ -64,6 +64,27 @@ describe('SpendEntryModal', () => {
     expect(post).not.toHaveBeenCalled()
   })
 
+  it('submits an untouched form when "today" is later than the visible window', async () => {
+    // No fake clock needed: bounds dated entirely in the past make the real "today"
+    // fall after maxDate, which is exactly what happens if the dashboard is left open
+    // past midnight -- the default date must still clamp into range and submit.
+    const post = vi.spyOn(client, 'postSpendEntries')
+      .mockResolvedValue([{ id: 'e1', status: 'created', reason: null }])
+    const pastTo = new Date(Date.now() - 10 * 86_400_000)
+    const pastFrom = new Date(pastTo.getTime() - 90 * 86_400_000)
+    const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+    render(
+      <QueryClientProvider client={qc}>
+        <SpendEntryModal categories={categories} vendors={vendors} from={pastFrom} to={pastTo} onClose={vi.fn()} />
+      </QueryClientProvider>,
+    )
+
+    fireEvent.change(screen.getByLabelText(/amount/i), { target: { value: '80' } })
+    fireEvent.click(screen.getByRole('button', { name: /save/i }))
+
+    await waitFor(() => expect(post).toHaveBeenCalledTimes(1))
+  })
+
   it('surfaces a rejected verdict instead of closing', async () => {
     vi.spyOn(client, 'postSpendEntries')
       .mockResolvedValue([{ id: null, status: 'rejected', reason: 'Unknown VendorId' }])
