@@ -17,6 +17,9 @@ public class AiObservatoryDbContext(DbContextOptions<AiObservatoryDbContext> opt
     public DbSet<GitHubPullRequest> GitHubPullRequests => Set<GitHubPullRequest>();
     public DbSet<GitHubCommit> GitHubCommits => Set<GitHubCommit>();
     public DbSet<GitHubWorkflowRun> GitHubWorkflowRuns => Set<GitHubWorkflowRun>();
+    public DbSet<SpendCategory> SpendCategories => Set<SpendCategory>();
+    public DbSet<SpendVendor> SpendVendors => Set<SpendVendor>();
+    public DbSet<SpendEntry> SpendEntries => Set<SpendEntry>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -54,6 +57,47 @@ public class AiObservatoryDbContext(DbContextOptions<AiObservatoryDbContext> opt
         {
             b.HasKey(d => new { d.Date, d.Provider, d.Model });
             b.Property(d => d.Provider).HasConversion<string>();
+        });
+
+        modelBuilder.Entity<SpendCategory>(b =>
+        {
+            b.Property(c => c.Key).HasMaxLength(60);
+            b.Property(c => c.DisplayName).HasMaxLength(100);
+            b.Property(c => c.ColorVar).HasMaxLength(60);
+            b.HasIndex(c => c.Key).IsUnique();
+        });
+
+        modelBuilder.Entity<SpendVendor>(b =>
+        {
+            b.Property(v => v.Key).HasMaxLength(60);
+            b.Property(v => v.DisplayName).HasMaxLength(100);
+            b.Property(v => v.Provider).HasConversion<string>();
+            b.HasIndex(v => v.Key).IsUnique();
+        });
+
+        modelBuilder.Entity<SpendEntry>(b =>
+        {
+            b.Property(e => e.Currency).HasMaxLength(3);
+            b.Property(e => e.Description).HasMaxLength(200);
+            b.Property(e => e.EntryKey).HasMaxLength(200);
+            b.Property(e => e.Source).HasConversion<string>();
+            b.HasIndex(e => e.OccurredOn);
+            b.HasIndex(e => e.VendorId);
+            b.HasIndex(e => e.CategoryId);
+
+            // Idempotency, scoped per source. Filtered so manual rows (EntryKey null) are
+            // exempt — PostgreSQL would allow repeated NULLs anyway, but the filter makes
+            // the intent explicit and keeps the index small.
+            b.HasIndex(e => new { e.Source, e.EntryKey })
+             .IsUnique()
+             .HasFilter("\"EntryKey\" IS NOT NULL");
+
+            b.ToTable(t =>
+            {
+                t.HasCheckConstraint("CK_SpendEntry_Amount_NonNegative", "\"Amount\" >= 0");
+                t.HasCheckConstraint("CK_SpendEntry_AmountGbp_NonNegative", "\"AmountGbp\" >= 0");
+                t.HasCheckConstraint("CK_SpendEntry_FxRate_Positive", "\"FxRate\" > 0");
+            });
         });
 
         modelBuilder.Entity<Subscription>(b =>

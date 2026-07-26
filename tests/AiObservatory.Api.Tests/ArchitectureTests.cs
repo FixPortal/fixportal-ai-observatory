@@ -4,6 +4,7 @@ using AiObservatory.Ingest;
 using ArchUnitNET.Domain;
 using ArchUnitNET.Loader;
 using ArchUnitNET.xUnitV3;
+using AwesomeAssertions;
 using FixPortal.CodeStyle.ArchRules;
 using static ArchUnitNET.Fluent.ArchRuleDefinition;
 
@@ -62,5 +63,26 @@ public class ArchitectureTests
     {
         FixPortalArchRules.LayerMustNotDependOn(IngestTypes, ApiTypes)
             .Check(Architecture);
+    }
+
+    // The ledger deliberately holds no link back to a bank, card, invoice or
+    // counterparty — that is the privacy boundary that let billed spend live in a
+    // public repo at all (spec §3). A convention would erode; this makes it fail
+    // the build. If a future feature genuinely needs one of these, that is a
+    // design decision to reopen in the spec, not a test to relax.
+    [Fact]
+    public void SpendEntry_must_not_carry_bank_linkage()
+    {
+        var forbidden = new[] { "account", "card", "counterparty", "iban", "sortcode", "transactionid" };
+
+        var offenders = typeof(AiObservatory.Data.Entities.SpendEntry)
+            .GetProperties()
+            .Where(p => forbidden.Any(f =>
+                p.Name.Replace("_", "").Contains(f, StringComparison.OrdinalIgnoreCase)))
+            .Select(p => p.Name)
+            .ToArray();
+
+        offenders.Should().BeEmpty(
+            "SpendEntry must not tie spend to a bank, card, invoice or counterparty (spec §3)");
     }
 }
