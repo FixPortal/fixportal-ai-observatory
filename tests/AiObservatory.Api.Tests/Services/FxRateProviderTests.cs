@@ -13,28 +13,14 @@ namespace AiObservatory.Api.Tests.Services;
 /// </summary>
 public class FxRateProviderTests
 {
-    private sealed class StubHandler(HttpStatusCode status, string body) : HttpMessageHandler
-    {
-        public List<string> Requested { get; } = [];
-
-        protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken ct)
-        {
-            Requested.Add(request.RequestUri!.ToString());
-            return Task.FromResult(new HttpResponseMessage(status)
-            {
-                Content = new StringContent(body, System.Text.Encoding.UTF8, "application/json"),
-            });
-        }
-    }
-
-    private static FxRateProvider Create(StubHandler handler) =>
+    private static FxRateProvider Create(StubHttpMessageHandler handler) =>
         new(new HttpClient(handler), new MemoryCache(new MemoryCacheOptions()),
             NullLogger<FxRateProvider>.Instance);
 
     [Fact]
     public async Task GbpShortCircuitsToOneAndMakesNoRequest()
     {
-        var handler = new StubHandler(HttpStatusCode.OK, "{}");
+        var handler = new StubHttpMessageHandler(HttpStatusCode.OK, "{}");
         var sut = Create(handler);
 
         var rate = await sut.GetGbpRateOnAsync("GBP", new LocalDate(2026, 3, 15), TestContext.Current.CancellationToken);
@@ -46,7 +32,7 @@ public class FxRateProviderTests
     [Fact]
     public async Task UsesTheDatedEndpointForTheChargeDate()
     {
-        var handler = new StubHandler(HttpStatusCode.OK, """{"rates":{"GBP":0.7412}}""");
+        var handler = new StubHttpMessageHandler(HttpStatusCode.OK, """{"rates":{"GBP":0.7412}}""");
         var sut = Create(handler);
 
         var rate = await sut.GetGbpRateOnAsync("USD", new LocalDate(2026, 3, 15), TestContext.Current.CancellationToken);
@@ -59,7 +45,7 @@ public class FxRateProviderTests
     [Fact]
     public async Task CachesPerDateSoTheSameDayIsFetchedOnce()
     {
-        var handler = new StubHandler(HttpStatusCode.OK, """{"rates":{"GBP":0.7412}}""");
+        var handler = new StubHttpMessageHandler(HttpStatusCode.OK, """{"rates":{"GBP":0.7412}}""");
         var sut = Create(handler);
         var date = new LocalDate(2026, 3, 15);
 
@@ -72,7 +58,7 @@ public class FxRateProviderTests
     [Fact]
     public async Task FallsBackRatherThanFailingTheWrite()
     {
-        var handler = new StubHandler(HttpStatusCode.ServiceUnavailable, "");
+        var handler = new StubHttpMessageHandler(HttpStatusCode.ServiceUnavailable, "");
         var sut = Create(handler);
 
         var rate = await sut.GetGbpRateOnAsync("USD", new LocalDate(2026, 3, 15), TestContext.Current.CancellationToken);
@@ -86,7 +72,7 @@ public class FxRateProviderTests
     [Fact]
     public async Task ThrowsForANonUsdCurrencyOnOutage()
     {
-        var handler = new StubHandler(HttpStatusCode.ServiceUnavailable, "");
+        var handler = new StubHttpMessageHandler(HttpStatusCode.ServiceUnavailable, "");
         var sut = Create(handler);
         var date = new LocalDate(2026, 3, 15);
 

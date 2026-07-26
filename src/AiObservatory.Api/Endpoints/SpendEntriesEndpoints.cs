@@ -106,6 +106,12 @@ public static class SpendEntriesEndpoints
             {
                 // The row already exists for this source and key. Report it rather than
                 // failing the batch: re-importing an overlapping statement is routine.
+                //
+                // Ceiling: this does not check the constraint NAME, so it assumes SpendEntry
+                // carries exactly one unique index -- (Source, EntryKey) filtered to EntryKey
+                // IS NOT NULL (Task 1). A future second unique index on this table would be
+                // silently misreported as a duplicate spend entry too; narrow the `when` to
+                // the specific constraint name if that ever happens.
                 db.Entry(entry).State = EntityState.Detached;
                 var existingId = await db.SpendEntries.AsNoTracking()
                     .Where(e => e.Source == entry.Source && e.EntryKey == entry.EntryKey)
