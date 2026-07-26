@@ -99,10 +99,24 @@ the sweeper.
 Both halves are now carried end to end: `pricing.anthropic.json` has a
 `CacheWrite1h` column per row, `UsageEvent`/`DailyAggregate` have a
 `CacheWrite1hTokens` column (migration `20260726080907_AddCacheWrite1hTokens`),
-and the sweeper reads `usage.cache_creation` per message. `CacheWrite1hTokens` is
-the one-hour **subset** of `CacheWriteTokens`; the remainder prices at the
-five-minute rate, which keeps every existing reader of the total correct and makes
-an absent value mean "all five-minute", exactly the old behaviour.
+and the producer reads `usage.cache_creation` per message.
+`CacheWrite1hTokens` is the one-hour **subset** of `CacheWriteTokens`; the
+remainder prices at the five-minute rate, which keeps every existing reader of the
+total correct and makes an absent value mean "all five-minute", exactly the old
+behaviour.
+
+**Which producer, and where it lives.** The Anthropic transcript sweeper is
+`~/.claude/hooks/backfill/observe-sweep.ps1` (§1) — a personal Claude Code hook on
+the maintainer's machine, **not in this repository**, so its half of this change
+is not visible in the diff. Only the schema, API, pricing table and migration are.
+Do not confuse it with `clients/observatory-sweep.mjs`, the published sample
+client in this repo: that one has Codex/OpenAI and Copilot arms only, no Anthropic
+arm, and is correctly untouched here.
+
+Anything posting Anthropic events should send `cacheWrite1hTokens` alongside
+`cacheWriteTokens`. Omitting it is safe — it defaults to 0 and prices as
+all-five-minute — but for a Claude Code transcript that is an understatement,
+because those writes are one-hour.
 
 Measured effect on the corrected series: **$16,271 → $18,564, an uplift of
 14.1%**. Recomputed straight from the transcripts, independently of the pipeline;

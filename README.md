@@ -363,6 +363,7 @@ curl -X POST http://localhost:5000/api/events \
     "outputTokens": 800,
     "cacheReadTokens": 0,
     "cacheWriteTokens": 0,
+    "cacheWrite1hTokens": 0,
     "costUsd": 0.012,
     "eventKey": "my-first-event"
   }'
@@ -372,6 +373,19 @@ Valid providers: `anthropic`, `google`, `copilot`, `openai`, `moonshot`. The
 optional `eventKey` is an idempotency key — a duplicate key for the same provider
 is silently ignored. The optional `occurredAtUtc` backfills the event onto the
 correct historical day.
+
+`cacheWrite1hTokens` is optional and defaults to 0. It is the **one-hour-TTL
+subset** of `cacheWriteTokens` — not a separate total — and must not exceed it.
+Anthropic bills a one-hour cache write at 2x base input against a five-minute
+write's 1.25x, so the remainder (`cacheWriteTokens - cacheWrite1hTokens`) prices
+at the five-minute rate. Omitting the field prices the whole write at five
+minutes; for a Claude Code transcript, whose writes are one-hour, that
+understates the cache line by around 60%. The value is in
+`usage.cache_creation.ephemeral_1h_input_tokens` on each assistant message.
+
+For `anthropic` events the API computes `costUsd` itself from its own rate table
+and **ignores whatever you send**, so a producer needs the token counts right,
+not the price.
 
 ### Subscription-billed providers (Copilot, Moonshot)
 
