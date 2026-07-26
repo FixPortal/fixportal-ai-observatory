@@ -12,10 +12,14 @@ interface Props {
   vendors: SpendVendor[]
   onDelete: (id: string) => void
   canEdit: boolean
+  /** True while a delete is in flight, so a fast double-click can't fire a second
+   * DELETE for a row that has already gone -- which would 404 after a successful
+   * delete and surface a spurious failure message. */
+  isDeleting?: boolean
 }
 
 /** Region 6. Sortable on any column; the rows are already filtered by SpendPage. */
-export default function SpendLedgerTable({ entries, categories, vendors, onDelete, canEdit }: Props) {
+export default function SpendLedgerTable({ entries, categories, vendors, onDelete, canEdit, isDeleting = false }: Props) {
   const [sortField, setSortField] = useState<SortKey>('occurredOn')
   const [sortDirection, setSortDirection] = useState<SortDirection>('desc')
 
@@ -46,46 +50,54 @@ export default function SpendLedgerTable({ entries, categories, vendors, onDelet
   }
 
   if (entries.length === 0) {
-    return <p className="spend-ledger__empty">No spend recorded for this filter.</p>
+    return <p className="spend-ledger__empty" role="status">No spend recorded for this filter.</p>
   }
 
   return (
-    <table className="spend-ledger">
-      <thead>
-        <tr>
-          <GitHubSortableHeader field="occurredOn" label="Date" sortField={sortField} sortDirection={sortDirection} onSort={handleSort} />
-          <GitHubSortableHeader field="vendor" label="Vendor" sortField={sortField} sortDirection={sortDirection} onSort={handleSort} />
-          <GitHubSortableHeader field="category" label="Category" sortField={sortField} sortDirection={sortDirection} onSort={handleSort} />
-          <th>Description</th>
-          <GitHubSortableHeader field="amountGbp" label="Amount" sortField={sortField} sortDirection={sortDirection} onSort={handleSort} />
-          <th>Source</th>
-          {canEdit && <th><span className="visually-hidden">Actions</span></th>}
-        </tr>
-      </thead>
-      <tbody>
-        {sorted.map(e => (
-          <tr key={e.id}>
-            <td>{e.occurredOn}</td>
-            <td>{vendorName.get(e.vendorId) ?? '—'}</td>
-            <td>{categoryName.get(e.categoryId) ?? '—'}</td>
-            <td>{e.description ?? ''}</td>
-            <td className="spend-ledger__num">
-              {gbp(e.amountGbp)}
-              {e.currency !== 'GBP' && (
-                <span className="spend-ledger__native"> ({formatCurrency(e.amount, e.currency)})</span>
-              )}
-            </td>
-            <td>{e.source}</td>
-            {canEdit && (
-              <td>
-                <button type="button" onClick={() => onDelete(e.id)} aria-label={`Delete entry from ${e.occurredOn}`}>
-                  Delete
-                </button>
-              </td>
-            )}
+    <div className="spend-ledger__wrapper">
+      <table className="spend-ledger" aria-label="Spend ledger">
+        <caption className="visually-hidden">Every billed spend entry matching the current filter</caption>
+        <thead>
+          <tr>
+            <GitHubSortableHeader field="occurredOn" label="Date" sortField={sortField} sortDirection={sortDirection} onSort={handleSort} />
+            <GitHubSortableHeader field="vendor" label="Vendor" sortField={sortField} sortDirection={sortDirection} onSort={handleSort} />
+            <GitHubSortableHeader field="category" label="Category" sortField={sortField} sortDirection={sortDirection} onSort={handleSort} />
+            <th>Description</th>
+            <GitHubSortableHeader field="amountGbp" label="Amount" sortField={sortField} sortDirection={sortDirection} onSort={handleSort} className="spend-ledger__num" />
+            <th>Source</th>
+            {canEdit && <th><span className="visually-hidden">Actions</span></th>}
           </tr>
-        ))}
-      </tbody>
-    </table>
+        </thead>
+        <tbody>
+          {sorted.map(e => (
+            <tr key={e.id}>
+              <td>{e.occurredOn}</td>
+              <td>{vendorName.get(e.vendorId) ?? '—'}</td>
+              <td>{categoryName.get(e.categoryId) ?? '—'}</td>
+              <td>{e.description ?? ''}</td>
+              <td className="spend-ledger__num">
+                {gbp(e.amountGbp)}
+                {e.currency !== 'GBP' && (
+                  <span className="spend-ledger__native"> ({formatCurrency(e.amount, e.currency)})</span>
+                )}
+              </td>
+              <td>{e.source}</td>
+              {canEdit && (
+                <td>
+                  <button
+                    type="button"
+                    onClick={() => onDelete(e.id)}
+                    disabled={isDeleting}
+                    aria-label={`Delete entry from ${e.occurredOn}`}
+                  >
+                    Delete
+                  </button>
+                </td>
+              )}
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
   )
 }

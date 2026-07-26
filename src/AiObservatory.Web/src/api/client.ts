@@ -303,9 +303,13 @@ export interface NewSpendEntry {
   entryKey: string | null
 }
 
-export const getSpendCategories = () => getJson<SpendCategory[]>('/spend/categories')
+// includeArchived defaults to false server-side; pass true so a historical row whose
+// category/vendor has since been archived can still resolve a display name (spec §8).
+export const getSpendCategories = (includeArchived = false) =>
+  getJson<SpendCategory[]>('/spend/categories', { includeArchived: includeArchived ? 'true' : undefined })
 
-export const getSpendVendors = () => getJson<SpendVendor[]>('/spend/vendors')
+export const getSpendVendors = (includeArchived = false) =>
+  getJson<SpendVendor[]>('/spend/vendors', { includeArchived: includeArchived ? 'true' : undefined })
 
 export const getSpendEntries = (from: string, to: string) =>
   getJson<SpendEntry[]>('/spend/entries', { from, to })

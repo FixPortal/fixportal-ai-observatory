@@ -7,11 +7,16 @@ import * as client from '../api/client'
 const categories = [{ id: 'c1', key: 'credits', displayName: 'Credits', colorVar: '--c', sortOrder: 1, archivedAt: null }]
 const vendors = [{ id: 'v1', key: 'anthropic', displayName: 'Anthropic', provider: 'anthropic', defaultCategoryId: 'c1', archivedAt: null }]
 
+// Computed relative to "now", like SpendPage's own 90-day window, so the default
+// occurredOn value (today) always falls inside it regardless of when the suite runs.
+const to = new Date()
+const from = new Date(to.getTime() - 90 * 86_400_000)
+
 function renderModal(onClose = vi.fn()) {
   const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } })
   return render(
     <QueryClientProvider client={qc}>
-      <SpendEntryModal categories={categories} vendors={vendors} onClose={onClose} />
+      <SpendEntryModal categories={categories} vendors={vendors} from={from} to={to} onClose={onClose} />
     </QueryClientProvider>,
   )
 }
@@ -39,6 +44,20 @@ describe('SpendEntryModal', () => {
     renderModal()
 
     fireEvent.change(screen.getByLabelText(/amount/i), { target: { value: '-5' } })
+    fireEvent.click(screen.getByRole('button', { name: /save/i }))
+
+    await waitFor(() => expect(screen.getByRole('alert')).toBeInTheDocument())
+    expect(post).not.toHaveBeenCalled()
+  })
+
+  it('refuses to save a date outside the visible window', async () => {
+    const post = vi.spyOn(client, 'postSpendEntries')
+    renderModal()
+
+    fireEvent.change(screen.getByLabelText(/amount/i), { target: { value: '80' } })
+    // Well before `from` -- there is no picker to widen the view and find this row
+    // again until phase 2, so an out-of-range save must never reach the server.
+    fireEvent.change(screen.getByLabelText(/date/i), { target: { value: '2000-01-01' } })
     fireEvent.click(screen.getByRole('button', { name: /save/i }))
 
     await waitFor(() => expect(screen.getByRole('alert')).toBeInTheDocument())

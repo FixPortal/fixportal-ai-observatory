@@ -6,6 +6,9 @@ interface SortableHeaderProps<T extends string> {
   sortField: T
   sortDirection: SortDirection
   onSort: (field: T) => void
+  /** Extra class(es) on the <th>, e.g. to right-align a numeric column's header
+   * over its right-aligned cells. Optional so every existing call site is unaffected. */
+  className?: string
 }
 
 export default function GitHubSortableHeader<T extends string>({
@@ -14,6 +17,7 @@ export default function GitHubSortableHeader<T extends string>({
   sortField,
   sortDirection,
   onSort,
+  className,
 }: SortableHeaderProps<T>) {
   const isActive = sortField === field
   let ariaSort: 'ascending' | 'descending' | 'none' = 'none'
@@ -22,7 +26,7 @@ export default function GitHubSortableHeader<T extends string>({
   if (isActive) indicatorSymbol = sortDirection === 'asc' ? '▲' : '▼'
 
   return (
-    <th className="sortable-header" aria-sort={ariaSort}>
+    <th className={`sortable-header ${className ?? ''}`.trim()} aria-sort={ariaSort}>
       <button type="button" className="sortable-header__content" onClick={() => onSort(field)}>
         {label}
         <span className={`sort-indicator ${isActive ? 'sort-indicator--active' : ''}`} aria-hidden="true">

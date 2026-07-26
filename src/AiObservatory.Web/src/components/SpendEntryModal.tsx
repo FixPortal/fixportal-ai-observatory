@@ -6,10 +6,17 @@ import { localDate } from '../api/queries'
 interface Props {
   categories: SpendCategory[]
   vendors: SpendVendor[]
+  /** The page's visible date range. Bounds the date input so a charge dated outside
+   * it cannot be saved and then simply not appear in the (currently unfiltered-by-date)
+   * ledger table -- there is no date picker to widen the view until phase 2. */
+  from: Date
+  to: Date
   onClose: () => void
 }
 
-export default function SpendEntryModal({ categories, vendors, onClose }: Props) {
+export default function SpendEntryModal({ categories, vendors, from, to, onClose }: Props) {
+  const minDate = localDate(from)
+  const maxDate = localDate(to)
   const qc = useQueryClient()
   const [occurredOn, setOccurredOn] = useState(() => localDate(new Date()))
   const [vendorId, setVendorId] = useState(vendors[0]?.id ?? '')
@@ -52,6 +59,14 @@ export default function SpendEntryModal({ categories, vendors, onClose }: Props)
     }
     if (!vendorId || !categoryId) {
       setFormError('Pick a vendor and a category')
+      return
+    }
+    // min/max on the input steer the native picker, but noValidate (above) means the
+    // form will still submit a typed-in out-of-range date. Without this check, a charge
+    // dated outside the visible window would save, return `created`, and then simply not
+    // appear -- there is no date picker to widen the view and find it until phase 2.
+    if (occurredOn < minDate || occurredOn > maxDate) {
+      setFormError(`Date must be between ${minDate} and ${maxDate}`)
       return
     }
 
@@ -97,6 +112,8 @@ export default function SpendEntryModal({ categories, vendors, onClose }: Props)
                   id="spend-entry-date"
                   className="sub-form__input"
                   type="date"
+                  min={minDate}
+                  max={maxDate}
                   value={occurredOn}
                   onChange={e => setOccurredOn(e.target.value)}
                 />

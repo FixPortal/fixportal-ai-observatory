@@ -147,13 +147,28 @@ export function useEmailStatus(): { configured: boolean | undefined } {
   return { configured: data?.configured }
 }
 
+// Live only — the pickers (SpendFilterBar, SpendEntryModal). A retired category or
+// vendor must not be selectable again.
 export function useSpendCategories(): SpendCategory[] {
-  const { data = [] } = useQuery({ queryKey: ['spend-categories'], queryFn: getSpendCategories })
+  const { data = [] } = useQuery({ queryKey: ['spend-categories'], queryFn: () => getSpendCategories() })
   return data
 }
 
 export function useSpendVendors(): SpendVendor[] {
-  const { data = [] } = useQuery({ queryKey: ['spend-vendors'], queryFn: getSpendVendors })
+  const { data = [] } = useQuery({ queryKey: ['spend-vendors'], queryFn: () => getSpendVendors() })
+  return data
+}
+
+// Includes archived rows, so a historical ledger entry can still resolve the display
+// name of a category/vendor that has since been retired (spec §8) — used for the
+// ledger table's name maps and SpendPage's largestCategory, never for a picker.
+export function useAllSpendCategories(): SpendCategory[] {
+  const { data = [] } = useQuery({ queryKey: ['spend-categories', 'all'], queryFn: () => getSpendCategories(true) })
+  return data
+}
+
+export function useAllSpendVendors(): SpendVendor[] {
+  const { data = [] } = useQuery({ queryKey: ['spend-vendors', 'all'], queryFn: () => getSpendVendors(true) })
   return data
 }
 
