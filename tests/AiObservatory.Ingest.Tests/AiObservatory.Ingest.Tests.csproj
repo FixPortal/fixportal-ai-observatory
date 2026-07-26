@@ -26,6 +26,7 @@
   </ItemGroup>
 
   <ItemGroup>
+    <ProjectReference Include="..\..\src\AiObservatory.Data\AiObservatory.Data.csproj" />
     <ProjectReference Include="..\..\src\AiObservatory.Ingest\AiObservatory.Ingest.csproj" />
   </ItemGroup>
 
