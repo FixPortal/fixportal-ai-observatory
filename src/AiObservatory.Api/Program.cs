@@ -83,7 +83,10 @@ builder.Services.AddSingleton<InsightResponseParser>();
 builder.Services.AddScoped<IInsightGenerator, InsightGenerator>();
 builder.Services.AddMemoryCache();
 // FxRateProvider is a transient typed client; only consume from scoped/transient services.
-builder.Services.AddHttpClient<FxRateProvider>();
+// Timeout bounded well below the 100s default: a slow Frankfurter must not stall a ledger
+// write for that long, and a large batch pays this per row (see FetchGbpRateAsync's
+// cancellation-vs-timeout handling for why a timeout here does not abort the whole batch).
+builder.Services.AddHttpClient<FxRateProvider>().ConfigureHttpClient(c => c.Timeout = TimeSpan.FromSeconds(10));
 builder.Services.AddHostedService<IntelligenceWorkerService>();
 
 // Fixed-window rate limit per client IP on the /api group, so an unauthenticated GET or a
