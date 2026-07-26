@@ -11,6 +11,9 @@ public class SpendCatalogEndpointsWafTests(AiObservatoryApiFactory factory)
     private static object NewCategory(string key) =>
         new { Key = key, DisplayName = "Code Review", ColorVar = "--spend-code-review", SortOrder = 10 };
 
+    private static object NewVendor(string key) =>
+        new { Key = key, DisplayName = "Anthropic", Provider = (string?)null };
+
     [Fact]
     public async Task PostCategory_CreatesAndListsIt()
     {
@@ -160,6 +163,63 @@ public class SpendCatalogEndpointsWafTests(AiObservatoryApiFactory factory)
 
         var list = await client.GetFromJsonAsync<JsonElement>("/api/spend/categories", TestContext.Current.CancellationToken);
         list.EnumerateArray().Select(c => c.GetProperty("key").GetString())
+            .Should().Contain(key, "un-archiving restores it to the default (non-archived) list");
+    }
+
+    [Fact]
+    public async Task PostVendor_WithDuplicateKey_IsRejected()
+    {
+        using var client = factory.CreateAdminClient();
+        var key = $"v-{Guid.NewGuid():N}";
+
+        await client.PostAsJsonAsync("/api/spend/vendors", NewVendor(key), TestContext.Current.CancellationToken);
+        var second = await client.PostAsJsonAsync("/api/spend/vendors", NewVendor(key), TestContext.Current.CancellationToken);
+
+        second.StatusCode.Should().Be(HttpStatusCode.Conflict);
+    }
+
+    [Fact]
+    public async Task ArchivedVendor_IsExcludedFromTheDefaultList()
+    {
+        using var client = factory.CreateAdminClient();
+        var key = $"v-{Guid.NewGuid():N}";
+
+        var created = await client.PostAsJsonAsync("/api/spend/vendors", NewVendor(key), TestContext.Current.CancellationToken);
+        var id = (await created.Content.ReadFromJsonAsync<JsonElement>(TestContext.Current.CancellationToken))
+            .GetProperty("id").GetGuid();
+
+        var patch = await client.PatchAsJsonAsync($"/api/spend/vendors/{id}",
+            new { Archived = true }, TestContext.Current.CancellationToken);
+        patch.StatusCode.Should().Be(HttpStatusCode.OK);
+
+        var list = await client.GetFromJsonAsync<JsonElement>("/api/spend/vendors", TestContext.Current.CancellationToken);
+        list.EnumerateArray().Select(v => v.GetProperty("key").GetString()).Should().NotContain(key);
+
+        var all = await client.GetFromJsonAsync<JsonElement>("/api/spend/vendors?includeArchived=true",
+            TestContext.Current.CancellationToken);
+        all.EnumerateArray().Select(v => v.GetProperty("key").GetString())
+            .Should().Contain(key, "history still references archived vendors");
+    }
+
+    [Fact]
+    public async Task PatchVendor_Unarchiving_RestoresItToTheList()
+    {
+        using var client = factory.CreateAdminClient();
+        var key = $"v-{Guid.NewGuid():N}";
+
+        var created = await client.PostAsJsonAsync("/api/spend/vendors", NewVendor(key), TestContext.Current.CancellationToken);
+        var id = (await created.Content.ReadFromJsonAsync<JsonElement>(TestContext.Current.CancellationToken))
+            .GetProperty("id").GetGuid();
+
+        await client.PatchAsJsonAsync($"/api/spend/vendors/{id}",
+            new { Archived = true }, TestContext.Current.CancellationToken);
+
+        var unarchive = await client.PatchAsJsonAsync($"/api/spend/vendors/{id}",
+            new { Archived = false }, TestContext.Current.CancellationToken);
+        unarchive.StatusCode.Should().Be(HttpStatusCode.OK);
+
+        var list = await client.GetFromJsonAsync<JsonElement>("/api/spend/vendors", TestContext.Current.CancellationToken);
+        list.EnumerateArray().Select(v => v.GetProperty("key").GetString())
             .Should().Contain(key, "un-archiving restores it to the default (non-archived) list");
     }
 
