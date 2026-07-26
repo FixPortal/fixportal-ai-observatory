@@ -8,6 +8,7 @@ import CavemanStatsPanel from '../components/CavemanStatsPanel'
 import ReportingPage from './ReportingPage'
 import ActivityPage from './ActivityPage'
 import GitHubPage from './GitHubPage'
+import SpendPage from './SpendPage'
 import Footer from '../components/Footer'
 import { BrandWordmark } from '../design/BrandWordmark'
 import { ThemeToggle } from '../design/ThemeToggle'
@@ -16,7 +17,7 @@ import { ApiError } from '../api/client'
 import { authEnabled, isReadonly, signIn } from '../auth/msal'
 import { useTheme } from '../theme/useTheme'
 
-type DashboardTab = 'overview' | 'adversarial-review' | 'reporting' | 'activity' | 'github'
+type DashboardTab = 'overview' | 'adversarial-review' | 'reporting' | 'activity' | 'github' | 'spend'
 
 const TABS: { id: DashboardTab; label: string; readonlyHidden?: boolean }[] = [
   { id: 'overview', label: 'Overview' },
@@ -24,6 +25,7 @@ const TABS: { id: DashboardTab; label: string; readonlyHidden?: boolean }[] = [
   { id: 'reporting', label: 'Reporting' },
   { id: 'activity', label: 'Activity', readonlyHidden: true },
   { id: 'github', label: 'GitHub', readonlyHidden: true },
+  { id: 'spend', label: 'Spend', readonlyHidden: true },
 ]
 
 // recharts is heavy and the charts sit below the fold — code-split them so the
@@ -145,6 +147,7 @@ export default function Dashboard() {
         {tab === 'reporting' && <ReportingPage />}
         {tab === 'activity' && <ActivityPage />}
         {tab === 'github' && <GitHubPage />}
+        {tab === 'spend' && <SpendPage />}
       </div>
       </main>
       <Footer />
