@@ -1,0 +1,355 @@
+using System.Globalization;
+using AiObservatory.Api.Services.Fx;
+using AiObservatory.Data;
+using AiObservatory.Data.Entities;
+using Microsoft.EntityFrameworkCore;
+using NodaTime;
+using Npgsql;
+
+namespace AiObservatory.Api.Endpoints;
+
+// Request records are instantiated by ASP.NET Core model binding.
+// ReSharper disable ClassNeverInstantiated.Global
+
+/// <summary>
+/// The ledger itself. <c>POST</c> always takes an array — the manual form posts an array of
+/// one — which is what lets the form, CSV import and the tax-portal feed share a single
+/// endpoint with one contract and one code path.
+/// </summary>
+public static class SpendEntriesEndpoints
+{
+    // ReSharper disable once UnusedMethodReturnValue.Global
+    public static IEndpointRouteBuilder MapSpendEntriesEndpoints(this IEndpointRouteBuilder app)
+    {
+        app.MapGet("/spend/entries", GetEntriesAsync);
+        app.MapPost("/spend/entries", RecordEntriesAsync);
+        app.MapPatch("/spend/entries/{id:guid}", PatchEntryAsync);
+        app.MapDelete("/spend/entries/{id:guid}", DeleteEntryAsync);
+
+        return app;
+    }
+
+    private const int MaxBatch = 1000;
+
+    private static async Task<IResult> RecordEntriesAsync(
+        SpendEntryRequest[] requests,
+        AiObservatoryDbContext db,
+        FxRateProvider fx,
+        IClock clock,
+        CancellationToken ct)
+    {
+        if (requests.Length == 0)
+        {
+            return Results.BadRequest("Provide at least one entry");
+        }
+
+        if (requests.Length > MaxBatch)
+        {
+            return Results.BadRequest($"At most {MaxBatch} entries per request");
+        }
+
+        // Loaded once rather than per row: a CSV import is overwhelmingly the same handful
+        // of vendors and categories repeated.
+        var vendorIds = await db.SpendVendors.AsNoTracking().Select(v => v.Id).ToHashSetAsync(ct);
+        var categoryIds = await db.SpendCategories.AsNoTracking().Select(c => c.Id).ToHashSetAsync(ct);
+
+        var results = new List<SpendEntryResult>(requests.Length);
+        var now = clock.GetCurrentInstant();
+
+        foreach (var req in requests)
+        {
+            var rejection = Validate(req, vendorIds, categoryIds, out var source, out var currency);
+            if (rejection is not null)
+            {
+                results.Add(new SpendEntryResult(null, "rejected", rejection));
+                continue;
+            }
+
+            decimal rate;
+            try
+            {
+                rate = await fx.GetGbpRateOnAsync(currency, req.OccurredOn, ct);
+            }
+            catch (FxUnavailableException ex)
+            {
+                // Rather than freeze an undetectably wrong conversion onto a permanent
+                // ledger row, reject just this row and let the rest of the batch land.
+                results.Add(new SpendEntryResult(null, "rejected", ex.Message));
+                continue;
+            }
+
+            var entry = new SpendEntry
+            {
+                OccurredOn = req.OccurredOn,
+                VendorId = req.VendorId,
+                CategoryId = req.CategoryId,
+                Amount = req.Amount,
+                Currency = currency,
+                // Frozen here, deliberately. See SpendEntry.AmountGbp.
+                AmountGbp = decimal.Round(req.Amount * rate, 4, MidpointRounding.ToEven),
+                FxRate = rate,
+                Description = string.IsNullOrWhiteSpace(req.Description) ? null : req.Description.Trim(),
+                Source = source,
+                EntryKey = string.IsNullOrWhiteSpace(req.EntryKey) ? null : req.EntryKey.Trim(),
+                RecordedAt = now,
+            };
+
+            db.SpendEntries.Add(entry);
+            try
+            {
+                await db.SaveChangesAsync(ct);
+                results.Add(new SpendEntryResult(entry.Id, "created", null));
+            }
+            catch (DbUpdateException ex) when (
+                entry.EntryKey is not null
+                && ex.InnerException is PostgresException { SqlState: PostgresErrorCodes.UniqueViolation })
+            {
+                // The row already exists for this source and key. Report it rather than
+                // failing the batch: re-importing an overlapping statement is routine.
+                db.Entry(entry).State = EntityState.Detached;
+                var existingId = await db.SpendEntries.AsNoTracking()
+                    .Where(e => e.Source == entry.Source && e.EntryKey == entry.EntryKey)
+                    .Select(e => (Guid?)e.Id)
+                    .FirstOrDefaultAsync(ct);
+                results.Add(new SpendEntryResult(existingId, "duplicate", null));
+            }
+        }
+
+        return Results.Ok(results);
+    }
+
+    /// <summary>Returns a rejection reason, or null when the request is sound.</summary>
+    private static string? Validate(
+        SpendEntryRequest req,
+        HashSet<Guid> vendorIds,
+        HashSet<Guid> categoryIds,
+        out SpendSource source,
+        out string currency)
+    {
+        source = SpendSource.Manual;
+        currency = "GBP";
+
+        if (!vendorIds.Contains(req.VendorId))
+        {
+            return $"Unknown VendorId: {req.VendorId}";
+        }
+
+        if (!categoryIds.Contains(req.CategoryId))
+        {
+            return $"Unknown CategoryId: {req.CategoryId}";
+        }
+
+        if (req.Amount < 0)
+        {
+            return "Amount must be non-negative";
+        }
+
+        currency = (req.Currency ?? "GBP").Trim().ToUpperInvariant();
+        if (currency.Length != 3 || !currency.All(char.IsAsciiLetterUpper))
+        {
+            return $"Currency must be a 3-letter ISO 4217 code, got: {req.Currency}";
+        }
+
+        if (req.Description is { Length: > 200 })
+        {
+            return "Description must be 200 characters or fewer";
+        }
+
+        if (req.EntryKey is { Length: > 200 })
+        {
+            return "EntryKey must be 200 characters or fewer";
+        }
+
+        if (!Enum.TryParse(req.Source, ignoreCase: true, out source) || !Enum.IsDefined(source))
+        {
+            return $"Unknown source: {req.Source}";
+        }
+
+        return null;
+    }
+
+    private static async Task<IResult> GetEntriesAsync(
+        AiObservatoryDbContext db,
+        CancellationToken ct,
+        string? from = null,
+        string? to = null,
+        Guid? vendorId = null,
+        Guid? categoryId = null,
+        int limit = 5000)
+    {
+        // Bound as string and parsed here rather than LocalDate?: ASP.NET Core minimal-API
+        // query binding needs a TryParse in the exact shape it expects, which NodaTime's
+        // LocalDate does not offer. AggregatesEndpoints.GetAggregatesAsync takes the same
+        // approach for the same reason.
+        if (ParseDate(from, out var fromDate) is { } fromError)
+        {
+            return Results.BadRequest(fromError);
+        }
+        if (ParseDate(to, out var toDate) is { } toError)
+        {
+            return Results.BadRequest(toError);
+        }
+
+        var q = db.SpendEntries.AsNoTracking();
+        if (fromDate is { } f) { q = q.Where(e => e.OccurredOn >= f); }
+        if (toDate is { } t) { q = q.Where(e => e.OccurredOn <= t); }
+        if (vendorId is { } v) { q = q.Where(e => e.VendorId == v); }
+        if (categoryId is { } c) { q = q.Where(e => e.CategoryId == c); }
+
+        // Hard ceiling so an unbounded range cannot OOM the response; callers page by date.
+        var capped = Math.Clamp(limit, 1, 5000);
+
+        var rows = await q
+            .OrderByDescending(e => e.OccurredOn).ThenByDescending(e => e.RecordedAt)
+            .Take(capped)
+            .ToListAsync(ct);
+
+        return Results.Ok(rows);
+    }
+
+    /// <summary>Parses an optional yyyy-MM-dd query value, returning an error message on failure.</summary>
+    private static string? ParseDate(string? raw, out LocalDate? parsed)
+    {
+        parsed = null;
+        if (raw is null)
+        {
+            return null;
+        }
+
+        if (!DateOnly.TryParseExact(raw, "yyyy-MM-dd", CultureInfo.InvariantCulture,
+                DateTimeStyles.None, out var dateOnly))
+        {
+            return "from/to must be yyyy-MM-dd";
+        }
+
+        parsed = LocalDate.FromDateOnly(dateOnly);
+        return null;
+    }
+
+    private static async Task<IResult> PatchEntryAsync(
+        Guid id,
+        SpendEntryPatchRequest req,
+        AiObservatoryDbContext db,
+        FxRateProvider fx,
+        CancellationToken ct)
+    {
+        var entry = await db.SpendEntries.FindAsync([id], ct);
+        if (entry is null)
+        {
+            return Results.NotFound();
+        }
+
+        if (req.Amount is { } amount && amount < 0)
+        {
+            return Results.BadRequest("Amount must be non-negative");
+        }
+
+        if (req.Description is { Length: > 200 })
+        {
+            return Results.BadRequest("Description must be 200 characters or fewer");
+        }
+
+        if (await ValidateReferencesAsync(req, db, ct) is { } refError)
+        {
+            return Results.BadRequest(refError);
+        }
+
+        ApplyScalarFields(entry, req);
+
+        // Amount, currency or date changing all invalidate the stored conversion, so
+        // re-resolve at the (possibly new) charge date rather than leave a stale GBP figure.
+        if ((req.Amount is not null || req.Currency is not null || req.OccurredOn is not null)
+            && await ReResolveFxAsync(entry, req.Currency, fx, ct) is { } fxError)
+        {
+            return Results.BadRequest(fxError);
+        }
+
+        await db.SaveChangesAsync(ct);
+        return Results.Ok(entry);
+    }
+
+    /// <summary>Applies every field the request set, after validation has passed.</summary>
+    private static void ApplyScalarFields(SpendEntry entry, SpendEntryPatchRequest req)
+    {
+        if (req.Amount is { } amount) { entry.Amount = amount; }
+        if (req.OccurredOn is { } occurredOn) { entry.OccurredOn = occurredOn; }
+        if (req.VendorId is { } vendorId) { entry.VendorId = vendorId; }
+        if (req.CategoryId is { } categoryId) { entry.CategoryId = categoryId; }
+        if (req.Description is { } description)
+        {
+            entry.Description = string.IsNullOrWhiteSpace(description) ? null : description.Trim();
+        }
+    }
+
+    /// <summary>
+    /// Checks that a changed VendorId or CategoryId still refers to a real row. Without this,
+    /// an unknown id would reach SaveChangesAsync and fail as a foreign-key DbUpdateException
+    /// (a 500) rather than the clean 400 the POST path already gives for the same mistake.
+    /// </summary>
+    private static async Task<string?> ValidateReferencesAsync(
+        SpendEntryPatchRequest req, AiObservatoryDbContext db, CancellationToken ct)
+    {
+        if (req.VendorId is { } vendorId && !await db.SpendVendors.AnyAsync(v => v.Id == vendorId, ct))
+        {
+            return $"Unknown VendorId: {vendorId}";
+        }
+
+        if (req.CategoryId is { } categoryId && !await db.SpendCategories.AnyAsync(c => c.Id == categoryId, ct))
+        {
+            return $"Unknown CategoryId: {categoryId}";
+        }
+
+        return null;
+    }
+
+    /// <summary>Re-resolves currency, FX rate and AmountGbp on <paramref name="entry"/>; returns an error, or null on success.</summary>
+    private static async Task<string?> ReResolveFxAsync(
+        SpendEntry entry, string? requestedCurrency, FxRateProvider fx, CancellationToken ct)
+    {
+        var currency = (requestedCurrency ?? entry.Currency).Trim().ToUpperInvariant();
+        if (currency.Length != 3 || !currency.All(char.IsAsciiLetterUpper))
+        {
+            return $"Currency must be a 3-letter ISO 4217 code, got: {requestedCurrency}";
+        }
+
+        entry.Currency = currency;
+        try
+        {
+            entry.FxRate = await fx.GetGbpRateOnAsync(currency, entry.OccurredOn, ct);
+        }
+        catch (FxUnavailableException ex)
+        {
+            return ex.Message;
+        }
+
+        entry.AmountGbp = decimal.Round(entry.Amount * entry.FxRate, 4, MidpointRounding.ToEven);
+        return null;
+    }
+
+    private static async Task<IResult> DeleteEntryAsync(Guid id, AiObservatoryDbContext db, CancellationToken ct)
+    {
+        var deleted = await db.SpendEntries.Where(e => e.Id == id).ExecuteDeleteAsync(ct);
+        return deleted == 0 ? Results.NotFound() : Results.NoContent();
+    }
+}
+
+public sealed record SpendEntryRequest(
+    LocalDate OccurredOn,
+    Guid VendorId,
+    Guid CategoryId,
+    decimal Amount,
+    string? Currency,
+    string? Description,
+    string Source,
+    string? EntryKey);
+
+public sealed record SpendEntryPatchRequest(
+    LocalDate? OccurredOn,
+    Guid? VendorId,
+    Guid? CategoryId,
+    decimal? Amount,
+    string? Currency,
+    string? Description);
+
+/// <param name="Status">created | duplicate | rejected</param>
+public sealed record SpendEntryResult(Guid? Id, string Status, string? Reason);
