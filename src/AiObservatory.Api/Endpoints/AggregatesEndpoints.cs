@@ -83,6 +83,12 @@ public static class AggregatesEndpoints
                 a.OutputTokens,
                 a.CacheReadTokens,
                 a.CacheWriteTokens,
+                // The one-hour SUBSET of CacheWriteTokens, not an additional total — do not
+                // add the two. Exposed because it is the only way to confirm from outside the
+                // database that a producer is sending the TTL split at all; without it, a
+                // producer silently reverting to all-five-minute looks identical to a correct
+                // one on every other field, while understating cost by ~60% on this line.
+                a.CacheWrite1hTokens,
                 a.CostUsd,
                 a.RequestCount
             })
