@@ -29,6 +29,28 @@ namespace AiObservatory.Data.Migrations
                 });
 
             migrationBuilder.CreateTable(
+                name: "SpendVendors",
+                columns: table => new
+                {
+                    Id = table.Column<Guid>(type: "uuid", nullable: false),
+                    Key = table.Column<string>(type: "character varying(60)", maxLength: 60, nullable: false),
+                    DisplayName = table.Column<string>(type: "character varying(100)", maxLength: 100, nullable: false),
+                    Provider = table.Column<string>(type: "text", nullable: true),
+                    DefaultCategoryId = table.Column<Guid>(type: "uuid", nullable: true),
+                    ArchivedAt = table.Column<Instant>(type: "timestamp with time zone", nullable: true)
+                },
+                constraints: table =>
+                {
+                    table.PrimaryKey("PK_SpendVendors", x => x.Id);
+                    table.ForeignKey(
+                        name: "FK_SpendVendors_SpendCategories_DefaultCategoryId",
+                        column: x => x.DefaultCategoryId,
+                        principalTable: "SpendCategories",
+                        principalColumn: "Id",
+                        onDelete: ReferentialAction.Restrict);
+                });
+
+            migrationBuilder.CreateTable(
                 name: "SpendEntries",
                 columns: table => new
                 {
@@ -51,22 +73,18 @@ namespace AiObservatory.Data.Migrations
                     table.CheckConstraint("CK_SpendEntry_Amount_NonNegative", "\"Amount\" >= 0");
                     table.CheckConstraint("CK_SpendEntry_AmountGbp_NonNegative", "\"AmountGbp\" >= 0");
                     table.CheckConstraint("CK_SpendEntry_FxRate_Positive", "\"FxRate\" > 0");
-                });
-
-            migrationBuilder.CreateTable(
-                name: "SpendVendors",
-                columns: table => new
-                {
-                    Id = table.Column<Guid>(type: "uuid", nullable: false),
-                    Key = table.Column<string>(type: "character varying(60)", maxLength: 60, nullable: false),
-                    DisplayName = table.Column<string>(type: "character varying(100)", maxLength: 100, nullable: false),
-                    Provider = table.Column<string>(type: "text", nullable: true),
-                    DefaultCategoryId = table.Column<Guid>(type: "uuid", nullable: true),
-                    ArchivedAt = table.Column<Instant>(type: "timestamp with time zone", nullable: true)
-                },
-                constraints: table =>
-                {
-                    table.PrimaryKey("PK_SpendVendors", x => x.Id);
+                    table.ForeignKey(
+                        name: "FK_SpendEntries_SpendCategories_CategoryId",
+                        column: x => x.CategoryId,
+                        principalTable: "SpendCategories",
+                        principalColumn: "Id",
+                        onDelete: ReferentialAction.Restrict);
+                    table.ForeignKey(
+                        name: "FK_SpendEntries_SpendVendors_VendorId",
+                        column: x => x.VendorId,
+                        principalTable: "SpendVendors",
+                        principalColumn: "Id",
+                        onDelete: ReferentialAction.Restrict);
                 });
 
             migrationBuilder.CreateIndex(
@@ -98,6 +116,11 @@ namespace AiObservatory.Data.Migrations
                 column: "VendorId");
 
             migrationBuilder.CreateIndex(
+                name: "IX_SpendVendors_DefaultCategoryId",
+                table: "SpendVendors",
+                column: "DefaultCategoryId");
+
+            migrationBuilder.CreateIndex(
                 name: "IX_SpendVendors_Key",
                 table: "SpendVendors",
                 column: "Key",
@@ -108,13 +131,13 @@ namespace AiObservatory.Data.Migrations
         protected override void Down(MigrationBuilder migrationBuilder)
         {
             migrationBuilder.DropTable(
-                name: "SpendCategories");
-
-            migrationBuilder.DropTable(
                 name: "SpendEntries");
 
             migrationBuilder.DropTable(
                 name: "SpendVendors");
+
+            migrationBuilder.DropTable(
+                name: "SpendCategories");
         }
     }
 }
