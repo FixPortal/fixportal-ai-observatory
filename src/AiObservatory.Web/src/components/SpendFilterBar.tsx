@@ -8,13 +8,14 @@ interface Props {
   onCategoryChange: (id: string | undefined) => void
   onVendorChange: (id: string | undefined) => void
   onAddEntry: () => void
+  onManageCatalog: () => void
   canEdit: boolean
 }
 
 /** Region 1. One filter state, lifted to SpendPage, drives every other region. */
 export default function SpendFilterBar({
   categories, vendors, categoryId, vendorId,
-  onCategoryChange, onVendorChange, onAddEntry, canEdit,
+  onCategoryChange, onVendorChange, onAddEntry, onManageCatalog, canEdit,
 }: Props) {
   return (
     <div className="spend-filters">
@@ -41,9 +42,14 @@ export default function SpendFilterBar({
       </label>
 
       {canEdit && (
-        <button type="button" className="spend-filters__add" onClick={onAddEntry}>
-          Add entry
-        </button>
+        <>
+          <button type="button" className="spend-filters__add" onClick={onAddEntry}>
+            Add entry
+          </button>
+          <button type="button" className="spend-filters__add" onClick={onManageCatalog}>
+            Manage catalog
+          </button>
+        </>
       )}
     </div>
   )

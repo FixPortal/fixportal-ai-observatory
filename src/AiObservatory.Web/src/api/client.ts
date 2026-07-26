@@ -29,7 +29,13 @@ async function request(path: string, init: RequestInit = {}): Promise<Response> 
     ...init,
     headers: { ...(init.headers as Record<string, string>), ...(await authHeaders()) },
   })
-  if (!res.ok) throw new ApiError(res.status, `${init.method ?? 'GET'} ${path} failed: ${res.status}`)
+  if (!res.ok) {
+    // The catalog write endpoints return a plain-text body on 400/409
+    // (Results.BadRequest/Results.Conflict) -- a duplicate key or a bad slug needs to
+    // read as that message, not a generic "failed: 409".
+    const bodyText = res.text ? await res.text().catch(() => '') : ''
+    throw new ApiError(res.status, bodyText || `${init.method ?? 'GET'} ${path} failed: ${res.status}`)
+  }
   return res
 }
 
@@ -310,6 +316,55 @@ export const getSpendCategories = (includeArchived = false) =>
 
 export const getSpendVendors = (includeArchived = false) =>
   getJson<SpendVendor[]>('/spend/vendors', { includeArchived: includeArchived ? 'true' : undefined })
+
+export interface NewSpendCategory {
+  key: string
+  displayName: string
+  colorVar: string | null
+  sortOrder: number
+}
+
+// All fields optional -- PATCH only touches what is present in the body.
+export interface SpendCategoryPatch {
+  displayName?: string
+  colorVar?: string
+  sortOrder?: number
+  archived?: boolean
+}
+
+export const createSpendCategory = async (body: NewSpendCategory): Promise<SpendCategory> => {
+  const res = await request('/spend/categories', { method: 'POST', headers: jsonHeaders, body: JSON.stringify(body) })
+  return res.json() as Promise<SpendCategory>
+}
+
+export const patchSpendCategory = async (id: string, body: SpendCategoryPatch): Promise<SpendCategory> => {
+  const res = await request(`/spend/categories/${id}`, { method: 'PATCH', headers: jsonHeaders, body: JSON.stringify(body) })
+  return res.json() as Promise<SpendCategory>
+}
+
+export interface NewSpendVendor {
+  key: string
+  displayName: string
+  provider: string | null
+  defaultCategoryId: string | null
+}
+
+// The panel only ever renames or archives an existing vendor -- repointing
+// DefaultCategoryId post-creation is out of scope for this panel (see report).
+export interface SpendVendorPatch {
+  displayName?: string
+  archived?: boolean
+}
+
+export const createSpendVendor = async (body: NewSpendVendor): Promise<SpendVendor> => {
+  const res = await request('/spend/vendors', { method: 'POST', headers: jsonHeaders, body: JSON.stringify(body) })
+  return res.json() as Promise<SpendVendor>
+}
+
+export const patchSpendVendor = async (id: string, body: SpendVendorPatch): Promise<SpendVendor> => {
+  const res = await request(`/spend/vendors/${id}`, { method: 'PATCH', headers: jsonHeaders, body: JSON.stringify(body) })
+  return res.json() as Promise<SpendVendor>
+}
 
 export const getSpendEntries = (from: string, to: string) =>
   getJson<SpendEntry[]>('/spend/entries', { from, to })
