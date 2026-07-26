@@ -6,6 +6,21 @@ namespace AiObservatory.Data;
 public class AiObservatoryDbContext(DbContextOptions<AiObservatoryDbContext> options)
     : DbContext(options)
 {
+    // Seed ids for SpendCategory/SpendVendor (spec §2). Fixed rather than Guid.NewGuid()
+    // so HasData produces the same INSERT every time a migration is scaffolded -- a
+    // random id here would make every future `dotnet ef migrations add` see a phantom
+    // diff and try to delete-and-recreate these rows.
+    private static readonly Guid CodeReviewCategoryId = Guid.Parse("11111111-1111-1111-1111-111111111101");
+    private static readonly Guid CreditsCategoryId = Guid.Parse("11111111-1111-1111-1111-111111111102");
+    private static readonly Guid CiCategoryId = Guid.Parse("11111111-1111-1111-1111-111111111103");
+    private static readonly Guid SubscriptionCategoryId = Guid.Parse("11111111-1111-1111-1111-111111111104");
+
+    private static readonly Guid AnthropicVendorId = Guid.Parse("22222222-2222-2222-2222-222222222201");
+    private static readonly Guid GitHubActionsVendorId = Guid.Parse("22222222-2222-2222-2222-222222222202");
+    private static readonly Guid CodeRabbitVendorId = Guid.Parse("22222222-2222-2222-2222-222222222203");
+    private static readonly Guid GitarVendorId = Guid.Parse("22222222-2222-2222-2222-222222222204");
+    private static readonly Guid MoonshotVendorId = Guid.Parse("22222222-2222-2222-2222-222222222205");
+
     public DbSet<UsageEvent> UsageEvents => Set<UsageEvent>();
     public DbSet<DailyAggregate> DailyAggregates => Set<DailyAggregate>();
     public DbSet<Subscription> Subscriptions => Set<Subscription>();
@@ -65,6 +80,15 @@ public class AiObservatoryDbContext(DbContextOptions<AiObservatoryDbContext> opt
             b.Property(c => c.DisplayName).HasMaxLength(100);
             b.Property(c => c.ColorVar).HasMaxLength(60);
             b.HasIndex(c => c.Key).IsUnique();
+
+            // Seeded so the entry form's pickers are non-empty on first deploy, rather than
+            // an empty select and no way to add the vendors/categories that make it usable
+            // (spec §2 names exactly these four categories).
+            b.HasData(
+                new SpendCategory { Id = CodeReviewCategoryId, Key = "code-review", DisplayName = "Code Review", ColorVar = "--spend-code-review", SortOrder = 10 },
+                new SpendCategory { Id = CreditsCategoryId, Key = "credits", DisplayName = "Credits", ColorVar = "--spend-credits", SortOrder = 20 },
+                new SpendCategory { Id = CiCategoryId, Key = "ci", DisplayName = "CI", ColorVar = "--spend-ci", SortOrder = 30 },
+                new SpendCategory { Id = SubscriptionCategoryId, Key = "subscription", DisplayName = "Subscription", ColorVar = "--spend-subscription", SortOrder = 40 });
         });
 
         modelBuilder.Entity<SpendVendor>(b =>
@@ -81,6 +105,17 @@ public class AiObservatoryDbContext(DbContextOptions<AiObservatoryDbContext> opt
              .WithMany()
              .HasForeignKey(v => v.DefaultCategoryId)
              .OnDelete(DeleteBehavior.Restrict);
+
+            // Provider is null for CodeRabbit, Gitar and GitHub Actions -- they have no
+            // tokens to meter, which is the entire point of a separate vendor axis (spec §2).
+            // Never assign one of these a Provider "helpfully"; that would fabricate a
+            // token-estimate comparison that was never possible.
+            b.HasData(
+                new SpendVendor { Id = AnthropicVendorId, Key = "anthropic", DisplayName = "Anthropic", Provider = Provider.Anthropic, DefaultCategoryId = CreditsCategoryId },
+                new SpendVendor { Id = GitHubActionsVendorId, Key = "github-actions", DisplayName = "GitHub Actions", Provider = null, DefaultCategoryId = CiCategoryId },
+                new SpendVendor { Id = CodeRabbitVendorId, Key = "coderabbit", DisplayName = "CodeRabbit", Provider = null, DefaultCategoryId = CodeReviewCategoryId },
+                new SpendVendor { Id = GitarVendorId, Key = "gitar", DisplayName = "Gitar", Provider = null, DefaultCategoryId = CodeReviewCategoryId },
+                new SpendVendor { Id = MoonshotVendorId, Key = "moonshot", DisplayName = "Moonshot", Provider = Provider.Moonshot, DefaultCategoryId = SubscriptionCategoryId });
         });
 
         modelBuilder.Entity<SpendEntry>(b =>
