@@ -196,6 +196,11 @@ public static class SpendEntriesEndpoints
             return Results.BadRequest(toError);
         }
 
+        if (fromDate is { } fromBound && toDate is { } toBound && fromBound > toBound)
+        {
+            return Results.BadRequest("from must be on or before to");
+        }
+
         var q = db.SpendEntries.AsNoTracking();
         if (fromDate is { } f) { q = q.Where(e => e.OccurredOn >= f); }
         if (toDate is { } t) { q = q.Where(e => e.OccurredOn <= t); }

@@ -18,10 +18,12 @@ public static class SpendCatalogEndpoints
     public static IEndpointRouteBuilder MapSpendCatalogEndpoints(this IEndpointRouteBuilder app)
     {
         app.MapGet("/spend/categories", GetCategoriesAsync);
+        app.MapGet("/spend/categories/{id:guid}", GetCategoryByIdAsync).WithName("GetSpendCategoryById");
         app.MapPost("/spend/categories", CreateCategoryAsync);
         app.MapPatch("/spend/categories/{id:guid}", PatchCategoryAsync);
 
         app.MapGet("/spend/vendors", GetVendorsAsync);
+        app.MapGet("/spend/vendors/{id:guid}", GetVendorByIdAsync).WithName("GetSpendVendorById");
         app.MapPost("/spend/vendors", CreateVendorAsync);
         app.MapPatch("/spend/vendors/{id:guid}", PatchVendorAsync);
 
@@ -38,6 +40,12 @@ public static class SpendCatalogEndpoints
         }
 
         return Results.Ok(await q.OrderBy(c => c.SortOrder).ThenBy(c => c.DisplayName).ToListAsync(ct));
+    }
+
+    private static async Task<IResult> GetCategoryByIdAsync(Guid id, AiObservatoryDbContext db, CancellationToken ct)
+    {
+        var category = await db.SpendCategories.AsNoTracking().FirstOrDefaultAsync(c => c.Id == id, ct);
+        return category is not null ? Results.Ok(category) : Results.NotFound();
     }
 
     private static async Task<IResult> CreateCategoryAsync(
@@ -68,7 +76,7 @@ public static class SpendCatalogEndpoints
         };
         db.SpendCategories.Add(category);
         await db.SaveChangesAsync(ct);
-        return Results.Created($"/api/spend/categories/{category.Id}", category);
+        return Results.CreatedAtRoute("GetSpendCategoryById", new { id = category.Id }, category);
     }
 
     private static async Task<IResult> PatchCategoryAsync(
@@ -109,6 +117,12 @@ public static class SpendCatalogEndpoints
         }
 
         return Results.Ok(await q.OrderBy(v => v.DisplayName).ToListAsync(ct));
+    }
+
+    private static async Task<IResult> GetVendorByIdAsync(Guid id, AiObservatoryDbContext db, CancellationToken ct)
+    {
+        var vendor = await db.SpendVendors.AsNoTracking().FirstOrDefaultAsync(v => v.Id == id, ct);
+        return vendor is not null ? Results.Ok(vendor) : Results.NotFound();
     }
 
     private static async Task<IResult> CreateVendorAsync(
@@ -152,7 +166,7 @@ public static class SpendCatalogEndpoints
         };
         db.SpendVendors.Add(vendor);
         await db.SaveChangesAsync(ct);
-        return Results.Created($"/api/spend/vendors/{vendor.Id}", vendor);
+        return Results.CreatedAtRoute("GetSpendVendorById", new { id = vendor.Id }, vendor);
     }
 
     private static async Task<IResult> PatchVendorAsync(

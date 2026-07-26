@@ -14,7 +14,7 @@ internal sealed class StubHttpMessageHandler(HttpStatusCode status, string body)
 {
     public List<string> Requested { get; } = [];
 
-    protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken ct)
+    protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
     {
         Requested.Add(request.RequestUri!.ToString());
         return Task.FromResult(new HttpResponseMessage(status)

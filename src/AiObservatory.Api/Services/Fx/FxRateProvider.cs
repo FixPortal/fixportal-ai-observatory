@@ -89,8 +89,11 @@ public class FxRateProvider(HttpClient http, IMemoryCache cache, ILogger<FxRateP
             var resp = await http.GetFromJsonAsync<FrankfurterResponse>(url, ct);
             return resp?.Rates is { } r && r.TryGetValue("GBP", out var gbp) ? gbp : 0m;
         }
-        catch (Exception ex)
+        catch (Exception ex) when (ex is not OperationCanceledException)
         {
+            // A client disconnect mid-request must abort the write, not silently land at
+            // the 0.79 fallback rate -- the ledger is the first caller where that would
+            // freeze a permanently wrong row rather than just mis-render an estimate.
             logger.LogWarning(ex, "FX fetch failed for {Label}", label);
             return 0m;
         }

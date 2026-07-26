@@ -330,6 +330,56 @@ public class SpendEntriesEndpointsWafTests(AiObservatoryApiFactory factory)
             "a description-only patch must not re-resolve FX -- that would defeat the freeze");
     }
 
+    [Fact]
+    public async Task DeletingAnEntryReturnsNoContent()
+    {
+        using var client = factory.CreateAdminClient();
+        var ct = TestContext.Current.CancellationToken;
+        var (categoryId, vendorId) = await SeedCatalogAsync(client);
+        var id = await CreateEntryAsync(client, categoryId, vendorId);
+
+        var response = await client.DeleteAsync($"/api/spend/entries/{id}", ct);
+
+        response.StatusCode.Should().Be(HttpStatusCode.NoContent);
+    }
+
+    [Fact]
+    public async Task DeletingAnUnknownIdIsNotFound()
+    {
+        using var client = factory.CreateAdminClient();
+
+        var response = await client.DeleteAsync(
+            $"/api/spend/entries/{Guid.NewGuid()}", TestContext.Current.CancellationToken);
+
+        response.StatusCode.Should().Be(HttpStatusCode.NotFound);
+    }
+
+    /// <summary>
+    /// DELETE is the only destructive operation the UI exposes -- prove it removes
+    /// exactly the targeted row and leaves every other row, and the total, untouched.
+    /// </summary>
+    [Fact]
+    public async Task DeletingOneEntryLeavesTheOthersAndTheTotalIntact()
+    {
+        using var client = factory.CreateAdminClient();
+        var ct = TestContext.Current.CancellationToken;
+        var (categoryId, vendorId) = await SeedCatalogAsync(client);
+        var keptA = await CreateEntryAsync(client, categoryId, vendorId, amount: 30m);
+        var toDelete = await CreateEntryAsync(client, categoryId, vendorId, amount: 20m);
+        var keptB = await CreateEntryAsync(client, categoryId, vendorId, amount: 10m);
+        var totalBeforeDelete = await TotalAsync(client, vendorId);
+
+        var response = await client.DeleteAsync($"/api/spend/entries/{toDelete}", ct);
+        response.StatusCode.Should().Be(HttpStatusCode.NoContent);
+
+        var entries = await client.GetFromJsonAsync<JsonElement>($"/api/spend/entries?vendorId={vendorId}", ct);
+        var remainingIds = entries.EnumerateArray().Select(e => e.GetProperty("id").GetGuid()).ToArray();
+        remainingIds.Should().BeEquivalentTo([keptA, keptB], "only the targeted row should be gone");
+
+        (await TotalAsync(client, vendorId)).Should().Be(totalBeforeDelete - 20m,
+            "the total must drop by exactly the deleted row's amount, not more or less");
+    }
+
     private static async Task<decimal> TotalAsync(HttpClient client, Guid vendorId)
     {
         var entries = await client.GetFromJsonAsync<JsonElement>(
