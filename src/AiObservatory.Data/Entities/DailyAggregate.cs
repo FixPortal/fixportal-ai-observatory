@@ -11,6 +11,10 @@ public sealed class DailyAggregate
     public long OutputTokens { get; set; }
     public long CacheReadTokens { get; set; }
     public long CacheWriteTokens { get; set; }
+
+    /// <summary>The one-hour-TTL subset of <see cref="CacheWriteTokens"/>.</summary>
+    public long CacheWrite1hTokens { get; set; }
+
     public decimal CostUsd { get; set; }
     public int RequestCount { get; set; }
 }

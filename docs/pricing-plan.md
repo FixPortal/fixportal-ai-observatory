@@ -89,12 +89,32 @@ Verified 2026-07-25. Per million tokens:
 | Haiku 4.5 | 1 | 5 | 1.25 | **2** | 0.10 |
 | Fable 5 / Mythos 5 | 10 | 50 | 12.50 | **20** | 1.00 |
 
-**The cache-write TTL problem.** `appsettings.json` carries the 5-minute column
-throughout. Local transcripts contain **zero** `ephemeral_5m_input_tokens` and
-non-zero `ephemeral_1h_input_tokens` across every model — this deployment writes
-1-hour cache entries exclusively, which bill at 2x base input, not 1.25x. The
-split is recorded in the transcripts but discarded by the sweeper, so it cannot
-be recovered from the database.
+**The cache-write TTL problem — CLOSED 2026-07-26.** The rate table carried the
+5-minute column throughout. Local transcripts contain **zero**
+`ephemeral_5m_input_tokens` and non-zero `ephemeral_1h_input_tokens` across every
+model — this deployment writes 1-hour cache entries exclusively, which bill at 2x
+base input, not 1.25x. The split was recorded in the transcripts but discarded by
+the sweeper.
+
+Both halves are now carried end to end: `pricing.anthropic.json` has a
+`CacheWrite1h` column per row, `UsageEvent`/`DailyAggregate` have a
+`CacheWrite1hTokens` column (migration `20260726080907_AddCacheWrite1hTokens`),
+and the sweeper reads `usage.cache_creation` per message. `CacheWrite1hTokens` is
+the one-hour **subset** of `CacheWriteTokens`; the remainder prices at the
+five-minute rate, which keeps every existing reader of the total correct and makes
+an absent value mean "all five-minute", exactly the old behaviour.
+
+Measured effect on the corrected series: **$16,271 → $18,564, an uplift of
+14.1%**. Recomputed straight from the transcripts, independently of the pipeline;
+the 5-minute figure reproduces the stored $16,240.82 once this session's own
+subsequent usage is accounted for.
+
+Two data notes worth keeping. Of 281,354 cache-bearing assistant messages, every
+one carries a `cache_creation` object and **3** report a 1h count fractionally
+above their own total — hence the clamp in `ComputeCost` and the check constraint.
+And the polled-API ingest arm genuinely cannot supply this: Anthropic's usage
+report returns a single `cache_creation_input_tokens` with no TTL breakdown, so
+that path still prices at the five-minute rate and says so in place.
 
 ## 4. Findings that reshape the design
 
@@ -152,7 +172,7 @@ can call the one C# resolver and the sweeper deletes its pricing entirely — no
 fetch endpoint, no cache, no fallback table, no PowerShell resolver. This is
 strictly smaller than rev 1's fetch-from-API design and removes M3 and M7
 outright.
-- Move `AnthropicPricingOptions` / `PricingEntry` / `PricingRates4` to
+- Move `AnthropicPricingOptions` / `PricingEntry` / `PricingRates` to
   `AiObservatory.Data` (both apps already reference it).
 - Extract the resolver from `AnthropicUsageClient.ComputeCost` with a `[Theory]`
   covering longest-prefix, date windows, dated-beats-undated, and fallback
@@ -172,7 +192,7 @@ qualified (M6). Independent of the rest; can ship first.
 | # | Risk | Mitigation |
 |---|---|---|
 | R1 | Stage 1 changes historical token counts as well as costs — a bigger restatement than rev 1 contemplated | Audit trail (H3) before any write; annotate the discontinuity |
-| R2 | The 1h/5m split cannot be recovered for existing rows | Either backfill from transcripts where they survive, or price history explicitly as all-1h and document it |
+| R2 | ~~The 1h/5m split cannot be recovered for existing rows~~ **Closed** | Backfilled from the transcripts: they carry `usage.cache_creation` on every cache-bearing message, so the split is recovered for the whole retained window by purge + re-ingest. Rows older than transcript retention were already dropped as unrecoverable |
 | R3 | Re-cost concurrent with live ingest | One transaction at RepeatableRead or better; version-stamp each run |
 | R4 | Stale `Insight` rows quote pre-correction figures behind a watermark that prevents re-analysis | Annotate, or regenerate for the affected window |
 

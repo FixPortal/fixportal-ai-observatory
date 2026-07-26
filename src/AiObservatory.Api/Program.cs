@@ -66,6 +66,11 @@ builder.Services.AddOptions<AnthropicPricingOptions>()
     // record every unknown model at $0 — the opposite of failing closed.
     .Validate(o => o.FallbackPricing.Input > 0 && o.FallbackPricing.Output > 0,
         $"{AnthropicPricingOptions.SectionName}:FallbackPricing must have positive Input and Output rates")
+    // CacheWrite1h binds to 0 when a row omits it, which would bill one-hour cache writes as
+    // free. Since this deployment's cache writes are ~100% one-hour, that failure would be
+    // both silent and total — so an incomplete row must stop the app, not start it.
+    .Validate(o => o.Pricing.TrueForAll(e => e.CacheWrite1h > 0) && o.FallbackPricing.CacheWrite1h > 0,
+        $"{AnthropicPricingOptions.SectionName}: every Pricing entry and FallbackPricing must set a positive CacheWrite1h")
     .ValidateOnStart();
 
 builder.Services.AddTransient<MailKit.Net.Smtp.ISmtpClient, MailKit.Net.Smtp.SmtpClient>();

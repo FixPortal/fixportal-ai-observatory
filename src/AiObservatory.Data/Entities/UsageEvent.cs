@@ -13,6 +13,15 @@ public sealed class UsageEvent
     public long OutputTokens { get; init; }
     public long? CacheReadTokens { get; init; }
     public long? CacheWriteTokens { get; init; }
+
+    /// <summary>
+    /// The one-hour-TTL subset of <see cref="CacheWriteTokens"/>; the remainder is
+    /// five-minute. Anthropic bills the two at different multiples of base input (2x vs
+    /// 1.25x), so the split is what makes the cache-write line cost correctly. Null means
+    /// the producer reported no breakdown, which prices as all-five-minute.
+    /// </summary>
+    public long? CacheWrite1hTokens { get; init; }
+
     public decimal CostUsd { get; init; }
     public string RawPayload { get; init; } = "{}";
 

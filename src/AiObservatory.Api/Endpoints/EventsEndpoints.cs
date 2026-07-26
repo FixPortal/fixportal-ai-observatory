@@ -41,9 +41,18 @@ public static class EventsEndpoints
             return Results.BadRequest($"Unknown provider: {req.Provider}");
         }
 
-        if (req.InputTokens < 0 || req.OutputTokens < 0 || req.CacheReadTokens < 0 || req.CacheWriteTokens < 0 || req.CostUsd < 0)
+        if (req.InputTokens < 0 || req.OutputTokens < 0 || req.CacheReadTokens < 0 || req.CacheWriteTokens < 0
+            || req.CacheWrite1hTokens < 0 || req.CostUsd < 0)
         {
             return Results.BadRequest("Token counts and cost must be non-negative");
+        }
+
+        // CacheWrite1hTokens is a SUBSET of CacheWriteTokens, not a sibling total. Rejecting
+        // an over-large one here is what lets the cost calculation derive the five-minute
+        // remainder by subtraction; the same rule is enforced again as a check constraint.
+        if (req.CacheWrite1hTokens > req.CacheWriteTokens)
+        {
+            return Results.BadRequest("CacheWrite1hTokens must not exceed CacheWriteTokens");
         }
 
         var rawPayload = req.RawPayload ?? "{}";
@@ -98,7 +107,8 @@ public static class EventsEndpoints
 
             costUsd = AnthropicPricingResolver.ComputeCost(
                 match?.ToRates() ?? options.FallbackPricing,
-                req.InputTokens, req.OutputTokens, req.CacheReadTokens, req.CacheWriteTokens);
+                req.InputTokens, req.OutputTokens, req.CacheReadTokens, req.CacheWriteTokens,
+                req.CacheWrite1hTokens);
         }
 
         var evt = new UsageEvent
@@ -111,6 +121,7 @@ public static class EventsEndpoints
             OutputTokens = req.OutputTokens,
             CacheReadTokens = req.CacheReadTokens,
             CacheWriteTokens = req.CacheWriteTokens,
+            CacheWrite1hTokens = req.CacheWrite1hTokens,
             CostUsd = costUsd,
             RawPayload = rawPayload,
             EventKey = eventKey
@@ -181,7 +192,10 @@ public record UsageEventRequest(
     decimal CostUsd,
     string? RawPayload,
     string? EventKey = null,
-    DateTimeOffset? OccurredAtUtc = null
+    DateTimeOffset? OccurredAtUtc = null,
+    // Optional and defaulted so producers that predate the TTL split keep working: omitting
+    // it prices the whole cache write at the five-minute rate, exactly as before.
+    long CacheWrite1hTokens = 0
 );
 
 public sealed record UpdateEventCostRequest(decimal CostUsd);

@@ -15,19 +15,31 @@ public class AnthropicPricingOptions
     public const string SectionName = "Ingest:Anthropic";
 
     public List<AnthropicPricingEntry> Pricing { get; set; } = [];
-    public PricingRates4 FallbackPricing { get; set; } = new(3.0m, 15.0m, 0.30m, 3.75m);
+    public PricingRates FallbackPricing { get; set; } = new(3.0m, 15.0m, 0.30m, 3.75m, 6.0m);
 }
 
+/// <param name="CacheWrite">Rate for a FIVE-MINUTE cache write.</param>
+/// <param name="CacheWrite1h">
+/// Rate for a ONE-HOUR cache write. Anthropic bills the two TTLs differently (1.25x vs
+/// 2x base input), so a deployment that writes exclusively one-hour entries is understated
+/// by ~60% on the cache-write line if only the five-minute rate exists.
+/// </param>
 public sealed record AnthropicPricingEntry(
     string ModelPrefix,
     decimal Input,
     decimal Output,
     decimal CacheRead,
     decimal CacheWrite,
+    decimal CacheWrite1h,
     LocalDate? EffectiveFrom = null,
     LocalDate? EffectiveTo = null);
 
-public sealed record PricingRates4(decimal Input, decimal Output, decimal CacheRead, decimal CacheWrite);
+public sealed record PricingRates(
+    decimal Input,
+    decimal Output,
+    decimal CacheRead,
+    decimal CacheWrite,
+    decimal CacheWrite1h);
 
 /// <summary>
 /// Resolves a model id and usage date to a rate row.
@@ -68,28 +80,44 @@ public static class AnthropicPricingResolver
     /// Lets a caller that already holds a <see cref="Match"/> result — because it wants to
     /// log or branch on a miss — turn it into rates without resolving a second time.
     /// </remarks>
-    public static PricingRates4 ToRates(this AnthropicPricingEntry entry) =>
-        new(entry.Input, entry.Output, entry.CacheRead, entry.CacheWrite);
+    public static PricingRates ToRates(this AnthropicPricingEntry entry) =>
+        new(entry.Input, entry.Output, entry.CacheRead, entry.CacheWrite, entry.CacheWrite1h);
 
     /// <summary>
     /// Rates for <paramref name="model"/> on <paramref name="usageDate"/>, falling back to
     /// <see cref="AnthropicPricingOptions.FallbackPricing"/> when no entry matches.
     /// </summary>
-    public static PricingRates4 ResolveRates(
+    public static PricingRates ResolveRates(
         this AnthropicPricingOptions options,
         string model,
         LocalDate usageDate) =>
         options.Match(model, usageDate)?.ToRates() ?? options.FallbackPricing;
 
     /// <summary>Cost in USD for a token quantity at the given rates (rates are per million).</summary>
+    /// <param name="cacheWriteTokens">ALL cache-write tokens, both TTLs.</param>
+    /// <param name="cacheWrite1hTokens">
+    /// The one-hour subset of <paramref name="cacheWriteTokens"/>. The remainder is billed at
+    /// the five-minute rate. Callers with no TTL breakdown (the Anthropic usage-report API does
+    /// not publish one) pass 0, which prices everything at the five-minute rate as before.
+    /// </param>
     public static decimal ComputeCost(
-        PricingRates4 rates,
+        PricingRates rates,
         long inputTokens,
         long outputTokens,
         long cacheReadTokens,
-        long cacheWriteTokens) =>
-        inputTokens / 1_000_000m * rates.Input
-        + outputTokens / 1_000_000m * rates.Output
-        + cacheReadTokens / 1_000_000m * rates.CacheRead
-        + cacheWriteTokens / 1_000_000m * rates.CacheWrite;
+        long cacheWriteTokens,
+        long cacheWrite1hTokens = 0)
+    {
+        // Clamped rather than asserted: this is a money path, and the transcripts it is fed
+        // from are not perfectly self-consistent. Measured over 281,354 cache-bearing
+        // assistant messages, 3 report a 1h count fractionally above their own total. The
+        // API rejects that shape at the boundary, so this only guards a caller that bypasses
+        // it -- at the cost of pricing the overflow as 1h, the dearer of the two.
+        var cacheWrite5m = Math.Max(0L, cacheWriteTokens - cacheWrite1hTokens);
+        return inputTokens / 1_000_000m * rates.Input
+            + outputTokens / 1_000_000m * rates.Output
+            + cacheReadTokens / 1_000_000m * rates.CacheRead
+            + cacheWrite5m / 1_000_000m * rates.CacheWrite
+            + cacheWrite1hTokens / 1_000_000m * rates.CacheWrite1h;
+    }
 }

@@ -56,14 +56,16 @@ public class UsageRepository(AiObservatoryDbContext ctx) : IUsageRepository
         }
         var cacheRead = evt.CacheReadTokens ?? 0L;
         var cacheWrite = evt.CacheWriteTokens ?? 0L;
+        var cacheWrite1h = evt.CacheWrite1hTokens ?? 0L;
         await ctx.Database.ExecuteSqlInterpolatedAsync($"""
-            INSERT INTO "DailyAggregates" ("Date", "Provider", "Model", "InputTokens", "OutputTokens", "CacheReadTokens", "CacheWriteTokens", "CostUsd", "RequestCount")
-            VALUES ({date}, {providerStr}, {model}, {evt.InputTokens}, {evt.OutputTokens}, {cacheRead}, {cacheWrite}, {evt.CostUsd}, 1)
+            INSERT INTO "DailyAggregates" ("Date", "Provider", "Model", "InputTokens", "OutputTokens", "CacheReadTokens", "CacheWriteTokens", "CacheWrite1hTokens", "CostUsd", "RequestCount")
+            VALUES ({date}, {providerStr}, {model}, {evt.InputTokens}, {evt.OutputTokens}, {cacheRead}, {cacheWrite}, {cacheWrite1h}, {evt.CostUsd}, 1)
             ON CONFLICT ("Date", "Provider", "Model") DO UPDATE SET
                 "InputTokens" = "DailyAggregates"."InputTokens" + EXCLUDED."InputTokens",
                 "OutputTokens" = "DailyAggregates"."OutputTokens" + EXCLUDED."OutputTokens",
                 "CacheReadTokens" = "DailyAggregates"."CacheReadTokens" + EXCLUDED."CacheReadTokens",
                 "CacheWriteTokens" = "DailyAggregates"."CacheWriteTokens" + EXCLUDED."CacheWriteTokens",
+                "CacheWrite1hTokens" = "DailyAggregates"."CacheWrite1hTokens" + EXCLUDED."CacheWrite1hTokens",
                 "CostUsd" = "DailyAggregates"."CostUsd" + EXCLUDED."CostUsd",
                 "RequestCount" = "DailyAggregates"."RequestCount" + EXCLUDED."RequestCount"
             """, ct);
@@ -88,14 +90,19 @@ public class UsageRepository(AiObservatoryDbContext ctx) : IUsageRepository
         int requestCount = 1, CancellationToken ct = default)
     {
         var providerStr = provider.ToString();
+        // CacheWrite1hTokens is written as a literal 0, not a parameter: the only caller is
+        // the polled-API ingest arm, and Anthropic's usage report does not break cache writes
+        // down by TTL. 0 means "no one-hour portion reported", which prices the whole write at
+        // the five-minute rate -- the same answer this path gave before the split existed.
         return ctx.Database.ExecuteSqlInterpolatedAsync($"""
-            INSERT INTO "DailyAggregates" ("Date", "Provider", "Model", "InputTokens", "OutputTokens", "CacheReadTokens", "CacheWriteTokens", "CostUsd", "RequestCount")
-            VALUES ({date}, {providerStr}, {model}, {inputTokens}, {outputTokens}, {cacheReadTokens}, {cacheWriteTokens}, {costUsd}, {requestCount})
+            INSERT INTO "DailyAggregates" ("Date", "Provider", "Model", "InputTokens", "OutputTokens", "CacheReadTokens", "CacheWriteTokens", "CacheWrite1hTokens", "CostUsd", "RequestCount")
+            VALUES ({date}, {providerStr}, {model}, {inputTokens}, {outputTokens}, {cacheReadTokens}, {cacheWriteTokens}, 0, {costUsd}, {requestCount})
             ON CONFLICT ("Date", "Provider", "Model") DO UPDATE SET
                 "InputTokens" = EXCLUDED."InputTokens",
                 "OutputTokens" = EXCLUDED."OutputTokens",
                 "CacheReadTokens" = EXCLUDED."CacheReadTokens",
                 "CacheWriteTokens" = EXCLUDED."CacheWriteTokens",
+                "CacheWrite1hTokens" = EXCLUDED."CacheWrite1hTokens",
                 "CostUsd" = EXCLUDED."CostUsd",
                 "RequestCount" = EXCLUDED."RequestCount"
             """, ct);
