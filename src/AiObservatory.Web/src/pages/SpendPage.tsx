@@ -4,6 +4,7 @@ import SpendFilterBar from '../components/SpendFilterBar'
 import SpendTotals from '../components/SpendTotals'
 import SpendLedgerTable from '../components/SpendLedgerTable'
 import SpendEntryModal from '../components/SpendEntryModal'
+import SpendCatalogModal from '../components/SpendCatalogModal'
 import { useSpendCategories, useSpendVendors, useAllSpendCategories, useAllSpendVendors, useSpendEntries } from '../api/queries'
 import { deleteSpendEntry } from '../api/client'
 import { filterEntries, totalGbp } from '../lib/spendFilters'
@@ -16,6 +17,7 @@ export default function SpendPage() {
   const [categoryId, setCategoryId] = useState<string | undefined>()
   const [vendorId, setVendorId] = useState<string | undefined>()
   const [adding, setAdding] = useState(false)
+  const [managingCatalog, setManagingCatalog] = useState(false)
 
   // Fixed 90-day window in phase 1; the configurable date range arrives with the
   // charts in phase 2, where it earns its keep.
@@ -67,6 +69,7 @@ export default function SpendPage() {
         onCategoryChange={setCategoryId}
         onVendorChange={setVendorId}
         onAddEntry={() => setAdding(true)}
+        onManageCatalog={() => setManagingCatalog(true)}
         canEdit={!isReadonly}
       />
 
@@ -90,6 +93,14 @@ export default function SpendPage() {
           from={from}
           to={to}
           onClose={() => setAdding(false)}
+        />
+      )}
+
+      {managingCatalog && (
+        <SpendCatalogModal
+          categories={allCategories}
+          vendors={allVendors}
+          onClose={() => setManagingCatalog(false)}
         />
       )}
     </section>

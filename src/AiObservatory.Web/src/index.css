@@ -1012,6 +1012,42 @@ body {
 .sub-form__btn--primary:hover { filter: brightness(1.1); }
 .sub-form__btn:disabled { opacity: 0.5; cursor: not-allowed; }
 
+/* ---- Spend catalog panel (Task 9) ---- */
+.catalog-tabs { display: flex; gap: var(--space-2); margin-bottom: var(--space-3); }
+.catalog-tab {
+  appearance: none;
+  font: inherit;
+  font-size: 0.78rem;
+  padding: var(--space-2) var(--space-3);
+  background: transparent;
+  border: 1px solid var(--border);
+  border-radius: var(--r-control);
+  color: var(--text-muted);
+  cursor: pointer;
+}
+.catalog-tab[aria-selected="true"] {
+  border-color: var(--brand);
+  color: var(--text);
+  background: var(--app-bg);
+}
+.catalog-key {
+  font-family: var(--font-mono);
+  font-size: 0.72rem;
+  color: var(--text-muted);
+  white-space: nowrap;
+}
+.catalog-badge {
+  font-size: 0.65rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  padding: 2px 7px;
+  border-radius: 99px;
+  color: var(--text-muted);
+  background: var(--overlay-bg);
+  white-space: nowrap;
+}
+
 /* ---- Responsive additions ---- */
 @media (max-width: 760px) {
   .sub-cards { grid-template-columns: 1fr; }
