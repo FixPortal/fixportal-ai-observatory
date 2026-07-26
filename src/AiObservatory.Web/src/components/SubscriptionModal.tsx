@@ -274,7 +274,10 @@ export default function SubscriptionModal({ open, onClose }: Props) {
             <div className="sub-form__title">
               {state.formMode === 'add' ? 'Add subscription' : 'Edit subscription'}
             </div>
-            <form onSubmit={(e) => { e.preventDefault(); handleSave() }}>
+            {/* noValidate: min="0"/min="1" inputs below would otherwise let native
+                constraint validation abort the submit before validate() ever runs,
+                the same latent bug SpendEntryModal fixed the same way. */}
+            <form noValidate onSubmit={(e) => { e.preventDefault(); handleSave() }}>
             <div className="sub-form__grid">
               <div>
                 <label htmlFor="sub-form-provider" className="sub-form__label">Provider</label>
