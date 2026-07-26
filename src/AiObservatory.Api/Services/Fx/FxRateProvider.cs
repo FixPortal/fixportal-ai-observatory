@@ -1,3 +1,4 @@
+using System.Globalization;
 using Microsoft.Extensions.Caching.Memory;
 using NodaTime;
 
@@ -54,24 +55,29 @@ public class FxRateProvider(HttpClient http, IMemoryCache cache, ILogger<FxRateP
             return 1m;
         }
 
-        var key = $"fx:{code}-gbp:{on:yyyy-MM-dd}";
+        // Bound to the invariant culture explicitly, matching SpendEntryKey.Derive: the
+        // implicit NodaTime formatter otherwise resolves through CultureInfo.CurrentCulture,
+        // which would vary the cache key, the outbound URL and the log label by machine locale.
+        var dateStr = on.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture);
+
+        var key = $"fx:{code}-gbp:{dateStr}";
         if (cache.TryGetValue(key, out decimal cached))
         {
             return cached;
         }
 
         var rate = await FetchGbpRateAsync(
-            $"https://api.frankfurter.dev/v1/{on:yyyy-MM-dd}?from={code}&to=GBP", $"{code}->GBP on {on:yyyy-MM-dd}", ct);
+            $"https://api.frankfurter.dev/v1/{dateStr}?from={code}&to=GBP", $"{code}->GBP on {dateStr}", ct);
 
         if (rate <= 0m)
         {
             if (code == "USD")
             {
-                logger.LogWarning("FX {Code}->GBP missing for {Date}; using fallback {Fallback}", code, on, Fallback);
+                logger.LogWarning("FX {Code}->GBP missing for {Date}; using fallback {Fallback}", code, dateStr, Fallback);
                 return Fallback; // not cached — allow a retry
             }
 
-            logger.LogWarning("FX {Code}->GBP unavailable for {Date}", code, on);
+            logger.LogWarning("FX {Code}->GBP unavailable for {Date}", code, dateStr);
             throw new FxUnavailableException(code, on);
         }
 
@@ -89,11 +95,24 @@ public class FxRateProvider(HttpClient http, IMemoryCache cache, ILogger<FxRateP
             var resp = await http.GetFromJsonAsync<FrankfurterResponse>(url, ct);
             return resp?.Rates is { } r && r.TryGetValue("GBP", out var gbp) ? gbp : 0m;
         }
+        catch (OperationCanceledException ex) when (!ct.IsCancellationRequested)
+        {
+            // The HttpClient's own request timeout fired, not the caller's token -- a
+            // TaskCanceledException from that looks identical to a genuine cancellation
+            // (TaskCanceledException derives from OperationCanceledException) but must NOT
+            // be treated as one: a timeout is an ordinary FX failure like any other (USD
+            // falls back, other currencies reject just that row), not a reason to abort
+            // the batch.
+            logger.LogWarning(ex, "FX fetch timed out for {Label}", label);
+            return 0m;
+        }
         catch (Exception ex) when (ex is not OperationCanceledException)
         {
-            // A client disconnect mid-request must abort the write, not silently land at
-            // the 0.79 fallback rate -- the ledger is the first caller where that would
-            // freeze a permanently wrong row rather than just mis-render an estimate.
+            // A client disconnect mid-request (ct itself cancelled) must abort the write,
+            // not silently land at the 0.79 fallback rate -- the ledger is the first caller
+            // where that would freeze a permanently wrong row rather than just mis-render
+            // an estimate. Falls through uncaught here; the caller's ct.IsCancellationRequested
+            // check above already claimed the non-caller-cancellation case.
             logger.LogWarning(ex, "FX fetch failed for {Label}", label);
             return 0m;
         }

@@ -2,6 +2,7 @@ using AiObservatory.Data;
 using AiObservatory.Data.Entities;
 using Microsoft.EntityFrameworkCore;
 using NodaTime;
+using Npgsql;
 
 namespace AiObservatory.Api.Endpoints;
 
@@ -75,7 +76,19 @@ public static class SpendCatalogEndpoints
             SortOrder = req.SortOrder,
         };
         db.SpendCategories.Add(category);
-        await db.SaveChangesAsync(ct);
+        try
+        {
+            await db.SaveChangesAsync(ct);
+        }
+        catch (DbUpdateException ex) when (
+            ex.InnerException is PostgresException { SqlState: PostgresErrorCodes.UniqueViolation })
+        {
+            // Two concurrent creates of the same key both pass the AnyAsync pre-check above
+            // -- one wins the unique index and this one lands here. Same message as the
+            // pre-check, so the two paths are indistinguishable to a caller.
+            db.Entry(category).State = EntityState.Detached;
+            return Results.Conflict($"Category key already exists: {key}");
+        }
         return Results.CreatedAtRoute("GetSpendCategoryById", new { id = category.Id }, category);
     }
 
@@ -165,7 +178,18 @@ public static class SpendCatalogEndpoints
             DefaultCategoryId = req.DefaultCategoryId,
         };
         db.SpendVendors.Add(vendor);
-        await db.SaveChangesAsync(ct);
+        try
+        {
+            await db.SaveChangesAsync(ct);
+        }
+        catch (DbUpdateException ex) when (
+            ex.InnerException is PostgresException { SqlState: PostgresErrorCodes.UniqueViolation })
+        {
+            // Same race as CreateCategoryAsync above: the pre-check passed for both
+            // concurrent callers, the unique index only stops one of them.
+            db.Entry(vendor).State = EntityState.Detached;
+            return Results.Conflict($"Vendor key already exists: {key}");
+        }
         return Results.CreatedAtRoute("GetSpendVendorById", new { id = vendor.Id }, vendor);
     }
 

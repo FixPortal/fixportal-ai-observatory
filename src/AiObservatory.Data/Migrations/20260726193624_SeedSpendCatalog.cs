@@ -40,50 +40,12 @@ namespace AiObservatory.Data.Migrations
         /// <inheritdoc />
         protected override void Down(MigrationBuilder migrationBuilder)
         {
-            migrationBuilder.DeleteData(
-                table: "SpendVendors",
-                keyColumn: "Id",
-                keyValue: new Guid("22222222-2222-2222-2222-222222222201"));
-
-            migrationBuilder.DeleteData(
-                table: "SpendVendors",
-                keyColumn: "Id",
-                keyValue: new Guid("22222222-2222-2222-2222-222222222202"));
-
-            migrationBuilder.DeleteData(
-                table: "SpendVendors",
-                keyColumn: "Id",
-                keyValue: new Guid("22222222-2222-2222-2222-222222222203"));
-
-            migrationBuilder.DeleteData(
-                table: "SpendVendors",
-                keyColumn: "Id",
-                keyValue: new Guid("22222222-2222-2222-2222-222222222204"));
-
-            migrationBuilder.DeleteData(
-                table: "SpendVendors",
-                keyColumn: "Id",
-                keyValue: new Guid("22222222-2222-2222-2222-222222222205"));
-
-            migrationBuilder.DeleteData(
-                table: "SpendCategories",
-                keyColumn: "Id",
-                keyValue: new Guid("11111111-1111-1111-1111-111111111101"));
-
-            migrationBuilder.DeleteData(
-                table: "SpendCategories",
-                keyColumn: "Id",
-                keyValue: new Guid("11111111-1111-1111-1111-111111111102"));
-
-            migrationBuilder.DeleteData(
-                table: "SpendCategories",
-                keyColumn: "Id",
-                keyValue: new Guid("11111111-1111-1111-1111-111111111103"));
-
-            migrationBuilder.DeleteData(
-                table: "SpendCategories",
-                keyColumn: "Id",
-                keyValue: new Guid("11111111-1111-1111-1111-111111111104"));
+            // Once any SpendEntry references a seeded vendor, DeleteBehavior.Restrict blocks
+            // this DeleteData and the rollback fails partway through, leaving a half-applied
+            // state. Fail loudly up front instead of leaving that mess.
+            throw new NotSupportedException(
+                "SeedSpendCatalog cannot be rolled back once spend entries reference the seeded rows. "
+              + "Roll forward, or drop the spend tables via AddSpendLedger's Down.");
         }
     }
 }
