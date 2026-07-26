@@ -17,10 +17,9 @@ export interface SpendFilter {
 /** Pure — one filter state drives the totals and the table alike. */
 export function filterEntries<T extends SpendRowShape>(entries: T[], filter: SpendFilter): T[] {
   const excluded = new Set(filter.excludedCategoryIds ?? [])
-  return entries.filter(e =>
-    (filter.vendorId == null || e.vendorId === filter.vendorId) &&
-    (filter.categoryId == null || e.categoryId === filter.categoryId) &&
-    !excluded.has(e.categoryId))
+  const matchesVendor = (e: T) => filter.vendorId == null || e.vendorId === filter.vendorId
+  const matchesCategory = (e: T) => filter.categoryId == null || e.categoryId === filter.categoryId
+  return entries.filter(e => matchesVendor(e) && matchesCategory(e) && !excluded.has(e.categoryId))
 }
 
 /**
