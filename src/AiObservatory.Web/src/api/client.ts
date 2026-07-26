@@ -29,14 +29,37 @@ async function request(path: string, init: RequestInit = {}): Promise<Response> 
     ...init,
     headers: { ...(init.headers as Record<string, string>), ...(await authHeaders()) },
   })
-  if (!res.ok) {
-    // The catalog write endpoints return a plain-text body on 400/409
-    // (Results.BadRequest/Results.Conflict) -- a duplicate key or a bad slug needs to
-    // read as that message, not a generic "failed: 409".
-    const bodyText = res.text ? await res.text().catch(() => '') : ''
-    throw new ApiError(res.status, bodyText || `${init.method ?? 'GET'} ${path} failed: ${res.status}`)
-  }
+  if (!res.ok) throw new ApiError(res.status, await readErrorMessage(res, path, init.method ?? 'GET'))
   return res
+}
+
+// Minimal APIs' Results.BadRequest(object?)/Results.Conflict(object?) JSON-encode whatever
+// they're given -- a `string` argument (e.g. Results.Conflict($"Category key already exists:
+// {key}") in SpendCatalogEndpoints) goes over the wire as a JSON string, quote characters and
+// all, with an `application/json` Content-Type (verified against the running API: a duplicate
+// category key came back as `"Category key already exists: <key>"`, quotes included). A raw
+// res.text() would leave those quotes in the alert a user sees. A ProblemDetails object (a
+// model-binding failure, say) is also a realistic 400 body, so an object gets its
+// detail/title picked out rather than stringified wholesale.
+async function readErrorMessage(res: Response, path: string, method: string): Promise<string> {
+  const generic = `${method} ${path} failed: ${res.status}`
+  const bodyText = res.text ? await res.text().catch(() => '') : ''
+  if (!bodyText) return generic
+
+  const contentType = res.headers?.get?.('content-type') ?? ''
+  if (!contentType.includes('json')) return bodyText
+
+  try {
+    const parsed: unknown = JSON.parse(bodyText)
+    if (typeof parsed === 'string') return parsed || generic
+    if (parsed && typeof parsed === 'object') {
+      const problem = parsed as { title?: string; detail?: string }
+      return problem.detail ?? problem.title ?? generic
+    }
+    return generic
+  } catch {
+    return bodyText
+  }
 }
 
 export interface DailyAggregate {

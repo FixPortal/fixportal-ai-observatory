@@ -22,15 +22,55 @@ function mockFetchOnce(status: number, body: unknown = []) {
   return fetchMock
 }
 
-// Catalog writes get a plain-text body on failure (Results.BadRequest("..."),
-// Results.Conflict("...")) unlike the JSON-only successes elsewhere, so this mock
-// carries both json() and text().
+// Catalog writes read the body on failure (created entities always come back via
+// json()), so this mock carries both json() and text() for the success path.
 function mockFetchOnceWithText(status: number, body: unknown, text = '') {
   const fetchMock = vi.fn().mockResolvedValue({
     ok: status >= 200 && status < 300,
     status,
     json: () => Promise.resolve(body),
     text: () => Promise.resolve(text),
+  })
+  vi.stubGlobal('fetch', fetchMock)
+  return fetchMock
+}
+
+// The real failure shape: Results.BadRequest(object?)/Results.Conflict(object?) JSON-encode
+// whatever they're given, with an application/json Content-Type -- verified against the
+// running API (see task-9-report.md): a duplicate-key Conflict body on the wire is
+// `"Category key already exists: <key>"`, quotes included, not the bare sentence.
+function mockFetchOnceJsonError(status: number, value: unknown) {
+  const bodyText = JSON.stringify(value)
+  const fetchMock = vi.fn().mockResolvedValue({
+    ok: false,
+    status,
+    text: () => Promise.resolve(bodyText),
+    headers: { get: (name: string) => (name.toLowerCase() === 'content-type' ? 'application/json; charset=utf-8' : null) },
+  })
+  vi.stubGlobal('fetch', fetchMock)
+  return fetchMock
+}
+
+// A non-JSON failure body -- covers the raw-text fallback path (not produced by the spend
+// catalog endpoints today, but request() must not assume every failure is JSON).
+function mockFetchOnceRawTextError(status: number, text: string, contentType = 'text/plain') {
+  const fetchMock = vi.fn().mockResolvedValue({
+    ok: false,
+    status,
+    text: () => Promise.resolve(text),
+    headers: { get: (name: string) => (name.toLowerCase() === 'content-type' ? contentType : null) },
+  })
+  vi.stubGlobal('fetch', fetchMock)
+  return fetchMock
+}
+
+// No body at all -- e.g. Results.NotFound().
+function mockFetchOnceEmptyError(status: number) {
+  const fetchMock = vi.fn().mockResolvedValue({
+    ok: false,
+    status,
+    text: () => Promise.resolve(''),
+    headers: { get: () => null },
   })
   vi.stubGlobal('fetch', fetchMock)
   return fetchMock
@@ -121,8 +161,10 @@ describe('ApiError', () => {
     await expect(getAggregates()).rejects.toThrow('Failed to fetch')
   })
 
-  test('surfaces the response body text instead of a generic status line', async () => {
-    mockFetchOnceWithText(409, null, 'Category key already exists: credits')
+  test('decodes a JSON-string error body instead of leaving the wire quotes in the message', async () => {
+    // Results.Conflict($"...") sends `"Category key already exists: credits"` on the wire
+    // (quotes included) -- this is the assertion that fails against a raw res.text().
+    mockFetchOnceJsonError(409, 'Category key already exists: credits')
 
     const error = await createSpendCategory(
       { key: 'credits', displayName: 'Credits', colorVar: null, sortOrder: 0 },
@@ -130,10 +172,42 @@ describe('ApiError', () => {
 
     expect(error).toBeInstanceOf(ApiError)
     expect((error as ApiError).message).toBe('Category key already exists: credits')
+    expect((error as ApiError).message).not.toContain('"')
+  })
+
+  test('picks the detail/title out of a ProblemDetails-shaped object rather than stringifying it', async () => {
+    mockFetchOnceJsonError(400, { title: 'One or more validation errors occurred.', status: 400 })
+
+    const error = await createSpendCategory(
+      { key: 'x', displayName: 'X', colorVar: null, sortOrder: 0 },
+    ).catch((e: unknown) => e)
+
+    expect((error as ApiError).message).toBe('One or more validation errors occurred.')
+    expect((error as ApiError).message).not.toContain('[object Object]')
+  })
+
+  test('prefers detail over title when a ProblemDetails object has both', async () => {
+    mockFetchOnceJsonError(400, { title: 'Bad Request', detail: 'DisplayName is required' })
+
+    const error = await createSpendCategory(
+      { key: 'x', displayName: 'X', colorVar: null, sortOrder: 0 },
+    ).catch((e: unknown) => e)
+
+    expect((error as ApiError).message).toBe('DisplayName is required')
+  })
+
+  test('falls back to the raw text for a non-JSON error body', async () => {
+    mockFetchOnceRawTextError(400, 'from must be yyyy-MM-dd')
+
+    const error = await createSpendCategory(
+      { key: 'x', displayName: 'X', colorVar: null, sortOrder: 0 },
+    ).catch((e: unknown) => e)
+
+    expect((error as ApiError).message).toBe('from must be yyyy-MM-dd')
   })
 
   test('falls back to a generic status line when the body is empty', async () => {
-    mockFetchOnceWithText(404, null, '')
+    mockFetchOnceEmptyError(404)
 
     const error = await patchSpendCategory('missing-id', { archived: true }).catch((e: unknown) => e)
 

@@ -39,8 +39,10 @@ export default function SpendCatalogModal({ categories, vendors, onClose }: Prop
         <div className="catalog-tabs" role="tablist" aria-label="Catalog axis">
           <button
             type="button"
+            id="catalog-tab-categories"
             role="tab"
             aria-selected={tab === 'categories'}
+            aria-controls="catalog-panel-categories"
             className="catalog-tab"
             onClick={() => setTab('categories')}
           >
@@ -48,8 +50,10 @@ export default function SpendCatalogModal({ categories, vendors, onClose }: Prop
           </button>
           <button
             type="button"
+            id="catalog-tab-vendors"
             role="tab"
             aria-selected={tab === 'vendors'}
+            aria-controls="catalog-panel-vendors"
             className="catalog-tab"
             onClick={() => setTab('vendors')}
           >
@@ -58,8 +62,16 @@ export default function SpendCatalogModal({ categories, vendors, onClose }: Prop
         </div>
 
         {tab === 'categories'
-          ? <SpendCategoryCatalog categories={categories} />
-          : <SpendVendorCatalog vendors={vendors} categories={categories} />}
+          ? (
+            <div role="tabpanel" id="catalog-panel-categories" aria-labelledby="catalog-tab-categories">
+              <SpendCategoryCatalog categories={categories} />
+            </div>
+          )
+          : (
+            <div role="tabpanel" id="catalog-panel-vendors" aria-labelledby="catalog-tab-vendors">
+              <SpendVendorCatalog vendors={vendors} categories={categories} />
+            </div>
+          )}
       </div>
     </dialog>
   )
