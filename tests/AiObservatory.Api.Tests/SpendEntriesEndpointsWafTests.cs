@@ -1,12 +1,15 @@
 using System.Net;
 using System.Net.Http.Json;
+using System.Text;
 using System.Text.Json;
 using AiObservatory.Api.Services.Fx;
 using AiObservatory.Api.Tests.Services;
+using AiObservatory.Data;
 using AwesomeAssertions;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.AspNetCore.TestHost;
+using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 
 namespace AiObservatory.Api.Tests;
@@ -63,7 +66,7 @@ public class SpendEntriesEndpointsWafTests(AiObservatoryApiFactory factory)
     /// factory (it spins up its own TestServer, separate from the shared one).
     /// </summary>
     private static WebApplicationFactory<Program> WithStubbedFx(
-        AiObservatoryApiFactory outer, StubHttpMessageHandler handler) =>
+        AiObservatoryApiFactory outer, HttpMessageHandler handler) =>
         outer.WithWebHostBuilder(b => b.ConfigureTestServices(s =>
             s.AddHttpClient<FxRateProvider>().ConfigurePrimaryHttpMessageHandler(() => handler)));
 
@@ -218,6 +221,99 @@ public class SpendEntriesEndpointsWafTests(AiObservatoryApiFactory factory)
         // currency must not fail the batch -- the untroubled GBP row still lands.
         results[1].GetProperty("status").GetString().Should().Be("created",
             "an unresolvable EUR rate must not stop an unrelated GBP row in the same batch from landing");
+    }
+
+    /// <summary>
+    /// Injects a side effect into the FX HTTP call for a row so a real, non-unique-violation
+    /// DbUpdateException can be forced deterministically: the vendor a later row references
+    /// is deleted from Postgres (via a second DbContext scope) at the moment the FX rate is
+    /// fetched, so by the time that row's SaveChangesAsync runs the foreign key is dangling.
+    /// </summary>
+    private sealed class SideEffectHttpMessageHandler(Func<CancellationToken, Task> sideEffect, string body)
+        : HttpMessageHandler
+    {
+        protected override async Task<HttpResponseMessage> SendAsync(
+            HttpRequestMessage request, CancellationToken cancellationToken)
+        {
+            await sideEffect(cancellationToken);
+            return new HttpResponseMessage(HttpStatusCode.OK)
+            {
+                Content = new StringContent(body, Encoding.UTF8, "application/json"),
+            };
+        }
+    }
+
+    /// <summary>
+    /// Proves the general DbUpdateException catch (added alongside the narrow unique-violation
+    /// one): a row that fails for any other database reason must be reported as "rejected" and
+    /// must not take the rest of the batch down with it, and — the point Gitar's finding was
+    /// really about — an earlier row's "created" verdict must correspond to a row that is
+    /// genuinely committed and readable back, not one that got rolled back by the later
+    /// unhandled exception.
+    ///
+    /// A check-constraint or HasMaxLength violation is not reachable through this endpoint:
+    /// Validate rejects a negative Amount before the insert (so CK_SpendEntry_Amount/AmountGbp
+    /// _NonNegative can't be reached), FxRateProvider.GetGbpRateOnAsync never returns a
+    /// non-positive rate without throwing FxUnavailableException first (so
+    /// CK_SpendEntry_FxRate_Positive can't be reached either), and Validate's own length checks
+    /// on Currency/Description/EntryKey exactly match the columns' HasMaxLength. A foreign-key
+    /// violation is reachable, though: the vendor/category id sets are loaded ONCE up front and
+    /// never rechecked per row, so a vendor deleted mid-batch (after the snapshot, before that
+    /// row's save) still passes Validate and reaches SaveChangesAsync as a real FK violation --
+    /// which is exactly what this test forces.
+    /// </summary>
+    [Fact]
+    public async Task ARowThatFailsForAnyOtherDbReasonIsRejectedAndEarlierRowsSurvive()
+    {
+        var ct = TestContext.Current.CancellationToken;
+        var vendorToDeleteId = Guid.Empty;
+
+        var handler = new SideEffectHttpMessageHandler(
+            async sideEffectCt =>
+            {
+                using var scope = factory.Services.CreateScope();
+                var db = scope.ServiceProvider.GetRequiredService<AiObservatoryDbContext>();
+                await db.SpendVendors.Where(v => v.Id == vendorToDeleteId).ExecuteDeleteAsync(sideEffectCt);
+            },
+            """{"rates":{"GBP":0.8}}""");
+        using var stubFactory = WithStubbedFx(factory, handler);
+        using var client = AdminClient(stubFactory);
+
+        var (categoryId, survivingVendorId) = await SeedCatalogAsync(client);
+
+        // A second, unrelated vendor -- not referenced by any row that stays in the DB --
+        // so it can actually be deleted (SpendVendor -> SpendEntry is Restrict).
+        var vendorResponse = await client.PostAsJsonAsync("/api/spend/vendors",
+            new { Key = $"to-delete-{Guid.NewGuid():N}", DisplayName = "ToDelete", Provider = "anthropic" }, ct);
+        vendorToDeleteId = (await vendorResponse.Content.ReadFromJsonAsync<JsonElement>(ct))
+            .GetProperty("id").GetGuid();
+
+        var batch = new object[]
+        {
+            // GBP short-circuits before any FX HTTP call, so this row saves and commits
+            // before the second row's FX lookup (and side effect) ever runs.
+            Entry(categoryId, survivingVendorId, $"k-{Guid.NewGuid():N}"),
+            // USD forces the stubbed FX HTTP call, whose side effect deletes this row's
+            // vendor out from under it before SaveChangesAsync runs for this row.
+            Entry(categoryId, vendorToDeleteId, $"k-{Guid.NewGuid():N}", 50m, "USD"),
+        };
+
+        var response = await client.PostAsJsonAsync("/api/spend/entries", batch, ct);
+
+        response.StatusCode.Should().Be(HttpStatusCode.OK);
+        var results = (await response.Content.ReadFromJsonAsync<JsonElement>(ct)).EnumerateArray().ToArray();
+
+        results[0].GetProperty("status").GetString().Should().Be("created");
+        var survivingId = results[0].GetProperty("id").GetGuid();
+
+        results[1].GetProperty("status").GetString().Should().Be("rejected");
+        results[1].GetProperty("reason").GetString().Should().NotBeNullOrEmpty();
+
+        // The point of the finding: the earlier row's "created" verdict must be real, not
+        // discarded alongside the response by an unhandled exception from the later row.
+        var entries = await client.GetFromJsonAsync<JsonElement>(
+            $"/api/spend/entries?vendorId={survivingVendorId}", ct);
+        entries.EnumerateArray().Should().ContainSingle(e => e.GetProperty("id").GetGuid() == survivingId);
     }
 
     [Fact]

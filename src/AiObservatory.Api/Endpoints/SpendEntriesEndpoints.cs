@@ -36,6 +36,7 @@ public static class SpendEntriesEndpoints
         AiObservatoryDbContext db,
         FxRateProvider fx,
         IClock clock,
+        ILoggerFactory loggerFactory,
         CancellationToken ct)
     {
         if (requests.Length == 0)
@@ -95,33 +96,63 @@ public static class SpendEntriesEndpoints
             };
 
             db.SpendEntries.Add(entry);
-            try
-            {
-                await db.SaveChangesAsync(ct);
-                results.Add(new SpendEntryResult(entry.Id, "created", null));
-            }
-            catch (DbUpdateException ex) when (
-                entry.EntryKey is not null
-                && ex.InnerException is PostgresException { SqlState: PostgresErrorCodes.UniqueViolation })
-            {
-                // The row already exists for this source and key. Report it rather than
-                // failing the batch: re-importing an overlapping statement is routine.
-                //
-                // Ceiling: this does not check the constraint NAME, so it assumes SpendEntry
-                // carries exactly one unique index -- (Source, EntryKey) filtered to EntryKey
-                // IS NOT NULL (Task 1). A future second unique index on this table would be
-                // silently misreported as a duplicate spend entry too; narrow the `when` to
-                // the specific constraint name if that ever happens.
-                db.Entry(entry).State = EntityState.Detached;
-                var existingId = await db.SpendEntries.AsNoTracking()
-                    .Where(e => e.Source == entry.Source && e.EntryKey == entry.EntryKey)
-                    .Select(e => (Guid?)e.Id)
-                    .FirstOrDefaultAsync(ct);
-                results.Add(new SpendEntryResult(existingId, "duplicate", null));
-            }
+            results.Add(await SaveRowAsync(db, entry, loggerFactory, ct));
         }
 
         return Results.Ok(results);
+    }
+
+    /// <summary>
+    /// Saves one already-validated, already-added entry and translates whatever
+    /// SaveChangesAsync does into that row's verdict. Split out of the request loop above
+    /// purely to keep RecordEntriesAsync's cognitive complexity down -- the two catches
+    /// below (duplicate-detection, then general failure) are unchanged in behaviour.
+    /// </summary>
+    private static async Task<SpendEntryResult> SaveRowAsync(
+        AiObservatoryDbContext db, SpendEntry entry, ILoggerFactory loggerFactory, CancellationToken ct)
+    {
+        try
+        {
+            await db.SaveChangesAsync(ct);
+            return new SpendEntryResult(entry.Id, "created", null);
+        }
+        catch (DbUpdateException ex) when (
+            entry.EntryKey is not null
+            && ex.InnerException is PostgresException { SqlState: PostgresErrorCodes.UniqueViolation })
+        {
+            // The row already exists for this source and key. Report it rather than
+            // failing the batch: re-importing an overlapping statement is routine.
+            //
+            // Ceiling: this does not check the constraint NAME, so it assumes SpendEntry
+            // carries exactly one unique index -- (Source, EntryKey) filtered to EntryKey
+            // IS NOT NULL (Task 1). A future second unique index on this table would be
+            // silently misreported as a duplicate spend entry too; narrow the `when` to
+            // the specific constraint name if that ever happens.
+            db.Entry(entry).State = EntityState.Detached;
+            var existingId = await db.SpendEntries.AsNoTracking()
+                .Where(e => e.Source == entry.Source && e.EntryKey == entry.EntryKey)
+                .Select(e => (Guid?)e.Id)
+                .FirstOrDefaultAsync(ct);
+            return new SpendEntryResult(existingId, "duplicate", null);
+        }
+        catch (DbUpdateException ex)
+        {
+            // Any other row-level failure (e.g. a check constraint, or a vendor/category
+            // deleted out from under the RecordEntriesAsync-wide vendorIds/categoryIds
+            // snapshot) must reject just this row, not the batch: SaveChangesAsync is
+            // called per row specifically so earlier rows already committed. Detach so
+            // the tracked, half-saved entity doesn't get retried (and fail again) on the
+            // next row's SaveChangesAsync.
+            //
+            // The exception is logged, not surfaced -- this repo is public, and the raw
+            // Postgres message can carry column/constraint detail. Nothing here carries an
+            // amount or description; only identifiers.
+            loggerFactory.CreateLogger("AiObservatory.Api.SpendEntries").LogError(ex,
+                "Failed to save spend entry {EntryId} (source {Source}, vendor {VendorId}, category {CategoryId})",
+                entry.Id, entry.Source, entry.VendorId, entry.CategoryId);
+            db.Entry(entry).State = EntityState.Detached;
+            return new SpendEntryResult(null, "rejected", "Could not save this entry");
+        }
     }
 
     /// <summary>Returns a rejection reason, or null when the request is sound.</summary>
