@@ -73,6 +73,14 @@ public class AiObservatoryDbContext(DbContextOptions<AiObservatoryDbContext> opt
             b.Property(v => v.DisplayName).HasMaxLength(100);
             b.Property(v => v.Provider).HasConversion<string>();
             b.HasIndex(v => v.Key).IsUnique();
+
+            // Restrict: a category still referenced as a vendor's default must be archived,
+            // not hard-deleted, so a hard delete fails loudly instead of silently clearing
+            // the default.
+            b.HasOne<SpendCategory>()
+             .WithMany()
+             .HasForeignKey(v => v.DefaultCategoryId)
+             .OnDelete(DeleteBehavior.Restrict);
         });
 
         modelBuilder.Entity<SpendEntry>(b =>
@@ -91,6 +99,19 @@ public class AiObservatoryDbContext(DbContextOptions<AiObservatoryDbContext> opt
             b.HasIndex(e => new { e.Source, e.EntryKey })
              .IsUnique()
              .HasFilter("\"EntryKey\" IS NOT NULL");
+
+            // Restrict: archiving is the soft delete for a vendor/category still in use, so
+            // a hard delete of one with entries must fail loudly rather than cascade rows
+            // out of the ledger.
+            b.HasOne<SpendVendor>()
+             .WithMany()
+             .HasForeignKey(e => e.VendorId)
+             .OnDelete(DeleteBehavior.Restrict);
+
+            b.HasOne<SpendCategory>()
+             .WithMany()
+             .HasForeignKey(e => e.CategoryId)
+             .OnDelete(DeleteBehavior.Restrict);
 
             b.ToTable(t =>
             {

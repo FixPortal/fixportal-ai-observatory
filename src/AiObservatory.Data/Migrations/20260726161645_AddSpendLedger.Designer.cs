@@ -13,7 +13,7 @@ using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 namespace AiObservatory.Data.Migrations
 {
     [DbContext(typeof(AiObservatoryDbContext))]
-    [Migration("20260726155901_AddSpendLedger")]
+    [Migration("20260726161645_AddSpendLedger")]
     partial class AddSpendLedger
     {
         /// <inheritdoc />
@@ -577,6 +577,8 @@ namespace AiObservatory.Data.Migrations
 
                     b.HasKey("Id");
 
+                    b.HasIndex("DefaultCategoryId");
+
                     b.HasIndex("Key")
                         .IsUnique();
 
@@ -691,6 +693,29 @@ namespace AiObservatory.Data.Migrations
 
                             t.HasCheckConstraint("CK_UsageEvent_OutputTokens_NonNegative", "\"OutputTokens\" >= 0");
                         });
+                });
+
+            modelBuilder.Entity("AiObservatory.Data.Entities.SpendEntry", b =>
+                {
+                    b.HasOne("AiObservatory.Data.Entities.SpendCategory", null)
+                        .WithMany()
+                        .HasForeignKey("CategoryId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("AiObservatory.Data.Entities.SpendVendor", null)
+                        .WithMany()
+                        .HasForeignKey("VendorId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("AiObservatory.Data.Entities.SpendVendor", b =>
+                {
+                    b.HasOne("AiObservatory.Data.Entities.SpendCategory", null)
+                        .WithMany()
+                        .HasForeignKey("DefaultCategoryId")
+                        .OnDelete(DeleteBehavior.Restrict);
                 });
 #pragma warning restore 612, 618
         }
