@@ -1,0 +1,204 @@
+using AiObservatory.Data;
+using AiObservatory.Data.Entities;
+using Microsoft.EntityFrameworkCore;
+using NodaTime;
+
+namespace AiObservatory.Api.Endpoints;
+
+// Request records are instantiated by ASP.NET Core model binding.
+// ReSharper disable ClassNeverInstantiated.Global
+
+/// <summary>
+/// Categories and vendors — the user-managed axes of the spend ledger. Kept apart from
+/// the ledger endpoints: these change rarely and for different reasons.
+/// </summary>
+public static class SpendCatalogEndpoints
+{
+    // ReSharper disable once UnusedMethodReturnValue.Global
+    public static IEndpointRouteBuilder MapSpendCatalogEndpoints(this IEndpointRouteBuilder app)
+    {
+        app.MapGet("/spend/categories", GetCategoriesAsync);
+        app.MapPost("/spend/categories", CreateCategoryAsync);
+        app.MapPatch("/spend/categories/{id:guid}", PatchCategoryAsync);
+
+        app.MapGet("/spend/vendors", GetVendorsAsync);
+        app.MapPost("/spend/vendors", CreateVendorAsync);
+        app.MapPatch("/spend/vendors/{id:guid}", PatchVendorAsync);
+
+        return app;
+    }
+
+    private static async Task<IResult> GetCategoriesAsync(
+        AiObservatoryDbContext db, CancellationToken ct, bool includeArchived = false)
+    {
+        var q = db.SpendCategories.AsNoTracking();
+        if (!includeArchived)
+        {
+            q = q.Where(c => c.ArchivedAt == null);
+        }
+
+        return Results.Ok(await q.OrderBy(c => c.SortOrder).ThenBy(c => c.DisplayName).ToListAsync(ct));
+    }
+
+    private static async Task<IResult> CreateCategoryAsync(
+        SpendCategoryRequest req, AiObservatoryDbContext db, CancellationToken ct)
+    {
+        var key = Slug(req.Key);
+        if (key is null || string.IsNullOrWhiteSpace(req.DisplayName) || req.DisplayName.Length > 100)
+        {
+            return Results.BadRequest("Key must be a slug of 60 characters or fewer and DisplayName is required");
+        }
+
+        if (await db.SpendCategories.AnyAsync(c => c.Key == key, ct))
+        {
+            return Results.Conflict($"Category key already exists: {key}");
+        }
+
+        var category = new SpendCategory
+        {
+            Key = key,
+            DisplayName = req.DisplayName.Trim(),
+            ColorVar = req.ColorVar?.Trim() ?? "",
+            SortOrder = req.SortOrder,
+        };
+        db.SpendCategories.Add(category);
+        await db.SaveChangesAsync(ct);
+        return Results.Created($"/api/spend/categories/{category.Id}", category);
+    }
+
+    private static async Task<IResult> PatchCategoryAsync(
+        Guid id, SpendCatalogPatchRequest req, AiObservatoryDbContext db, IClock clock, CancellationToken ct)
+    {
+        var category = await db.SpendCategories.FindAsync([id], ct);
+        if (category is null)
+        {
+            return Results.NotFound();
+        }
+
+        if (req.DisplayName is { } name)
+        {
+            if (string.IsNullOrWhiteSpace(name) || name.Length > 100)
+            {
+                return Results.BadRequest("DisplayName is required and must be 100 characters or fewer");
+            }
+            category.DisplayName = name.Trim();
+        }
+
+        if (req.ColorVar is { } color) { category.ColorVar = color.Trim(); }
+        if (req.SortOrder is { } order) { category.SortOrder = order; }
+        // Archiving is a soft delete: historical entries keep resolving their category.
+        if (req.Archived is { } archived) { category.ArchivedAt = archived ? clock.GetCurrentInstant() : null; }
+
+        await db.SaveChangesAsync(ct);
+        return Results.Ok(category);
+    }
+
+    private static async Task<IResult> GetVendorsAsync(
+        AiObservatoryDbContext db, CancellationToken ct, bool includeArchived = false)
+    {
+        var q = db.SpendVendors.AsNoTracking();
+        if (!includeArchived)
+        {
+            q = q.Where(v => v.ArchivedAt == null);
+        }
+
+        return Results.Ok(await q.OrderBy(v => v.DisplayName).ToListAsync(ct));
+    }
+
+    private static async Task<IResult> CreateVendorAsync(
+        SpendVendorRequest req, AiObservatoryDbContext db, CancellationToken ct)
+    {
+        var key = Slug(req.Key);
+        if (key is null || string.IsNullOrWhiteSpace(req.DisplayName) || req.DisplayName.Length > 100)
+        {
+            return Results.BadRequest("Key must be a slug of 60 characters or fewer and DisplayName is required");
+        }
+
+        // Null is legitimate and common: CodeRabbit, Gitar and GitHub Actions have no
+        // token estimate to compare against. Only a non-null unparseable value is an error.
+        Provider? provider = null;
+        if (!string.IsNullOrWhiteSpace(req.Provider))
+        {
+            if (!Enum.TryParse<Provider>(req.Provider, ignoreCase: true, out var parsed) || !Enum.IsDefined(parsed))
+            {
+                return Results.BadRequest($"Unknown provider: {req.Provider}");
+            }
+            provider = parsed;
+        }
+
+        if (await db.SpendVendors.AnyAsync(v => v.Key == key, ct))
+        {
+            return Results.Conflict($"Vendor key already exists: {key}");
+        }
+
+        if (req.DefaultCategoryId is { } categoryId
+            && !await db.SpendCategories.AnyAsync(c => c.Id == categoryId, ct))
+        {
+            return Results.BadRequest($"Unknown DefaultCategoryId: {categoryId}");
+        }
+
+        var vendor = new SpendVendor
+        {
+            Key = key,
+            DisplayName = req.DisplayName.Trim(),
+            Provider = provider,
+            DefaultCategoryId = req.DefaultCategoryId,
+        };
+        db.SpendVendors.Add(vendor);
+        await db.SaveChangesAsync(ct);
+        return Results.Created($"/api/spend/vendors/{vendor.Id}", vendor);
+    }
+
+    private static async Task<IResult> PatchVendorAsync(
+        Guid id, SpendVendorPatchRequest req, AiObservatoryDbContext db, IClock clock, CancellationToken ct)
+    {
+        var vendor = await db.SpendVendors.FindAsync([id], ct);
+        if (vendor is null)
+        {
+            return Results.NotFound();
+        }
+
+        if (req.DisplayName is { } name)
+        {
+            if (string.IsNullOrWhiteSpace(name) || name.Length > 100)
+            {
+                return Results.BadRequest("DisplayName is required and must be 100 characters or fewer");
+            }
+            vendor.DisplayName = name.Trim();
+        }
+
+        if (req.DefaultCategoryId is { } categoryId)
+        {
+            if (!await db.SpendCategories.AnyAsync(c => c.Id == categoryId, ct))
+            {
+                return Results.BadRequest($"Unknown DefaultCategoryId: {categoryId}");
+            }
+            vendor.DefaultCategoryId = categoryId;
+        }
+
+        if (req.Archived is { } archived) { vendor.ArchivedAt = archived ? clock.GetCurrentInstant() : null; }
+
+        await db.SaveChangesAsync(ct);
+        return Results.Ok(vendor);
+    }
+
+    /// <summary>Normalises a key to a lower-case slug, or null when it cannot be one.</summary>
+    private static string? Slug(string? raw)
+    {
+        var trimmed = raw?.Trim().ToLowerInvariant();
+        if (string.IsNullOrEmpty(trimmed) || trimmed.Length > 60)
+        {
+            return null;
+        }
+
+        return trimmed.All(c => char.IsAsciiLetterOrDigit(c) || c is '-' or '_') ? trimmed : null;
+    }
+}
+
+public sealed record SpendCategoryRequest(string Key, string DisplayName, string? ColorVar, int SortOrder);
+
+public sealed record SpendVendorRequest(string Key, string DisplayName, string? Provider, Guid? DefaultCategoryId);
+
+public sealed record SpendCatalogPatchRequest(string? DisplayName, string? ColorVar, int? SortOrder, bool? Archived);
+
+public sealed record SpendVendorPatchRequest(string? DisplayName, Guid? DefaultCategoryId, bool? Archived);
