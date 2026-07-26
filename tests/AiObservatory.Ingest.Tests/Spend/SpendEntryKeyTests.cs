@@ -32,17 +32,18 @@ public class SpendEntryKeyTests
     }
 
     [Theory]
-    [InlineData("anthropic", 80.00, "GBP", "Top-up")]
-    [InlineData("coderabbit", 80.00, "GBP", "Top-up")]   // vendor differs
-    [InlineData("anthropic", 80.01, "GBP", "Top-up")]    // amount differs
-    [InlineData("anthropic", 80.00, "USD", "Top-up")]    // currency differs
-    [InlineData("anthropic", 80.00, "GBP", "Credits")]   // description differs
-    public void EveryInputParticipatesInTheKey(string vendor, double amount, string currency, string description)
+    [InlineData("anthropic",  80.00, "GBP", "Top-up",  true)]
+    [InlineData("coderabbit", 80.00, "GBP", "Top-up",  false)]
+    [InlineData("anthropic",  80.01, "GBP", "Top-up",  false)]
+    [InlineData("anthropic",  80.00, "USD", "Top-up",  false)]
+    [InlineData("anthropic",  80.00, "GBP", "Credits", false)]
+    public void EveryInputParticipatesInTheKey(
+        string vendor, double amount, string currency, string description, bool shouldMatch)
     {
         var baseline = SpendEntryKey.Derive(Date, "anthropic", 80.00m, "GBP", "Top-up", 0);
         var candidate = SpendEntryKey.Derive(Date, vendor, (decimal)amount, currency, description, 0);
 
-        if (vendor == "anthropic" && amount == 80.00 && currency == "GBP" && description == "Top-up")
+        if (shouldMatch)
         {
             candidate.Should().Be(baseline);
         }
@@ -76,5 +77,14 @@ public class SpendEntryKeyTests
         var key = SpendEntryKey.Derive(Date, new string('v', 500), 80.00m, "GBP", new string('d', 500), 0);
 
         key.Length.Should().BeLessThanOrEqualTo(200, "EntryKey is varchar(200)");
+    }
+
+    [Fact]
+    public void FieldsContainingPipesDoNotCollide()
+    {
+        var withPipeInCurrency = SpendEntryKey.Derive(Date, "anthropic", 80.00m, "USD|a", "b", 0);
+        var withPipeInDescription = SpendEntryKey.Derive(Date, "anthropic", 80.00m, "USD", "a|b", 0);
+
+        withPipeInCurrency.Should().NotBe(withPipeInDescription, "length-prefixing prevents pipe collisions");
     }
 }
