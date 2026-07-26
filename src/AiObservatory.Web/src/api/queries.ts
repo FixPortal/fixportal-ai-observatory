@@ -6,10 +6,12 @@ import {
   getBudgetRules, getEmailStatus,
   getActivityDaily, getActivityByProject,
   getGitHubPrs, getGitHubCommitSummary, getGitHubCi,
+  getSpendCategories, getSpendVendors, getSpendEntries,
   type DailyAggregate, type Insight, type Subscription,
   type AdversarialReviewRun, type AdversarialReviewStats, type CavemanStats,
   type BudgetRule, type DailyActivity, type ProjectActivity,
   type GitHubPr, type GitHubCommitSummary, type GitHubCiSummary,
+  type SpendCategory, type SpendVendor, type SpendEntry,
 } from './client'
 
 // Shared query hooks. Components subscribe directly (react-query deduplicates by
@@ -143,6 +145,28 @@ export function usePriorPeriodAggregates(): DailyAggregate[] {
 export function useEmailStatus(): { configured: boolean | undefined } {
   const { data } = useQuery({ queryKey: ['email-status'], queryFn: getEmailStatus })
   return { configured: data?.configured }
+}
+
+export function useSpendCategories(): SpendCategory[] {
+  const { data = [] } = useQuery({ queryKey: ['spend-categories'], queryFn: getSpendCategories })
+  return data
+}
+
+export function useSpendVendors(): SpendVendor[] {
+  const { data = [] } = useQuery({ queryKey: ['spend-vendors'], queryFn: getSpendVendors })
+  return data
+}
+
+export function useSpendEntries(from: Date, to: Date): {
+  entries: SpendEntry[]
+  isLoading: boolean
+  isError: boolean
+} {
+  const { data = [], isPending, isError } = useQuery({
+    queryKey: ['spend-entries', localDate(from), localDate(to)],
+    queryFn: () => getSpendEntries(localDate(from), localDate(to)),
+  })
+  return { entries: data, isLoading: isPending, isError }
 }
 
 export function useDashboardStatus(): { isError: boolean; isLoading: boolean; error: unknown } {

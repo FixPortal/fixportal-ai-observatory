@@ -246,3 +246,80 @@ export const deleteBudgetRule = async (id: string): Promise<void> => {
 }
 
 export const getEmailStatus = () => getJson<{ configured: boolean }>('/budget-rules/email-status')
+
+export interface SpendCategory {
+  id: string
+  key: string
+  displayName: string
+  colorVar: string
+  sortOrder: number
+  archivedAt: string | null
+}
+
+export interface SpendVendor {
+  id: string
+  key: string
+  displayName: string
+  provider: string | null      // null for vendors with no token estimate
+  defaultCategoryId: string | null
+  archivedAt: string | null
+}
+
+// The C# enum is serialized through the API's global camelCase JsonStringEnumConverter,
+// not the `HasConversion<string>` EF uses to store it — that conversion is DB-only. So the
+// wire value is 'manual' / 'csv' / 'portal', matching how Provider already lower-cases
+// ('anthropic' etc. above), not the PascalCase SpendSource member names.
+export type SpendSourceValue = 'manual' | 'csv' | 'portal'
+
+export interface SpendEntry {
+  id: string
+  occurredOn: string           // ISO date yyyy-MM-dd
+  vendorId: string
+  categoryId: string
+  amount: number               // as charged
+  currency: string
+  amountGbp: number            // frozen at write — sum this, never `amount`
+  fxRate: number
+  description: string | null
+  source: SpendSourceValue
+  entryKey: string | null
+  recordedAt: string
+}
+
+export interface SpendEntryResult {
+  id: string | null
+  status: 'created' | 'duplicate' | 'rejected'
+  reason: string | null
+}
+
+export interface NewSpendEntry {
+  occurredOn: string
+  vendorId: string
+  categoryId: string
+  amount: number
+  currency: string
+  description: string | null
+  source: SpendSourceValue
+  entryKey: string | null
+}
+
+export const getSpendCategories = () => getJson<SpendCategory[]>('/spend/categories')
+
+export const getSpendVendors = () => getJson<SpendVendor[]>('/spend/vendors')
+
+export const getSpendEntries = (from: string, to: string) =>
+  getJson<SpendEntry[]>('/spend/entries', { from, to })
+
+/** Always an array — the manual form sends one. */
+export const postSpendEntries = async (entries: NewSpendEntry[]): Promise<SpendEntryResult[]> => {
+  const res = await request('/spend/entries', {
+    method: 'POST',
+    headers: jsonHeaders,
+    body: JSON.stringify(entries),
+  })
+  return res.json() as Promise<SpendEntryResult[]>
+}
+
+export const deleteSpendEntry = async (id: string): Promise<void> => {
+  await request(`/spend/entries/${id}`, { method: 'DELETE' })
+}
