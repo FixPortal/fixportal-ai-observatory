@@ -44,9 +44,14 @@ public static class SpendCatalogEndpoints
         SpendCategoryRequest req, AiObservatoryDbContext db, CancellationToken ct)
     {
         var key = Slug(req.Key);
-        if (key is null || string.IsNullOrWhiteSpace(req.DisplayName) || req.DisplayName.Length > 100)
+        if (key is null || ValidateName(req.DisplayName) is not null)
         {
             return Results.BadRequest("Key must be a slug of 60 characters or fewer and DisplayName is required");
+        }
+
+        if (ValidateColorVar(req.ColorVar) is { } colorError)
+        {
+            return Results.BadRequest(colorError);
         }
 
         if (await db.SpendCategories.AnyAsync(c => c.Key == key, ct))
@@ -77,14 +82,15 @@ public static class SpendCatalogEndpoints
 
         if (req.DisplayName is { } name)
         {
-            if (string.IsNullOrWhiteSpace(name) || name.Length > 100)
-            {
-                return Results.BadRequest("DisplayName is required and must be 100 characters or fewer");
-            }
+            if (ValidateName(name) is { } error) { return Results.BadRequest(error); }
             category.DisplayName = name.Trim();
         }
 
-        if (req.ColorVar is { } color) { category.ColorVar = color.Trim(); }
+        if (req.ColorVar is { } color)
+        {
+            if (ValidateColorVar(color) is { } colorError) { return Results.BadRequest(colorError); }
+            category.ColorVar = color.Trim();
+        }
         if (req.SortOrder is { } order) { category.SortOrder = order; }
         // Archiving is a soft delete: historical entries keep resolving their category.
         if (req.Archived is { } archived) { category.ArchivedAt = archived ? clock.GetCurrentInstant() : null; }
@@ -109,7 +115,7 @@ public static class SpendCatalogEndpoints
         SpendVendorRequest req, AiObservatoryDbContext db, CancellationToken ct)
     {
         var key = Slug(req.Key);
-        if (key is null || string.IsNullOrWhiteSpace(req.DisplayName) || req.DisplayName.Length > 100)
+        if (key is null || ValidateName(req.DisplayName) is not null)
         {
             return Results.BadRequest("Key must be a slug of 60 characters or fewer and DisplayName is required");
         }
@@ -160,10 +166,7 @@ public static class SpendCatalogEndpoints
 
         if (req.DisplayName is { } name)
         {
-            if (string.IsNullOrWhiteSpace(name) || name.Length > 100)
-            {
-                return Results.BadRequest("DisplayName is required and must be 100 characters or fewer");
-            }
+            if (ValidateName(name) is { } error) { return Results.BadRequest(error); }
             vendor.DisplayName = name.Trim();
         }
 
@@ -181,6 +184,16 @@ public static class SpendCatalogEndpoints
         await db.SaveChangesAsync(ct);
         return Results.Ok(vendor);
     }
+
+    private static string? ValidateName(string? name) =>
+        string.IsNullOrWhiteSpace(name) || name.Length > 100
+            ? "DisplayName is required and must be 100 characters or fewer"
+            : null;
+
+    private static string? ValidateColorVar(string? color) =>
+        color is { Length: > 60 }
+            ? "ColorVar must be 60 characters or fewer"
+            : null;
 
     /// <summary>Normalises a key to a lower-case slug, or null when it cannot be one.</summary>
     private static string? Slug(string? raw)
