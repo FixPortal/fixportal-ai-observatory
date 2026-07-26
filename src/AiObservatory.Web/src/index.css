@@ -1263,6 +1263,7 @@ body {
   color: var(--text);
 }
 
+.spend-ledger__wrapper { overflow-x: auto; }
 .spend-ledger { width: 100%; border-collapse: collapse; font-size: 0.8rem; }
 .spend-ledger th {
   text-align: left;

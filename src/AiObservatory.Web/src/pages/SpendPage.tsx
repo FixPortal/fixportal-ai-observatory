@@ -4,7 +4,7 @@ import SpendFilterBar from '../components/SpendFilterBar'
 import SpendTotals from '../components/SpendTotals'
 import SpendLedgerTable from '../components/SpendLedgerTable'
 import SpendEntryModal from '../components/SpendEntryModal'
-import { useSpendCategories, useSpendVendors, useSpendEntries } from '../api/queries'
+import { useSpendCategories, useSpendVendors, useAllSpendCategories, useAllSpendVendors, useSpendEntries } from '../api/queries'
 import { deleteSpendEntry } from '../api/client'
 import { filterEntries, totalGbp } from '../lib/spendFilters'
 import { isReadonly } from '../auth/msal'
@@ -24,6 +24,11 @@ export default function SpendPage() {
 
   const categories = useSpendCategories()
   const vendors = useSpendVendors()
+  // Includes archived rows: a historical entry must still resolve a display name for a
+  // category or vendor that has since been retired (spec §8). Pickers stay on the live
+  // lists above so a retired one cannot be selected again.
+  const allCategories = useAllSpendCategories()
+  const allVendors = useAllSpendVendors()
   const { entries, isLoading, isError } = useSpendEntries(from, to)
 
   const visible = useMemo(
@@ -39,8 +44,8 @@ export default function SpendPage() {
       byCategory.set(e.categoryId, (byCategory.get(e.categoryId) ?? 0) + e.amountGbp)
     }
     const [topId] = [...byCategory.entries()].sort((a, b) => b[1] - a[1])[0]
-    return categories.find(c => c.id === topId)?.displayName ?? null
-  }, [visible, categories])
+    return allCategories.find(c => c.id === topId)?.displayName ?? null
+  }, [visible, allCategories])
 
   const remove = useMutation({
     mutationFn: deleteSpendEntry,
@@ -71,16 +76,19 @@ export default function SpendPage() {
         ? <p>Loading spend…</p>
         : <SpendLedgerTable
             entries={visible}
-            categories={categories}
-            vendors={vendors}
+            categories={allCategories}
+            vendors={allVendors}
             onDelete={id => remove.mutate(id)}
             canEdit={!isReadonly}
+            isDeleting={remove.isPending}
           />}
 
       {adding && (
         <SpendEntryModal
           categories={categories}
           vendors={vendors}
+          from={from}
+          to={to}
           onClose={() => setAdding(false)}
         />
       )}
