@@ -118,10 +118,32 @@ Anything posting Anthropic events should send `cacheWrite1hTokens` alongside
 all-five-minute — but for a Claude Code transcript that is an understatement,
 because those writes are one-hour.
 
-Measured effect on the corrected series: **$16,271 → $18,564, an uplift of
-14.1%**. Recomputed straight from the transcripts, independently of the pipeline;
-the 5-minute figure reproduces the stored $16,240.82 once this session's own
-subsequent usage is accounted for.
+**Predicted effect**, recomputed straight from the transcripts and independently
+of the pipeline: $16,271 → $18,564, an uplift of 14.1%. The five-minute half of
+that prediction reproduced the then-stored $16,240.82 to $30.63, which was
+precisely the session's own usage between measuring and checking — so both ends
+of the prediction were anchored before anything was rebuilt.
+
+**Actual, after the purge and re-ingest on 2026-07-26:** 102 rows spanning
+2026-06-25 .. 2026-07-26, **$18,515.35**, with cache-write tokens and their
+one-hour subset identical at 745,562,819 — the split confirmed end to end.
+
+That is **0.26% under** the prediction, and the variance is mixed per model
+rather than systematic: `claude-opus-4-8` came in $140 below, `claude-opus-5` $95
+above (explained — usage continued after the measurement), the rest within a few
+dollars either way. Not reconciled further. It is deliberately recorded as a
+0.26% discrepancy rather than rounded into agreement: the five-minute figure did
+match to the penny, so this one should not be described as if it did.
+
+| | |
+|---|---:|
+| Original recorded history (all time) | $159,746 |
+| After de-duplication + rate fixes | $16,241 |
+| After the TTL split | **$18,515** |
+
+The ~4x original error decomposes as roughly 2.2x streaming duplication, 1.9x
+rate errors, and 1.14x the TTL split — each established by measurement, and each
+fixed separately.
 
 Two data notes worth keeping. Of 281,354 cache-bearing assistant messages, every
 one carries a `cache_creation` object and **3** report a 1h count fractionally
