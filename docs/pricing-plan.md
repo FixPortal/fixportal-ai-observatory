@@ -135,15 +135,38 @@ dollars either way. Not reconciled further. It is deliberately recorded as a
 0.26% discrepancy rather than rounded into agreement: the five-minute figure did
 match to the penny, so this one should not be described as if it did.
 
-| | |
+### Sizing the original error, without comparing different windows
+
+The headline $159,746 covered **all** recorded history (2026-05-28 .. 2026-07-25,
+184 rows). The corrected series covers 2026-06-25 onward, because roughly four
+weeks predate local transcript retention and were **dropped as unrecoverable,
+not corrected** (§R2). Dividing one by the other measures the window change as
+much as the error, so it is not the error factor.
+
+The like-for-like comparison is the overlapping window only:
+
+| Window 2026-06-25 .. 2026-07-25/26 | |
 |---|---:|
-| Original recorded history (all time) | $159,746 |
+| As recorded before correction | $74,838 |
 | After de-duplication + rate fixes | $16,241 |
 | After the TTL split | **$18,515** |
 
-The ~4x original error decomposes as roughly 2.2x streaming duplication, 1.9x
-rate errors, and 1.14x the TTL split — each established by measurement, and each
-fixed separately.
+— about a **4x** overstatement, and the residual $84,908 of the original
+$159,746 is the discarded pre-retention window, not a correction.
+
+Three causes, each measured separately:
+
+| Cause | Measured effect | Direction |
+|---|---|---|
+| Streaming re-emits the same `message.id` | 2.2x–2.9x by token class (§1) | inflated cost |
+| Wrong rates in the table | ~1.9x | inflated cost |
+| Cache writes priced 5m instead of 1h | 1.14x | **understated** cost |
+
+Do not read these as factors that multiply out to the 4x. They do not, and the
+arithmetic should not be presented as if they do: the per-class inflation differs
+(input 2.73x, output 2.86x, cache-write 2.69x, cache-read 2.20x) and the cost mix
+weights them unequally, while the TTL correction pushes the other way. Each
+figure is an independently measured quantity; the 4x is the measured whole.
 
 Two data notes worth keeping. Of 281,354 cache-bearing assistant messages, every
 one carries a `cache_creation` object and **3** report a 1h count fractionally
