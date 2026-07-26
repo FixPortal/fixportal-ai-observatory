@@ -77,6 +77,23 @@ public class FxRateProviderTests
 
         var rate = await sut.GetGbpRateOnAsync("USD", new LocalDate(2026, 3, 15), TestContext.Current.CancellationToken);
 
-        rate.Should().BeGreaterThan(0m, "an FX outage must not block recording a real charge");
+        // 0.79m is FxRateProvider's private Fallback constant, documented as a recent
+        // USD->GBP rate. USD is the only currency phase-1 entries offer besides GBP, so it
+        // is the only one with a static fallback -- see ThrowsForANonUsdCurrencyOnOutage.
+        rate.Should().Be(0.79m, "an FX outage must not block recording a real USD charge");
+    }
+
+    [Fact]
+    public async Task ThrowsForANonUsdCurrencyOnOutage()
+    {
+        var handler = new StubHandler(HttpStatusCode.ServiceUnavailable, "");
+        var sut = Create(handler);
+        var date = new LocalDate(2026, 3, 15);
+
+        var act = () => sut.GetGbpRateOnAsync("EUR", date, TestContext.Current.CancellationToken);
+
+        var ex = await act.Should().ThrowAsync<FxUnavailableException>(
+            "freezing a USD-shaped fallback rate against a EUR charge would be undetectably wrong");
+        ex.Which.Message.Should().Contain("EUR").And.Contain("2026-03-15");
     }
 }
