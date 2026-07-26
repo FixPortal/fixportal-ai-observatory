@@ -115,6 +115,12 @@ public class AnthropicUsageClient(HttpClient http, ILogger<AnthropicUsageClient>
 
         var rates = match?.ToRates() ?? options.FallbackPricing;
 
+        // No cacheWrite1hTokens argument: the usage report returns a single
+        // cache_creation_input_tokens figure with no TTL breakdown, so this arm genuinely
+        // cannot tell five-minute writes from one-hour ones. The default (0) prices them all
+        // at the five-minute rate, which understates a one-hour-heavy workload — an accepted
+        // limit of the polled-API path, not of the pricing table. The local-transcript
+        // producer does have the breakdown and sends it.
         return AnthropicPricingResolver.ComputeCost(rates, input, output, cacheRead, cacheWrite);
     }
 

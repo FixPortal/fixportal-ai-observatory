@@ -159,6 +159,72 @@ public class EventsEndpointsWafTests(AiObservatoryApiFactory factory)
     }
 
     /// <summary>
+    /// The same event, now declaring its cache write as one-hour TTL, must cost more: 1h
+    /// writes bill at 2x base input against the five-minute rate's 1.25x. This is the whole
+    /// point of the split — a deployment writing exclusively one-hour entries was understated.
+    /// </summary>
+    [Fact]
+    public async Task PostEvent_WhenCacheWriteIsOneHour_PricesAtTheOneHourRate()
+    {
+        using var client = factory.CreateAdminClient();
+        var key = $"waf-test-cost-1h-{Guid.NewGuid():N}";
+
+        var body = new
+        {
+            Provider = "anthropic",
+            Model = "claude-sonnet-5",
+            InputTokens = 1_000_000,
+            OutputTokens = 1_000_000,
+            CacheReadTokens = 1_000_000,
+            CacheWriteTokens = 1_000_000,
+            CacheWrite1hTokens = 1_000_000,   // the entire write is one-hour TTL
+            CostUsd = 0m,
+            RawPayload = "{}",
+            EventKey = key,
+            OccurredAtUtc = new DateTimeOffset(2026, 7, 20, 12, 0, 0, TimeSpan.Zero),
+        };
+
+        var created = await client.PostAsJsonAsync("/api/events", body, TestContext.Current.CancellationToken);
+        created.StatusCode.Should().Be(HttpStatusCode.Created);
+
+        var id = (await created.Content.ReadFromJsonAsync<JsonElement>(TestContext.Current.CancellationToken))
+            .GetProperty("id").GetGuid();
+        var stored = await client.GetFromJsonAsync<JsonElement>($"/api/events/{id}", TestContext.Current.CancellationToken);
+
+        stored.GetProperty("costUsd").GetDecimal().Should().Be(16.20m,
+            "2.00 + 10.00 + 0.20 + 4.00 — the 4.00 one-hour rate replaces the 2.50 five-minute one");
+    }
+
+    /// <summary>
+    /// The one-hour count is a subset of the total, so an over-large one is a malformed
+    /// request rather than something to silently clamp at the boundary.
+    /// </summary>
+    [Fact]
+    public async Task PostEvent_WhenCacheWrite1hExceedsCacheWrite_IsRejected()
+    {
+        using var client = factory.CreateAdminClient();
+
+        var body = new
+        {
+            Provider = "anthropic",
+            Model = "claude-sonnet-5",
+            InputTokens = 0,
+            OutputTokens = 0,
+            CacheReadTokens = 0,
+            CacheWriteTokens = 1_000,
+            CacheWrite1hTokens = 1_001,
+            CostUsd = 0m,
+            RawPayload = "{}",
+            EventKey = $"waf-test-cost-1h-bad-{Guid.NewGuid():N}",
+            OccurredAtUtc = new DateTimeOffset(2026, 7, 20, 12, 0, 0, TimeSpan.Zero),
+        };
+
+        var response = await client.PostAsJsonAsync("/api/events", body, TestContext.Current.CancellationToken);
+
+        response.StatusCode.Should().Be(HttpStatusCode.BadRequest);
+    }
+
+    /// <summary>
     /// The server-side override is Anthropic-only. Copilot and Moonshot are flat-rate
     /// subscriptions with no per-token price, and Google/OpenAI report billed figures, so
     /// their supplied cost has to survive untouched.

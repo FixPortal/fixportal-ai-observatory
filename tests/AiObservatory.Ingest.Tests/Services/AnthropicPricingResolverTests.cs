@@ -29,13 +29,13 @@ public class AnthropicPricingResolverTests
         Pricing =
         [
             // A dated pair for the same prefix — an introductory price and its successor.
-            new AnthropicPricingEntry("claude-sonnet-5", 2.0m, 10.0m, 0.20m, 2.50m, EffectiveTo: new LocalDate(2026, 8, 31)),
-            new AnthropicPricingEntry("claude-sonnet-5", 3.0m, 15.0m, 0.30m, 3.75m, EffectiveFrom: new LocalDate(2026, 9, 1)),
+            new AnthropicPricingEntry("claude-sonnet-5", 2.0m, 10.0m, 0.20m, 2.50m, 4.00m, EffectiveTo: new LocalDate(2026, 8, 31)),
+            new AnthropicPricingEntry("claude-sonnet-5", 3.0m, 15.0m, 0.30m, 3.75m, 6.00m, EffectiveFrom: new LocalDate(2026, 9, 1)),
             // Overlapping prefixes of different lengths — the longer must win.
-            new AnthropicPricingEntry("claude-opus-4", 15.0m, 75.0m, 1.50m, 18.75m),
-            new AnthropicPricingEntry("claude-opus-4-8", 5.0m, 25.0m, 0.50m, 6.25m),
+            new AnthropicPricingEntry("claude-opus-4", 15.0m, 75.0m, 1.50m, 18.75m, 30.00m),
+            new AnthropicPricingEntry("claude-opus-4-8", 5.0m, 25.0m, 0.50m, 6.25m, 10.00m),
         ],
-        FallbackPricing = new PricingRates4(3.0m, 15.0m, 0.30m, 3.75m),
+        FallbackPricing = new PricingRates(3.0m, 15.0m, 0.30m, 3.75m, 6.00m),
     };
 
     [Theory]
@@ -78,10 +78,10 @@ public class AnthropicPricingResolverTests
         {
             Pricing =
             [
-                new AnthropicPricingEntry("claude-sonnet-5-preview", 1.0m, 5.0m, 0.10m, 1.25m, EffectiveTo: new LocalDate(2026, 6, 30)),
-                new AnthropicPricingEntry("claude-sonnet-5", 3.0m, 15.0m, 0.30m, 3.75m),
+                new AnthropicPricingEntry("claude-sonnet-5-preview", 1.0m, 5.0m, 0.10m, 1.25m, 2.00m, EffectiveTo: new LocalDate(2026, 6, 30)),
+                new AnthropicPricingEntry("claude-sonnet-5", 3.0m, 15.0m, 0.30m, 3.75m, 6.00m),
             ],
-            FallbackPricing = new PricingRates4(99m, 99m, 99m, 99m),
+            FallbackPricing = new PricingRates(99m, 99m, 99m, 99m, 99m),
         };
 
         var rates = options.ResolveRates("claude-sonnet-5-preview", AfterIntroWindow);
@@ -96,10 +96,10 @@ public class AnthropicPricingResolverTests
         {
             Pricing =
             [
-                new AnthropicPricingEntry("claude-sonnet-5", 3.0m, 15.0m, 0.30m, 3.75m),
-                new AnthropicPricingEntry("claude-sonnet-5", 2.0m, 10.0m, 0.20m, 2.50m, EffectiveTo: new LocalDate(2026, 8, 31)),
+                new AnthropicPricingEntry("claude-sonnet-5", 3.0m, 15.0m, 0.30m, 3.75m, 6.00m),
+                new AnthropicPricingEntry("claude-sonnet-5", 2.0m, 10.0m, 0.20m, 2.50m, 4.00m, EffectiveTo: new LocalDate(2026, 8, 31)),
             ],
-            FallbackPricing = new PricingRates4(99m, 99m, 99m, 99m),
+            FallbackPricing = new PricingRates(99m, 99m, 99m, 99m, 99m),
         };
 
         var rates = options.ResolveRates("claude-sonnet-5", InIntroWindow);
@@ -119,9 +119,10 @@ public class AnthropicPricingResolverTests
     [Fact]
     public void ComputeCostPricesEachTokenClassAtItsOwnRate()
     {
-        var rates = new PricingRates4(Input: 5.0m, Output: 25.0m, CacheRead: 0.50m, CacheWrite: 6.25m);
+        var rates = OpusRates;
 
         // One million of each class, so the cost is simply the sum of the four rates.
+        // No one-hour portion is supplied, so the whole cache write prices at CacheWrite.
         var cost = AnthropicPricingResolver.ComputeCost(rates, 1_000_000, 1_000_000, 1_000_000, 1_000_000);
 
         cost.Should().Be(36.75m);
@@ -130,8 +131,41 @@ public class AnthropicPricingResolverTests
     [Fact]
     public void ComputeCostIsZeroForZeroTokens()
     {
-        var rates = new PricingRates4(5.0m, 25.0m, 0.50m, 6.25m);
-
-        AnthropicPricingResolver.ComputeCost(rates, 0, 0, 0, 0).Should().Be(0m);
+        AnthropicPricingResolver.ComputeCost(OpusRates, 0, 0, 0, 0).Should().Be(0m);
     }
+
+    /// <summary>
+    /// The one-hour count is a SUBSET of the cache-write total, and the remainder — not the
+    /// total — prices at the five-minute rate. Getting this backwards (pricing the full total
+    /// at 5m and then adding the 1h portion again) would double-charge the one-hour tokens,
+    /// so the arithmetic is pinned rather than left to inspection.
+    /// </summary>
+    [Theory]
+    // 1h portion | expected: (1M - portion) @ $6.25 + portion @ $10.00
+    [InlineData(0, 6.25)]              // no breakdown reported — all five-minute, as before
+    [InlineData(1_000_000, 10.00)]     // this deployment's real shape: 100% one-hour
+    [InlineData(400_000, 7.75)]        // 600k @ 6.25 = 3.75, plus 400k @ 10.00 = 4.00
+    public void ComputeCostSplitsCacheWriteByTtl(long cacheWrite1h, double expected)
+    {
+        var cost = AnthropicPricingResolver.ComputeCost(
+            OpusRates, inputTokens: 0, outputTokens: 0, cacheReadTokens: 0,
+            cacheWriteTokens: 1_000_000, cacheWrite1hTokens: cacheWrite1h);
+
+        cost.Should().Be((decimal)expected);
+    }
+
+    [Fact]
+    public void ComputeCostClampsAOneHourCountThatExceedsTheTotal()
+    {
+        // Not hypothetical: 3 of 281,354 cache-bearing transcript messages report a 1h count
+        // fractionally above their own cache_creation total. The five-minute remainder must
+        // floor at zero rather than go negative and credit the bill.
+        var cost = AnthropicPricingResolver.ComputeCost(
+            OpusRates, 0, 0, 0, cacheWriteTokens: 1_000_000, cacheWrite1hTokens: 1_500_000);
+
+        cost.Should().Be(15.00m, "the overflow prices as one-hour, and the 5m remainder floors at 0");
+    }
+
+    private static PricingRates OpusRates =>
+        new(Input: 5.0m, Output: 25.0m, CacheRead: 0.50m, CacheWrite: 6.25m, CacheWrite1h: 10.00m);
 }

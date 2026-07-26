@@ -40,6 +40,12 @@ public class AiObservatoryDbContext(DbContextOptions<AiObservatoryDbContext> opt
                 t.HasCheckConstraint("CK_UsageEvent_OutputTokens_NonNegative", "\"OutputTokens\" >= 0");
                 t.HasCheckConstraint("CK_UsageEvent_CacheReadTokens_NonNegative", "\"CacheReadTokens\" IS NULL OR \"CacheReadTokens\" >= 0");
                 t.HasCheckConstraint("CK_UsageEvent_CacheWriteTokens_NonNegative", "\"CacheWriteTokens\" IS NULL OR \"CacheWriteTokens\" >= 0");
+                // A subset can be neither negative nor larger than the set it is drawn from:
+                // the five-minute remainder is derived by subtraction, so an over-large 1h
+                // count would silently price part of the write twice.
+                t.HasCheckConstraint(
+                    "CK_UsageEvent_CacheWrite1hTokens_WithinCacheWrite",
+                    "\"CacheWrite1hTokens\" IS NULL OR (\"CacheWrite1hTokens\" >= 0 AND \"CacheWrite1hTokens\" <= COALESCE(\"CacheWriteTokens\", 0))");
                 t.HasCheckConstraint("CK_UsageEvent_CostUsd_NonNegative", "\"CostUsd\" >= 0");
             });
         });

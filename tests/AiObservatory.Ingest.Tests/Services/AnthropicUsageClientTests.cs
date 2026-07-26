@@ -23,10 +23,10 @@ public class AnthropicUsageClientTests
     {
         Pricing =
         [
-            new AnthropicPricingEntry("claude-sonnet-5", 2.0m, 10.0m, 0.20m, 2.50m, EffectiveTo: new LocalDate(2026, 8, 31)),
-            new AnthropicPricingEntry("claude-sonnet-5", 3.0m, 15.0m, 0.30m, 3.75m, EffectiveFrom: new LocalDate(2026, 9, 1)),
+            new AnthropicPricingEntry("claude-sonnet-5", 2.0m, 10.0m, 0.20m, 2.50m, 4.00m, EffectiveTo: new LocalDate(2026, 8, 31)),
+            new AnthropicPricingEntry("claude-sonnet-5", 3.0m, 15.0m, 0.30m, 3.75m, 6.00m, EffectiveFrom: new LocalDate(2026, 9, 1)),
         ],
-        FallbackPricing = new PricingRates4(3.0m, 15.0m, 0.30m, 3.75m),
+        FallbackPricing = new PricingRates(3.0m, 15.0m, 0.30m, 3.75m, 6.00m),
     };
 
     private static AnthropicUsageClient CreateSut(LocalDate bucketDate, string model)
