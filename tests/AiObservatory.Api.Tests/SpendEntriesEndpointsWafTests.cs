@@ -508,12 +508,17 @@ public class SpendEntriesEndpointsWafTests(AiObservatoryApiFactory factory)
     [Fact]
     public async Task Refund_FreezesANegativeAmountGbpAtTheChargeDateRate()
     {
-        using var client = factory.CreateAdminClient();
+        // USD, not GBP: GBP short-circuits to rate 1 before any FX lookup, so a GBP row
+        // would assert the conversion without ever exercising it — the rate and the amount
+        // would match by construction and a broken conversion would still pass.
+        var handler = new StubHttpMessageHandler(HttpStatusCode.OK, """{"rates":{"GBP":0.8}}""");
+        using var stubFactory = WithStubbedFx(factory, handler);
+        using var client = AdminClient(stubFactory);
         var ct = TestContext.Current.CancellationToken;
         var (categoryId, vendorId) = await SeedCatalogAsync(client);
 
         var response = await client.PostAsJsonAsync("/api/spend/entries",
-            new[] { Entry(categoryId, vendorId, $"k-{Guid.NewGuid():N}", -30m) }, ct);
+            new[] { Entry(categoryId, vendorId, $"k-{Guid.NewGuid():N}", -30m, "USD") }, ct);
         var id = (await response.Content.ReadFromJsonAsync<JsonElement>(ct))
             .EnumerateArray().Single().GetProperty("id").GetGuid();
 
@@ -521,18 +526,18 @@ public class SpendEntriesEndpointsWafTests(AiObservatoryApiFactory factory)
         var row = entries.EnumerateArray().Single(e => e.GetProperty("id").GetGuid() == id);
 
         row.GetProperty("amount").GetDecimal().Should().Be(-30m);
+        // The rate stays positive; the amount carries the sign.
+        row.GetProperty("fxRate").GetDecimal().Should().Be(0.8m);
         // The GBP column must carry the sign too — it is the only column ever summed, so a
         // positive AmountGbp on a negative Amount would silently turn a refund into a charge.
-        row.GetProperty("amountGbp").GetDecimal().Should().Be(-30m);
-        row.GetProperty("fxRate").GetDecimal().Should().BePositive("the rate stays positive; the amount carries the sign");
+        row.GetProperty("amountGbp").GetDecimal().Should().Be(-24m, "-30 USD at 0.8 is -24 GBP, frozen at the charge date");
     }
 
     /// <summary>
     /// AmountGbp is the column every total sums, so the signed invariant matters more there
     /// than on Amount: a zero or opposite-sign value flips a refund into a charge across
-    /// every aggregate at once. CK_SpendEntry_AmountGbp_SameSign is unreachable through this
-    /// endpoint by construction (AmountGbp is derived from Amount and a positive rate), so
-    /// this asserts the property the constraint exists to protect rather than the constraint.
+    /// every aggregate at once. This asserts the property in the ordinary case; the
+    /// rounding boundary that can actually trip the constraint is covered below.
     /// </summary>
     [Theory]
     [InlineData(-30)]
@@ -555,6 +560,38 @@ public class SpendEntriesEndpointsWafTests(AiObservatoryApiFactory factory)
         var storedGbp = row.GetProperty("amountGbp").GetDecimal();
         (stored * storedGbp).Should().BePositive(
             "a non-GBP conversion must preserve the sign, or a refund reads as a charge in every total");
+    }
+
+    /// <summary>
+    /// The one way CK_SpendEntry_AmountGbp_SameSign is genuinely reachable: an amount small
+    /// enough that the conversion rounds to zero at 4dp. The row is refused rather than
+    /// stored as a zero-GBP entry — it could not contribute to a total anyway — and, because
+    /// SaveRowAsync translates the DbUpdateException, it comes back as a per-row verdict
+    /// rather than a 500 or a failed batch.
+    /// </summary>
+    [Fact]
+    public async Task PostEntry_WhoseConversionRoundsToZero_IsRejectedWithoutFailingTheBatch()
+    {
+        var handler = new StubHttpMessageHandler(HttpStatusCode.OK, """{"rates":{"GBP":0.5}}""");
+        using var stubFactory = WithStubbedFx(factory, handler);
+        using var client = AdminClient(stubFactory);
+        var ct = TestContext.Current.CancellationToken;
+        var (categoryId, vendorId) = await SeedCatalogAsync(client);
+
+        var batch = new object[]
+        {
+            // 0.0001 USD at 0.5 is 0.00005, which rounds to 0.0000 at the stored scale.
+            Entry(categoryId, vendorId, $"k-{Guid.NewGuid():N}", 0.0001m, "USD"),
+            Entry(categoryId, vendorId, $"k-{Guid.NewGuid():N}", 50m, "USD"),
+        };
+
+        var response = await client.PostAsJsonAsync("/api/spend/entries", batch, ct);
+
+        response.StatusCode.Should().Be(HttpStatusCode.OK);
+        var results = (await response.Content.ReadFromJsonAsync<JsonElement>(ct)).EnumerateArray().ToArray();
+        results[0].GetProperty("status").GetString().Should().Be("rejected");
+        results[1].GetProperty("status").GetString().Should().Be("created",
+            "a row rejected by the constraint must not take the rest of the batch with it");
     }
 
     [Theory]

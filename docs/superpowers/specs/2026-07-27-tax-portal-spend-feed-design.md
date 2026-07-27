@@ -578,7 +578,7 @@ important test — it is the failure this project has already been burned by.
 | 1b | Seed remaining vendors + Cloud category (§5) | **Done** — `SeedRemainingSpendVendorsAndCloudCategory` |
 | 1c | Seed the Copilot vendor (§5) | **Done** — `SeedCopilotVendor` |
 | 2 | Portal: options, vendor map, slug resolution, feed worker, additive POST | Blocked on the portal category cleanup |
-| 3 | Refund selection from `Income` (§3) | Blocked on phase 2 |
+| 3 | Refund selection from `Income` (§3) | Blocked on phase 2 **and, independently, on §3's `Income` vendor-signal gate** — that signal is undefined today, and phase 2 completing does not settle it |
 | 4 | Deletion reconcile, `PATCH` on changed amounts (§6, §8) | Blocked on phase 2 |
 
 Every decision this document opened is now ruled, and the observatory side of all of
