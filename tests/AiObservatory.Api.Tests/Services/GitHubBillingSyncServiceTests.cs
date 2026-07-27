@@ -28,7 +28,8 @@ public class GitHubBillingSyncServiceTests(AiObservatoryApiFactory factory)
     private const string FxBody = """{"rates":{"GBP":0.75}}""";
 
     private static GitHubBillingUsageItem Item(string date, string product, string sku, decimal net) =>
-        new(DateTimeOffset.Parse(date, System.Globalization.CultureInfo.InvariantCulture), product, sku, net);
+        new(DateOnly.ParseExact(date, "yyyy-MM-dd", System.Globalization.CultureInfo.InvariantCulture),
+            product, sku, net);
 
     /// <summary>
     /// A fresh scope per call, so each sync runs against its own DbContext exactly as the
@@ -40,13 +41,15 @@ public class GitHubBillingSyncServiceTests(AiObservatoryApiFactory factory)
         var scope = factory.Services.CreateScope();
         var db = scope.ServiceProvider.GetRequiredService<AiObservatoryDbContext>();
 
+        // Disposed here rather than leaked: both outlive the sync only as FX plumbing, and
+        // the returned scope/db are what the caller still needs.
+        using var fxHttp = new HttpClient(new StubHttpMessageHandler(HttpStatusCode.OK, FxBody));
+        using var fxCache = new MemoryCache(new MemoryCacheOptions());
+
         var sut = new GitHubBillingSyncService(
             new StubBillingClient(items),
             db,
-            new FxRateProvider(
-                new HttpClient(new StubHttpMessageHandler(HttpStatusCode.OK, FxBody)),
-                new MemoryCache(new MemoryCacheOptions()),
-                NullLogger<FxRateProvider>.Instance),
+            new FxRateProvider(fxHttp, fxCache, NullLogger<FxRateProvider>.Instance),
             new FakeClock(Now),
             NullLogger<GitHubBillingSyncService>.Instance);
 
@@ -69,7 +72,7 @@ public class GitHubBillingSyncServiceTests(AiObservatoryApiFactory factory)
     public async Task WritesOneEntryPerBilledLineAndConvertsAtTheMonthStart()
     {
         var sku = UniqueSku("Actions Linux");
-        var (written, db, scope) = await SyncAsync(Item("2026-06-01T00:00:00Z", "actions", sku, 108.494m));
+        var (written, db, scope) = await SyncAsync(Item("2026-06-01", "actions", sku, 108.494m));
         using var _ = scope;
 
         written.Should().Be(1);
@@ -92,8 +95,8 @@ public class GitHubBillingSyncServiceTests(AiObservatoryApiFactory factory)
         var free = UniqueSku("Actions Windows");
 
         var (written, db, scope) = await SyncAsync(
-            Item("2026-05-01T00:00:00Z", "actions", billed, 9.402m),
-            Item("2026-05-01T00:00:00Z", "actions", free, 0m));
+            Item("2026-05-01", "actions", billed, 9.402m),
+            Item("2026-05-01", "actions", free, 0m));
         using var _ = scope;
 
         written.Should().Be(1);
@@ -108,8 +111,8 @@ public class GitHubBillingSyncServiceTests(AiObservatoryApiFactory factory)
 
         var (written, db, scope) = await SyncAsync(
             // The payload carries repositoryName, so the same SKU can arrive once per repo.
-            Item("2026-07-01T00:00:00Z", "code_quality", sku, 12.01m),
-            Item("2026-07-01T00:00:00Z", "code_quality", sku, 3.99m));
+            Item("2026-07-01", "code_quality", sku, 12.01m),
+            Item("2026-07-01", "code_quality", sku, 3.99m));
         using var _ = scope;
 
         written.Should().Be(1, "one billing line per month and SKU, whatever the repository split");
@@ -123,11 +126,11 @@ public class GitHubBillingSyncServiceTests(AiObservatoryApiFactory factory)
     {
         var sku = UniqueSku("Actions Linux");
 
-        var first = await SyncAsync(Item("2026-07-01T00:00:00Z", "actions", sku, 133.602m));
+        var first = await SyncAsync(Item("2026-07-01", "actions", sku, 133.602m));
         first.Scope.Dispose();
 
         // Same month, larger figure — exactly what an open month looks like the next day.
-        var (written, db, scope) = await SyncAsync(Item("2026-07-01T00:00:00Z", "actions", sku, 180.44m));
+        var (written, db, scope) = await SyncAsync(Item("2026-07-01", "actions", sku, 180.44m));
         using var _ = scope;
 
         written.Should().Be(1);
@@ -146,7 +149,7 @@ public class GitHubBillingSyncServiceTests(AiObservatoryApiFactory factory)
     public async Task ReRunningWithNoChangeWritesNothing()
     {
         var sku = UniqueSku("Code Security");
-        var item = Item("2026-06-01T00:00:00Z", "ghas", sku, 30.00m);
+        var item = Item("2026-06-01", "ghas", sku, 30.00m);
 
         var first = await SyncAsync(item);
         first.Written.Should().Be(1);
@@ -170,7 +173,7 @@ public class GitHubBillingSyncServiceTests(AiObservatoryApiFactory factory)
         string product, string expectedVendorKey, string expectedCategoryKey)
     {
         var sku = UniqueSku(product);
-        var (_, db, scope) = await SyncAsync(Item("2026-06-01T00:00:00Z", product, sku, 5m));
+        var (_, db, scope) = await SyncAsync(Item("2026-06-01", product, sku, 5m));
         using var _ = scope;
 
         var entry = await FindAsync(db, sku, TestContext.Current.CancellationToken);
@@ -189,7 +192,7 @@ public class GitHubBillingSyncServiceTests(AiObservatoryApiFactory factory)
     public async Task LeavesAManualRecategorisationAlone()
     {
         var sku = UniqueSku("Actions Linux");
-        var first = await SyncAsync(Item("2026-05-01T00:00:00Z", "actions", sku, 10m));
+        var first = await SyncAsync(Item("2026-05-01", "actions", sku, 10m));
         first.Scope.Dispose();
 
         // Someone moves the entry to a different category on the dashboard.
@@ -206,7 +209,7 @@ public class GitHubBillingSyncServiceTests(AiObservatoryApiFactory factory)
             await editDb.SaveChangesAsync(TestContext.Current.CancellationToken);
         }
 
-        var (_, db, scope) = await SyncAsync(Item("2026-05-01T00:00:00Z", "actions", sku, 25m));
+        var (_, db, scope) = await SyncAsync(Item("2026-05-01", "actions", sku, 25m));
         using var _ = scope;
 
         var updated = await FindAsync(db, sku, TestContext.Current.CancellationToken);
@@ -220,8 +223,15 @@ public class GitHubBillingSyncServiceTests(AiObservatoryApiFactory factory)
 
     /// <summary>Returns whatever the test handed it, filtered to the requested year.</summary>
     private sealed class StubBillingClient(IReadOnlyList<GitHubBillingUsageItem> items)
-        : GitHubBillingClient(new HttpClient(), "test-org", NullLogger<GitHubBillingClient>.Instance)
+        : GitHubBillingClient(Unused, "test-org", NullLogger<GitHubBillingClient>.Instance)
     {
+        /// <summary>
+        /// The base constructor demands one, but this override never issues a request, so a
+        /// per-instance client would be created and abandoned on every call. One shared
+        /// instance for the class instead.
+        /// </summary>
+        private static readonly HttpClient Unused = new();
+
         public override Task<IReadOnlyList<GitHubBillingUsageItem>> GetUsageAsync(
             int year, CancellationToken ct = default) =>
             Task.FromResult<IReadOnlyList<GitHubBillingUsageItem>>(
