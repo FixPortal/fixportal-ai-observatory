@@ -266,6 +266,43 @@ Entries that are not well-formed `owner/repo` are discarded, so an unresolved
 `@Microsoft.KeyVault(...)` reference degrades to "GitHub activity off" instead of
 polling a garbage repo.
 
+### GitHub billing sync (API, not the worker)
+
+The API — not `AiObservatory.Ingest` — pulls GitHub's own billed usage into the
+spend ledger, because it is the side that owns the FX provider and the ledger write
+path (`Ingest_must_not_depend_on_Api` is an enforced architecture rule).
+
+| Setting | Enables | Notes |
+|---|---|---|
+| `GITHUB_TOKEN` + `GITHUB_BILLING_ORG` | GitHub billed spend | Token needs **billing read** — "Plan" read on a fine-grained PAT, or `admin:org` on a classic one |
+
+This exists because **the GitHub org bill is not paid from the account the spend CSV
+exports.** Before the sync, every penny of Actions, Advanced Security and Code
+Quality AI Credits was missing from the ledger — not misfiled, absent.
+
+It runs as a step in the API's daily background cycle and **upserts** on
+`(Source=Api, EntryKey)`, where the key is
+`github:{yyyy-MM}:{product}:{sku}` — deliberately excluding the amount. An open
+month accrues daily, so keying on identity rather than value lets a re-run update
+the figure instead of either duplicating it or waiting for month end.
+
+Products map to vendor and category as follows; an unrecognised product still lands,
+under `github`/`subscription`, so a new GitHub product line shows up in the total
+before anyone teaches the map about it:
+
+| Product | Vendor | Category |
+|---|---|---|
+| `actions`, `packages` | `github-actions` | `ci` |
+| `code_quality` | `github` | `code-review` |
+| `ghas` | `github` | `subscription` |
+
+The sync owns the **amount** only. A hand recategorisation on the dashboard survives
+the next run, so a line booked somewhere more useful stays there.
+
+A token that cannot read billing gets a 403/404, which the client turns into "no
+usage items" and a warning — a visible gap in the ledger, rather than an exception
+that would take the whole daily cycle (insights, budget alerts) down with it.
+
 #### Inert arms, and why `SecretNotFound` is expected
 
 `ANTHROPIC_BILLING_KEY` and `COPILOT_ORG` have no Key Vault secret in this

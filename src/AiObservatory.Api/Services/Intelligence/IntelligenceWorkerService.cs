@@ -1,3 +1,4 @@
+using AiObservatory.Api.Services.GitHub;
 using AiObservatory.Data.Repositories;
 using NodaTime;
 
@@ -14,6 +15,7 @@ public class IntelligenceWorkerService(
         {
             await RunAnalysisCatchupAsync(stoppingToken);
             await RunBudgetCheckAsync(stoppingToken);
+            await RunGitHubBillingSyncAsync(stoppingToken);
 
             var now = clock.GetCurrentInstant();
             var nextRun = now.InUtc().Date.PlusDays(1).AtMidnight().InUtc().ToInstant();
@@ -85,6 +87,36 @@ public class IntelligenceWorkerService(
             // Broad by design: isolate a single daily run's failure so the
             // long-running worker survives to the next iteration.
             logger.LogError(ex, "Intelligence worker failed for date {Date}", analysisDate);
+        }
+    }
+
+    /// <summary>
+    /// Pulls GitHub's billed usage into the spend ledger. Daily rather than monthly: the
+    /// sync upserts, so re-running keeps the open month's figure current instead of leaving
+    /// the ledger a month behind. No-ops when the GitHub billing arm is not configured.
+    /// </summary>
+    private async Task RunGitHubBillingSyncAsync(CancellationToken ct)
+    {
+        try
+        {
+            await using var scope = scopeFactory.CreateAsyncScope();
+            // Optional: registered only when GITHUB_TOKEN and GITHUB_BILLING_ORG are both set.
+            if (scope.ServiceProvider.GetService<GitHubBillingSyncService>() is not { } sync)
+            {
+                return;
+            }
+
+            await sync.SyncAsync(ct);
+        }
+        catch (OperationCanceledException) when (ct.IsCancellationRequested)
+        {
+            throw;
+        }
+        catch (Exception ex)
+        {
+            // Broad by design, matching the steps above: a GitHub or FX outage must not
+            // stop the worker reaching tomorrow's cycle.
+            logger.LogError(ex, "Intelligence worker GitHub billing sync failed");
         }
     }
 
