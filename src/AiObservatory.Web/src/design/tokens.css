@@ -7,6 +7,12 @@
  * this import — never here. See design-standard.md § App-local tokens. */
 
 :root {
+  /* Tells the browser which theme native form controls should render in —
+     without it, browser-drawn chrome (the date-input calendar icon/popup,
+     <select> dropdown panels, scrollbars) stays light regardless of the app's
+     own dark theme, standing out as a stray white control against a dark UI. */
+  color-scheme: light;
+
   --app-bg: #f7f8fa;
   --card-bg: #ffffff;
   --border: #e5e7eb;
@@ -48,6 +54,8 @@
 }
 
 :root[data-theme="dark"] {
+  color-scheme: dark;
+
   --app-bg: #020617;
   --card-bg: #0f172a;
   --border: #1e293b;
