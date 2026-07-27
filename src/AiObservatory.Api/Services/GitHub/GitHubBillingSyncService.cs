@@ -84,10 +84,20 @@ public class GitHubBillingSyncService(
         var categories = await db.SpendCategories.AsNoTracking()
             .ToDictionaryAsync(c => c.Key, c => c.Id, StringComparer.OrdinalIgnoreCase, ct);
 
+        var lines = Aggregate(items).ToList();
+
+        // Every existing entry for this run's keys in one query, rather than a
+        // FirstOrDefaultAsync per line. Tracked, not AsNoTracking: the matches found here are
+        // the entities the update path mutates.
+        var keys = lines.ConvertAll(EntryKeyFor);
+        var existing = await db.SpendEntries
+            .Where(e => e.Source == SpendSource.Api && e.EntryKey != null && keys.Contains(e.EntryKey))
+            .ToDictionaryAsync(e => e.EntryKey!, ct);
+
         var written = 0;
-        foreach (var line in Aggregate(items))
+        foreach (var line in lines)
         {
-            if (await UpsertAsync(line, vendors, categories, ct))
+            if (await UpsertAsync(line, existing, vendors, categories, ct))
             {
                 written++;
             }
@@ -110,7 +120,7 @@ public class GitHubBillingSyncService(
     /// </summary>
     private static IEnumerable<BillingLine> Aggregate(IEnumerable<GitHubBillingUsageItem> items) =>
         items
-            .GroupBy(i => (Month: LocalDate.FromDateTime(i.Date.UtcDateTime.Date).With(DateAdjusters.StartOfMonth),
+            .GroupBy(i => (Month: LocalDate.FromDateOnly(i.Date).With(DateAdjusters.StartOfMonth),
                            i.Product,
                            i.Sku))
             .Select(g => new BillingLine(g.Key.Month, g.Key.Product, g.Key.Sku, g.Sum(i => i.NetAmount)))
@@ -120,6 +130,7 @@ public class GitHubBillingSyncService(
     /// <returns><c>true</c> when a row was inserted or its amount changed.</returns>
     private async Task<bool> UpsertAsync(
         BillingLine line,
+        Dictionary<string, SpendEntry> existingByKey,
         Dictionary<string, Guid> vendors,
         Dictionary<string, Guid> categories,
         CancellationToken ct)
@@ -153,12 +164,27 @@ public class GitHubBillingSyncService(
         var entryKey = EntryKeyFor(line);
         var amountGbp = decimal.Round(line.NetAmount * rate, 4, MidpointRounding.ToEven);
 
-        var existing = await db.SpendEntries
-            .FirstOrDefaultAsync(e => e.Source == SpendSource.Api && e.EntryKey == entryKey, ct);
-
-        if (existing is null)
+        // A net amount below ~0.0001/rate rounds to zero GBP while Amount stays non-zero,
+        // which violates CK_SpendEntry_AmountGbp_SameSign ("Amount" * "AmountGbp" > 0). Skip
+        // it deliberately here rather than let the constraint reject it: such a line cannot
+        // move any total anyway, and this keeps the failure a logged skip instead of a
+        // DbUpdateException. Mirrors the reasoning on that constraint in the API's own
+        // spend-entry write path.
+        if (amountGbp == 0m)
         {
-            db.SpendEntries.Add(new SpendEntry
+            logger.LogWarning(
+                "GitHub billing: {Sku} for {Month} rounds to zero GBP at rate {Rate}; skipped",
+                line.Sku, line.Month, rate);
+            return false;
+        }
+
+        SpendEntry touched;
+        bool isNew;
+
+        if (!existingByKey.TryGetValue(entryKey, out var existing))
+        {
+            isNew = true;
+            touched = new SpendEntry
             {
                 OccurredOn = line.Month,
                 VendorId = vendorId,
@@ -171,7 +197,8 @@ public class GitHubBillingSyncService(
                 Source = SpendSource.Api,
                 EntryKey = entryKey,
                 RecordedAt = clock.GetCurrentInstant(),
-            });
+            };
+            db.SpendEntries.Add(touched);
         }
         else if (existing.Amount != line.NetAmount)
         {
@@ -181,13 +208,55 @@ public class GitHubBillingSyncService(
             existing.AmountGbp = amountGbp;
             existing.FxRate = rate;
             existing.RecordedAt = clock.GetCurrentInstant();
+            touched = existing;
+            isNew = false;
         }
         else
         {
             return false;
         }
 
-        await db.SaveChangesAsync(ct);
+        // Saved per line rather than once after the loop, deliberately: a line that the
+        // database rejects must cost only itself, and the lines already written stay
+        // written. Batching the save would let one bad row discard a whole cycle's GitHub
+        // spend — the same reasoning as SpendEntriesEndpoints.SaveRowAsync. The N+1 *read*
+        // that would otherwise pair with this is already gone: SyncAsync loads every
+        // existing entry up front in one query.
+        try
+        {
+            await db.SaveChangesAsync(ct);
+        }
+        catch (DbUpdateException ex)
+        {
+            // Reached by a unique-violation race (two syncs past the same up-front read, if
+            // this arm is ever driven from more than one place) or any other row-level
+            // rejection. Detach so the failed entity is not retried on the next line's save,
+            // and carry on: the remaining products still belong in the ledger. Logged, not
+            // surfaced — this repo is public and a raw Postgres message can carry column and
+            // constraint detail.
+            logger.LogError(ex,
+                "GitHub billing: could not save entry for {Product}/{Sku} in {Month}",
+                line.Product, line.Sku, line.Month);
+
+            // Detached for an insert; for a failed UPDATE the entity is still tracked as
+            // Modified, so leaving it would make the very next line's SaveChangesAsync retry
+            // it and fail again — one bad row would then take every subsequent row with it,
+            // which is exactly what saving per line is meant to prevent.
+            db.Entry(touched).State = EntityState.Detached;
+            if (!isNew)
+            {
+                existingByKey.Remove(entryKey);
+            }
+            return false;
+        }
+
+        if (isNew)
+        {
+            // So a later line carrying the same key updates this row rather than inserting
+            // a second one — the up-front dictionary predates it.
+            existingByKey[entryKey] = touched;
+        }
+
         return true;
     }
 

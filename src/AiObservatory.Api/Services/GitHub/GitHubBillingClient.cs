@@ -1,6 +1,7 @@
 using System.Globalization;
 using System.Net;
 using System.Net.Http.Json;
+using System.Text.Json.Serialization;
 
 namespace AiObservatory.Api.Services.GitHub;
 
@@ -67,8 +68,10 @@ public class GitHubBillingClient(HttpClient http, string org, ILogger<GitHubBill
 }
 
 /// <param name="Date">
-/// Start of the usage month, e.g. <c>2026-07-01T00:00:00Z</c>. GitHub reports this platform's
-/// usage monthly, so this is a period marker, not the date of an individual charge.
+/// Start of the usage month. GitHub reports this platform's usage monthly, so this is a
+/// period marker, not the date of an individual charge — hence <see cref="DateOnly"/> rather
+/// than a timestamp. See <see cref="GitHubBillingDateConverter"/> for why it needs a
+/// converter at all (the docs and the live API disagree about the wire format).
 /// </param>
 /// <param name="Product">Coarse billing product, e.g. <c>actions</c>, <c>ghas</c>, <c>code_quality</c>.</param>
 /// <param name="Sku">Human-readable line, e.g. <c>Code Quality AI Credits</c>.</param>
@@ -78,7 +81,7 @@ public class GitHubBillingClient(HttpClient http, string org, ILogger<GitHubBill
 /// included-minutes allowance that GitHub gives back on the same invoice.
 /// </param>
 public sealed record GitHubBillingUsageItem(
-    DateTimeOffset Date,
+    [property: JsonConverter(typeof(GitHubBillingDateConverter))] DateOnly Date,
     string Product,
     string Sku,
     decimal NetAmount);
