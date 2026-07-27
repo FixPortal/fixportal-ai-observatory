@@ -377,22 +377,32 @@ Three GitHub charges (£42.98 on 2026-06-22, £8.95 on 2026-06-03, £37.28 on
 2026-05-28, £89.21 total) were parked awaiting a split between GitHub Actions and
 Copilot. The GitHub billing API settles it, and not the way the question assumed.
 
-`GET /orgs/FixPortal/settings/billing/usage?year=2026` returns, net USD:
+`GET /organizations/FixPortal/settings/billing/usage?year=2026` returns, net USD
+(as at 2026-07-27; July was still an open month and has grown since the first pull):
 
-| Month | `actions` | `ghas` | `code_quality` | Total |
-|---|---:|---:|---:|---:|
-| 2026-05 | 9.40 | 0.97 | — | **10.37** |
-| 2026-06 | 108.49 | 30.00 | — | **138.49** |
-| 2026-07 | 131.92 | 25.16 | 13.61 | **170.68** |
+| Month | `actions` | `ghas` | `code_quality` | `packages` | Total |
+|---|---:|---:|---:|---:|---:|
+| 2026-05 | 9.40 | 0.97 | — | — | **10.37** |
+| 2026-06 | 108.49 | 30.00 | — | 0.00 | **138.49** |
+| 2026-07 | 133.60 | 26.13 | 14.59 | 0.00 | **174.33** |
 
-Two findings, both material:
+`?year=2025` returns an empty list, so May 2026 is the whole history — nothing
+earlier is missing.
+
+Three findings, all material:
 
 1. **There is no `copilot` product line in the org bill at all** — yet the ingest
    worker recorded Copilot token usage continuously from 2026-05-26 to 2026-07-10.
    Copilot is therefore billed somewhere other than the org account.
-2. **The org's own bill (~$319 across May–July) is nowhere near £89.21** and does
-   not appear in the CSV at all. So the three charges are not the Actions bill, and
-   the CSV is an *incomplete* picture of GitHub spend — a bigger gap than the £89.21
+2. **The org holds zero Copilot seats.** `GET /orgs/FixPortal/copilot/billing`
+   reports `seat_breakdown.total: 0` with `seat_management_setting: unconfigured`.
+   So the absence in (1) is not a reporting quirk — the org genuinely buys no
+   Copilot, and no org-billed reading of the three charges can be correct.
+3. **The org's own bill ($323.19 across May–July) does not appear in the CSV at
+   all.** The export carries a single account (YJC Solutions, 41 rows,
+   2025-12-10 to 2026-07-26) and contains no July GitHub charge whatsoever despite
+   $174 of July usage. So the three charges are not the Actions bill, and the CSV
+   is an *incomplete* picture of GitHub spend — a far bigger gap than the £89.21
    these rows represent.
 
 Reading: the three charges are a recurring, mid-month, subscription-shaped payment
@@ -407,16 +417,37 @@ Subscription. That is justified independently of these three rows: Copilot was t
 only metered provider whose estimate could never be compared against a billed
 figure, because there was no vendor to record one against.
 
+**Actioned (2):** both follow-ups this raised are now closed by a billing sync in
+the API — `GitHubBillingSyncService`, wired into the daily background cycle.
+
+Rather than try to reconcile GitHub through a bank export that demonstrably does
+not contain the bill, the ledger now reads GitHub's own billing API directly. That
+is the authoritative source: it is itemised, per-product, per-month, in USD, and it
+needs no reconciliation step at all. It closes both gaps at once —
+
+- the org's $323.19 (and everything after it) now reaches the ledger, and
+- `code_quality` gets a home: a new `github` vendor
+  (`20260727164846_SeedGitHubVendor`), booked to **Code Review**, because Code
+  Quality AI Credits are metered AI review spend of exactly the same kind as
+  CodeRabbit.
+
+Entries are keyed `github:{yyyy-MM}:{product}:{sku}` and **upserted**, deliberately
+excluding the amount from the key — an open month accrues daily, so keying on
+identity lets a re-run update the figure rather than duplicate it or wait for month
+end. See the README's *GitHub billing sync* section for the full product map.
+
 > [!IMPORTANT]
-> Two follow-ups fall out of this and are **not** resolved:
-> - The org's Actions/GHAS/Code-Quality spend (~$319 May–July alone) is paid from an
->   account outside the CSV. Whatever pays it needs to reach the ledger too, or
->   GitHub spend stays materially understated.
-> - `code_quality` — Code Quality AI Credits, $11.35 in July — is genuinely AI spend
->   with no vendor of its own. It currently has nowhere to go.
+> One follow-up remains open: the three £89.21 charges are still unattributed.
+> The org-Copilot readings above rule out an org-billed explanation, which leaves a
+> personally-billed subscription on `chris-fixportal` as the best fit — but that is
+> still inference from billing shape, not an invoice line. The personal billing
+> endpoint needs a `user` scope the current token lacks
+> (`gh auth refresh -h github.com -s user`). Confirm against the actual GitHub
+> invoices before treating the Copilot reading as settled.
 >
-> Confirm the three charges against the GitHub invoices before treating the Copilot
-> reading as settled; it is inference from billing shape, not an invoice line.
+> Note this is a *classification* question, not a coverage one: those three rows
+> are in the CSV either way. The coverage gap — the part that made GitHub spend
+> materially understated — is closed.
 
 ## 6. Idempotency — correcting a parked decision
 
@@ -577,6 +608,7 @@ important test — it is the failure this project has already been burned by.
 | 1 | Observatory refund migration (§3) | **Done** — `AllowNegativeSpendAmounts` |
 | 1b | Seed remaining vendors + Cloud category (§5) | **Done** — `SeedRemainingSpendVendorsAndCloudCategory` |
 | 1c | Seed the Copilot vendor (§5) | **Done** — `SeedCopilotVendor` |
+| 1d | GitHub billing sync + `github` vendor (§5) | **Done** — `SeedGitHubVendor`, `GitHubBillingSyncService`. Independent of the portal: GitHub spend never came from the CSV in the first place |
 | 2 | Portal: options, vendor map, slug resolution, feed worker, additive POST | Blocked on the portal category cleanup |
 | 3 | Refund selection from `Income` (§3) | Blocked on phase 2 **and, independently, on §3's `Income` vendor-signal gate** — that signal is undefined today, and phase 2 completing does not settle it |
 | 4 | Deletion reconcile, `PATCH` on changed amounts (§6, §8) | Blocked on phase 2 |
@@ -591,11 +623,11 @@ should be written until it lands.
 
 Open questions raised *by* this round, none of them blocking phase 2:
 
-| Question | Origin | Why it matters |
-|---|---|---|
-| Confirm the three GitHub charges really are Copilot | §5 | Inference from billing shape, not an invoice line |
-| Whatever pays the org's GitHub bill (~$319 May–Jul) is not in the CSV | §5 | GitHub spend stays materially understated until it reaches the ledger |
-| Code Quality AI Credits ($11.35 in July) has no vendor | §5 | Genuinely AI spend with nowhere to go |
+| Question | Origin | Status | Why it matters |
+|---|---|---|---|
+| Confirm the three GitHub charges really are Copilot | §5 | **Open** | Inference from billing shape, not an invoice line. Org-Copilot is now ruled out (zero seats), leaving a personal subscription as the best fit; confirming needs a `user`-scoped token and the actual invoices |
+| Whatever pays the org's GitHub bill is not in the CSV | §5 | **Closed** | Solved by reading GitHub's billing API directly instead of reconciling through a bank export that does not contain the bill |
+| Code Quality AI Credits has no vendor | §5 | **Closed** | `github` vendor seeded; `code_quality` books to Code Review |
 
 ## Appendix — untruncated identifiers and endpoints
 
@@ -621,6 +653,7 @@ be resolved by slug):
 | `openrouter` | OpenRouter | `22222222-2222-2222-2222-222222222209` | Vendor (no provider) |
 | `blacksmith` | Blacksmith | `22222222-2222-2222-2222-222222222210` | Vendor (no provider) |
 | `copilot` | GitHub Copilot | `22222222-2222-2222-2222-222222222211` | Vendor (`Provider.Copilot`) |
+| `github` | GitHub | `22222222-2222-2222-2222-222222222212` | Vendor (no provider) — everything on the org bill that is not Actions compute |
 
 > [!TIP]
 > A `Provider` serialises **lower-case** on the wire (`anthropic`, `openai`,

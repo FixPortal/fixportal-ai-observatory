@@ -3,6 +3,7 @@ using AiObservatory.Api;
 using AiObservatory.Api.Endpoints;
 using AiObservatory.Api.Services;
 using AiObservatory.Api.Services.Fx;
+using AiObservatory.Api.Services.GitHub;
 using AiObservatory.Api.Services.Intelligence;
 using AiObservatory.Data;
 using AiObservatory.Data.Entities;
@@ -87,6 +88,13 @@ builder.Services.AddMemoryCache();
 // write for that long, and a large batch pays this per row (see FetchGbpRateAsync's
 // cancellation-vs-timeout handling for why a timeout here does not abort the whole batch).
 builder.Services.AddHttpClient<FxRateProvider>().ConfigureHttpClient(c => c.Timeout = TimeSpan.FromSeconds(10));
+
+// GitHub billing — the org bill is not paid from the account the spend CSV exports, so
+// without this arm the ledger silently omits every penny of GitHub spend. No-ops unless
+// GITHUB_TOKEN and GITHUB_BILLING_ORG are both configured; see AddGitHubBilling for the
+// token scope that arm needs and why an unresolved Key Vault reference counts as unset.
+builder.Services.AddGitHubBilling(builder.Configuration);
+
 builder.Services.AddHostedService<IntelligenceWorkerService>();
 
 // Fixed-window rate limit per client IP on the /api group, so an unauthenticated GET or a

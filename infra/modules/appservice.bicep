@@ -35,6 +35,14 @@ resource app 'Microsoft.Web/sites@2023-01-01' = {
         { name: 'OBSERVATORY_API_KEY', value: '@Microsoft.KeyVault(VaultName=${kvName};SecretName=observatory-api-key)' }
         { name: 'OBSERVATORY_READONLY_API_KEY', value: '@Microsoft.KeyVault(VaultName=${kvName};SecretName=observatory-readonly-api-key)' }
 
+        // GitHub billing sync. The org bill is not paid from the account the spend CSV
+        // exports, so this is the only route by which GitHub spend reaches the ledger.
+        // Shares the github-token secret with the ingest worker, but needs billing read
+        // ("Plan" read on a fine-grained PAT) on top of that token's activity scopes.
+        // Either secret absent => empty => the sync stays disabled.
+        { name: 'GITHUB_TOKEN', value: '@Microsoft.KeyVault(VaultName=${kvName};SecretName=github-token)' }
+        { name: 'GITHUB_BILLING_ORG', value: '@Microsoft.KeyVault(VaultName=${kvName};SecretName=github-billing-org)' }
+
         { name: 'APPLICATIONINSIGHTS_CONNECTION_STRING', value: aiConnectionString }
         { name: 'SWA_ORIGIN', value: 'https://observatory.fixportal.org' }
         // Entra JWT auth (non-secret). Empty AzureAd__ClientId => auth off, API-key only.

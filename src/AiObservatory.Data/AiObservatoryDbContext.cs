@@ -27,6 +27,7 @@ public class AiObservatoryDbContext(DbContextOptions<AiObservatoryDbContext> opt
     private static readonly Guid OpenRouterVendorId = Guid.Parse("22222222-2222-2222-2222-222222222209");
     private static readonly Guid BlacksmithVendorId = Guid.Parse("22222222-2222-2222-2222-222222222210");
     private static readonly Guid CopilotVendorId = Guid.Parse("22222222-2222-2222-2222-222222222211");
+    private static readonly Guid GitHubVendorId = Guid.Parse("22222222-2222-2222-2222-222222222212");
 
     public DbSet<UsageEvent> UsageEvents => Set<UsageEvent>();
     public DbSet<DailyAggregate> DailyAggregates => Set<DailyAggregate>();
@@ -143,7 +144,14 @@ public class AiObservatoryDbContext(DbContextOptions<AiObservatoryDbContext> opt
                 // recording Copilot token usage since 2026-05-26, but there was no vendor to
                 // book the matching charge against, so Copilot was the one metered provider
                 // that could never be compared against its own estimate.
-                new SpendVendor { Id = CopilotVendorId, Key = "copilot", DisplayName = "GitHub Copilot", Provider = Provider.Copilot, DefaultCategoryId = SubscriptionCategoryId });
+                new SpendVendor { Id = CopilotVendorId, Key = "copilot", DisplayName = "GitHub Copilot", Provider = Provider.Copilot, DefaultCategoryId = SubscriptionCategoryId },
+                // Everything GitHub bills that is NOT Actions compute: Advanced Security,
+                // Code Quality AI Credits, and any product line added later. Kept separate
+                // from github-actions because that vendor's display name is a promise about
+                // what the charge was for, and booking a Code Quality credit against
+                // "GitHub Actions" would misattribute it in every breakdown. Provider stays
+                // null: GitHub bills these in dollars with no token count behind them.
+                new SpendVendor { Id = GitHubVendorId, Key = "github", DisplayName = "GitHub", Provider = null, DefaultCategoryId = SubscriptionCategoryId });
         });
 
         modelBuilder.Entity<SpendEntry>(b =>
