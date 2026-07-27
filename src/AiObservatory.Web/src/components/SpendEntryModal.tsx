@@ -28,6 +28,10 @@ export default function SpendEntryModal({ categories, vendors, from, to, onClose
   const [vendorId, setVendorId] = useState(vendors[0]?.id ?? '')
   const [categoryId, setCategoryId] = useState(vendors[0]?.defaultCategoryId ?? categories[0]?.id ?? '')
   const [amount, setAmount] = useState('')
+  // The sign lives here, not in the amount box. A refund is stored as a negative amount
+  // (see SpendEntry.Amount), but typing a bare "-120" is far more likely to be a slip than
+  // an intent, so the box stays positive-only and this toggle is the only way to book one.
+  const [isRefund, setIsRefund] = useState(false)
   const [currency, setCurrency] = useState('GBP')
   const [description, setDescription] = useState('')
   const [formError, setFormError] = useState<string | null>(null)
@@ -59,8 +63,10 @@ export default function SpendEntryModal({ categories, vendors, from, to, onClose
     setFormError(null)
     setVerdictError(null)
     const parsed = Number(amount)
-    if (amount.trim() === '' || !Number.isFinite(parsed) || parsed < 0) {
-      setFormError('Amount must be a non-negative number')
+    // Positive-only in the box: the Charge/Refund toggle applies the sign below. Zero is
+    // rejected here as well as server-side (CK_SpendEntry_Amount_NonZero).
+    if (amount.trim() === '' || !Number.isFinite(parsed) || parsed <= 0) {
+      setFormError('Amount must be a positive number — use Refund to record money back')
       return
     }
     if (!vendorId || !categoryId) {
@@ -80,7 +86,7 @@ export default function SpendEntryModal({ categories, vendors, from, to, onClose
       occurredOn,
       vendorId,
       categoryId,
-      amount: parsed,
+      amount: isRefund ? -parsed : parsed,
       currency,
       description: description.trim() || null,
       source: 'manual',
@@ -159,6 +165,31 @@ export default function SpendEntryModal({ categories, vendors, from, to, onClose
                   placeholder="0.00"
                 />
               </div>
+              <fieldset className="sub-form__fieldset">
+                <legend className="sub-form__label">Direction</legend>
+                <div className="sub-form__radios">
+                  <label className="sub-form__radio">
+                    <input
+                      type="radio"
+                      name="spend-entry-direction"
+                      value="charge"
+                      checked={!isRefund}
+                      onChange={() => setIsRefund(false)}
+                    />
+                    Charge
+                  </label>
+                  <label className="sub-form__radio">
+                    <input
+                      type="radio"
+                      name="spend-entry-direction"
+                      value="refund"
+                      checked={isRefund}
+                      onChange={() => setIsRefund(true)}
+                    />
+                    Refund
+                  </label>
+                </div>
+              </fieldset>
               <div>
                 <label htmlFor="spend-entry-currency" className="sub-form__label">Currency</label>
                 <select

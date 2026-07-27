@@ -75,7 +75,12 @@ export default function SpendLedgerTable({ entries, categories, vendors, onDelet
               <td>{vendorName.get(e.vendorId) ?? '—'}</td>
               <td>{categoryName.get(e.categoryId) ?? '—'}</td>
               <td>{e.description ?? ''}</td>
-              <td className="spend-ledger__num">
+              {/* Refunds are negative amounts, so Intl already renders the minus sign. The
+                  extra class colours it and the visually-hidden word states it outright —
+                  a lone "-" is easy to miss when scanning a column of figures, and reading
+                  a refund as a charge is exactly the misread this row must not invite. */}
+              <td className={`spend-ledger__num${e.amountGbp < 0 ? ' spend-ledger__num--refund' : ''}`}>
+                {e.amountGbp < 0 && <span className="visually-hidden">Refund: </span>}
                 {gbp(e.amountGbp)}
                 {e.currency !== 'GBP' && (
                   <span className="spend-ledger__native"> ({formatCurrency(e.amount, e.currency)})</span>

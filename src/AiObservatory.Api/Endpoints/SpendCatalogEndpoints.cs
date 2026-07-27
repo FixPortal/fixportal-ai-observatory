@@ -1,3 +1,4 @@
+using System.Text.Json;
 using AiObservatory.Data;
 using AiObservatory.Data.Entities;
 using Microsoft.EntityFrameworkCore;
@@ -208,12 +209,12 @@ public static class SpendCatalogEndpoints
             vendor.DisplayName = name.Trim();
         }
 
-        if (req.DefaultCategoryId is { } categoryId)
+        // Undefined means the caller did not mention the field at all -- leave the column
+        // alone. Anything else (including an explicit JSON null) is a deliberate write.
+        if (req.DefaultCategoryId.ValueKind is not JsonValueKind.Undefined)
         {
-            if (!await db.SpendCategories.AnyAsync(c => c.Id == categoryId, ct))
-            {
-                return Results.BadRequest($"Unknown DefaultCategoryId: {categoryId}");
-            }
+            var (categoryId, categoryError) = await ResolveDefaultCategoryAsync(req.DefaultCategoryId, db, ct);
+            if (categoryError is not null) { return Results.BadRequest(categoryError); }
             vendor.DefaultCategoryId = categoryId;
         }
 
@@ -221,6 +222,30 @@ public static class SpendCatalogEndpoints
 
         await db.SaveChangesAsync(ct);
         return Results.Ok(vendor);
+    }
+
+    /// <summary>
+    /// Reads a present <c>defaultCategoryId</c> patch value: JSON null clears the default,
+    /// a GUID string repoints it (validated against the catalog), anything else is a 400.
+    /// The absent case is handled by the caller — see SpendVendorPatchRequest for why the
+    /// two cannot be distinguished by a plain <c>Guid?</c>.
+    /// </summary>
+    private static async Task<(Guid? CategoryId, string? Error)> ResolveDefaultCategoryAsync(
+        JsonElement element, AiObservatoryDbContext db, CancellationToken ct)
+    {
+        if (element.ValueKind is JsonValueKind.Null)
+        {
+            return (null, null);
+        }
+
+        if (element.ValueKind is not JsonValueKind.String || !element.TryGetGuid(out var categoryId))
+        {
+            return (null, "DefaultCategoryId must be a GUID string or null");
+        }
+
+        return await db.SpendCategories.AnyAsync(c => c.Id == categoryId, ct)
+            ? (categoryId, null)
+            : (null, $"Unknown DefaultCategoryId: {categoryId}");
     }
 
     private static string? ValidateName(string? name) =>
@@ -252,4 +277,13 @@ public sealed record SpendVendorRequest(string Key, string DisplayName, string? 
 
 public sealed record SpendCatalogPatchRequest(string? DisplayName, string? ColorVar, int? SortOrder, bool? Archived);
 
-public sealed record SpendVendorPatchRequest(string? DisplayName, Guid? DefaultCategoryId, bool? Archived);
+/// <param name="DefaultCategoryId">
+/// Deliberately a <see cref="JsonElement"/> rather than a <c>Guid?</c>: the column is
+/// itself nullable, so the patch needs three states, and System.Text.Json maps both an
+/// omitted property and an explicit <c>null</c> onto a null <c>Guid?</c>. That collapse is
+/// why a vendor's default category could be set at creation and then never cleared. An
+/// omitted property leaves this at <c>default(JsonElement)</c> —
+/// <see cref="JsonValueKind.Undefined"/> — while an explicit <c>null</c> arrives as
+/// <see cref="JsonValueKind.Null"/>, so the two stay distinguishable.
+/// </param>
+public sealed record SpendVendorPatchRequest(string? DisplayName, JsonElement DefaultCategoryId, bool? Archived);

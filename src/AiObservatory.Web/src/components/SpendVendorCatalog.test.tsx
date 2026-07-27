@@ -44,10 +44,51 @@ describe('SpendVendorCatalog', () => {
 
   it('offers only live categories as the default-category choice, not the archived one', () => {
     renderPanel()
-    const select = screen.getByLabelText(/default category/i) as HTMLSelectElement
+    // Exact label: the per-row pickers below are labelled "Default category for <vendor>",
+    // so a loose regex would now match several selects.
+    const select = screen.getByLabelText('Default category') as HTMLSelectElement
     const optionLabels = Array.from(select.options).map(o => o.textContent)
     expect(optionLabels).toContain('Compute')
     expect(optionLabels).not.toContain('Legacy')
+  })
+
+  it('clears a default category by sending an explicit null, not an omitted field', async () => {
+    const patch = vi.spyOn(client, 'patchSpendVendor').mockResolvedValue({ ...vendors[0], defaultCategoryId: null })
+    renderPanel()
+
+    fireEvent.change(screen.getByLabelText('Default category for Anthropic'), { target: { value: '' } })
+
+    // Explicit null is the whole point — omitting the key means "leave it alone", which
+    // is why the default category was previously set-once and unclearable.
+    await waitFor(() => expect(patch).toHaveBeenCalledWith('v1', { defaultCategoryId: null }))
+  })
+
+  it('repoints a default category to another live category', async () => {
+    const patch = vi.spyOn(client, 'patchSpendVendor').mockResolvedValue({ ...vendors[1], defaultCategoryId: 'k1' })
+    renderPanel()
+
+    fireEvent.change(screen.getByLabelText('Default category for GitHub Actions'), { target: { value: 'k1' } })
+
+    await waitFor(() => expect(patch).toHaveBeenCalledWith('v2', { defaultCategoryId: 'k1' }))
+  })
+
+  it('keeps an already-archived default category selectable so the row does not misread as None', () => {
+    const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+    // v3's default points at 'k2', which has since been archived.
+    const withArchivedDefault = [
+      { id: 'v3', key: 'legacy-vendor', displayName: 'Legacy Vendor', provider: null, defaultCategoryId: 'k2', archivedAt: null },
+    ]
+    render(
+      <QueryClientProvider client={qc}>
+        <SpendVendorCatalog vendors={withArchivedDefault} categories={categories} />
+      </QueryClientProvider>,
+    )
+
+    const select = screen.getByLabelText('Default category for Legacy Vendor') as HTMLSelectElement
+    // Without the archived option present the browser falls back to the first option,
+    // silently reporting "No default category" for a vendor that has one.
+    expect(select.value).toBe('k2')
+    expect(Array.from(select.options).map(o => o.textContent)).toContain('Legacy (archived)')
   })
 
   it('creates a vendor with an explicitly chosen provider', async () => {

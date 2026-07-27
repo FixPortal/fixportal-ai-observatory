@@ -25,6 +25,10 @@ export function filterEntries<T extends SpendRowShape>(entries: T[], filter: Spe
 /**
  * Sums the GBP column, never `amount`. `amountGbp` was converted at the charge date and
  * frozen; re-converting here would make historical totals drift with the exchange rate.
+ *
+ * `amountGbp` is signed, so refunds net off charges with no special case here. That is the
+ * whole reason refunds are a negative amount rather than an `isRefund` flag — a flag would
+ * need this function, and every other aggregate, to remember to subtract.
  */
 export function totalGbp(entries: { amountGbp: number }[]): number {
   return entries.reduce((sum, e) => sum + e.amountGbp, 0)

@@ -17,7 +17,17 @@ public sealed class SpendEntry
     public Guid VendorId { get; set; }
     public Guid CategoryId { get; set; }
 
-    /// <summary>Amount as charged, in <see cref="Currency"/>.</summary>
+    /// <summary>
+    /// Amount as charged, in <see cref="Currency"/>. <b>Signed</b>: positive is a charge,
+    /// negative is a refund or credit. Never zero — a zero-value charge is a data-entry
+    /// mistake, and <c>CK_SpendEntry_Amount_NonZero</c> rejects it.
+    /// <para>
+    /// Signed rather than a separate refund flag so that <see cref="AmountGbp"/> stays the
+    /// one column every aggregate sums, unconditionally. A flag would oblige every total,
+    /// breakdown and time series to remember to subtract, and the one that forgot would
+    /// silently overstate billed spend — the exact failure this project exists to correct.
+    /// </para>
+    /// </summary>
     public decimal Amount { get; set; }
 
     /// <summary>ISO 4217, upper case.</summary>
@@ -28,6 +38,7 @@ public sealed class SpendEntry
     /// <see cref="OccurredOn"/> and never recomputed. Totals sum this column. Converting at
     /// render instead — the convention used for token costs — would make a historical
     /// charge show a different figure every day and an annual total drift with the market.
+    /// Carries <see cref="Amount"/>'s sign, so a plain <c>SUM</c> nets refunds off charges.
     /// </summary>
     public decimal AmountGbp { get; set; }
 

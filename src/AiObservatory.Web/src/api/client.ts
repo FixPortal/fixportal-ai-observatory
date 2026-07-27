@@ -305,9 +305,9 @@ export interface SpendEntry {
   occurredOn: string           // ISO date yyyy-MM-dd
   vendorId: string
   categoryId: string
-  amount: number               // as charged
+  amount: number               // as charged; signed — negative is a refund/credit
   currency: string
-  amountGbp: number            // frozen at write — sum this, never `amount`
+  amountGbp: number            // frozen at write, signed — sum this, never `amount`
   fxRate: number
   description: string | null
   source: SpendSourceValue
@@ -372,11 +372,16 @@ export interface NewSpendVendor {
   defaultCategoryId: string | null
 }
 
-// The panel only ever renames or archives an existing vendor -- repointing
-// DefaultCategoryId post-creation is out of scope for this panel (see report).
 export interface SpendVendorPatch {
   displayName?: string
   archived?: boolean
+  /**
+   * Tri-state, and the distinction is load-bearing: omit the key to leave the vendor's
+   * default category untouched, send an explicit `null` to clear it, send a GUID to
+   * repoint it. JSON.stringify drops `undefined` properties and keeps `null`, so the
+   * three cases survive the wire exactly as the API reads them.
+   */
+  defaultCategoryId?: string | null
 }
 
 export const createSpendVendor = async (body: NewSpendVendor): Promise<SpendVendor> => {
