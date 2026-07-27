@@ -158,6 +158,17 @@ Three decisions worth their reasons:
   the exchange rate. The stored rate keeps every conversion auditable.
 - **`EntryKey` is the duplicate defence**, reusing the `UsageEvent.EventKey`
   pattern that already works in this codebase.
+- **`Amount` is signed** — positive is a charge, negative a refund or credit;
+  only zero is barred (`CK_SpendEntry_Amount_NonZero`). Added 2026-07-27 by
+  migration `AllowNegativeSpendAmounts`, replacing the original pair of
+  non-negative constraints. A refund flag was considered and rejected: keeping
+  the sign on the amount means `AmountGbp` stays the one column every aggregate
+  sums *unconditionally*, whereas a flag would oblige every total, breakdown and
+  time series to remember to subtract — and the one that forgot would silently
+  overstate. Phase 1 shipped without this because the CSV load was debits-only;
+  real data (three credits totalling £492.80) disproved that within a day. Full
+  reasoning in
+  [`2026-07-27-tax-portal-spend-feed-design.md`](2026-07-27-tax-portal-spend-feed-design.md) §3.
 
 ## 6. API
 
@@ -268,6 +279,7 @@ thing.
 | Same charge imported twice | Reported `duplicate`, not an error. Totals unchanged. |
 | Two genuine identical charges, same day | Both land, distinguished by occurrence index. |
 | FX service unreachable | Write succeeds at the latest rate; `FxRate` records what was used. |
+| A refund or credit is recorded | Lands as a negative `Amount`/`AmountGbp` and nets off the total through the ordinary `SUM`. The ledger row is colour-coded and announced as a refund so it cannot be misread as a charge. A zero amount is rejected. |
 | Vendor or category retired | Soft-archived: hidden from pickers, still resolves for history. |
 | Read-only viewer | Sees figures, no edit affordance — existing `isReadonly` pattern. |
 
