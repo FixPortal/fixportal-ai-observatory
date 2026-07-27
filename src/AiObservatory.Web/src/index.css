@@ -231,7 +231,12 @@ body {
 /* ---- Panels / grids ---- */
 .main-grid, .bottom-grid {
   display: grid;
-  grid-template-columns: 1fr 1fr;
+  /* minmax(0, 1fr), not bare 1fr: a grid track's automatic minimum size is its
+     content's min-content width, not 0 — a wide child (e.g. the activity
+     treemap's flex blocks, each with a min-width) can force the track past its
+     fair share and push the whole grid wider than its centred max-width,
+     bleeding the second column off the right edge of the viewport. */
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
   gap: var(--space-4);               /* tight within a section */
   margin-top: var(--space-6);        /* generous between sections */
 }
@@ -458,6 +463,41 @@ body {
   width: 6px;
   height: 6px;
   border-radius: 50%;
+}
+
+/* Field + direction toggle for a list that isn't a plain table (so there's no
+   column header to click) — the adversarial-review "Recent runs" cards, e.g. */
+.breakdown-sort {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+.breakdown-sort__field {
+  font: inherit;
+  font-size: 0.8rem;
+  padding: var(--space-2) var(--space-3);
+  background: var(--app-bg);
+  border: 1px solid var(--border);
+  border-radius: var(--r-control);
+  color: var(--text);
+}
+.breakdown-sort__direction {
+  appearance: none;
+  font: inherit;
+  font-size: 0.7rem;
+  width: 1.8rem;
+  height: 1.8rem;
+  padding: 0;
+  background: var(--app-bg);
+  border: 1px solid var(--border);
+  border-radius: var(--r-control);
+  color: var(--text-muted);
+  cursor: pointer;
+  transition: all var(--transition-fast);
+}
+.breakdown-sort__direction:hover {
+  color: var(--text);
+  border-color: var(--border-strong);
 }
 
 /* ---- Sortable table headers ---- */
@@ -911,6 +951,31 @@ body {
 }
 .sub-list__name { flex: 1; font-size: 0.82rem; }
 .sub-list__cost { font-size: 0.78rem; color: var(--text-muted); font-family: var(--font-mono); white-space: nowrap; }
+/* Inline editable field in a list row (the vendor default-category picker) — reads as
+   the muted metadata it sits beside until hovered/focused, so the row stays a list
+   rather than looking like a form. */
+.sub-list__select {
+  font: inherit;
+  font-size: 0.75rem;
+  max-width: 12rem;
+  padding: 2px var(--space-2);
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: var(--r-control);
+  color: var(--text-muted);
+  cursor: pointer;
+  transition: all var(--transition-fast);
+}
+.sub-list__select:hover:not(:disabled) {
+  border-color: var(--border);
+  background: var(--app-bg);
+  color: var(--text);
+}
+.sub-list__select:focus-visible {
+  outline: 2px solid var(--brand);
+  outline-offset: 1px;
+}
+.sub-list__select:disabled { cursor: default; opacity: 0.6; }
 .sub-list__actions { display: flex; gap: var(--space-2); flex-shrink: 0; }
 .sub-list__confirm { display: flex; align-items: center; gap: var(--space-2); flex-shrink: 0; }
 .sub-list__confirm-text { font-size: 0.72rem; color: var(--bad-text); }
@@ -958,6 +1023,18 @@ body {
   letter-spacing: 0.05em;
   color: var(--text-muted);
   margin-bottom: var(--space-3);
+}
+/* Radio group inside a sub-form cell (the spend entry Charge/Refund direction). Reset the
+   browser's default fieldset chrome so it sits flush with the inputs beside it. */
+.sub-form__fieldset { border: 0; margin: 0; padding: 0; min-inline-size: 0; }
+.sub-form__radios { display: flex; gap: var(--space-4); align-items: center; }
+.sub-form__radio {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  font-size: 0.82rem;
+  color: var(--text);
+  cursor: pointer;
 }
 .sub-form__grid {
   display: grid;
@@ -1190,7 +1267,11 @@ body {
   gap: 2px;
   height: 160px;
   border-radius: var(--r-chip);
-  overflow: hidden;
+  /* Each block has a min-width floor (see .activity-treemap__block) so it stays
+     legible; with enough projects that floor can exceed the panel's width.
+     Scroll rather than clip (overflow: hidden silently hid blocks past the
+     edge) or let the column stretch (see .main-grid's minmax(0, 1fr) note). */
+  overflow-x: auto;
 }
 .activity-treemap__block {
   display: flex;
@@ -1319,6 +1400,10 @@ body {
 .spend-ledger tbody tr { transition: background-color var(--transition-fast); }
 .spend-ledger tbody tr:hover { background-color: var(--app-bg); }
 .spend-ledger__num { text-align: right; }
+/* A refund nets off the total, so it must not scan as just another charge. --ok-text is
+   the semantic "good" token and passes AA on the card background; the minus sign and the
+   visually-hidden "Refund:" prefix carry the meaning for anyone who cannot use the colour. */
+.spend-ledger__num--refund { color: var(--ok-text); }
 .spend-ledger__native { color: var(--text-muted); font-size: 0.7rem; }
 .spend-ledger__empty {
   margin: 0;
