@@ -527,6 +527,36 @@ public class SpendEntriesEndpointsWafTests(AiObservatoryApiFactory factory)
         row.GetProperty("fxRate").GetDecimal().Should().BePositive("the rate stays positive; the amount carries the sign");
     }
 
+    /// <summary>
+    /// AmountGbp is the column every total sums, so the signed invariant matters more there
+    /// than on Amount: a zero or opposite-sign value flips a refund into a charge across
+    /// every aggregate at once. CK_SpendEntry_AmountGbp_SameSign is unreachable through this
+    /// endpoint by construction (AmountGbp is derived from Amount and a positive rate), so
+    /// this asserts the property the constraint exists to protect rather than the constraint.
+    /// </summary>
+    [Theory]
+    [InlineData(-30)]
+    [InlineData(30)]
+    public async Task PostEntry_StoresAmountGbpWithTheSameSignAsAmount(double amount)
+    {
+        using var client = factory.CreateAdminClient();
+        var ct = TestContext.Current.CancellationToken;
+        var (categoryId, vendorId) = await SeedCatalogAsync(client);
+
+        var response = await client.PostAsJsonAsync("/api/spend/entries",
+            new[] { Entry(categoryId, vendorId, $"k-{Guid.NewGuid():N}", (decimal)amount, "USD") }, ct);
+        var id = (await response.Content.ReadFromJsonAsync<JsonElement>(ct))
+            .EnumerateArray().Single().GetProperty("id").GetGuid();
+
+        var entries = await client.GetFromJsonAsync<JsonElement>($"/api/spend/entries?vendorId={vendorId}", ct);
+        var row = entries.EnumerateArray().Single(e => e.GetProperty("id").GetGuid() == id);
+
+        var stored = row.GetProperty("amount").GetDecimal();
+        var storedGbp = row.GetProperty("amountGbp").GetDecimal();
+        (stored * storedGbp).Should().BePositive(
+            "a non-GBP conversion must preserve the sign, or a refund reads as a charge in every total");
+    }
+
     [Theory]
     [InlineData(0)]
     [InlineData(0.0)]

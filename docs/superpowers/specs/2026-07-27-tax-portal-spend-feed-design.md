@@ -1,7 +1,7 @@
 ---
 title: Tax-portal billed-spend feed — design
 date: 2026-07-27
-status: proposed — two decisions blocking (§3 resolved and shipped)
+status: proposed — every decision ruled; phase 2 blocked on the portal category cleanup
 tags: [architecture, decision, spend, integration]
 ---
 
@@ -180,6 +180,21 @@ than trading income. The portal cannot currently distinguish the two — an
 whose vendor classifies to a mapped AI vendor (§5) is a refund. Client revenue
 never will, because no client is in the vendor map.
 
+> [!WARNING]
+> **That rule is not yet groundable, and phase 3 must not start until it is.**
+> §5's signal table defines vendor discovery for `Expense` only — via
+> `Expense.ScanLineId` → `ScanLine.ExtractedVendor`, or `BankLine.MatchedExpenseId`
+> → the descriptor. `Income` has its own `ScanLineId` and its own
+> `BankLine.MatchedIncomeId`, but neither path has been checked, and
+> `CategorySuggester`'s vendor history is built from `Expense` rows alone.
+>
+> Before phase 3: confirm which of those two signals an `Income` row actually
+> carries in practice, extend §5's table to cover it, and pin the classification
+> both ways — a mapped-vendor `Income` row reads as a refund, an ordinary client
+> `Income` row never does. Getting this wrong books client revenue as negative AI
+> spend, which understates the ledger instead of overstating it — the same class
+> of silent error, opposite sign.
+
 ## 4. Decision 2 — Net, Gross, or Net-when-reclaimed — RESOLVED
 
 > [!NOTE]
@@ -299,16 +314,42 @@ and would distort Subscription if folded in:
 
 **Design: an explicit, config-held allowlist keyed on observatory slugs.**
 
+The **vendor** half is settled and complete — every vendor with observed spend has
+a mapping, so nothing is silently skipped:
+
 ```jsonc
 // appsettings.json — "Observatory" section. Keys are observatory slugs, not GUIDs.
 "VendorMap": [
-  { "match": ["ANTHROPIC", "CLAUDEAI"],        "vendor": "anthropic",      "category": "credits" },
-  { "match": ["CODERABBIT"],                    "vendor": "coderabbit",     "category": "code-review" },
-  { "match": ["GITAR"],                         "vendor": "gitar",          "category": "code-review" },
-  { "match": ["MOONSHOT"],                      "vendor": "moonshot",       "category": "subscription" },
-  { "match": ["GITHUB"],                        "vendor": "github-actions", "category": "ci" }
+  { "match": ["ANTHROPIC", "CLAUDEAI"], "vendor": "anthropic"  },
+  { "match": ["CODERABBIT"],            "vendor": "coderabbit" },
+  { "match": ["GITAR"],                 "vendor": "gitar"      },
+  { "match": ["MOONSHOT"],              "vendor": "moonshot"   },
+  { "match": ["OPENAI"],                "vendor": "openai"     },
+  { "match": ["GOOGLE"],                "vendor": "google"     },
+  { "match": ["MICROSOFT", "AZURE"],    "vendor": "microsoft"  },
+  { "match": ["OPENROUTER"],            "vendor": "openrouter" },
+  { "match": ["BLACKSMITH"],            "vendor": "blacksmith" }
 ]
 ```
+
+`github-actions` and `copilot` are deliberately absent: a single `GITHUB`
+descriptor cannot tell them apart, and §5's billing evidence shows the three
+observed GitHub charges are not the Actions bill at all. They need a rule that
+does not exist yet, so their spend is skipped and logged rather than guessed —
+the same treatment as any unmatched expense, and visible for exactly that reason.
+
+> [!IMPORTANT]
+> **There is deliberately no `category` key above.** An earlier draft of this
+> document carried one category per vendor; the real data kills that — Anthropic
+> spans three groupings and Google four, so a fixed per-vendor category would file
+> every Anthropic charge as `credits` and destroy the per-charge category the
+> ledger design is built on.
+>
+> The category half of the mapping is therefore **not designed yet**, and cannot
+> be until the portal category cleanup lands and reveals what per-charge signal
+> the portal can actually supply. Whatever replaces it must key on the *charge*,
+> not the vendor. The vendor's `DefaultCategoryId` is a fallback for the
+> unclassifiable remainder, not the mechanism.
 
 Matching runs against the normalised form of whichever signal is available,
 preferring `ExtractedVendor`. **An unmatched expense is skipped, never guessed**
@@ -532,7 +573,7 @@ important test — it is the failure this project has already been burned by.
 
 | Phase | Contents | Status |
 |---|---|---|
-| 0 | Rule on §3, §4, §5 | §3 ruled; §5 vendor axis actioned; §4 and §5 category axis outstanding |
+| 0 | Rule on §3, §4, §5 | **Done** — §3 and §4 ruled, §5 vendor axis actioned; §5's category axis is deferred by the blocker below, not undecided |
 | 1 | Observatory refund migration (§3) | **Done** — `AllowNegativeSpendAmounts` |
 | 1b | Seed remaining vendors + Cloud category (§5) | **Done** — `SeedRemainingSpendVendorsAndCloudCategory` |
 | 1c | Seed the Copilot vendor (§5) | **Done** — `SeedCopilotVendor` |

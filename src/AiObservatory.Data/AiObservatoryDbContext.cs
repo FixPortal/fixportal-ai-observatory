@@ -184,6 +184,17 @@ public class AiObservatoryDbContext(DbContextOptions<AiObservatoryDbContext> opt
                 // it is a data-entry mistake in either direction, and barring it keeps some
                 // of the protection the non-negative constraint used to give.
                 t.HasCheckConstraint("CK_SpendEntry_Amount_NonZero", "\"Amount\" <> 0");
+
+                // AmountGbp is the column every total sums, so it needs the invariant more
+                // than Amount does: a zero or opposite-sign value there turns a refund into
+                // a charge (or erases one) in every aggregate at once, invisibly. The
+                // product form asserts non-zero and same-sign together.
+                //
+                // It also rejects a charge so small that the conversion rounds to nothing at
+                // 4dp — deliberate. Such a row cannot contribute to a total anyway, and
+                // SaveRowAsync's DbUpdateException catch turns it into a per-row "rejected"
+                // verdict rather than failing the batch.
+                t.HasCheckConstraint("CK_SpendEntry_AmountGbp_SameSign", "\"Amount\" * \"AmountGbp\" > 0");
                 t.HasCheckConstraint("CK_SpendEntry_FxRate_Positive", "\"FxRate\" > 0");
             });
         });
