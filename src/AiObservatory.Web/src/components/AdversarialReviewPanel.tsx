@@ -1,8 +1,13 @@
-import { useMemo } from 'react'
+import { useMemo, useState } from 'react'
 import { useAdversarialReviewRuns, useAdversarialReviewStats } from '../api/queries'
+import type { AdversarialReviewStats } from '../api/client'
 import { participantColor } from '../theme/providerColors'
 import { CollapsiblePanel } from './CollapsiblePanel'
 import { groupRuns, formatSeconds, formatMinutes, bankersRound, type RunGroup } from './adversarialReviewGrouping'
+import { filterStats, sortStats, filterRunGroups, sortRunGroups } from './adversarialReviewSort'
+import type { StatsSortField, RunSortField, SortDirection } from './adversarialReviewSort'
+import GitHubSortableHeader from './GitHubSortableHeader'
+import SearchIcon from '../design/SearchIcon'
 
 const PUTATIVE_NOTE = '~ putative cost — estimated from a combined token count (subscription model, no exact per-call billing)'
 
@@ -57,6 +62,177 @@ function RunSummary({ group }: { group: RunGroup }) {
   )
 }
 
+interface StatsTableProps {
+  stats: AdversarialReviewStats[]
+  isError: boolean
+}
+
+function StatsTable({ stats, isError }: StatsTableProps) {
+  const [query, setQuery] = useState('')
+  const [sortField, setSortField] = useState<StatsSortField>('reviewer')
+  const [sortDirection, setSortDirection] = useState<SortDirection>('asc')
+  const visible = useMemo(
+    () => sortStats(filterStats(stats, query), sortField, sortDirection),
+    [stats, query, sortField, sortDirection],
+  )
+  const handleSort = (field: StatsSortField) => {
+    if (sortField === field) setSortDirection(prev => (prev === 'asc' ? 'desc' : 'asc'))
+    else { setSortField(field); setSortDirection('desc') }
+  }
+
+  if (isError) return <p className="panel-empty">Couldn’t load review stats — try refreshing.</p>
+  if (stats.length === 0) return <p className="panel-empty">No adversarial-review runs recorded yet.</p>
+
+  return (
+    <>
+      <div className="breakdown-controls">
+        <div className="breakdown-search-container">
+          <SearchIcon />
+          <input
+            type="text"
+            placeholder="Search reviewer or model..."
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+            className="breakdown-search"
+            aria-label="Search stats by reviewer or model"
+          />
+        </div>
+      </div>
+      {visible.length === 0 ? (
+        <p className="panel-empty">No matching stats found.</p>
+      ) : (
+        <table className="model-table">
+          <thead>
+            <tr>
+              <GitHubSortableHeader field="reviewer" label="Reviewer" sortField={sortField} sortDirection={sortDirection} onSort={handleSort} />
+              <GitHubSortableHeader field="model" label="Model" sortField={sortField} sortDirection={sortDirection} onSort={handleSort} />
+              <GitHubSortableHeader field="runCount" label="Runs" sortField={sortField} sortDirection={sortDirection} onSort={handleSort} />
+              <GitHubSortableHeader field="avgCostPerRun" label="Avg cost/run" sortField={sortField} sortDirection={sortDirection} onSort={handleSort} />
+              <GitHubSortableHeader field="avgIssuesRaised" label="Avg raised" sortField={sortField} sortDirection={sortDirection} onSort={handleSort} />
+              <GitHubSortableHeader field="avgIssuesAccepted" label="Avg accepted" sortField={sortField} sortDirection={sortDirection} onSort={handleSort} />
+              <GitHubSortableHeader field="avgCostPerAcceptedFinding" label="Avg cost/finding" sortField={sortField} sortDirection={sortDirection} onSort={handleSort} />
+              <GitHubSortableHeader field="avgDurationMs" label="Avg dur" sortField={sortField} sortDirection={sortDirection} onSort={handleSort} />
+            </tr>
+          </thead>
+          <tbody>
+            {visible.map(s => (
+              <tr key={`${s.reviewer}|${s.model}|${s.role}`}>
+                <td>
+                  <span className="model-table__dot" style={{ background: participantColor(s.reviewer, s.role) }} title={`${s.reviewer} ${s.role}`} />
+                  {capitalize(s.reviewer)}{s.role === 'judge' && ' (judge)'}
+                </td>
+                <td>{s.model}</td>
+                <td>{s.runCount}</td>
+                <td title={isPutativeCost(s.reviewer) ? PUTATIVE_NOTE : undefined}>{formatCost(s.avgCostPerRun, isPutativeCost(s.reviewer))}</td>
+                <td>{formatCount(s.avgIssuesRaised)}</td>
+                <td>{formatCount(s.avgIssuesAccepted)}</td>
+                <td title={isPutativeCost(s.reviewer) ? PUTATIVE_NOTE : undefined}>{formatCost(s.avgCostPerAcceptedFinding, isPutativeCost(s.reviewer))}</td>
+                <td>{formatMinutes(s.avgDurationMs)}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      )}
+    </>
+  )
+}
+
+interface RunsListProps {
+  groups: RunGroup[]
+  isError: boolean
+}
+
+function RunsList({ groups, isError }: RunsListProps) {
+  const [query, setQuery] = useState('')
+  const [sortField, setSortField] = useState<RunSortField>('recordedAt')
+  const [sortDirection, setSortDirection] = useState<SortDirection>('desc')
+  const visible = useMemo(
+    () => sortRunGroups(filterRunGroups(groups, query), sortField, sortDirection),
+    [groups, query, sortField, sortDirection],
+  )
+
+  if (isError) return <p className="panel-empty">Couldn’t load runs — try refreshing.</p>
+  if (groups.length === 0) return <p className="panel-empty">No runs recorded yet.</p>
+
+  return (
+    <>
+      <div className="breakdown-controls">
+        <div className="breakdown-search-container">
+          <SearchIcon />
+          <input
+            type="text"
+            placeholder="Search repo or summary..."
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+            className="breakdown-search"
+            aria-label="Search runs by repo or summary"
+          />
+        </div>
+        <div className="breakdown-sort">
+          <select
+            value={sortField}
+            onChange={(e) => setSortField(e.target.value as RunSortField)}
+            className="breakdown-sort__field"
+            aria-label="Sort runs by"
+          >
+            <option value="recordedAt">Date</option>
+            <option value="repo">Repo</option>
+            <option value="raised">Raised</option>
+            <option value="accepted">Accepted</option>
+            <option value="costUsd">Cost</option>
+            <option value="durationMs">Duration</option>
+          </select>
+          <button
+            type="button"
+            className="breakdown-sort__direction"
+            onClick={() => setSortDirection(prev => (prev === 'asc' ? 'desc' : 'asc'))}
+            aria-label={`Sort direction: ${sortDirection === 'asc' ? 'ascending' : 'descending'}`}
+          >
+            {sortDirection === 'asc' ? '▲' : '▼'}
+          </button>
+        </div>
+      </div>
+      {visible.length === 0 ? (
+        <p className="panel-empty">No matching runs found.</p>
+      ) : (
+        visible.map(group => (
+          <CollapsiblePanel
+            key={group.runId}
+            id={`adv-run-${group.runId}`}
+            title={group.summary ?? formatRecordedAt(group.recordedAt)}
+            summary={<RunSummary group={group} />}
+          >
+            <table className="model-table">
+              <thead>
+                <tr>
+                  <th>Reviewer</th><th>Model</th><th>Raised</th><th>Accepted</th>
+                  <th>Cost</th><th>Cost/finding</th><th>Duration</th>
+                </tr>
+              </thead>
+              <tbody>
+                {group.participants.map(p => (
+                  <tr key={p.id}>
+                    <td>
+                      <span className="model-table__dot" style={{ background: participantColor(p.reviewer, p.role) }} title={`${p.reviewer} ${p.role}`} />
+                      {capitalize(p.reviewer)}{p.role === 'judge' && ' (judge)'}
+                    </td>
+                    <td>{p.model}</td>
+                    <td>{p.role === 'judge' ? '—' : p.issuesRaised}</td>
+                    <td>{p.role === 'judge' ? '—' : p.issuesAccepted}</td>
+                    <td title={isPutativeCost(p.reviewer) ? PUTATIVE_NOTE : undefined}>{formatCost(p.costUsd, isPutativeCost(p.reviewer))}</td>
+                    <td title={isPutativeCost(p.reviewer) ? PUTATIVE_NOTE : undefined}>{p.role === 'judge' ? '—' : formatCost(p.costPerAcceptedFinding, isPutativeCost(p.reviewer))}</td>
+                    <td>{formatSeconds(p.reviewDurationMs)}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </CollapsiblePanel>
+        ))
+      )}
+    </>
+  )
+}
+
 export default function AdversarialReviewPanel() {
   const { stats, isError: statsError } = useAdversarialReviewStats()
   const { runs, isError: runsError } = useAdversarialReviewRuns()
@@ -66,80 +242,12 @@ export default function AdversarialReviewPanel() {
     <div className="adv-review-panel">
       <div className="panel">
         <div className="panel-title">Stats by reviewer &amp; model</div>
-        {statsError ? (
-          <p className="panel-empty">Couldn’t load review stats — try refreshing.</p>
-        ) : stats.length === 0 ? (
-          <p className="panel-empty">No adversarial-review runs recorded yet.</p>
-        ) : (
-          <table className="model-table">
-            <thead>
-              <tr>
-                <th>Reviewer</th><th>Model</th><th>Runs</th><th>Avg cost/run</th>
-                <th>Avg raised</th><th>Avg accepted</th><th>Avg cost/finding</th><th>Avg dur</th>
-              </tr>
-            </thead>
-            <tbody>
-              {stats.map(s => (
-                <tr key={`${s.reviewer}|${s.model}|${s.role}`}>
-                  <td>
-                    <span className="model-table__dot" style={{ background: participantColor(s.reviewer, s.role) }} title={`${s.reviewer} ${s.role}`} />
-                    {capitalize(s.reviewer)}{s.role === 'judge' && ' (judge)'}
-                  </td>
-                  <td>{s.model}</td>
-                  <td>{s.runCount}</td>
-                  <td title={isPutativeCost(s.reviewer) ? PUTATIVE_NOTE : undefined}>{formatCost(s.avgCostPerRun, isPutativeCost(s.reviewer))}</td>
-                  <td>{formatCount(s.avgIssuesRaised)}</td>
-                  <td>{formatCount(s.avgIssuesAccepted)}</td>
-                  <td title={isPutativeCost(s.reviewer) ? PUTATIVE_NOTE : undefined}>{formatCost(s.avgCostPerAcceptedFinding, isPutativeCost(s.reviewer))}</td>
-                  <td>{formatMinutes(s.avgDurationMs)}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        )}
+        <StatsTable stats={stats} isError={statsError} />
       </div>
 
       <div className="panel">
         <div className="panel-title">Recent runs</div>
-        {runsError ? (
-          <p className="panel-empty">Couldn’t load runs — try refreshing.</p>
-        ) : groups.length === 0 ? (
-          <p className="panel-empty">No runs recorded yet.</p>
-        ) : (
-          groups.map(group => (
-            <CollapsiblePanel
-              key={group.runId}
-              id={`adv-run-${group.runId}`}
-              title={group.summary ?? formatRecordedAt(group.recordedAt)}
-              summary={<RunSummary group={group} />}
-            >
-              <table className="model-table">
-                <thead>
-                  <tr>
-                    <th>Reviewer</th><th>Model</th><th>Raised</th><th>Accepted</th>
-                    <th>Cost</th><th>Cost/finding</th><th>Duration</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {group.participants.map(p => (
-                    <tr key={p.id}>
-                      <td>
-                        <span className="model-table__dot" style={{ background: participantColor(p.reviewer, p.role) }} title={`${p.reviewer} ${p.role}`} />
-                        {capitalize(p.reviewer)}{p.role === 'judge' && ' (judge)'}
-                      </td>
-                      <td>{p.model}</td>
-                      <td>{p.role === 'judge' ? '—' : p.issuesRaised}</td>
-                      <td>{p.role === 'judge' ? '—' : p.issuesAccepted}</td>
-                      <td title={isPutativeCost(p.reviewer) ? PUTATIVE_NOTE : undefined}>{formatCost(p.costUsd, isPutativeCost(p.reviewer))}</td>
-                      <td title={isPutativeCost(p.reviewer) ? PUTATIVE_NOTE : undefined}>{p.role === 'judge' ? '—' : formatCost(p.costPerAcceptedFinding, isPutativeCost(p.reviewer))}</td>
-                      <td>{formatSeconds(p.reviewDurationMs)}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </CollapsiblePanel>
-          ))
-        )}
+        <RunsList groups={groups} isError={runsError} />
       </div>
       {(stats.some(s => isPutativeCost(s.reviewer)) || groups.some(g => g.participants.some(p => isPutativeCost(p.reviewer)))) && (
         <p className="panel-note">{PUTATIVE_NOTE}</p>
