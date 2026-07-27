@@ -74,14 +74,33 @@ public static class GitHubActivityEndpoints
             var startInstant = start.AtStartOfDayInZone(DateTimeZone.Utc).ToInstant();
             var endInstant = end.PlusDays(1).AtStartOfDayInZone(DateTimeZone.Utc).ToInstant();
 
-            var byRepo = await db.GitHubCommits
+            // Projecting straight into the GitHubCommitSummaryResponse record inside the
+            // GroupBy/Select (as the equivalent PR/CI queries do into an anonymous type)
+            // fails to translate here — EF Core cannot turn a record constructor call
+            // carrying three separate group aggregates (Count + two Sums) into SQL when
+            // combined with the correlated EXISTS subquery IsAllowedRepo compiles to, and
+            // throws InvalidOperationException at request time instead of at startup. The
+            // /github/ci query below sidesteps the same trap by materializing into an
+            // anonymous type first and mapping to its response record afterward; mirror
+            // that here.
+            var grouped = await db.GitHubCommits
                 .AsNoTracking()
                 .Where(IsAllowedRepo<GitHubCommit>(c => c.Repo))
                 .Where(c => c.CommittedAt >= startInstant && c.CommittedAt < endInstant)
                 .GroupBy(c => c.Repo)
-                .Select(g => new GitHubCommitSummaryResponse(g.Key, g.Count(), g.Sum(c => c.Additions), g.Sum(c => c.Deletions)))
+                .Select(g => new
+                {
+                    Repo = g.Key,
+                    CommitCount = g.Count(),
+                    Additions = g.Sum(c => c.Additions),
+                    Deletions = g.Sum(c => c.Deletions),
+                })
                 .OrderByDescending(r => r.CommitCount)
                 .ToListAsync(ct);
+
+            var byRepo = grouped
+                .Select(r => new GitHubCommitSummaryResponse(r.Repo, r.CommitCount, r.Additions, r.Deletions))
+                .ToList();
 
             return Results.Ok(byRepo);
         }).AddEndpointFilter<AdminOnlyApiKeyEndpointFilter>();
