@@ -14,12 +14,19 @@ public class AiObservatoryDbContext(DbContextOptions<AiObservatoryDbContext> opt
     private static readonly Guid CreditsCategoryId = Guid.Parse("11111111-1111-1111-1111-111111111102");
     private static readonly Guid CiCategoryId = Guid.Parse("11111111-1111-1111-1111-111111111103");
     private static readonly Guid SubscriptionCategoryId = Guid.Parse("11111111-1111-1111-1111-111111111104");
+    private static readonly Guid CloudCategoryId = Guid.Parse("11111111-1111-1111-1111-111111111105");
 
     private static readonly Guid AnthropicVendorId = Guid.Parse("22222222-2222-2222-2222-222222222201");
     private static readonly Guid GitHubActionsVendorId = Guid.Parse("22222222-2222-2222-2222-222222222202");
     private static readonly Guid CodeRabbitVendorId = Guid.Parse("22222222-2222-2222-2222-222222222203");
     private static readonly Guid GitarVendorId = Guid.Parse("22222222-2222-2222-2222-222222222204");
     private static readonly Guid MoonshotVendorId = Guid.Parse("22222222-2222-2222-2222-222222222205");
+    private static readonly Guid OpenAiVendorId = Guid.Parse("22222222-2222-2222-2222-222222222206");
+    private static readonly Guid GoogleVendorId = Guid.Parse("22222222-2222-2222-2222-222222222207");
+    private static readonly Guid MicrosoftVendorId = Guid.Parse("22222222-2222-2222-2222-222222222208");
+    private static readonly Guid OpenRouterVendorId = Guid.Parse("22222222-2222-2222-2222-222222222209");
+    private static readonly Guid BlacksmithVendorId = Guid.Parse("22222222-2222-2222-2222-222222222210");
+    private static readonly Guid CopilotVendorId = Guid.Parse("22222222-2222-2222-2222-222222222211");
 
     public DbSet<UsageEvent> UsageEvents => Set<UsageEvent>();
     public DbSet<DailyAggregate> DailyAggregates => Set<DailyAggregate>();
@@ -83,12 +90,18 @@ public class AiObservatoryDbContext(DbContextOptions<AiObservatoryDbContext> opt
 
             // Seeded so the entry form's pickers are non-empty on first deploy, rather than
             // an empty select and no way to add the vendors/categories that make it usable
-            // (spec §2 names exactly these four categories).
+            // (spec §2 names exactly the first four categories).
+            //
+            // Cloud is the fifth, added later: real spend showed £638.36 of Azure charges,
+            // and cloud infrastructure is a genuinely different kind of spend from the other
+            // four — it has no token estimate behind it, so folding it into Subscription
+            // would inflate a category that is meant to be comparable against the estimate.
             b.HasData(
                 new SpendCategory { Id = CodeReviewCategoryId, Key = "code-review", DisplayName = "Code Review", ColorVar = "--spend-code-review", SortOrder = 10 },
                 new SpendCategory { Id = CreditsCategoryId, Key = "credits", DisplayName = "Credits", ColorVar = "--spend-credits", SortOrder = 20 },
                 new SpendCategory { Id = CiCategoryId, Key = "ci", DisplayName = "CI", ColorVar = "--spend-ci", SortOrder = 30 },
-                new SpendCategory { Id = SubscriptionCategoryId, Key = "subscription", DisplayName = "Subscription", ColorVar = "--spend-subscription", SortOrder = 40 });
+                new SpendCategory { Id = SubscriptionCategoryId, Key = "subscription", DisplayName = "Subscription", ColorVar = "--spend-subscription", SortOrder = 40 },
+                new SpendCategory { Id = CloudCategoryId, Key = "cloud", DisplayName = "Cloud", ColorVar = "--spend-cloud", SortOrder = 50 });
         });
 
         modelBuilder.Entity<SpendVendor>(b =>
@@ -115,7 +128,22 @@ public class AiObservatoryDbContext(DbContextOptions<AiObservatoryDbContext> opt
                 new SpendVendor { Id = GitHubActionsVendorId, Key = "github-actions", DisplayName = "GitHub Actions", Provider = null, DefaultCategoryId = CiCategoryId },
                 new SpendVendor { Id = CodeRabbitVendorId, Key = "coderabbit", DisplayName = "CodeRabbit", Provider = null, DefaultCategoryId = CodeReviewCategoryId },
                 new SpendVendor { Id = GitarVendorId, Key = "gitar", DisplayName = "Gitar", Provider = null, DefaultCategoryId = CodeReviewCategoryId },
-                new SpendVendor { Id = MoonshotVendorId, Key = "moonshot", DisplayName = "Moonshot", Provider = Provider.Moonshot, DefaultCategoryId = SubscriptionCategoryId });
+                new SpendVendor { Id = MoonshotVendorId, Key = "moonshot", DisplayName = "Moonshot", Provider = Provider.Moonshot, DefaultCategoryId = SubscriptionCategoryId },
+                // The five below carry real billed spend but had no vendor row, so none of it
+                // could be recorded. OpenAI in particular was an obvious omission from the
+                // original seed. Provider is set only where tokens are genuinely metered:
+                // Microsoft/Azure, OpenRouter and Blacksmith have no Provider enum member and
+                // no token estimate, so they stay null for the same reason CodeRabbit does.
+                new SpendVendor { Id = OpenAiVendorId, Key = "openai", DisplayName = "OpenAI", Provider = Provider.OpenAI, DefaultCategoryId = SubscriptionCategoryId },
+                new SpendVendor { Id = GoogleVendorId, Key = "google", DisplayName = "Google", Provider = Provider.Google, DefaultCategoryId = SubscriptionCategoryId },
+                new SpendVendor { Id = MicrosoftVendorId, Key = "microsoft", DisplayName = "Microsoft", Provider = null, DefaultCategoryId = CloudCategoryId },
+                new SpendVendor { Id = OpenRouterVendorId, Key = "openrouter", DisplayName = "OpenRouter", Provider = null, DefaultCategoryId = SubscriptionCategoryId },
+                new SpendVendor { Id = BlacksmithVendorId, Key = "blacksmith", DisplayName = "Blacksmith", Provider = null, DefaultCategoryId = CiCategoryId },
+                // Distinct from GitHub Actions on purpose. The ingest worker has been
+                // recording Copilot token usage since 2026-05-26, but there was no vendor to
+                // book the matching charge against, so Copilot was the one metered provider
+                // that could never be compared against its own estimate.
+                new SpendVendor { Id = CopilotVendorId, Key = "copilot", DisplayName = "GitHub Copilot", Provider = Provider.Copilot, DefaultCategoryId = SubscriptionCategoryId });
         });
 
         modelBuilder.Entity<SpendEntry>(b =>
@@ -150,8 +178,12 @@ public class AiObservatoryDbContext(DbContextOptions<AiObservatoryDbContext> opt
 
             b.ToTable(t =>
             {
-                t.HasCheckConstraint("CK_SpendEntry_Amount_NonNegative", "\"Amount\" >= 0");
-                t.HasCheckConstraint("CK_SpendEntry_AmountGbp_NonNegative", "\"AmountGbp\" >= 0");
+                // Signed, not non-negative: a refund is a negative amount, which keeps
+                // AmountGbp the one column every aggregate sums unconditionally. See
+                // SpendEntry.Amount for why a refund flag was rejected. Zero stays barred —
+                // it is a data-entry mistake in either direction, and barring it keeps some
+                // of the protection the non-negative constraint used to give.
+                t.HasCheckConstraint("CK_SpendEntry_Amount_NonZero", "\"Amount\" <> 0");
                 t.HasCheckConstraint("CK_SpendEntry_FxRate_Positive", "\"FxRate\" > 0");
             });
         });

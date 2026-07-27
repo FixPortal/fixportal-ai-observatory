@@ -3,6 +3,7 @@ using System;
 using AiObservatory.Data;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using NodaTime;
 using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
@@ -12,9 +13,11 @@ using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 namespace AiObservatory.Data.Migrations
 {
     [DbContext(typeof(AiObservatoryDbContext))]
-    partial class AiObservatoryDbContextModelSnapshot : ModelSnapshot
+    [Migration("20260727090653_AllowNegativeSpendAmounts")]
+    partial class AllowNegativeSpendAmounts
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder
@@ -512,14 +515,6 @@ namespace AiObservatory.Data.Migrations
                             DisplayName = "Subscription",
                             Key = "subscription",
                             SortOrder = 40
-                        },
-                        new
-                        {
-                            Id = new Guid("11111111-1111-1111-1111-111111111105"),
-                            ColorVar = "--spend-cloud",
-                            DisplayName = "Cloud",
-                            Key = "cloud",
-                            SortOrder = 50
                         });
                 });
 
@@ -658,51 +653,6 @@ namespace AiObservatory.Data.Migrations
                             DisplayName = "Moonshot",
                             Key = "moonshot",
                             Provider = "Moonshot"
-                        },
-                        new
-                        {
-                            Id = new Guid("22222222-2222-2222-2222-222222222206"),
-                            DefaultCategoryId = new Guid("11111111-1111-1111-1111-111111111104"),
-                            DisplayName = "OpenAI",
-                            Key = "openai",
-                            Provider = "OpenAI"
-                        },
-                        new
-                        {
-                            Id = new Guid("22222222-2222-2222-2222-222222222207"),
-                            DefaultCategoryId = new Guid("11111111-1111-1111-1111-111111111104"),
-                            DisplayName = "Google",
-                            Key = "google",
-                            Provider = "Google"
-                        },
-                        new
-                        {
-                            Id = new Guid("22222222-2222-2222-2222-222222222208"),
-                            DefaultCategoryId = new Guid("11111111-1111-1111-1111-111111111105"),
-                            DisplayName = "Microsoft",
-                            Key = "microsoft"
-                        },
-                        new
-                        {
-                            Id = new Guid("22222222-2222-2222-2222-222222222209"),
-                            DefaultCategoryId = new Guid("11111111-1111-1111-1111-111111111104"),
-                            DisplayName = "OpenRouter",
-                            Key = "openrouter"
-                        },
-                        new
-                        {
-                            Id = new Guid("22222222-2222-2222-2222-222222222210"),
-                            DefaultCategoryId = new Guid("11111111-1111-1111-1111-111111111103"),
-                            DisplayName = "Blacksmith",
-                            Key = "blacksmith"
-                        },
-                        new
-                        {
-                            Id = new Guid("22222222-2222-2222-2222-222222222211"),
-                            DefaultCategoryId = new Guid("11111111-1111-1111-1111-111111111104"),
-                            DisplayName = "GitHub Copilot",
-                            Key = "copilot",
-                            Provider = "Copilot"
                         });
                 });
 

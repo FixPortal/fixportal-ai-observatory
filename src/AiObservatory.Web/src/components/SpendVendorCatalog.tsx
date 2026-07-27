@@ -28,9 +28,20 @@ export default function SpendVendorCatalog({ vendors, categories }: Props) {
   const [renamingId, setRenamingId] = useState<string | null>(null)
   const [renameValue, setRenameValue] = useState('')
 
-  const categoryName = useMemo(() => new Map(categories.map(c => [c.id, c.displayName])), [categories])
   const liveCategories = useMemo(() => categories.filter(c => c.archivedAt === null), [categories])
   const providerName = (key: string | null) => PROVIDERS.find(p => p.key === key)?.displayName ?? 'No provider'
+
+  // Live categories, plus this vendor's own default when that category has since been
+  // archived. Without the second part the select has no option matching its value, so the
+  // browser falls back to the first option and the row silently reads "No default
+  // category" for a vendor that has one — the same archived-resolution trap the ledger
+  // history hit. Archived options are labelled, so retiring one is still visible.
+  const categoryOptions = (v: SpendVendor): SpendCategory[] => {
+    const current = v.defaultCategoryId
+    if (current === null || liveCategories.some(c => c.id === current)) return liveCategories
+    const archived = categories.find(c => c.id === current)
+    return archived ? [...liveCategories, archived] : liveCategories
+  }
 
   // Prefix match invalidates both ['spend-vendors'] (live, used by pickers) and
   // ['spend-vendors', 'all'] (this panel, SpendLedgerTable's name map).
@@ -80,6 +91,14 @@ export default function SpendVendorCatalog({ vendors, categories }: Props) {
     patch.mutate({ id: v.id, body: { archived: v.archivedAt === null } })
   }
 
+  // "" is the None option — send an explicit null so the API clears the column, rather
+  // than omitting the key (which means "leave it alone" and is how clearing used to be
+  // impossible). See SpendVendorPatch for the tri-state contract.
+  function changeDefaultCategory(v: SpendVendor, value: string) {
+    setMutationError(null)
+    patch.mutate({ id: v.id, body: { defaultCategoryId: value || null } })
+  }
+
   return (
     <div>
       {mutationError && <p className="modal__error" role="alert">{mutationError}</p>}
@@ -116,7 +135,23 @@ export default function SpendVendorCatalog({ vendors, categories }: Props) {
               <>
                 <span className="sub-list__name">{v.displayName}</span>
                 <span className="sub-list__cost">{providerName(v.provider)}</span>
-                <span className="sub-list__cost">{v.defaultCategoryId ? categoryName.get(v.defaultCategoryId) ?? '—' : '—'}</span>
+                <label className="visually-hidden" htmlFor={`vendor-category-${v.id}`}>
+                  {`Default category for ${v.displayName}`}
+                </label>
+                <select
+                  id={`vendor-category-${v.id}`}
+                  className="sub-list__select"
+                  value={v.defaultCategoryId ?? ''}
+                  disabled={patch.isPending}
+                  onChange={e => changeDefaultCategory(v, e.target.value)}
+                >
+                  <option value="">No default category</option>
+                  {categoryOptions(v).map(c => (
+                    <option key={c.id} value={c.id}>
+                      {c.displayName}{c.archivedAt !== null && ' (archived)'}
+                    </option>
+                  ))}
+                </select>
                 {v.archivedAt !== null && <span className="catalog-badge">Archived</span>}
                 <span className="sub-list__actions">
                   <button

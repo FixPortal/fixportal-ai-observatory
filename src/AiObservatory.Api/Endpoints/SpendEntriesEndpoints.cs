@@ -176,9 +176,11 @@ public static class SpendEntriesEndpoints
             return $"Unknown CategoryId: {req.CategoryId}";
         }
 
-        if (req.Amount < 0)
+        // Signed: negative is a refund or credit (see SpendEntry.Amount). Only zero is
+        // rejected — a zero-value charge carries no information and is a mistake either way.
+        if (req.Amount == 0)
         {
-            return "Amount must be non-negative";
+            return "Amount must not be zero";
         }
 
         currency = (req.Currency ?? "GBP").Trim().ToUpperInvariant();
@@ -281,9 +283,9 @@ public static class SpendEntriesEndpoints
             return Results.NotFound();
         }
 
-        if (req.Amount is { } amount && amount < 0)
+        if (req.Amount is 0)
         {
-            return Results.BadRequest("Amount must be non-negative");
+            return Results.BadRequest("Amount must not be zero");
         }
 
         if (req.Description is { Length: > 200 })

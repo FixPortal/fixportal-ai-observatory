@@ -39,11 +39,51 @@ describe('SpendEntryModal', () => {
     expect(payload[0].entryKey).toBeNull()
   })
 
-  it('refuses to submit a negative amount', async () => {
+  it('defaults to Charge and posts a positive amount', async () => {
+    const post = vi.spyOn(client, 'postSpendEntries')
+      .mockResolvedValue([{ id: 'e1', status: 'created', reason: null }])
+    renderModal()
+
+    expect(screen.getByRole('radio', { name: /charge/i })).toBeChecked()
+
+    fireEvent.change(screen.getByLabelText(/amount/i), { target: { value: '80' } })
+    fireEvent.click(screen.getByRole('button', { name: /save/i }))
+
+    await waitFor(() => expect(post).toHaveBeenCalledTimes(1))
+    expect(post.mock.calls[0][0][0].amount).toBe(80)
+  })
+
+  it('negates the amount when Refund is selected', async () => {
+    const post = vi.spyOn(client, 'postSpendEntries')
+      .mockResolvedValue([{ id: 'e1', status: 'created', reason: null }])
+    renderModal()
+
+    fireEvent.change(screen.getByLabelText(/amount/i), { target: { value: '286.16' } })
+    fireEvent.click(screen.getByRole('radio', { name: /refund/i }))
+    fireEvent.click(screen.getByRole('button', { name: /save/i }))
+
+    await waitFor(() => expect(post).toHaveBeenCalledTimes(1))
+    // Signed amount is how a refund nets off the total — see SpendEntry.Amount.
+    expect(post.mock.calls[0][0][0].amount).toBe(-286.16)
+  })
+
+  it('refuses a typed negative amount — the toggle is the only way to book a refund', async () => {
     const post = vi.spyOn(client, 'postSpendEntries')
     renderModal()
 
     fireEvent.change(screen.getByLabelText(/amount/i), { target: { value: '-5' } })
+    fireEvent.click(screen.getByRole('button', { name: /save/i }))
+
+    await waitFor(() => expect(screen.getByRole('alert')).toBeInTheDocument())
+    expect(post).not.toHaveBeenCalled()
+  })
+
+  it('refuses a zero amount in either direction', async () => {
+    const post = vi.spyOn(client, 'postSpendEntries')
+    renderModal()
+
+    fireEvent.change(screen.getByLabelText(/amount/i), { target: { value: '0' } })
+    fireEvent.click(screen.getByRole('radio', { name: /refund/i }))
     fireEvent.click(screen.getByRole('button', { name: /save/i }))
 
     await waitFor(() => expect(screen.getByRole('alert')).toBeInTheDocument())

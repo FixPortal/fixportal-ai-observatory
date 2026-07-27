@@ -3,6 +3,7 @@ using System;
 using AiObservatory.Data;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using NodaTime;
 using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
@@ -12,9 +13,11 @@ using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 namespace AiObservatory.Data.Migrations
 {
     [DbContext(typeof(AiObservatoryDbContext))]
-    partial class AiObservatoryDbContextModelSnapshot : ModelSnapshot
+    [Migration("20260727093336_SeedRemainingSpendVendorsAndCloudCategory")]
+    partial class SeedRemainingSpendVendorsAndCloudCategory
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder
@@ -695,14 +698,6 @@ namespace AiObservatory.Data.Migrations
                             DefaultCategoryId = new Guid("11111111-1111-1111-1111-111111111103"),
                             DisplayName = "Blacksmith",
                             Key = "blacksmith"
-                        },
-                        new
-                        {
-                            Id = new Guid("22222222-2222-2222-2222-222222222211"),
-                            DefaultCategoryId = new Guid("11111111-1111-1111-1111-111111111104"),
-                            DisplayName = "GitHub Copilot",
-                            Key = "copilot",
-                            Provider = "Copilot"
                         });
                 });
 

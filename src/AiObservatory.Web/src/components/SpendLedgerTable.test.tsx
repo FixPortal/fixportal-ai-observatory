@@ -73,6 +73,41 @@ describe('SpendLedgerTable', () => {
     expect(screen.getByRole('table', { name: /spend ledger/i })).toBeInTheDocument()
   })
 
+  it('marks a refund row so it cannot be misread as a charge', () => {
+    const refund: SpendEntry = {
+      ...entryAgainstArchivedCategory, id: 'e2', amount: -30, amountGbp: -30, description: 'Credit',
+    }
+    render(
+      <SpendLedgerTable
+        entries={[refund]}
+        categories={[liveCategory, archivedCategory]}
+        vendors={[vendor]}
+        onDelete={vi.fn()}
+        canEdit={false}
+      />,
+    )
+
+    // The minus sign alone is easy to miss in a column of figures, so the row also states
+    // it for assistive tech and carries a class the stylesheet colours.
+    const cell = screen.getByText(/Refund:/).closest('td')!
+    expect(cell).toHaveClass('spend-ledger__num--refund')
+    expect(cell).toHaveTextContent('-£30.00')
+  })
+
+  it('leaves a charge row unmarked', () => {
+    render(
+      <SpendLedgerTable
+        entries={[entryAgainstArchivedCategory]}
+        categories={[liveCategory, archivedCategory]}
+        vendors={[vendor]}
+        onDelete={vi.fn()}
+        canEdit={false}
+      />,
+    )
+
+    expect(screen.queryByText(/Refund:/)).not.toBeInTheDocument()
+  })
+
   it('disables the delete button while a delete is pending', () => {
     render(
       <SpendLedgerTable

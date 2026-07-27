@@ -1,5 +1,6 @@
 using System.Net;
 using System.Net.Http.Json;
+using System.Text;
 using System.Text.Json;
 using AwesomeAssertions;
 
@@ -247,5 +248,155 @@ public class SpendCatalogEndpointsWafTests(AiObservatoryApiFactory factory)
         var body = await patch.Content.ReadFromJsonAsync<JsonElement>(TestContext.Current.CancellationToken);
         body.GetProperty("displayName").GetString().Should().Be("New Name");
         body.GetProperty("defaultCategoryId").GetGuid().Should().Be(categoryId);
+    }
+
+    /// <summary>
+    /// The tri-state contract on <c>defaultCategoryId</c>. A plain <c>Guid?</c> could not
+    /// express it — an omitted property and an explicit null both deserialized to null, so
+    /// the clear path did not exist and a vendor's default category was set-once for life.
+    /// </summary>
+    [Fact]
+    public async Task PatchVendor_WithExplicitNullDefaultCategory_ClearsIt()
+    {
+        using var client = factory.CreateAdminClient();
+        var (vendorId, _) = await CreateVendorWithDefaultCategoryAsync(client);
+
+        var patch = await client.PatchAsJsonAsync($"/api/spend/vendors/{vendorId}",
+            new { DefaultCategoryId = (Guid?)null }, TestContext.Current.CancellationToken);
+
+        patch.StatusCode.Should().Be(HttpStatusCode.OK);
+        var body = await patch.Content.ReadFromJsonAsync<JsonElement>(TestContext.Current.CancellationToken);
+        body.GetProperty("defaultCategoryId").ValueKind.Should().Be(JsonValueKind.Null);
+    }
+
+    [Fact]
+    public async Task PatchVendor_WithoutMentioningDefaultCategory_LeavesItAlone()
+    {
+        using var client = factory.CreateAdminClient();
+        var (vendorId, categoryId) = await CreateVendorWithDefaultCategoryAsync(client);
+
+        // Only DisplayName is sent — the absent defaultCategoryId must not be read as a clear.
+        var patch = await client.PatchAsJsonAsync($"/api/spend/vendors/{vendorId}",
+            new { DisplayName = "Renamed Only" }, TestContext.Current.CancellationToken);
+
+        patch.StatusCode.Should().Be(HttpStatusCode.OK);
+        var body = await patch.Content.ReadFromJsonAsync<JsonElement>(TestContext.Current.CancellationToken);
+        body.GetProperty("displayName").GetString().Should().Be("Renamed Only");
+        body.GetProperty("defaultCategoryId").GetGuid().Should().Be(categoryId);
+    }
+
+    [Fact]
+    public async Task PatchVendor_WithUnknownDefaultCategory_IsRejected()
+    {
+        using var client = factory.CreateAdminClient();
+        var (vendorId, categoryId) = await CreateVendorWithDefaultCategoryAsync(client);
+
+        var patch = await client.PatchAsJsonAsync($"/api/spend/vendors/{vendorId}",
+            new { DefaultCategoryId = Guid.NewGuid() }, TestContext.Current.CancellationToken);
+
+        patch.StatusCode.Should().Be(HttpStatusCode.BadRequest);
+
+        var after = await client.GetFromJsonAsync<JsonElement>($"/api/spend/vendors/{vendorId}",
+            TestContext.Current.CancellationToken);
+        after.GetProperty("defaultCategoryId").GetGuid().Should().Be(categoryId,
+            "a rejected patch must not have written anything");
+    }
+
+    [Fact]
+    public async Task PatchVendor_WithNonGuidDefaultCategory_IsRejected()
+    {
+        using var client = factory.CreateAdminClient();
+        var (vendorId, _) = await CreateVendorWithDefaultCategoryAsync(client);
+
+        using var content = new StringContent(
+            """{"defaultCategoryId":"not-a-guid"}""", Encoding.UTF8, "application/json");
+        var patch = await client.PatchAsync($"/api/spend/vendors/{vendorId}", content,
+            TestContext.Current.CancellationToken);
+
+        patch.StatusCode.Should().Be(HttpStatusCode.BadRequest);
+    }
+
+    /// <summary>
+    /// The seeded catalog must reach a migrated database intact. Asserted through the API
+    /// rather than the model so it covers the migrations too — a HasData edit that never
+    /// made it into a migration would pass a model-only check and still leave a deployed
+    /// database missing the vendor.
+    /// </summary>
+    [Theory]
+    [InlineData("anthropic", "anthropic")]
+    [InlineData("github-actions", null)]
+    [InlineData("coderabbit", null)]
+    [InlineData("gitar", null)]
+    [InlineData("moonshot", "moonshot")]
+    // Lower-case, not the camelCase converter's "openAI" — see Provider.OpenAI. The
+    // frontend keys its PROVIDERS lookup on this exact string.
+    [InlineData("openai", "openai")]
+    [InlineData("google", "google")]
+    [InlineData("microsoft", null)]
+    [InlineData("openrouter", null)]
+    [InlineData("blacksmith", null)]
+    // Copilot is the one vendor whose tokens the ingest worker already meters but whose
+    // billed spend had nowhere to go, so its Provider link is the point of the row.
+    [InlineData("copilot", "copilot")]
+    public async Task SeededVendor_IsPresentAndCarriesAProviderOnlyWhenTokensAreMetered(
+        string key, string? expectedProvider)
+    {
+        using var client = factory.CreateAdminClient();
+
+        var vendors = await client.GetFromJsonAsync<JsonElement>("/api/spend/vendors",
+            TestContext.Current.CancellationToken);
+
+        var vendor = vendors.EnumerateArray()
+            .Should().ContainSingle(v => v.GetProperty("key").GetString() == key).Which;
+
+        // Provider is the ONLY join between billed spend and the token estimate. Assigning
+        // one to a vendor with no tokens (Microsoft, OpenRouter, Blacksmith, CodeRabbit,
+        // Gitar, GitHub Actions) would fabricate a variance comparison that was never
+        // possible — so the null cases matter at least as much as the set ones.
+        var provider = vendor.GetProperty("provider");
+        if (expectedProvider is null)
+        {
+            provider.ValueKind.Should().Be(JsonValueKind.Null,
+                $"{key} has no metered tokens, so it must not claim a Provider");
+        }
+        else
+        {
+            provider.GetString().Should().Be(expectedProvider);
+        }
+    }
+
+    [Fact]
+    public async Task SeededCategories_CoverEveryKindOfSpendTheLedgerRecords()
+    {
+        using var client = factory.CreateAdminClient();
+
+        var categories = await client.GetFromJsonAsync<JsonElement>("/api/spend/categories",
+            TestContext.Current.CancellationToken);
+
+        categories.EnumerateArray().Select(c => c.GetProperty("key").GetString())
+            .Should().Contain(["code-review", "credits", "ci", "subscription", "cloud"]);
+    }
+
+    /// <summary>Creates a category and a vendor already pointed at it.</summary>
+    private async Task<(Guid VendorId, Guid CategoryId)> CreateVendorWithDefaultCategoryAsync(HttpClient client)
+    {
+        var categoryCreated = await client.PostAsJsonAsync("/api/spend/categories",
+            NewCategory($"cat-{Guid.NewGuid():N}"), TestContext.Current.CancellationToken);
+        var categoryId = (await categoryCreated.Content.ReadFromJsonAsync<JsonElement>(TestContext.Current.CancellationToken))
+            .GetProperty("id").GetGuid();
+
+        var vendorCreated = await client.PostAsJsonAsync("/api/spend/vendors",
+            new
+            {
+                Key = $"v-{Guid.NewGuid():N}",
+                DisplayName = "Defaulted Vendor",
+                Provider = (string?)null,
+                DefaultCategoryId = categoryId,
+            },
+            TestContext.Current.CancellationToken);
+        var vendorId = (await vendorCreated.Content.ReadFromJsonAsync<JsonElement>(TestContext.Current.CancellationToken))
+            .GetProperty("id").GetGuid();
+
+        return (vendorId, categoryId);
     }
 }

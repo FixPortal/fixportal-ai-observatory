@@ -61,6 +61,18 @@ describe('totalGbp', () => {
     expect(totalGbp([])).toBe(0)
   })
 
+  it('nets a refund off the charges with no refund-aware special case', () => {
+    // The signed amount is the whole design: this plain reduce is every aggregate in the
+    // app, and it is correct for refunds without knowing refunds exist.
+    const rows = [entry({ amountGbp: 100 }), entry({ amountGbp: -30 })]
+    expect(totalGbp(rows)).toBe(70)
+  })
+
+  it('can go negative when a period holds more refund than charge', () => {
+    const rows = [entry({ amountGbp: 20 }), entry({ amountGbp: -50 })]
+    expect(totalGbp(rows)).toBe(-30)
+  })
+
   it('reflects the filter, so the headline is the total of what is on screen', () => {
     const rows = [entry({ categoryId: 'c1', amountGbp: 50 }), entry({ categoryId: 'c2', amountGbp: 25 })]
     expect(totalGbp(filterEntries(rows, { categoryId: 'c1' }))).toBe(50)

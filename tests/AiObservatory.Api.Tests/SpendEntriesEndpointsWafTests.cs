@@ -119,7 +119,9 @@ public class SpendEntriesEndpointsWafTests(AiObservatoryApiFactory factory)
         {
             Entry(categoryId, vendorId, $"k-{Guid.NewGuid():N}"),          // good
             Entry(categoryId, vendorId, existingKey),                       // duplicate
-            Entry(categoryId, vendorId, $"k-{Guid.NewGuid():N}", -5m),      // rejected: negative
+            // Zero, not negative: a negative amount is a valid refund since
+            // AllowNegativeSpendAmounts, so zero is now the amount that gets rejected.
+            Entry(categoryId, vendorId, $"k-{Guid.NewGuid():N}", 0m),        // rejected: zero
         };
 
         var response = await client.PostAsJsonAsync("/api/spend/entries", mixed, ct);
@@ -252,8 +254,8 @@ public class SpendEntriesEndpointsWafTests(AiObservatoryApiFactory factory)
     /// unhandled exception.
     ///
     /// A check-constraint or HasMaxLength violation is not reachable through this endpoint:
-    /// Validate rejects a negative Amount before the insert (so CK_SpendEntry_Amount/AmountGbp
-    /// _NonNegative can't be reached), FxRateProvider.GetGbpRateOnAsync never returns a
+    /// Validate rejects a zero Amount before the insert (so CK_SpendEntry_Amount_NonZero
+    /// can't be reached), FxRateProvider.GetGbpRateOnAsync never returns a
     /// non-positive rate without throwing FxUnavailableException first (so
     /// CK_SpendEntry_FxRate_Positive can't be reached either), and Validate's own length checks
     /// on Currency/Description/EntryKey exactly match the columns' HasMaxLength. A foreign-key
@@ -474,6 +476,102 @@ public class SpendEntriesEndpointsWafTests(AiObservatoryApiFactory factory)
 
         (await TotalAsync(client, vendorId)).Should().Be(totalBeforeDelete - 20m,
             "the total must drop by exactly the deleted row's amount, not more or less");
+    }
+
+    /// <summary>
+    /// The reason AllowNegativeSpendAmounts exists. A refund must reduce the total, and it
+    /// must do so through the ordinary SUM of AmountGbp with no refund-aware special case —
+    /// that unconditional sum is exactly why a signed amount beat an IsRefund flag.
+    /// </summary>
+    [Fact]
+    public async Task Refund_LandsAsANegativeRowAndNetsOffTheTotal()
+    {
+        using var client = factory.CreateAdminClient();
+        var ct = TestContext.Current.CancellationToken;
+        var (categoryId, vendorId) = await SeedCatalogAsync(client);
+
+        await CreateEntryAsync(client, categoryId, vendorId, 100m);
+        var totalAfterCharge = await TotalAsync(client, vendorId);
+        totalAfterCharge.Should().Be(100m);
+
+        var response = await client.PostAsJsonAsync("/api/spend/entries",
+            new[] { Entry(categoryId, vendorId, $"k-{Guid.NewGuid():N}", -30m) }, ct);
+
+        response.StatusCode.Should().Be(HttpStatusCode.OK);
+        var result = (await response.Content.ReadFromJsonAsync<JsonElement>(ct)).EnumerateArray().Single();
+        result.GetProperty("status").GetString().Should().Be("created");
+
+        (await TotalAsync(client, vendorId)).Should().Be(70m,
+            "a refund must net off the charges, not add to them");
+    }
+
+    [Fact]
+    public async Task Refund_FreezesANegativeAmountGbpAtTheChargeDateRate()
+    {
+        using var client = factory.CreateAdminClient();
+        var ct = TestContext.Current.CancellationToken;
+        var (categoryId, vendorId) = await SeedCatalogAsync(client);
+
+        var response = await client.PostAsJsonAsync("/api/spend/entries",
+            new[] { Entry(categoryId, vendorId, $"k-{Guid.NewGuid():N}", -30m) }, ct);
+        var id = (await response.Content.ReadFromJsonAsync<JsonElement>(ct))
+            .EnumerateArray().Single().GetProperty("id").GetGuid();
+
+        var entries = await client.GetFromJsonAsync<JsonElement>($"/api/spend/entries?vendorId={vendorId}", ct);
+        var row = entries.EnumerateArray().Single(e => e.GetProperty("id").GetGuid() == id);
+
+        row.GetProperty("amount").GetDecimal().Should().Be(-30m);
+        // The GBP column must carry the sign too — it is the only column ever summed, so a
+        // positive AmountGbp on a negative Amount would silently turn a refund into a charge.
+        row.GetProperty("amountGbp").GetDecimal().Should().Be(-30m);
+        row.GetProperty("fxRate").GetDecimal().Should().BePositive("the rate stays positive; the amount carries the sign");
+    }
+
+    [Theory]
+    [InlineData(0)]
+    [InlineData(0.0)]
+    public async Task PostEntry_WithZeroAmount_IsRejected(double amount)
+    {
+        using var client = factory.CreateAdminClient();
+        var ct = TestContext.Current.CancellationToken;
+        var (categoryId, vendorId) = await SeedCatalogAsync(client);
+
+        var response = await client.PostAsJsonAsync("/api/spend/entries",
+            new[] { Entry(categoryId, vendorId, $"k-{Guid.NewGuid():N}", (decimal)amount) }, ct);
+
+        var result = (await response.Content.ReadFromJsonAsync<JsonElement>(ct)).EnumerateArray().Single();
+        result.GetProperty("status").GetString().Should().Be("rejected");
+        result.GetProperty("reason").GetString().Should().Contain("zero");
+    }
+
+    [Fact]
+    public async Task PatchEntry_ToANegativeAmount_TurnsAChargeIntoARefund()
+    {
+        using var client = factory.CreateAdminClient();
+        var ct = TestContext.Current.CancellationToken;
+        var (categoryId, vendorId) = await SeedCatalogAsync(client);
+        var id = await CreateEntryAsync(client, categoryId, vendorId, 50m);
+
+        var patch = await client.PatchAsJsonAsync($"/api/spend/entries/{id}", new { Amount = -50m }, ct);
+
+        patch.StatusCode.Should().Be(HttpStatusCode.OK);
+        var body = await patch.Content.ReadFromJsonAsync<JsonElement>(ct);
+        body.GetProperty("amount").GetDecimal().Should().Be(-50m);
+        // ReResolveFxAsync recomputes AmountGbp from the new amount; the sign must survive it.
+        body.GetProperty("amountGbp").GetDecimal().Should().Be(-50m);
+    }
+
+    [Fact]
+    public async Task PatchEntry_ToZeroAmount_IsRejected()
+    {
+        using var client = factory.CreateAdminClient();
+        var ct = TestContext.Current.CancellationToken;
+        var (categoryId, vendorId) = await SeedCatalogAsync(client);
+        var id = await CreateEntryAsync(client, categoryId, vendorId, 50m);
+
+        var patch = await client.PatchAsJsonAsync($"/api/spend/entries/{id}", new { Amount = 0m }, ct);
+
+        patch.StatusCode.Should().Be(HttpStatusCode.BadRequest);
     }
 
     private static async Task<decimal> TotalAsync(HttpClient client, Guid vendorId)
