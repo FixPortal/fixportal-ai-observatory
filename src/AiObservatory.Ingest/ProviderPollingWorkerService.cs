@@ -25,6 +25,28 @@ public class ProviderPollingWorkerService(
     // concurrency, so a plain dictionary is safe.
     private readonly Dictionary<string, int> _consecutiveFailures = [];
 
+    // Written by the poll loop, read by the /healthz endpoint on a request thread, so it
+    // crosses threads unlike _consecutiveFailures above. Stored as ticks and accessed via
+    // Interlocked because a nullable Instant cannot be assigned atomically. 0 means "no
+    // cycle has completed yet".
+    private long _lastCycleCompletedTicks;
+
+    private int _cyclesCompleted;
+
+    /// <summary>
+    /// When the most recent poll cycle finished, or null if none has yet. A cycle
+    /// "completing" means every configured provider was attempted — individual providers
+    /// may still have failed and been logged by <c>TryIngestAsync</c>, so this is evidence
+    /// the loop is turning, NOT evidence that data was ingested.
+    /// </summary>
+    public Instant? LastCycleCompletedAt =>
+        Interlocked.Read(ref _lastCycleCompletedTicks) is var ticks && ticks == 0
+            ? null
+            : Instant.FromUnixTimeTicks(ticks);
+
+    /// <summary>Poll cycles finished since start. Exposed for /healthz.</summary>
+    public int CyclesCompleted => Volatile.Read(ref _cyclesCompleted);
+
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
         var interval = options.Value.PollingInterval;
@@ -39,6 +61,8 @@ public class ProviderPollingWorkerService(
                 .Select(offset => yesterday.PlusDays(-(lookbackDays - 1 - offset)))
                 .ToList();
             await RunPollAsync(dates, stoppingToken);
+            Interlocked.Exchange(ref _lastCycleCompletedTicks, clock.GetCurrentInstant().ToUnixTimeTicks());
+            Interlocked.Increment(ref _cyclesCompleted);
             await Task.Delay(interval, stoppingToken);
         }
     }

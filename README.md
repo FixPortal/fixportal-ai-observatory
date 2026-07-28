@@ -236,14 +236,36 @@ dotnet ef database update --project ../AiObservatory.Data --startup-project .
 > `AiObservatory.Ingest` is a background worker that also hosts a **minimal Kestrel
 > serving only `GET /healthz`**. That web host is not a feature — it exists because
 > Linux App Service is HTTP-first and kills any container that fails a startup probe
-> on port 8080. Without it the worker restart-looped indefinitely while
-> `az webapp show` cheerfully reported `"state": "Running"`, and every ingestion arm
-> was silently dead. Do not remove the listener, and do not add routes to it: this
-> process holds provider credentials the public API does not.
->
-> The port is never hardcoded. App Service supplies it in production; locally
-> `Properties/launchSettings.json` pins **5040**, alongside the API's 5039, so
-> `dotnet run` never contends for a common port such as 8080.
+> on port 8080. Without it the worker restart-looped indefinitely while both the portal
+> and `az webapp show` reported `"state": "Running"` — that is the *site* state, not the
+> container's — and every ingestion arm was silently dead. Do not remove the listener,
+> and do not add routes to it: this process holds provider credentials the public API
+> does not.
+
+**Which port, and who sets it.** Nothing in the code binds a port. Kestrel takes its
+binding from **`ASPNETCORE_URLS`**, which App Service injects into the container at the
+platform level — it is not one of the app settings in `infra/`, so you will not find it
+listed there. The API is the working proof: same `DOTNETCORE|10.0` image, no port
+configuration of its own, and it logs `Now listening on: http://[::]:8080` on every start.
+The worker inherits that behaviour unchanged. Locally,
+`src/AiObservatory.Ingest/Properties/launchSettings.json` sets `ASPNETCORE_URLS` to
+**`http://localhost:5040`** — beside the API's 5039 — so `dotnet run` never contends for a
+commonly-occupied port such as 8080.
+
+**What `/healthz` does and does not assert.** It is wired to `healthCheckPath` in
+`infra/modules/ingest.bicep`, and returns **503 on exactly one condition**: the poll loop
+has stopped while the host is still up (`ExecuteTask` completed — faulted, cancelled, or
+simply returned). That is unambiguous silent death and the instance deserves replacing.
+
+It deliberately does **not** go unhealthy on a stale `lastCycleCompletedAt`. The polling
+interval is configurable, so a long legitimate gap would have App Service recycle a healthy
+container — recreating the exact restart loop this design removes. The response body
+carries `cyclesCompleted` and `lastCycleCompletedAt` so staleness is visible to a human,
+who can judge it with context a threshold cannot.
+
+Note also that a completed cycle means every configured provider was *attempted*.
+Individual providers can still have failed and been logged; the endpoint is evidence the
+loop is turning, not that data was ingested.
 
 Each provider arm of `AiObservatory.Ingest` stays disabled until its credential is
 present, so an unconfigured worker is a no-op rather than an error:

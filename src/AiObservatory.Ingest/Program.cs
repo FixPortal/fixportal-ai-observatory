@@ -156,7 +156,11 @@ var host = Host.CreateDefaultBuilder(args)
             services.AddApplicationInsightsTelemetry();
         }
 
-        services.AddHostedService<ProviderPollingWorkerService>();
+        // Singleton first, then handed to the hosted-service registration, so /healthz can
+        // read the SAME instance the host is running. AddHostedService<T>() alone would
+        // construct a second, unrelated one.
+        services.AddSingleton<ProviderPollingWorkerService>();
+        services.AddHostedService(sp => sp.GetRequiredService<ProviderPollingWorkerService>());
     })
     // Minimal web host so the process answers Linux App Service's startup probe. The
     // probe's port comes from the environment (App Service sets ASPNETCORE_URLS; locally
@@ -167,15 +171,40 @@ var host = Host.CreateDefaultBuilder(args)
     // provider credentials that the public-facing API does not, and every route added
     // here is one more thing exposed on a host that exists purely to keep the container
     // alive.
-    .ConfigureWebHostDefaults(web => web.Configure(app =>
-    {
-        app.UseRouting();
-        app.UseEndpoints(endpoints => endpoints.MapGet("/healthz", () => Results.Ok(new
-        {
-            status = "healthy",
-            service = "AiObservatory.Ingest",
-        })));
-    }))
+    .ConfigureWebHostDefaults(web => web.Configure(MapHealthEndpoint))
     .Build();
 
 await host.RunAsync();
+
+// Split out of the builder chain rather than inlined as nested lambdas: three levels of
+// nesting inside ConfigureWebHostDefaults pushed this file's cognitive complexity from
+// under the limit to 25.
+static void MapHealthEndpoint(IApplicationBuilder app)
+{
+    app.UseRouting();
+    app.UseEndpoints(endpoints => endpoints.MapGet("/healthz", ReportHealth));
+}
+
+static IResult ReportHealth(ProviderPollingWorkerService worker)
+{
+    // 503 on exactly one condition: the poll loop is no longer running while the host still
+    // is. ExecuteTask completing -- faulted, cancelled, or simply returning -- is
+    // unambiguous silent death, and is precisely the failure this whole change exists to
+    // stop going unnoticed. App Service replacing the instance is the right response.
+    var running = worker.ExecuteTask is { IsCompleted: false };
+
+    // Deliberately NOT unhealthy on a stale LastCycleCompletedAt. The poll interval is
+    // configurable, so a long legitimate gap would make App Service recycle a perfectly
+    // healthy container -- recreating the very restart loop this change removes. Staleness
+    // is reported for a human to judge, not acted on automatically.
+    var body = new
+    {
+        status = running ? "healthy" : "unhealthy",
+        service = "AiObservatory.Ingest",
+        workerRunning = running,
+        cyclesCompleted = worker.CyclesCompleted,
+        lastCycleCompletedAt = worker.LastCycleCompletedAt?.ToString(),
+    };
+
+    return running ? Results.Ok(body) : Results.Json(body, statusCode: 503);
+}

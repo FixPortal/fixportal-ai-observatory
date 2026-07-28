@@ -10,10 +10,11 @@
     <!--
       ASP.NET Core without switching to the Web SDK. This stays a background worker
       (ProviderPollingWorkerService does all the real work), but Linux App Service is
-      HTTP-first: it probes port 8080 and kills any container that does not answer. A host
-      that binds no port can never pass, and this app restart-looped indefinitely while the
-      portal reported "Running". See ~/.agents/notes/deploy-and-ci-traps.md, "Azure App
-      Service (Linux), non-HTTP workloads".
+      HTTP-first: it probes the container's port and kills anything that does not answer.
+      A host that binds no port can never pass, and this app restart-looped indefinitely
+      while both the portal and `az webapp show` reported "state": "Running" (that is the
+      SITE state, not the container's). See the README's "Ingest worker configuration"
+      section for the full account.
 
       A FrameworkReference rather than Sdk="Microsoft.NET.Sdk.Web" on purpose: the Web SDK
       emits the top-level entry point as a PUBLIC global-namespace Program, which collides
@@ -25,9 +26,13 @@
     <PackageReference Include="Google.Apis.Auth" />
     <PackageReference Include="Microsoft.ApplicationInsights.AspNetCore" />
     <PackageReference Include="Microsoft.EntityFrameworkCore.Relational" />
-    <PackageReference Include="Microsoft.Extensions.Hosting" />
-    <PackageReference Include="Microsoft.Extensions.Http" />
-    <PackageReference Include="Microsoft.Extensions.Options.DataAnnotations" />
+    <!--
+      Microsoft.Extensions.Hosting / .Http / .Options.DataAnnotations used to be listed
+      here. The FrameworkReference above already ships all three in the ASP.NET Core shared
+      framework, so keeping them produced NU1510 ("will not be pruned") on every build.
+      Removing them changes nothing at runtime (the same assemblies resolve from the
+      framework) and keeps the restore graph honest about where they come from.
+    -->
   </ItemGroup>
 
   <ItemGroup>
