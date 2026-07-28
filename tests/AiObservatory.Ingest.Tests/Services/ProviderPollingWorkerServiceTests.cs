@@ -21,12 +21,12 @@ public class ProviderPollingWorkerServiceTests
     /// returns immediately. That is a real supported configuration (an unconfigured worker
     /// is a documented no-op) and it lets a cycle complete without any network at all.
     /// </summary>
-    private static ProviderPollingWorkerService CreateWorker()
+    private static ProviderPollingWorkerService CreateWorker(Instant? now = null)
     {
         var services = new ServiceCollection().BuildServiceProvider();
         return new ProviderPollingWorkerService(
             services.GetRequiredService<IServiceScopeFactory>(),
-            new FakeClock(Instant.FromUtc(2026, 7, 28, 9, 0)),
+            new FakeClock(now ?? Instant.FromUtc(2026, 7, 28, 9, 0)),
             NullLogger<ProviderPollingWorkerService>.Instance,
             // A long interval so the worker completes exactly one cycle then parks on the
             // delay, rather than spinning while the assertions run.
@@ -76,6 +76,32 @@ public class ProviderPollingWorkerServiceTests
             worker.CyclesCompleted.Should().BeGreaterThan(0);
             worker.LastCycleCompletedAt.Should().Be(Instant.FromUtc(2026, 7, 28, 9, 0),
                 "the timestamp comes from the injected clock, not the wall clock");
+        }
+        finally
+        {
+            await worker.StopAsync(CancellationToken.None);
+        }
+    }
+
+    /// <summary>
+    /// Zero ticks is a valid Instant, not an "unset" marker. Completion is therefore keyed
+    /// on the cycle counter — keying it on the timestamp would make a worker whose clock
+    /// reads the epoch run cycles while /healthz insisted none had happened.
+    /// </summary>
+    [Fact]
+    public async Task ReportsACycleEvenWhenItCompletesAtTheUnixEpoch()
+    {
+        var ct = TestContext.Current.CancellationToken;
+        var epoch = Instant.FromUnixTimeTicks(0);
+        var worker = CreateWorker(epoch);
+
+        await worker.StartAsync(ct);
+        try
+        {
+            await WaitUntilAsync(() => worker.CyclesCompleted > 0, ct);
+
+            worker.LastCycleCompletedAt.Should().Be(epoch,
+                "0 ticks is 1970-01-01T00:00:00Z, a real timestamp — not a null sentinel");
         }
         finally
         {
