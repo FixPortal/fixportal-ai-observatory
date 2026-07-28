@@ -63,14 +63,26 @@ jobs:
       # failure signals; 503 in particular is what App Service serves for a stopped site.
       - name: Verify the API is serving
         run: |
-          for i in $(seq 1 30); do
-            code=$(curl -s -o /dev/null -w '%{http_code}' --max-time 30 \
-              https://fpaiobs-api.azurewebsites.net/api/aggregates || echo 000)
-            echo "attempt $i -> HTTP $code"
+          # Bounded by a wall-clock DEADLINE, not an attempt count. With a per-request
+          # timeout the two multiply: 30 attempts x 30s + 29 sleeps x 20s is ~24m40s,
+          # not the 10 minutes a cold start needs. A deploy job that can hang for 25
+          # minutes is its own availability problem.
+          deadline=$(( $(date +%s) + 600 ))
+          while :; do
+            # Assign, then fall back on curl's EXIT STATUS. Do NOT write
+            # `$(curl ... || echo 000)`: on a transport failure curl prints 000 to
+            # stdout AND exits non-zero, so that form yields the string "000000",
+            # which matches neither arm of the case below and is read as HEALTHY —
+            # exactly inverting this step's purpose.
+            code=$(curl -s -o /dev/null -w '%{http_code}' --max-time 15 \
+              https://fpaiobs-api.azurewebsites.net/api/aggregates) || code=000
+            echo "probe -> HTTP $code"
             case "$code" in
-              000|5*) sleep 20 ;;
+              000|5*) : ;;
               *) echo "API is serving (HTTP $code)"; exit 0 ;;
             esac
+            [ "$(date +%s)" -lt "$deadline" ] || break
+            sleep 15
           done
           echo "::error::API never returned a non-5xx response after deploy — it is not serving."
           exit 1
@@ -113,16 +125,23 @@ jobs:
       # noticed for months.
       - name: Verify the ingest worker is healthy
         run: |
-          for i in $(seq 1 30); do
-            code=$(curl -s -o /dev/null -w '%{http_code}' --max-time 30 \
-              https://fpaiobs-ingest.azurewebsites.net/healthz || echo 000)
-            echo "attempt $i -> HTTP $code"
+          # Same deadline bound and the same curl-status handling as the API gate above;
+          # see that step for why `$(curl ... || echo 000)` is wrong.
+          deadline=$(( $(date +%s) + 600 ))
+          while :; do
+            code=$(curl -s -o /dev/null -w '%{http_code}' --max-time 15 \
+              https://fpaiobs-ingest.azurewebsites.net/healthz) || code=000
+            echo "probe -> HTTP $code"
             if [ "$code" = "200" ]; then
               echo "Ingest worker is healthy"
-              curl -s --max-time 30 https://fpaiobs-ingest.azurewebsites.net/healthz
+              # Logging only, and explicitly best-effort: `run:` executes under bash -e,
+              # so an unguarded transient failure here would fail the deploy AFTER the
+              # health check had already passed.
+              curl -s --max-time 15 https://fpaiobs-ingest.azurewebsites.net/healthz || true
               exit 0
             fi
-            sleep 20
+            [ "$(date +%s)" -lt "$deadline" ] || break
+            sleep 15
           done
           echo "::error::Ingest worker never returned 200 from /healthz after deploy."
           exit 1
