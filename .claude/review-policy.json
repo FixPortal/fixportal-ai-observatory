@@ -11,7 +11,11 @@
     "review caught a DateOnly vs DateTimeOffset wire-format bug against a billing API).",
     "",
     "LOW justification for THIS repo: docs/ is developer documentation with no site build.",
-    "clients/ is generated API client code that ships - NORMAL, not low."
+    "clients/ is generated API client code that ships - NORMAL, not low.",
+    "",
+    "Markdown is '**/*.md', NOT '*.md'. A single star compiles to [^/]* and is therefore",
+    "root-anchored: README.md matched, clients/README.md did not, so a docs-only PR",
+    "touching both fell through to NORMAL."
   ],
 
   "version": 1,
@@ -35,7 +39,7 @@
 
   "low": [
     "docs/**",
-    "*.md",
+    "**/*.md",
     ".vscode/**"
   ]
 }
