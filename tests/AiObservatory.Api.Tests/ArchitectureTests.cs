@@ -1,6 +1,9 @@
+// Ingest is an aliased reference (see this project's .csproj): both it and the API expose a
+// public global-namespace Program, so an unaliased reference makes bare `Program` ambiguous
+// and breaks every WebApplicationFactory test in this assembly.
+extern alias ingest;
 using AiObservatory.Api.Services;
 using AiObservatory.Data;
-using AiObservatory.Ingest;
 using ArchUnitNET.Domain;
 using ArchUnitNET.Loader;
 using ArchUnitNET.xUnitV3;
@@ -16,7 +19,7 @@ public class ArchitectureTests
         .LoadAssemblies(
             typeof(BudgetAlertService).Assembly,  // anchor: update if BudgetAlertService is renamed/moved
             typeof(AiObservatoryDbContext).Assembly,
-            typeof(ProviderPollingWorkerService).Assembly)
+            typeof(ingest::AiObservatory.Ingest.ProviderPollingWorkerService).Assembly)
         .Build();
 
     private static readonly IObjectProvider<IType> ApiTypes =
