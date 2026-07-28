@@ -50,7 +50,7 @@ every session within the window; later runs only post the growth since.
 | Variable | Default | Purpose |
 |---|---|---|
 | `OBSERVATORY_API_KEY` | *(required)* | Sent as the `X-Observatory-Key` header. Without it the script exits cleanly doing nothing. |
-| `OBSERVATORY_URL` | `http://localhost:5000` | Base URL of the Observatory API. |
+| `OBSERVATORY_URL` | `http://localhost:5039` | Base URL of the Observatory API. The default is the API's `dotnet run` address. Under Compose the API publishes no host port — use `http://localhost:4173`, the frontend's nginx proxy. Against a deployment, set the full origin. |
 | `OBSERVATORY_STATE` | `~/.ai-observatory/sweep-state.json` | Where cumulative per-session state is kept. |
 | `OBSERVATORY_WINDOW_DAYS` | `30` | Only consider session logs modified within this many days. |
 | `CODEX_HOME` | `~/.codex` | Override the Codex home (e.g. a non-standard install). |
