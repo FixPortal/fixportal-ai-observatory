@@ -11,12 +11,33 @@ reviews:
       enabled: false
 
   auto_review:
-    enabled: true
+    # Reviews are LABEL-TRIGGERED, not automatic. Per CodeRabbit's config reference:
+    # when `enabled` is false, a positive label match still triggers a review, so
+    # `labels: ["review-high"]` is the trigger rather than an exclusion filter.
+    #
+    # WHY: with auto-review on, every PR was reviewed on open regardless of tier
+    # (observed live on NORMAL-tier PR #104), so tiering trimmed only the EXTRA
+    # requests an agent made, never the baseline one. Worse, the two ways a PR can end
+    # up unreviewed — nobody asked, and CodeRabbit was throttled — looked identical.
+    # With the trigger explicit, "no review present on a HIGH PR" is unambiguously a
+    # gate failure.
+    #
+    # The label is applied by ~/.claude/hooks/pr-review-gate.sh at PR-create time when
+    # the tier from .claude/review-policy.json is HIGH. A hook applies it rather than
+    # an instruction telling the agent to, because an instruction can be skipped.
+    # If labelling fails the hook falls back to commenting "@coderabbitai review":
+    # an unlabelled PR registers no CodeRabbit check at all, and pr-review-watch.sh
+    # reads a persistently absent check as "not installed" and stops gating on it —
+    # which would let a HIGH PR through unreviewed.
+    enabled: false
+    labels: ["review-high"]
     drafts: false
     # Pause automatic incremental reviews after 2 reviewed commits (default 5).
-    # CodeRabbit meters reviews per DEVELOPER IDENTITY across every repo, in a rolling
-    # 7-day window degrading from 30 reviews/7d, and every push spends one. This
-    # enforces push-batching mechanically instead of relying on remembering to batch.
+    # Still load-bearing with label triggering: once a PR carries the label, each
+    # subsequent push re-reviews it. CodeRabbit meters reviews per DEVELOPER IDENTITY
+    # across every repo, in a rolling 7-day window degrading from 30 reviews/7d, and
+    # every push spends one. This enforces push-batching mechanically instead of
+    # relying on remembering to batch.
     auto_pause_after_reviewed_commits: 2
     # ignore_title_keywords REMOVED 2026-07-28. It listed "chore:", and Dependabot
     # titles in this estate are literally "chore: Bump X" — so every dependency PR was
