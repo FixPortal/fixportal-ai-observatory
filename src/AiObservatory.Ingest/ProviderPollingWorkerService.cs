@@ -25,10 +25,9 @@ public class ProviderPollingWorkerService(
     // concurrency, so a plain dictionary is safe.
     private readonly Dictionary<string, int> _consecutiveFailures = [];
 
-    // Written by the poll loop, read by the /healthz endpoint on a request thread, so it
-    // crosses threads unlike _consecutiveFailures above. Stored as ticks and accessed via
-    // Interlocked because a nullable Instant cannot be assigned atomically. 0 means "no
-    // cycle has completed yet".
+    // Written by the poll loop, read by the /healthz endpoint on a request thread, so both
+    // cross threads unlike _consecutiveFailures above. Ticks rather than an Instant because
+    // a nullable struct cannot be assigned atomically.
     private long _lastCycleCompletedTicks;
 
     private int _cyclesCompleted;
@@ -39,10 +38,18 @@ public class ProviderPollingWorkerService(
     /// may still have failed and been logged by <c>TryIngestAsync</c>, so this is evidence
     /// the loop is turning, NOT evidence that data was ingested.
     /// </summary>
+    /// <remarks>
+    /// "Has a cycle run?" is answered by the counter, never by the timestamp being zero:
+    /// 0 ticks is a perfectly valid <see cref="Instant"/> (1970-01-01T00:00:00Z), so a
+    /// clock reading the epoch would otherwise complete a cycle and still report null.
+    /// The ordering is load-bearing — the poll loop writes the ticks BEFORE incrementing
+    /// the counter, and both are interlocked, so a non-zero counter guarantees the
+    /// timestamp beside it is the one from that cycle.
+    /// </remarks>
     public Instant? LastCycleCompletedAt =>
-        Interlocked.Read(ref _lastCycleCompletedTicks) is var ticks && ticks == 0
+        CyclesCompleted == 0
             ? null
-            : Instant.FromUnixTimeTicks(ticks);
+            : Instant.FromUnixTimeTicks(Interlocked.Read(ref _lastCycleCompletedTicks));
 
     /// <summary>Poll cycles finished since start. Exposed for /healthz.</summary>
     public int CyclesCompleted => Volatile.Read(ref _cyclesCompleted);
