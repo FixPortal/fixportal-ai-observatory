@@ -232,6 +232,19 @@ dotnet ef database update --project ../AiObservatory.Data --startup-project .
 
 ### Ingest worker configuration
 
+> [!IMPORTANT]
+> `AiObservatory.Ingest` is a background worker that also hosts a **minimal Kestrel
+> serving only `GET /healthz`**. That web host is not a feature — it exists because
+> Linux App Service is HTTP-first and kills any container that fails a startup probe
+> on port 8080. Without it the worker restart-looped indefinitely while
+> `az webapp show` cheerfully reported `"state": "Running"`, and every ingestion arm
+> was silently dead. Do not remove the listener, and do not add routes to it: this
+> process holds provider credentials the public API does not.
+>
+> The port is never hardcoded. App Service supplies it in production; locally
+> `Properties/launchSettings.json` pins **5040**, alongside the API's 5039, so
+> `dotnet run` never contends for a common port such as 8080.
+
 Each provider arm of `AiObservatory.Ingest` stays disabled until its credential is
 present, so an unconfigured worker is a no-op rather than an error:
 

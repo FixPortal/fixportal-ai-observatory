@@ -1,3 +1,8 @@
+// Explicit: the Worker SDK's implicit usings do not include ASP.NET Core's, which arrive
+// here via a FrameworkReference rather than the Web SDK (see the csproj for why).
+using Microsoft.AspNetCore.Builder;
+using Microsoft.AspNetCore.Hosting;
+using Microsoft.AspNetCore.Http;
 using AiObservatory.Data;
 using AiObservatory.Data.Pricing;
 using AiObservatory.Ingest;
@@ -142,8 +147,35 @@ var host = Host.CreateDefaultBuilder(args)
             services.AddScoped<GitHubIngestionService>();
         }
 
+        // Telemetry, gated on the connection string exactly as the API gates it. Worth
+        // having for its own sake, but specifically: this worker spent its entire deployed
+        // life failing to start, and the absence of telemetry made that read as a quiet
+        // worker rather than a dead one. Without this, the next failure is just as silent.
+        if (!string.IsNullOrEmpty(cfg["APPLICATIONINSIGHTS_CONNECTION_STRING"]))
+        {
+            services.AddApplicationInsightsTelemetry();
+        }
+
         services.AddHostedService<ProviderPollingWorkerService>();
     })
+    // Minimal web host so the process answers Linux App Service's startup probe. The
+    // probe's port comes from the environment (App Service sets ASPNETCORE_URLS; locally
+    // launchSettings.json picks 5040) and is deliberately NOT hardcoded here -- pinning
+    // 8080 would collide with whatever else a developer happens to be running.
+    //
+    // Endpoints are health only. This worker must never grow an API surface: it holds
+    // provider credentials that the public-facing API does not, and every route added
+    // here is one more thing exposed on a host that exists purely to keep the container
+    // alive.
+    .ConfigureWebHostDefaults(web => web.Configure(app =>
+    {
+        app.UseRouting();
+        app.UseEndpoints(endpoints => endpoints.MapGet("/healthz", () => Results.Ok(new
+        {
+            status = "healthy",
+            service = "AiObservatory.Ingest",
+        })));
+    }))
     .Build();
 
 await host.RunAsync();

@@ -24,6 +24,13 @@ resource app 'Microsoft.Web/sites@2023-01-01' = {
     siteConfig: {
       linuxFxVersion: 'DOTNETCORE|10.0'
       alwaysOn: true
+      // This is a background worker, but Linux App Service is HTTP-first: it kills any
+      // container that does not answer a startup probe on port 8080. The worker therefore
+      // hosts a minimal Kestrel serving only /healthz (see AiObservatory.Ingest/Program.cs).
+      // Pointing healthCheckPath at it makes that endpoint load-bearing rather than
+      // decorative: App Service then reports an unhealthy instance instead of a container
+      // that is technically running while doing nothing.
+      healthCheckPath: '/healthz'
       appSettings: [
         { name: 'DB_CONNECTION', value: '@Microsoft.KeyVault(VaultName=${kvName};SecretName=db-connection)' }
         // Optional provider keys — referenced from Key Vault. Set these secrets in Key Vault to enable each provider.

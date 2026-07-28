@@ -7,7 +7,23 @@
   </PropertyGroup>
 
   <ItemGroup>
+    <!--
+      ASP.NET Core without switching to the Web SDK. This stays a background worker
+      (ProviderPollingWorkerService does all the real work), but Linux App Service is
+      HTTP-first: it probes port 8080 and kills any container that does not answer. A host
+      that binds no port can never pass, and this app restart-looped indefinitely while the
+      portal reported "Running". See ~/.agents/notes/deploy-and-ci-traps.md, "Azure App
+      Service (Linux), non-HTTP workloads".
+
+      A FrameworkReference rather than Sdk="Microsoft.NET.Sdk.Web" on purpose: the Web SDK
+      emits the top-level entry point as a PUBLIC global-namespace Program, which collides
+      with the API's own public partial Program in AiObservatory.Api.Tests (that project
+      references both assemblies) and breaks every WebApplicationFactory test with CS0433.
+      This keeps the generated Program internal and invisible across the assembly boundary.
+    -->
+    <FrameworkReference Include="Microsoft.AspNetCore.App" />
     <PackageReference Include="Google.Apis.Auth" />
+    <PackageReference Include="Microsoft.ApplicationInsights.AspNetCore" />
     <PackageReference Include="Microsoft.EntityFrameworkCore.Relational" />
     <PackageReference Include="Microsoft.Extensions.Hosting" />
     <PackageReference Include="Microsoft.Extensions.Http" />
