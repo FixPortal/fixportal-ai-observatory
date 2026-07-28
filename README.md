@@ -398,11 +398,19 @@ npm install
 npm run dev
 ```
 
-Set `VITE_API_BASE_URL` in `.env.local` to point at the running API:
+No API URL configuration is needed. The Vite dev server proxies `/api` to the API's
+`dotnet run` address (`http://localhost:5039`) — see `server.proxy` in
+`vite.config.ts` — so the SPA and the API share an origin exactly as they do behind
+nginx in Compose.
+
+Only override this when the API is somewhere else, and note the variable is
+`VITE_API_BASE` (no `_URL`), read in `src/api/client.ts`:
 
 ```
-VITE_API_BASE_URL=http://localhost:5000
+VITE_API_BASE=http://localhost:5039
 ```
+
+It is baked in at build time, so a change needs a restarted dev server or a rebuild.
 
 ### Seeding local data
 
@@ -412,8 +420,19 @@ plus subscriptions, budget rules, and three sample insights — the fastest way 
 see a fully populated dashboard locally:
 
 ```bash
-curl -X POST http://localhost:5000/api/dev/seed
+curl -X POST http://localhost:5039/api/dev/seed
 ```
+
+That address is the `dotnet run` API. Under Compose there is **no API port on the
+host** — the API is reachable only through the frontend's nginx proxy, and the key
+is required because `docker-compose.yml` sets `OBSERVATORY_API_KEY`:
+
+```bash
+curl -X POST http://localhost:4173/api/dev/seed -H "X-Observatory-Key: change-me"
+```
+
+Compose seeds itself anyway: the one-shot `seed` container runs this once the API
+reports healthy, so you only need this by hand to re-seed.
 
 This endpoint is only available when `ASPNETCORE_ENVIRONMENT=Development` (the
 default for `dotnet run`). It is not deployed to production.
@@ -421,11 +440,14 @@ default for `dotnet run`). It is not deployed to production.
 ### Sending your first event
 
 To ingest a real usage event, `POST /api/events` with an `X-Observatory-Key`
-header. In local dev, writes require `OBSERVATORY_API_KEY` to be set in user
-secrets; GETs work without a key.
+header. Writes always require `OBSERVATORY_API_KEY`. GETs are keyless only while
+**neither** key is configured — set either `OBSERVATORY_API_KEY` or
+`OBSERVATORY_READONLY_API_KEY` and reads start requiring one too
+(`ApiKeyEndpointFilter`). That is why Compose, which sets the admin key, answers
+`401` to an unkeyed `GET /api/aggregates`.
 
 ```bash
-curl -X POST http://localhost:5000/api/events \
+curl -X POST http://localhost:5039/api/events \
   -H "X-Observatory-Key: <your-key>" \
   -H "Content-Type: application/json" \
   -d '{
@@ -540,9 +562,11 @@ or `OBSERVATORY_API_KEY` for full access.
 
 #### Local dev
 
-`npm run dev` leaves all auth env vars unset. The app talks directly to
-`http://localhost:5000` (or `VITE_API_BASE_URL`) with no credentials — the API
-serves GETs without a key in development mode.
+`npm run dev` leaves all auth env vars unset. The app reaches the API through the
+Vite dev proxy on `http://localhost:5039` (or `VITE_API_BASE`, if set) with no
+credentials. That works only while the API has neither `OBSERVATORY_API_KEY` nor
+`OBSERVATORY_READONLY_API_KEY` configured — set either in user secrets and reads
+start returning `401` until you send it.
 
 ### Tests
 
@@ -622,7 +646,7 @@ Insights are stored in the `Insights` table and surfaced in the `InsightsFeed` c
 |---|---|---|
 | Infra deploy fails with `RoleAssignmentUpdateNotPermitted` | App Service was deleted and recreated — Azure prevents updating the immutable `principalId` of an existing role assignment | Delete the stale Key Vault role assignment for the old identity from Key Vault IAM in the portal, then re-run `infra.yml` |
 | API returns `401` despite correct key | `OBSERVATORY_API_KEY` env var not set or Key Vault secret not replicated yet | Verify the secret in `fpaiobs-kv`; allow a few minutes after a Key Vault update before the App Service picks it up |
-| Frontend shows no data after deploy | `VITE_API_BASE_URL` not set in SWA environment variables | Add `VITE_API_BASE_URL=https://fpaiobs-api.azurewebsites.net` to the SWA application settings |
+| Frontend shows no data after deploy | `VITE_API_BASE` was empty at **build** time, so the bundle calls a same-origin `/api` that SWA Free cannot proxy | Fix it in `.github/workflows/deploy.yml` (the `npm run build` step sets `VITE_API_BASE: https://fpaiobs-api.azurewebsites.net`) and redeploy. A SWA *application setting* cannot fix this — every `VITE_*` is baked into the bundle at build time, not read at runtime |
 | EF migrations fail on first run | Database does not yet exist or user lacks `CREATE` privileges | Ensure `DB_CONNECTION` points at an existing PostgreSQL 16 instance with a user that can create tables |
 | Entra sign-in loop or `401` after SSO | `aadClientId` Bicep param or `VITE_AAD_*` env vars are stale after app registration recreation | Re-run `infra/scripts/setup-entra.ps1` and redeploy both API and frontend with the new values |
 | UI shows no data with `VITE_API_KEY` set | Key baked at build time — runtime env var has no effect | Rebuild the frontend with the env var set; confirm the value matches `OBSERVATORY_API_KEY` or `OBSERVATORY_READONLY_API_KEY` |

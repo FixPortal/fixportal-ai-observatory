@@ -297,7 +297,10 @@ async function sweepCopilot(cfg, state, ctx) {
 }
 
 async function main() {
-  const url = (process.env.OBSERVATORY_URL ?? 'http://localhost:5000').replace(/\/$/, '')
+  // 5039 is the API's `dotnet run` address (src/AiObservatory.Api/Properties/launchSettings.json).
+  // Nothing has ever listened on 5000 — under Compose the API publishes no host port at all
+  // and is reached through the frontend's nginx proxy on 4173.
+  const url = (process.env.OBSERVATORY_URL ?? 'http://localhost:5039').replace(/\/$/, '')
   const apiKey = process.env.OBSERVATORY_API_KEY
   if (!apiKey) { console.error('OBSERVATORY_API_KEY not set; nothing to do.'); process.exit(0) }
 
