@@ -60,7 +60,7 @@ jobs:
         run: dotnet build AiObservatory.slnx --configuration Release --no-restore
 
       - name: Test
-        run: dotnet test AiObservatory.slnx --configuration Release --no-build --logger "trx;LogFileName=test-results.trx" --results-directory ./TestResults
+        run: dotnet test AiObservatory.slnx --configuration Release --no-build --logger "trx;LogFilePrefix=test-results" --results-directory ./TestResults
         env:
           TEST_DB_CONNECTION: "Host=localhost;Database=aiobs_test;Username=postgres;Password=postgres"
 
