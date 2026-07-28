@@ -49,8 +49,10 @@ services:
     build:
       context: src/AiObservatory.Web
       dockerfile: Dockerfile
+    # Bound to loopback only, matching db above: the dashboard is a local-only dev
+    # surface and its api is served unauthenticated behind a shared change-me key.
     ports:
-      - "4173:80"
+      - "127.0.0.1:4173:80"
     depends_on:
       - api
 
