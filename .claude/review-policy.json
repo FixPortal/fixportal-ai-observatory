@@ -1,0 +1,41 @@
+{
+  "$comment": [
+    "PR review risk tiering. Read by ~/.claude/hooks/pr-review-policy.sh.",
+    "Any file matching 'high' => HIGH (Gitar + CodeRabbit). All files matching 'low' => LOW.",
+    "Everything else => NORMAL (Gitar only). No match anywhere => NORMAL, deliberately.",
+    "",
+    "This repo has all four high-risk shapes at once: EF migrations, real Azure infra",
+    "(infra/ + infra.yml + deploy.yml), an auth surface, and a MONEY LEDGER.",
+    "AiObservatory.Data/Spend is spend-ledger persistence - the brief's worked example of",
+    "a change worth spending a CodeRabbit review on was exactly this area (PR #100, where",
+    "review caught a DateOnly vs DateTimeOffset wire-format bug against a billing API).",
+    "",
+    "LOW justification for THIS repo: docs/ is developer documentation with no site build.",
+    "clients/ is generated API client code that ships - NORMAL, not low."
+  ],
+
+  "version": 1,
+
+  "high": [
+    ".claude/review-policy.json",
+    ".coderabbit.yaml",
+    ".gitignore",
+    "**/Migrations/**",
+    "infra/**",
+    "**/*.bicep",
+    ".github/workflows/**",
+    "Directory.Packages.props",
+    "**/*.csproj",
+    ".config/dotnet-tools.json",
+    "src/AiObservatory.Web/package.json",
+    "src/AiObservatory.Web/package-lock.json",
+    "src/AiObservatory.Data/Spend/**",
+    "src/AiObservatory.Web/src/auth/**"
+  ],
+
+  "low": [
+    "docs/**",
+    "*.md",
+    ".vscode/**"
+  ]
+}
