@@ -15,7 +15,16 @@
     "",
     "Markdown is '**/*.md', NOT '*.md'. A single star compiles to [^/]* and is therefore",
     "root-anchored: README.md matched, clients/README.md did not, so a docs-only PR",
-    "touching both fell through to NORMAL."
+    "touching both fell through to NORMAL.",
+    "",
+    "Dependency manifests (package.json, package-lock.json, Directory.Packages.props,",
+    "**/*.csproj) were REMOVED from 'high' on 2026-07-29 and must not be added back. They are",
+    "what Dependabot edits, and dependency PRs are out of AI code review on both vendors:",
+    "CodeRabbit refuses bot authors outright and Gitar's bot review is switched off, because",
+    "reviewing every bump exhausts the allowance and starves the changes that need it. Listing",
+    "them HIGH would demand a reviewer that can never run - coverage on paper, none in fact. CI",
+    "plus Dependabot's own advisory data is what gates a bump. nuget.config, global.json, .npmrc",
+    "and Directory.Build.props stay HIGH: registry/feed and analyzer config, not bot-edited."
   ],
 
   "version": 1,
@@ -28,11 +37,7 @@
     "infra/**",
     "**/*.bicep",
     ".github/workflows/**",
-    "Directory.Packages.props",
-    "**/*.csproj",
     ".config/dotnet-tools.json",
-    "src/AiObservatory.Web/package.json",
-    "src/AiObservatory.Web/package-lock.json",
     "src/AiObservatory.Data/Spend/**",
     "src/AiObservatory.Web/src/auth/**"
   ],
