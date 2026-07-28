@@ -50,6 +50,31 @@ jobs:
           app-name: fpaiobs-api
           package: ./publish/api
 
+      # A green webapps-deploy does NOT mean the app runs. On 2026-07-28 a transfer
+      # landed a corrupt AiObservatory.Api.dll; the container then failed every startup
+      # probe with BadImageFormatException until App Service stopped the site, while both
+      # that deploy AND the next one reported success. Production was down for ~25 minutes
+      # with nothing red anywhere. This step is what turns that into a failed deploy.
+      #
+      # Any non-5xx answer proves the app is serving: every /api route sits behind
+      # ApiKeyEndpointFilter, so an unauthenticated probe gets 401 from a HEALTHY app.
+      # That is deliberate — it avoids putting the API key in this workflow just to
+      # health-check it. 5xx and 000 (connection refused / DNS / TLS failure) are the
+      # failure signals; 503 in particular is what App Service serves for a stopped site.
+      - name: Verify the API is serving
+        run: |
+          for i in $(seq 1 30); do
+            code=$(curl -s -o /dev/null -w '%{http_code}' --max-time 30 \
+              https://fpaiobs-api.azurewebsites.net/api/aggregates || echo 000)
+            echo "attempt $i -> HTTP $code"
+            case "$code" in
+              000|5*) sleep 20 ;;
+              *) echo "API is serving (HTTP $code)"; exit 0 ;;
+            esac
+          done
+          echo "::error::API never returned a non-5xx response after deploy — it is not serving."
+          exit 1
+
   deploy-ingest:
     name: Deploy (ingest)
     runs-on: ubuntu-latest
@@ -79,6 +104,28 @@ jobs:
         with:
           app-name: fpaiobs-ingest
           package: ./publish/ingest
+
+      # Same rationale as the API gate above, but this one asserts more. /healthz is
+      # unauthenticated and reports the worker's own state, so a 200 here means the poll
+      # loop is actually running — not merely that a web host bound a port. That matters
+      # for this app in particular: it spent its entire deployed life failing App Service's
+      # startup probe while `az webapp show` reported "state": "Running", and nothing
+      # noticed for months.
+      - name: Verify the ingest worker is healthy
+        run: |
+          for i in $(seq 1 30); do
+            code=$(curl -s -o /dev/null -w '%{http_code}' --max-time 30 \
+              https://fpaiobs-ingest.azurewebsites.net/healthz || echo 000)
+            echo "attempt $i -> HTTP $code"
+            if [ "$code" = "200" ]; then
+              echo "Ingest worker is healthy"
+              curl -s --max-time 30 https://fpaiobs-ingest.azurewebsites.net/healthz
+              exit 0
+            fi
+            sleep 20
+          done
+          echo "::error::Ingest worker never returned 200 from /healthz after deploy."
+          exit 1
 
   deploy-web:
     name: Deploy (web)
