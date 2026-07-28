@@ -13,12 +13,29 @@ public static class GitHubActivityEndpoints
 {
     private static readonly string[] TerminalFailureStatuses = ["failure", "timed_out", "startup_failure"];
 
+    // Owners lowercased once here, and the column lowercased in SQL below, because this
+    // comparison MUST be case-insensitive — unlike ActivityEndpoints' ordinal one.
+    //
+    // Two different domains. A Claude session's Project comes from a folder path, where
+    // case is meaningful and ordinal is correct. A GitHub owner/repo is case-insensitive by
+    // definition, and GitHubIngestionService deliberately normalises it with
+    // ToLowerInvariant before writing, so every stored Repo is lowercase while
+    // AllowedProjectOwners carries the display casing "FixPortal". Comparing those
+    // ordinally matched nothing: "fixportal/x".StartsWith("FixPortal/") is false.
+    //
+    // That filtered out EVERY ingested GitHub row. It stayed invisible because the ingest
+    // worker had never once started in Azure (it failed App Service's startup probe), so
+    // the read path had nothing to drop — and the only test seeded "FixPortal/..." by hand,
+    // encoding the filter's assumption rather than the producer's actual output.
+    private static readonly string[] AllowedRepoOwners =
+        [.. ActivityEndpoints.AllowedProjectOwners.Select(o => o.ToLowerInvariant())];
+
     // Same allowlist rule as ActivityEndpoints.IsAllowedProjectPredicate, but PRs/
     // commits/CI runs are three unrelated entity types (no shared interface) that each
     // expose a plain string Repo — so the one shared predicate body is spliced onto
     // each entity's own Repo access via IsAllowedRepo<T> rather than duplicated per query.
     private static readonly Expression<Func<string, bool>> RepoAllowedTemplate =
-        repo => ActivityEndpoints.AllowedProjectOwners.Any(o => repo == o || repo.StartsWith(o + "/"));
+        repo => AllowedRepoOwners.Any(o => repo.ToLower() == o || repo.ToLower().StartsWith(o + "/"));
 
     private static Expression<Func<T, bool>> IsAllowedRepo<T>(Expression<Func<T, string>> repoSelector)
     {
