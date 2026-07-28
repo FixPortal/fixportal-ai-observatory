@@ -34,6 +34,19 @@ public static class GitHubActivityEndpoints
     // commits/CI runs are three unrelated entity types (no shared interface) that each
     // expose a plain string Repo — so the one shared predicate body is spliced onto
     // each entity's own Repo access via IsAllowedRepo<T> rather than duplicated per query.
+    // ToLower(), NOT ToLowerInvariant(), and the asymmetry with AllowedRepoOwners above is
+    // deliberate. The array is built in memory, where ToLowerInvariant is right. This
+    // expression is translated to SQL, and EF Core has no translation for
+    // ToLowerInvariant — swapping it in makes all three /github routes throw
+    // InvalidOperationException at request time (500), which the WAF tests catch. Npgsql
+    // renders ToLower() as LOWER(), which is byte/ordinal on the ASCII that GitHub
+    // owner/repo names are limited to, so the culture-sensitivity ToLower() implies in
+    // memory never reaches the database.
+    //
+    // ToLower appears twice rather than being hoisted into a local because an expression
+    // tree cannot contain a statement body — there is nowhere to put one. EF emits
+    // LOWER("Repo") per occurrence: two per owner, over the TWO owners in
+    // AllowedRepoOwners, so four per row scanned. Not worth contorting the shape for.
     private static readonly Expression<Func<string, bool>> RepoAllowedTemplate =
         repo => AllowedRepoOwners.Any(o => repo.ToLower() == o || repo.ToLower().StartsWith(o + "/"));
 
