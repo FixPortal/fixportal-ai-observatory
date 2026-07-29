@@ -41,14 +41,23 @@ reviews:
     auto_pause_after_reviewed_commits: 2
     # ignore_title_keywords REMOVED 2026-07-28. It listed "chore:", and Dependabot
     # titles in this estate are literally "chore: Bump X" — so every dependency PR was
-    # being skipped silently. Dependency changes are classed HIGH in
-    # .claude/review-policy.json on supply-chain grounds; skipping them was the exact
-    # opposite of the intent. What gets skipped is now decided by PATH via that policy
-    # file, not by a title that can lie about what a PR touches.
+    # being skipped silently. What gets skipped is decided by PATH via
+    # .claude/review-policy.json and by AUTHOR below — never by a title, which can lie
+    # about what a PR touches.
     #
-    # Do NOT add ignore_usernames for dependabot[bot]/renovate[bot] either: Gitar
-    # already skips bot-authored PRs unless allow-listed, so silencing CodeRabbit too
-    # would leave supply-chain PRs with no AI review at all.
+    # REVERSED 2026-07-29. This block previously said "do NOT add ignore_usernames for
+    # dependabot[bot]/renovate[bot]", on the grounds that dependency changes were classed
+    # HIGH and Gitar skipped bot authors, so silencing CodeRabbit too would leave them
+    # unreviewed. Zero AI review of dependency bumps is now the intended state: the estate
+    # raises enough of them that reviewing each one exhausts the allowance and starves the
+    # changes that need it. Gitar's bot review is switched off as well, and dependency
+    # manifests are no longer classed HIGH in the review policy. CI plus Dependabot's own
+    # advisory data is what gates a bump. CodeRabbit already declines bot authors ("Review
+    # skipped: bot user not eligible for review"), so this states the intent rather than
+    # leaving it incidental to a vendor behaviour that can change.
+    ignore_usernames:
+      - "dependabot[bot]"
+      - "renovate[bot]"
 
   path_filters:
     - "!**/bin/**"
