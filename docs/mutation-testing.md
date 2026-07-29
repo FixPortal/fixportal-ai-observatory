@@ -34,7 +34,7 @@ The difference, same config otherwise:
 
 The one-line check is Stryker's own startup log:
 
-```
+```text
 [INF] Number of tests found: 133 for project .../AiObservatory.Api.csproj.
 ```
 
