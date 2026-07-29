@@ -27,6 +27,7 @@
   </Folder>
   <Folder Name="/src/AiObservatory.Web/" />
   <Folder Name="/tests/">
+    <Project Path="tests/AiObservatory.Api.IntegrationTests/AiObservatory.Api.IntegrationTests.csproj" />
     <Project Path="tests/AiObservatory.Api.Tests/AiObservatory.Api.Tests.csproj" />
     <Project Path="tests/AiObservatory.Data.Tests/AiObservatory.Data.Tests.csproj" />
     <Project Path="tests/AiObservatory.Ingest.Tests/AiObservatory.Ingest.Tests.csproj" />

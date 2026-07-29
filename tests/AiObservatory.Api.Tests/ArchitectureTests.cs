@@ -91,25 +91,33 @@ public class ArchitectureTests
             "SpendEntry must not tie spend to a bank, card, invoice or counterparty (spec §3)");
     }
 
-    // A class that takes AiObservatoryApiFactory boots the real host and migrates a
-    // throwaway Postgres database. Untraited, it lands in the unit lane — which is the
-    // lane Stryker mutates against, so every mutant pays a host boot plus a migration.
-    // Three such classes shipped untraited and pushed the nightly mutation run past its
-    // 45-minute budget. The trait is the only thing keeping them out; assert it.
+    // This project is the one Stryker mutates against, so every test here is re-run against
+    // every mutant. A test that boots a host or opens a database connection therefore costs
+    // the mutation run enormously — which is exactly what happened while the exclusion was
+    // a test filter Stryker's MTP runner silently ignored. Exclusion is now structural (the
+    // database-backed tests live in AiObservatory.Api.IntegrationTests), and this asserts
+    // the structure rather than trusting it.
     [Fact]
-    public void Factory_backed_test_classes_must_be_traited_Integration()
+    public void Unit_test_project_must_not_reference_database_or_host_packages()
     {
+        // Microsoft.AspNetCore.TestHost is deliberately NOT here: a bare in-memory pipeline
+        // (ForwardedHeadersConfigTests) is a genuine unit test. It is Mvc.Testing —
+        // WebApplicationFactory, which boots the real composition root — and the database
+        // packages that mark a test as belonging in the integration project.
+        var forbidden = new[]
+        {
+            "Npgsql", "Testcontainers", "Microsoft.AspNetCore.Mvc.Testing",
+        };
+
         var offenders = typeof(ArchitectureTests).Assembly
-            .GetTypes()
-            .Where(t => t.GetConstructors()
-                .Any(c => c.GetParameters().Any(p => p.ParameterType == typeof(AiObservatoryApiFactory))))
-            .Where(t => !t.GetCustomAttributes<TraitAttribute>()
-                .Any(a => a.Name == "Category" && a.Value == "Integration"))
-            .Select(t => t.Name)
+            .GetReferencedAssemblies()
+            .Select(a => a.Name ?? string.Empty)
+            .Where(n => forbidden.Any(f => n.StartsWith(f, StringComparison.OrdinalIgnoreCase)))
+            .Distinct()
             .ToArray();
 
         offenders.Should().BeEmpty(
-            "every AiObservatoryApiFactory-backed test class needs [Trait(\"Category\", \"Integration\")] "
-            + "to stay out of the unit lane Stryker mutates against");
+            "this project is Stryker's test lane; host-booting and database-backed tests belong in "
+            + "AiObservatory.Api.IntegrationTests, or every mutant pays for them (docs/mutation-testing.md)");
     }
 }

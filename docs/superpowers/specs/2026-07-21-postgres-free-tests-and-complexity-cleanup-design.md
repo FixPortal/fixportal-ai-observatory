@@ -17,6 +17,16 @@ stay in the unit lane. The README documents separate unit and integration
 commands, and Stryker's existing `Category!=Integration` filter becomes
 effective.
 
+> **Correction, 2026-07-29.** The last clause was false when written and stayed
+> false for eight days. Stryker was configured with `test-runner: mtp`, and
+> `test-case-filter` is implemented only in Stryker's VSTest runner — the MTP
+> runner ignores it silently, with no warning. The traits did make the
+> `dotnet test` lanes work as described, but the mutation lane went on running
+> every PostgreSQL-backed test against every mutant. It surfaced on 2026-07-27
+> when the spend ledger's tests pushed the nightly run past its timeout, and was
+> fixed by moving Stryker to `test-runner: vstest`. See
+> `docs/mutation-testing.md`.
+
 ## Complexity remediation
 
 Endpoint route registration remains in the existing endpoint classes, but
