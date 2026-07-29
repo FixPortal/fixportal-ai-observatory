@@ -71,6 +71,19 @@ updates:
       prefix: chore
       include: scope
     groups:
+      # vite, its plugins and vitest are ONE toolchain whose peer ranges gate each other, so a
+      # major that goes out on its own cannot install. This group therefore includes major, unlike
+      # every other group here.
+      vite-toolchain:
+        patterns:
+          - "vite"
+          - "@vitejs/*"
+          - "vitest"
+          - "@vitest/*"
+        update-types:
+          - major
+          - minor
+          - patch
       npm-minor-and-patch:
         patterns:
           - "*"
