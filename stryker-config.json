@@ -8,7 +8,7 @@
     "reporters": ["progress", "html", "json"],
     "report-file-name": "mutation-report",
     "mutation-level": "Standard",
-    "coverage-analysis": "off",
+    "coverage-analysis": "perTest",
     "test-runner": "mtp",
     "concurrency": 4,
     "thresholds": {
