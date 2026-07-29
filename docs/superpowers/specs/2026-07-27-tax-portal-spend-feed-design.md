@@ -1,7 +1,7 @@
 ---
 title: Tax-portal billed-spend feed — design
 date: 2026-07-27
-status: proposed — every decision ruled; phase 2 blocked on the portal category cleanup
+status: proposed — every decision ruled; phase 2 unblocked 2026-07-29, ready to plan
 tags: [architecture, decision, spend, integration]
 ---
 
@@ -25,13 +25,22 @@ observatory change is needed to receive spend.** The work is a
 Two things blocked a *correct* feed. **The first is now resolved and built**
 (§3); the second is still open:
 
-1. ~~**Refunds cannot be represented.**~~ **Resolved 2026-07-27.** A refund is
-   now a negative `Amount`; the non-negative check constraints are gone and only
-   zero is rejected. Feeding only debits would have overstated billed spend by
-   the refund total (£492.80 across the three known credits) — the same class of
-   silent overstatement this project exists to correct, arriving from the other
-   direction. The portal still has no refund concept of its own, so selecting
-   refunds out of `Income` remains phase 3.
+1. ~~**Refunds cannot be represented.**~~ **Resolved 2026-07-27, and fully closed
+   2026-07-29.** A refund is now a negative `Amount`; the non-negative check
+   constraints are gone and only zero is rejected. Feeding only debits would have
+   overstated billed spend by the refund total (£492.80 across the three known
+   credits) — the same class of silent overstatement this project exists to correct,
+   arriving from the other direction.
+
+   **The portal side is done too, and differently from what this document assumed.**
+   It said the portal had no refund concept, so the feed would have to select refunds
+   out of `Income` (phase 3). The portal instead books a refund as a **negative
+   `Expense`** (`personal-tax-portal` PR #68): a supplier credit reverses a purchase,
+   so booking it as income would inflate Box 6 *and* leave the original purchase
+   overstated — wrong in two places at once. Every calculator there already summed
+   signed values, so none changed. **Consequence for this feed: refunds arrive through
+   the ordinary `Expense` path with a negative amount, and phase 3's `Income` selection
+   is not needed at all.**
 2. **The portal has no vendor column.** `Expense` does not store a merchant.
    Vendor text exists only on `ScanLine.ExtractedVendor`, and only for expenses
    confirmed from an OCR'd invoice; a card charge reconciled straight off a bank
@@ -172,28 +181,27 @@ in an aggregate is an invisible, permanent, systemic one.
 The earlier "load debits only and flag the gap" call applied to the one-off CSV
 load and was explicitly not a decision about the permanent fix. This was.
 
-**Portal side, either way.** The feed must select refunds from `Income`, not
-`Expense`, and only those `Income` rows that are genuinely vendor refunds rather
-than trading income. The portal cannot currently distinguish the two — an
-`Income` row carries `Contract` and `TransactionKind`, neither of which marks
-"this is money back from a supplier". Simplest sufficient rule: an `Income` row
-whose vendor classifies to a mapped AI vendor (§5) is a refund. Client revenue
-never will, because no client is in the vendor map.
-
-> [!WARNING]
-> **That rule is not yet groundable, and phase 3 must not start until it is.**
-> §5's signal table defines vendor discovery for `Expense` only — via
-> `Expense.ScanLineId` → `ScanLine.ExtractedVendor`, or `BankLine.MatchedExpenseId`
-> → the descriptor. `Income` has its own `ScanLineId` and its own
-> `BankLine.MatchedIncomeId`, but neither path has been checked, and
-> `CategorySuggester`'s vendor history is built from `Expense` rows alone.
+> [!NOTE]
+> **Portal side — SUPERSEDED 2026-07-29.** This section used to say the feed must
+> select refunds from `Income` rather than `Expense`, and warned at length that the
+> rule was not groundable because an `Income` row carries nothing marking it as
+> "money back from a supplier" — risking client revenue being booked as negative AI
+> spend.
 >
-> Before phase 3: confirm which of those two signals an `Income` row actually
-> carries in practice, extend §5's table to cover it, and pin the classification
-> both ways — a mapped-vendor `Income` row reads as a refund, an ordinary client
-> `Income` row never does. Getting this wrong books client revenue as negative AI
-> spend, which understates the ledger instead of overstating it — the same class
-> of silent error, opposite sign.
+> **None of that applies any more.** The portal now books a refund as a **negative
+> `Expense`** (PR #68), for its own accounting reasons: a supplier credit reverses a
+> purchase, so treating it as income would inflate Box 6 and leave the original
+> purchase overstated. Refunds therefore arrive through the ordinary `Expense` path,
+> already carrying the same category as the charge they reverse — the portal's own
+> backfill enforced that, because otherwise its family subtotals stop netting.
+>
+> The danger this warning guarded against is gone with it: client revenue lives in
+> `Income`, which this feed does not read at all.
+>
+> One thing to carry into phase 2 instead: a negative `Expense` must not be filtered
+> out by an amount guard. The ledger accepts any non-zero amount
+> (`CK_SpendEntry_Amount_NonZero`), so the feed must not add a stricter rule of its
+> own.
 
 ## 4. Decision 2 — Net, Gross, or Net-when-reclaimed — RESOLVED
 
@@ -239,19 +247,16 @@ The portal already has normalisation worth reusing rather than rewriting:
 `CategorySuggester.NormaliseVendor` strips OCR's parenthesised FX annotation and
 folds to alphanumeric-uppercase, so `"Amazon.co.uk"` and `"AMAZON CO UK"` match.
 
-> [!IMPORTANT]
-> **Blocked on portal data cleanup (2026-07-27).** The portal's categories are still
-> the legacy Access set — `Computer - Software`, `Internet Access`, `Multimedia -
-> Software` and so on — with no AI taxonomy at all. Chris is replacing them. Until
-> that lands, the category half of this mapping cannot be designed: if the new
-> portal categories map cleanly onto the observatory's, the problem disappears; if
-> they do not, the portal needs a separate AI tag. Deciding now would be deciding
-> against a schema that is about to change. **The vendor half is not blocked** and
-> has been actioned — see below.
+> [!NOTE]
+> **UNBLOCKED 2026-07-29 — the portal categories map cleanly, and the problem
+> disappeared.** This block previously read "blocked on portal data cleanup", on the
+> reasoning that if the new portal categories mapped onto the observatory's the problem
+> would vanish, and if they did not the portal would need a separate AI tag. They map,
+> 1:1. See §5a below for the resolved design. The vendor half was never blocked and was
+> actioned at the time.
 >
-> Note this partly reopens the parked "feed from the portal, not a one-off bulk
-> load" decision. That was taken before anyone had checked whether the portal could
-> express the category axis. It cannot, today.
+> The parked "feed from the portal, not a one-off bulk load" decision therefore stands
+> as originally taken: the portal *can* express the category axis, per charge.
 
 ### What the real data showed
 
@@ -339,17 +344,13 @@ does not exist yet, so their spend is skipped and logged rather than guessed —
 the same treatment as any unmatched expense, and visible for exactly that reason.
 
 > [!IMPORTANT]
-> **There is deliberately no `category` key above.** An earlier draft of this
-> document carried one category per vendor; the real data kills that — Anthropic
+> **There is deliberately no `category` key above, and there never will be.** An
+> earlier draft carried one category per vendor; the real data kills that — Anthropic
 > spans three groupings and Google four, so a fixed per-vendor category would file
-> every Anthropic charge as `credits` and destroy the per-charge category the
-> ledger design is built on.
->
-> The category half of the mapping is therefore **not designed yet**, and cannot
-> be until the portal category cleanup lands and reveals what per-charge signal
-> the portal can actually supply. Whatever replaces it must key on the *charge*,
-> not the vendor. The vendor's `DefaultCategoryId` is a fallback for the
-> unclassifiable remainder, not the mechanism.
+> every Anthropic charge as `credits` and destroy the per-charge category the ledger
+> design is built on. The category comes from the charge, via §5a. The vendor's
+> `DefaultCategoryId` is a fallback for the unclassifiable remainder, not the
+> mechanism.
 
 Matching runs against the normalised form of whichever signal is available,
 preferring `ExtractedVendor`. **An unmatched expense is skipped, never guessed**
@@ -370,6 +371,65 @@ slug is a startup-visible configuration error, not a silent skip.
 > attributes one company's spend to another and corrupts variance. Every map
 > entry should be added deliberately, and the feed should log every skipped
 > unmatched expense at `Information` so the map's gaps are observable.
+
+## 5a. Decision 3b — the category axis — RESOLVED 2026-07-29
+
+The portal's category cleanup landed (`personal-tax-portal` PR #73, merged `46c52a4`).
+`Category` gained a nullable self-referencing `ParentId`: exactly two levels, and only
+leaf categories are bookable, enforced on every write path. An `AI` family was seeded
+with five children, and 22 existing expenses were re-pointed into it against the actual
+invoices.
+
+**The five children map 1:1 onto this ledger's category slugs. No translation table.**
+
+| Portal category | Observatory slug | Category GUID |
+|---|---|---|
+| `AI - Subscription` | `subscription` | `11111111-…-111111111104` |
+| `AI - Extra Usage (Credits)` | `credits` | `11111111-…-111111111102` |
+| `AI - Code Review` | `code-review` | `11111111-…-111111111101` |
+| `AI - CI/CD` | `ci` | `11111111-…-111111111103` |
+| `AI - Cloud` | `cloud` | `11111111-…-111111111105` |
+
+### This is better than the design anticipated: the allowlist moves off the vendor
+
+§5 assumed the vendor map would have to answer two questions — *is this AI spend?* and
+*what kind?* — because the portal held "all business expenses" with no way to tell. It
+now answers both itself, from the category:
+
+- **In scope** = the expense's category has parent `AI`. Nothing else is AI spend.
+- **Which category** = the child's own name, through the table above.
+
+So the vendor map in §5 is no longer the scope mechanism. It stays, but its only
+remaining job is **vendor attribution**, because `Expense` still has no vendor column
+(§1). An AI-family expense whose vendor cannot be resolved is a vendor problem, not a
+scope problem — and the §9 privacy boundary is unaffected, since the resolution still
+happens portal-side and only the resolved key is posted.
+
+**Why this is trustworthy in a way a vendor heuristic was not:** every one of those
+categories was set by a human confirming a charge, against the invoice. The backfill
+that seeded them refused to guess wherever a vendor spanned children, and it was right
+to — the decisive case was two Anthropic charges of **exactly £150**, one week apart,
+where the invoices read `Prepaid extra usage` and `Max plan - 20x`. Any amount- or
+vendor-based rule books both the same way and is wrong about one of them.
+
+### Consequences for the phases
+
+- **Phase 2 is unblocked.** Its remaining work is unchanged: options, the vendor map,
+  slug resolution, the poll loop and the additive POST.
+- **The `github-actions` / `copilot` gap in §5 is closed by the same mechanism.** A
+  single `GITHUB` descriptor still cannot distinguish them, but it no longer has to —
+  a GitHub charge carries `AI - Subscription` or `AI - CI/CD` on the expense itself.
+  Vendor attribution for GitHub remains: use `github` for org-billed spend, `copilot`
+  for the personal account. (`DestructiveDude` is the former name of `chris-fixportal`;
+  the personal-Copilot reading is now confirmed from receipts, not inferred from
+  billing shape, which closes that open question in §5.)
+- **Refunds (phase 3) inherit their parent charge's category** — settled portal-side by
+  the same backfill, and required for the family subtotal to net correctly.
+
+> [!NOTE]
+> One thing the portal deliberately does not send: it computes a rendering flag for the
+> flat-category case but excludes it from its own JSON, and this feed has no equivalent
+> need. The category name is the only thing that crosses.
 
 ### The GitHub charges — the premise was wrong
 
@@ -604,28 +664,27 @@ important test — it is the failure this project has already been burned by.
 
 | Phase | Contents | Status |
 |---|---|---|
-| 0 | Rule on §3, §4, §5 | **Done** — §3 and §4 ruled, §5 vendor axis actioned; §5's category axis is deferred by the blocker below, not undecided |
+| 0 | Rule on §3, §4, §5 | **Done** — §3, §4 and §5's vendor axis ruled and actioned; §5's category axis resolved 2026-07-29 in §5a |
 | 1 | Observatory refund migration (§3) | **Done** — `AllowNegativeSpendAmounts` |
 | 1b | Seed remaining vendors + Cloud category (§5) | **Done** — `SeedRemainingSpendVendorsAndCloudCategory` |
 | 1c | Seed the Copilot vendor (§5) | **Done** — `SeedCopilotVendor` |
 | 1d | GitHub billing sync + `github` vendor (§5) | **Done** — `SeedGitHubVendor`, `GitHubBillingSyncService`. Independent of the portal: GitHub spend never came from the CSV in the first place |
-| 2 | Portal: options, vendor map, slug resolution, feed worker, additive POST | Blocked on the portal category cleanup |
-| 3 | Refund selection from `Income` (§3) | Blocked on phase 2 **and, independently, on §3's `Income` vendor-signal gate** — that signal is undefined today, and phase 2 completing does not settle it |
+| 2 | Portal: options, vendor map, slug resolution, feed worker, additive POST | **Unblocked 2026-07-29** — ready to plan; see §5a |
+| 3 | ~~Refund selection from `Income`~~ | **Void 2026-07-29** — the portal books refunds as negative `Expense` rows (PR #68), so they arrive through phase 2's ordinary path. The `Income` vendor-signal gate that blocked this phase is moot; nothing needs building |
 | 4 | Deletion reconcile, `PATCH` on changed amounts (§6, §8) | Blocked on phase 2 |
 
 Every decision this document opened is now ruled, and the observatory side of all of
 them is built: refunds are representable, every vendor carrying real spend has a row,
 and the amount-basis rule is recorded for phase 2 to apply.
 
-**One blocker remains: the portal's category cleanup.** It decides whether the portal
-can supply a per-charge category or needs a separate AI tag, and nothing in phase 2
-should be written until it lands.
+**No blockers remain.** The portal's category cleanup landed on 2026-07-29 and the axis
+maps 1:1 (§5a), so phase 2 is ready to plan.
 
 Open questions raised *by* this round, none of them blocking phase 2:
 
 | Question | Origin | Status | Why it matters |
 |---|---|---|---|
-| Confirm the three GitHub charges really are Copilot | §5 | **Open** | Inference from billing shape, not an invoice line. Org-Copilot is now ruled out (zero seats), leaving a personal subscription as the best fit; confirming needs a `user`-scoped token and the actual invoices |
+| Confirm the three GitHub charges really are Copilot | §5 | **Closed 2026-07-29** | Confirmed from the receipts, not inferred: `[GitHub] Payment Receipt for DestructiveDude` shows `Copilot Pro+ -33.97` and `Copilot Max 87.10`, and `DestructiveDude` is the former name of `chris-fixportal`. The org bill is a separate Team Plan |
 | Whatever pays the org's GitHub bill is not in the CSV | §5 | **Closed** | Solved by reading GitHub's billing API directly instead of reconciling through a bank export that does not contain the bill |
 | Code Quality AI Credits has no vendor | §5 | **Closed** | `github` vendor seeded; `code_quality` books to Code Review |
 
