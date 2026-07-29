@@ -14,6 +14,7 @@ using Microsoft.Extensions.DependencyInjection;
 
 namespace AiObservatory.Api.Tests;
 
+[Trait("Category", "Integration")]
 public class SpendEntriesEndpointsWafTests(AiObservatoryApiFactory factory)
     : IClassFixture<AiObservatoryApiFactory>
 {

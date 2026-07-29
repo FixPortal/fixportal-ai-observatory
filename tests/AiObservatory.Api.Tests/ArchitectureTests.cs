@@ -2,6 +2,7 @@
 // public global-namespace Program, so an unaliased reference makes bare `Program` ambiguous
 // and breaks every WebApplicationFactory test in this assembly.
 extern alias ingest;
+using System.Reflection;
 using AiObservatory.Api.Services;
 using AiObservatory.Data;
 using ArchUnitNET.Domain;
@@ -88,5 +89,27 @@ public class ArchitectureTests
 
         offenders.Should().BeEmpty(
             "SpendEntry must not tie spend to a bank, card, invoice or counterparty (spec §3)");
+    }
+
+    // A class that takes AiObservatoryApiFactory boots the real host and migrates a
+    // throwaway Postgres database. Untraited, it lands in the unit lane — which is the
+    // lane Stryker mutates against, so every mutant pays a host boot plus a migration.
+    // Three such classes shipped untraited and pushed the nightly mutation run past its
+    // 45-minute budget. The trait is the only thing keeping them out; assert it.
+    [Fact]
+    public void Factory_backed_test_classes_must_be_traited_Integration()
+    {
+        var offenders = typeof(ArchitectureTests).Assembly
+            .GetTypes()
+            .Where(t => t.GetConstructors()
+                .Any(c => c.GetParameters().Any(p => p.ParameterType == typeof(AiObservatoryApiFactory))))
+            .Where(t => !t.GetCustomAttributes<TraitAttribute>()
+                .Any(a => a.Name == "Category" && a.Value == "Integration"))
+            .Select(t => t.Name)
+            .ToArray();
+
+        offenders.Should().BeEmpty(
+            "every AiObservatoryApiFactory-backed test class needs [Trait(\"Category\", \"Integration\")] "
+            + "to stay out of the unit lane Stryker mutates against");
     }
 }

@@ -19,6 +19,7 @@ namespace AiObservatory.Api.Tests.Services;
 /// the ledger depends on: every billed line lands exactly once, and re-running converges
 /// rather than duplicating.
 /// </summary>
+[Trait("Category", "Integration")]
 public class GitHubBillingSyncServiceTests(AiObservatoryApiFactory factory)
     : IClassFixture<AiObservatoryApiFactory>
 {

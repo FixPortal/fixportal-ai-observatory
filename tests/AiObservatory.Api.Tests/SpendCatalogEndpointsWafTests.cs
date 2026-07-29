@@ -6,6 +6,7 @@ using AwesomeAssertions;
 
 namespace AiObservatory.Api.Tests;
 
+[Trait("Category", "Integration")]
 public class SpendCatalogEndpointsWafTests(AiObservatoryApiFactory factory)
     : IClassFixture<AiObservatoryApiFactory>
 {
