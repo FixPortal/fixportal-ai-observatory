@@ -6,4 +6,12 @@
 // configuration is missing" on factories that DID set it. Serializing the whole
 // assembly avoids the race; this is a known WebApplicationFactory constraint, not a bug
 // in the harness itself.
+//
+// This attribute lived in AiObservatory.Api.Tests until the 2026-07-29 split and moved here
+// with the factories. It is load-bearing, and more so now: an assembly of nothing but
+// WebApplicationFactory tests constructs far more factories concurrently, and the race
+// resurfaced immediately as parallel MigrateAsync calls on one database
+// ("42P07: relation already exists", "42704: index does not exist"). It does NOT belong
+// back in the unit project — nothing there builds a host, and serialising that assembly
+// would slow the lane Stryker re-runs on every mutant.
 [assembly: CollectionBehavior(DisableTestParallelization = true)]

@@ -1,10 +1,6 @@
 {
   "stryker-config": {
-    "solution": "AiObservatory.slnx",
-    "project": "src/AiObservatory.Api/AiObservatory.Api.csproj",
-    "test-projects": [
-      "tests/AiObservatory.Api.Tests/AiObservatory.Api.Tests.csproj"
-    ],
+    "project": "AiObservatory.Api.csproj",
     "reporters": ["progress", "html", "json"],
     "report-file-name": "mutation-report",
     "mutation-level": "Standard",
@@ -16,7 +12,14 @@
       "low": 70,
       "break": 0
     },
-    "test-case-filter": "Category!=Integration",
-    "mutate": ["**/*.cs"]
+    "mutate": [
+      "**/Services/Fx/*.cs",
+      "**/Services/GitHub/*.cs",
+      "**/Endpoints/SpendEntriesEndpoints.cs",
+      "**/Endpoints/SpendCatalogEndpoints.cs",
+      "**/ApiKeyEndpointFilter.cs",
+      "**/AdminOnlyApiKeyEndpointFilter.cs",
+      "**/ApiKeyComparer.cs"
+    ]
   }
 }

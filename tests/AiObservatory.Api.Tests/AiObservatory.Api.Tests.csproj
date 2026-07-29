@@ -1,5 +1,12 @@
 <Project Sdk="Microsoft.NET.Sdk">
 
+  <!--
+    UNIT tests only, and deliberately database-free: this is the project Stryker mutates
+    against (stryker-config.json `test-projects`), so anything added here is paid for on
+    every mutant. Host-booting / PostgreSQL-backed tests belong in
+    AiObservatory.Api.IntegrationTests. See docs/mutation-testing.md.
+  -->
+
   <PropertyGroup>
     <IsPackable>false</IsPackable>
     <OutputType>Exe</OutputType>
@@ -9,19 +16,18 @@
     <PackageReference Include="AwesomeAssertions" />
     <PackageReference Include="FixPortal.CodeStyle.ArchRules" />
     <PackageReference Include="MailKit" />
-    <PackageReference Include="Microsoft.AspNetCore.Mvc.Testing" />
+    <!-- Bare in-memory middleware pipelines only (ForwardedHeadersConfigTests). NOT
+         Microsoft.AspNetCore.Mvc.Testing: WebApplicationFactory boots the real composition
+         root and belongs in the integration project. -->
     <PackageReference Include="Microsoft.AspNetCore.TestHost" />
     <PackageReference Include="coverlet.collector">
       <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
       <PrivateAssets>all</PrivateAssets>
     </PackageReference>
     <PackageReference Include="Microsoft.NET.Test.Sdk" />
-    <PackageReference Include="Microsoft.EntityFrameworkCore.Relational" />
     <PackageReference Include="NodaTime.Testing" />
     <PackageReference Include="NSubstitute" />
-    <PackageReference Include="Npgsql.EntityFrameworkCore.PostgreSQL" />
     <PackageReference Include="TngTech.ArchUnitNET.xUnitV3" />
-    <PackageReference Include="Testcontainers.PostgreSql" />
     <PackageReference Include="xunit.v3" />
     <PackageReference Include="xunit.runner.visualstudio">
       <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
@@ -47,10 +53,6 @@
       See ArchitectureTests, the only consumer.
     -->
     <ProjectReference Include="..\..\src\AiObservatory.Ingest\AiObservatory.Ingest.csproj" Aliases="ingest" />
-  </ItemGroup>
-
-  <ItemGroup>
-    <Compile Include="..\PostgresTestAssemblyFixture.cs" Link="PostgresTestAssemblyFixture.cs" />
   </ItemGroup>
 
 </Project>
