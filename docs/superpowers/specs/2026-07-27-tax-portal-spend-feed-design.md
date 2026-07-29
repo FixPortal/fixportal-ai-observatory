@@ -384,11 +384,11 @@ invoices.
 
 | Portal category | Observatory slug | Category GUID |
 |---|---|---|
-| `AI - Subscription` | `subscription` | `11111111-…-111111111104` |
-| `AI - Extra Usage (Credits)` | `credits` | `11111111-…-111111111102` |
-| `AI - Code Review` | `code-review` | `11111111-…-111111111101` |
-| `AI - CI/CD` | `ci` | `11111111-…-111111111103` |
-| `AI - Cloud` | `cloud` | `11111111-…-111111111105` |
+| `AI - Subscription` | `subscription` | `11111111-1111-1111-1111-111111111104` |
+| `AI - Extra Usage (Credits)` | `credits` | `11111111-1111-1111-1111-111111111102` |
+| `AI - Code Review` | `code-review` | `11111111-1111-1111-1111-111111111101` |
+| `AI - CI/CD` | `ci` | `11111111-1111-1111-1111-111111111103` |
+| `AI - Cloud` | `cloud` | `11111111-1111-1111-1111-111111111105` |
 
 ### This is better than the design anticipated: the allowlist moves off the vendor
 
