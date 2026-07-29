@@ -23,9 +23,14 @@ effective.
 > runner ignores it silently, with no warning. The traits did make the
 > `dotnet test` lanes work as described, but the mutation lane went on running
 > every PostgreSQL-backed test against every mutant. It surfaced on 2026-07-27
-> when the spend ledger's tests pushed the nightly run past its timeout, and was
-> fixed by moving Stryker to `test-runner: vstest`. See
-> `docs/mutation-testing.md`.
+> when the spend ledger's tests pushed the nightly run past its timeout.
+>
+> The fix was structural, not a filter: the database-backed tests moved into a
+> separate `AiObservatory.Api.IntegrationTests` project, and Stryker now runs from
+> the unit-only project's directory (`test-projects` does not restrict execution —
+> only the working directory does). `test-runner` deliberately stays `mtp`;
+> switching to `vstest` makes the filter work but produces invalid mutation
+> results. See `docs/mutation-testing.md`.
 
 ## Complexity remediation
 
