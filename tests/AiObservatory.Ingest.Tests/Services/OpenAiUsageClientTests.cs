@@ -61,6 +61,14 @@ public class OpenAiUsageClientTests
         }
     }
 
+    private sealed class StatusHandler(HttpStatusCode statusCode) : HttpMessageHandler
+    {
+        protected override Task<HttpResponseMessage> SendAsync(
+            HttpRequestMessage request,
+            CancellationToken cancellationToken
+        ) => Task.FromResult(new HttpResponseMessage(statusCode));
+    }
+
     private static readonly OpenAiPricingOptions TestPricing = new()
     {
         Pricing =
@@ -159,5 +167,32 @@ public class OpenAiUsageClientTests
 
         records.Should().BeEmpty();
         handler.RequestCount.Should().Be(100);
+    }
+
+    [Theory]
+    [InlineData(HttpStatusCode.Unauthorized)]
+    [InlineData(HttpStatusCode.TooManyRequests)]
+    [InlineData(HttpStatusCode.InternalServerError)]
+    public async Task GetDailyUsageAsync_ThrowsWhenTheProviderReturnsAnError(
+        HttpStatusCode statusCode
+    )
+    {
+        using var http = new HttpClient(new StatusHandler(statusCode))
+        {
+            BaseAddress = new Uri("https://api.openai.com"),
+        };
+        var sut = new OpenAiUsageClient(
+            http,
+            NullLogger<OpenAiUsageClient>.Instance,
+            Options.Create(TestPricing)
+        );
+
+        var act = () =>
+            sut.GetDailyUsageAsync(
+                new LocalDate(2026, 7, 1),
+                TestContext.Current.CancellationToken
+            );
+
+        await act.Should().ThrowAsync<HttpRequestException>();
     }
 }
