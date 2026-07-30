@@ -1,8 +1,11 @@
 // Single source of truth for all provider metadata.
 // Add new providers here — consuming modules derive from this list automatically.
 
+export const PROVIDER_KEYS = ['anthropic', 'copilot', 'google', 'openai', 'moonshot'] as const
+export type ProviderKey = typeof PROVIDER_KEYS[number]
+
 export interface ProviderConfig {
-  key: string
+  key: ProviderKey
   displayName: string
   colorVar: string
   // Estimated savings per cache-read token (USD). Can be a number, a record of model name substrings to rates,
@@ -11,7 +14,7 @@ export interface ProviderConfig {
   badgeStyle: { color: string; background: string }
 }
 
-export const PROVIDERS: ProviderConfig[] = [
+export const PROVIDERS = [
   {
     key: 'anthropic',
     displayName: 'Anthropic',
@@ -84,10 +87,10 @@ export const PROVIDERS: ProviderConfig[] = [
     cacheSavingsPerToken: null,
     badgeStyle: { color: 'var(--provider-moonshot)', background: 'rgba(101,163,13,.12)' },
   },
-]
+] satisfies ProviderConfig[]
 
 /** Stable display order for provider filter chips and dropdowns. */
-export const PROVIDER_ORDER: string[] = PROVIDERS.map(p => p.key)
+export const PROVIDER_ORDER: ProviderKey[] = PROVIDERS.map(p => p.key)
 
 export function getProvider(key: string): ProviderConfig | undefined {
   return PROVIDERS.find(p => p.key === key)

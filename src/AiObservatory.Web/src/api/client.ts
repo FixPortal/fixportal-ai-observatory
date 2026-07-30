@@ -1,5 +1,6 @@
 // Prod build calls the API cross-origin (VITE_API_BASE); dev uses the Vite proxy.
 import { getAccessToken, apiKey, urlApiKey } from '../auth/msal'
+import type { ProviderKey } from '../config/providers'
 
 const BASE = (import.meta.env.VITE_API_BASE ?? '') + '/api'
 
@@ -64,7 +65,7 @@ async function readErrorMessage(res: Response, path: string, method: string): Pr
 
 export interface DailyAggregate {
   date: string
-  provider: 'anthropic' | 'copilot' | 'google'
+  provider: ProviderKey
   model: string
   inputTokens: number
   outputTokens: number
@@ -298,7 +299,8 @@ export interface SpendVendor {
 // not the `HasConversion<string>` EF uses to store it — that conversion is DB-only. So the
 // wire value is 'manual' / 'csv' / 'portal', matching how Provider already lower-cases
 // ('anthropic' etc. above), not the PascalCase SpendSource member names.
-export type SpendSourceValue = 'manual' | 'csv' | 'portal'
+export const SPEND_SOURCE_VALUES = ['manual', 'csv', 'portal', 'api'] as const
+export type SpendSourceValue = typeof SPEND_SOURCE_VALUES[number]
 
 export interface SpendEntry {
   id: string

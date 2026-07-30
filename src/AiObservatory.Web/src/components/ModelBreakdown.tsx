@@ -91,8 +91,8 @@ export default function ModelBreakdown() {
   const uniqueProviders = useMemo(() => {
     const providers = new Set(rawByModel.map((item) => item.provider))
     return Array.from(providers).sort((a, b) => {
-      const idxA = PROVIDER_ORDER.indexOf(a)
-      const idxB = PROVIDER_ORDER.indexOf(b)
+      const idxA = PROVIDER_ORDER.findIndex(provider => provider === a)
+      const idxB = PROVIDER_ORDER.findIndex(provider => provider === b)
       if (idxA !== -1 && idxB !== -1) return idxA - idxB
       if (idxA !== -1) return -1
       if (idxB !== -1) return 1
