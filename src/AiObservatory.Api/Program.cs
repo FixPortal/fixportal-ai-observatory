@@ -72,7 +72,7 @@ builder
     // free. Since this deployment's cache writes are ~100% one-hour, that failure would be
     // both silent and total — so an incomplete row must stop the app, not start it.
     .Validate(
-        o => o.Pricing.TrueForAll(e => e.CacheWrite1h > 0) && o.FallbackPricing.CacheWrite1h > 0,
+        o => o.HasPositiveCacheWrite1hRates(),
         $"{AnthropicPricingOptions.SectionName}: every Pricing entry and FallbackPricing must set a positive CacheWrite1h"
     )
     .ValidateOnStart();

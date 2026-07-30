@@ -2,6 +2,7 @@ using AiObservatory.Data;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Npgsql;
@@ -34,6 +35,7 @@ public sealed class AiObservatoryApiFactory : WebApplicationFactory<Program>, IA
     // Mutable test-fixture seam used by consumers even though the in-repo tests keep the default.
     // ReSharper disable once AutoPropertyCanBeMadeGetOnly.Global
     public string? ReadOnlyKeyOverride { get; set; } = ReadOnlyKey;
+    public Dictionary<string, string?> ConfigurationOverrides { get; } = [];
 
     private string? _dbConnectionOverride;
     private bool _dbConnectionOverrideSet;
@@ -67,6 +69,9 @@ public sealed class AiObservatoryApiFactory : WebApplicationFactory<Program>, IA
         // entry point — see CreateHost below, which drives DB_CONNECTION/API-key config via
         // process environment variables instead.
         builder.UseEnvironment(Environment);
+        builder.ConfigureAppConfiguration(config =>
+            config.AddInMemoryCollection(ConfigurationOverrides)
+        );
     }
 
     protected override IHost CreateHost(IHostBuilder builder)
