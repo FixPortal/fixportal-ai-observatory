@@ -55,7 +55,7 @@ public static class AggregatesEndpoints
         }
         else
         {
-            start = today.PlusDays(-30);
+            start = today.PlusDays(-29);
         }
 
         if (to is not null)
@@ -97,7 +97,7 @@ public static class AggregatesEndpoints
                 // server culture's long-date format ("29 May 2026"), which broke the
                 // frontend's slice/sort (it assumes ISO) and scrambled the chart axis.
                 date = LocalDatePattern.Iso.Format(a.Date),
-                provider = a.Provider.ToString().ToLower(),
+                provider = a.Provider,
                 a.Model,
                 a.InputTokens,
                 a.OutputTokens,

@@ -85,5 +85,67 @@ public class AggregatesEndpointsWafTests(AiObservatoryApiFactory factory)
         rows![0].Date.Should().Be("2019-05-29");
     }
 
-    private sealed record AggregateRow(string Date);
+    [Fact]
+    public async Task GetAggregates_WithoutBoundsReturnsTheLatestThirtyCalendarDays()
+    {
+        LocalDate today;
+        using (var scope = factory.Services.CreateScope())
+        {
+            var services = scope.ServiceProvider;
+            today = services.GetRequiredService<IClock>().GetCurrentInstant().InUtc().Date;
+            var db = services.GetRequiredService<AiObservatoryDbContext>();
+            db.DailyAggregates.AddRange(
+                Aggregate(today.PlusDays(-29), "default-window-inside"),
+                Aggregate(today.PlusDays(-30), "default-window-outside")
+            );
+            await db.SaveChangesAsync(TestContext.Current.CancellationToken);
+        }
+
+        using var client = factory.CreateReadOnlyClient();
+        var rows = await client.GetFromJsonAsync<List<AggregateRow>>(
+            "/api/aggregates",
+            TestContext.Current.CancellationToken
+        );
+
+        rows.Should().Contain(row => row.Model == "default-window-inside");
+        rows.Should().NotContain(row => row.Model == "default-window-outside");
+    }
+
+    [Fact]
+    public async Task GetAggregates_UsesThePinnedProviderWireName()
+    {
+        var date = new LocalDate(2019, 6, 1);
+        using (var scope = factory.Services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<AiObservatoryDbContext>();
+            db.DailyAggregates.Add(Aggregate(date, "openai-wire-name", Provider.OpenAI));
+            await db.SaveChangesAsync(TestContext.Current.CancellationToken);
+        }
+
+        using var client = factory.CreateReadOnlyClient();
+        var rows = await client.GetFromJsonAsync<List<AggregateRow>>(
+            "/api/aggregates?from=2019-06-01&to=2019-06-01",
+            TestContext.Current.CancellationToken
+        );
+
+        rows.Should().ContainSingle().Which.Provider.Should().Be("openai");
+    }
+
+    private static DailyAggregate Aggregate(
+        LocalDate date,
+        string model,
+        Provider provider = Provider.Anthropic
+    ) =>
+        new()
+        {
+            Date = date,
+            Provider = provider,
+            Model = model,
+            InputTokens = 1,
+            OutputTokens = 1,
+            CostUsd = 0.01m,
+            RequestCount = 1,
+        };
+
+    private sealed record AggregateRow(string Date, string Model, string Provider);
 }
