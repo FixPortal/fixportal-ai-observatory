@@ -16,6 +16,9 @@ public class AnthropicPricingOptions
 
     public List<AnthropicPricingEntry> Pricing { get; set; } = [];
     public PricingRates FallbackPricing { get; set; } = new(3.0m, 15.0m, 0.30m, 3.75m, 6.0m);
+
+    public bool HasPositiveCacheWrite1hRates() =>
+        Pricing.TrueForAll(entry => entry.CacheWrite1h > 0) && FallbackPricing.CacheWrite1h > 0;
 }
 
 /// <param name="CacheWrite">Rate for a FIVE-MINUTE cache write.</param>

@@ -72,6 +72,10 @@ var host = Host.CreateDefaultBuilder(args)
                         o => o.FallbackPricing.Input > 0 && o.FallbackPricing.Output > 0,
                         $"{AnthropicPricingOptions.SectionName}:FallbackPricing must have positive Input and Output rates"
                     )
+                    .Validate(
+                        o => o.HasPositiveCacheWrite1hRates(),
+                        $"{AnthropicPricingOptions.SectionName}: every Pricing entry and FallbackPricing must set a positive CacheWrite1h"
+                    )
                     .ValidateOnStart();
 
                 services.AddHttpClient<IAnthropicUsageClient, AnthropicUsageClient>(c =>
@@ -225,4 +229,11 @@ static IResult ReportHealth(ProviderPollingWorkerService worker)
     };
 
     return running ? Results.Ok(body) : Results.Json(body, statusCode: 503);
+}
+
+// Required as the WebApplicationFactory<TEntryPoint> marker for composition-root tests.
+// ReSharper disable once ClassNeverInstantiated.Global
+public partial class Program
+{
+    protected Program() { }
 }
