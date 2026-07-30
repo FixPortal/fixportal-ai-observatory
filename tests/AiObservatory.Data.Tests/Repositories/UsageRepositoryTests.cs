@@ -398,4 +398,28 @@ public class UsageRepositoryTests : IAsyncLifetime
 
         await act.Should().ThrowAsync<DbUpdateException>();
     }
+
+    [Fact]
+    public async Task DailyAggregateRejectsOneHourCacheWritesAboveTotalCacheWrites()
+    {
+        _ctx.DailyAggregates.Add(
+            new DailyAggregate
+            {
+                Date = new LocalDate(2026, 7, 30),
+                Provider = Provider.Anthropic,
+                Model = "invalid-cache-write-split",
+                InputTokens = 1,
+                OutputTokens = 1,
+                CacheReadTokens = 1,
+                CacheWriteTokens = 1,
+                CacheWrite1hTokens = 2,
+                CostUsd = 1m,
+                RequestCount = 1,
+            }
+        );
+
+        var act = () => _ctx.SaveChangesAsync(TestContext.Current.CancellationToken);
+
+        await act.Should().ThrowAsync<DbUpdateException>();
+    }
 }

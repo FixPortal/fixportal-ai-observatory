@@ -234,6 +234,12 @@ public class SpendEntriesEndpointsWafTests(AiObservatoryApiFactory factory)
 
         result.GetProperty("status").GetString().Should().Be("rejected");
         result.GetProperty("reason").GetString().Should().Contain("OccurredOn");
+
+        var entries = await client.GetFromJsonAsync<JsonElement>(
+            $"/api/spend/entries?vendorId={vendorId}",
+            ct
+        );
+        entries.EnumerateArray().Should().BeEmpty();
     }
 
     [Fact]
@@ -522,6 +528,34 @@ public class SpendEntriesEndpointsWafTests(AiObservatoryApiFactory factory)
                 e => e.GetProperty("id").GetGuid() == id,
                 "a rejected patch must leave the original category link in place"
             );
+    }
+
+    [Fact]
+    public async Task PatchWithDefaultOccurredOnIsRejectedAndDoesNotMutateTheRow()
+    {
+        using var client = factory.CreateAdminClient();
+        var ct = TestContext.Current.CancellationToken;
+        var (categoryId, vendorId) = await SeedCatalogAsync(client);
+        var id = await CreateEntryAsync(client, categoryId, vendorId);
+
+        var response = await client.PatchAsJsonAsync(
+            $"/api/spend/entries/{id}",
+            new { OccurredOn = "0001-01-01" },
+            ct
+        );
+
+        response.StatusCode.Should().Be(HttpStatusCode.BadRequest);
+        var entries = await client.GetFromJsonAsync<JsonElement>(
+            $"/api/spend/entries?vendorId={vendorId}",
+            ct
+        );
+        entries
+            .EnumerateArray()
+            .Single(e => e.GetProperty("id").GetGuid() == id)
+            .GetProperty("occurredOn")
+            .GetString()
+            .Should()
+            .Be("2026-07-12");
     }
 
     [Fact]
