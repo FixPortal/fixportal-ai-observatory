@@ -57,6 +57,8 @@ public class ProviderPollingWorkerService(
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
+        LogEnabledArms();
+
         var interval = options.Value.PollingInterval;
         var lookbackDays = Math.Max(1, options.Value.LookbackDays);
         logger.LogInformation(
@@ -81,6 +83,31 @@ public class ProviderPollingWorkerService(
             await Task.Delay(interval, stoppingToken);
         }
     }
+
+    private void LogEnabledArms()
+    {
+        try
+        {
+            using var scope = scopeFactory.CreateScope();
+            var sp = scope.ServiceProvider;
+            logger.LogInformation(
+                "Provider polling arms — Anthropic: {AnthropicState}, Copilot: {CopilotState}, "
+                    + "Google: {GoogleState}, OpenAI: {OpenAiState}, GitHub: {GitHubState}",
+                State<AnthropicIngestionService>(sp),
+                State<CopilotIngestionService>(sp),
+                State<GoogleIngestionService>(sp),
+                State<OpenAiIngestionService>(sp),
+                State<GitHubIngestionService>(sp)
+            );
+        }
+        catch (Exception ex)
+        {
+            logger.LogWarning(ex, "Provider polling worker could not determine enabled arms");
+        }
+    }
+
+    private static string State<TService>(IServiceProvider sp)
+        where TService : class => sp.GetService<TService>() is null ? "NOT CONFIGURED" : "enabled";
 
     private async Task RunPollAsync(IReadOnlyList<LocalDate> dates, CancellationToken ct)
     {

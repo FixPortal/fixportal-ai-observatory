@@ -1,9 +1,15 @@
+using AiObservatory.Data.Repositories;
+using AiObservatory.Ingest.Services.Anthropic;
+using AiObservatory.Ingest.Services.GitHub;
+using AiObservatory.Ingest.Services.OpenAi;
 using AwesomeAssertions;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Options;
 using NodaTime;
 using NodaTime.Testing;
+using NSubstitute;
 
 namespace AiObservatory.Ingest.Tests.Services;
 
@@ -20,18 +26,68 @@ public class ProviderPollingWorkerServiceTests
     /// returns immediately. That is a real supported configuration (an unconfigured worker
     /// is a documented no-op) and it lets a cycle complete without any network at all.
     /// </summary>
-    private static ProviderPollingWorkerService CreateWorker(Instant? now = null)
+    private static ProviderPollingWorkerService CreateWorker(
+        Instant? now = null,
+        Action<IServiceCollection>? configureServices = null,
+        CapturingLogger? logger = null,
+        int pollingIntervalMinutes = 60,
+        string[]? githubRepoAllowlist = null
+    )
     {
-        var services = new ServiceCollection().BuildServiceProvider();
+        var services = new ServiceCollection();
+        configureServices?.Invoke(services);
+        var provider = services.BuildServiceProvider();
         return new ProviderPollingWorkerService(
-            services.GetRequiredService<IServiceScopeFactory>(),
+            provider.GetRequiredService<IServiceScopeFactory>(),
             new FakeClock(now ?? Instant.FromUtc(2026, 7, 28, 9, 0)),
-            NullLogger<ProviderPollingWorkerService>.Instance,
+            logger ?? new CapturingLogger(),
             // A long interval so the worker completes exactly one cycle then parks on the
             // delay, rather than spinning while the assertions run.
-            Options.Create(new IngestOptions { PollingIntervalMinutes = 60, LookbackDays = 1 })
+            Options.Create(
+                new IngestOptions
+                {
+                    PollingIntervalMinutes = pollingIntervalMinutes,
+                    LookbackDays = 1,
+                    GitHubRepoAllowlist = githubRepoAllowlist ?? [],
+                }
+            )
         );
     }
+
+    private static void AddAnthropic(IServiceCollection services, IAnthropicUsageClient client) =>
+        services.AddSingleton(
+            new AnthropicIngestionService(
+                client,
+                Substitute.For<IUsageRepository>(),
+                new FakeClock(Instant.FromUtc(2026, 7, 28, 9, 0)),
+                NullLogger<AnthropicIngestionService>.Instance
+            )
+        );
+
+    private static void AddOpenAi(IServiceCollection services, IOpenAiUsageClient client) =>
+        services.AddSingleton(
+            new OpenAiIngestionService(
+                client,
+                Substitute.For<IUsageRepository>(),
+                new FakeClock(Instant.FromUtc(2026, 7, 28, 9, 0)),
+                NullLogger<OpenAiIngestionService>.Instance
+            )
+        );
+
+    private static void AddGitHub(
+        IServiceCollection services,
+        string[] repoAllowlist,
+        IGitHubActivityRepository repository
+    ) =>
+        services.AddSingleton(
+            new GitHubIngestionService(
+                Substitute.For<IGitHubActivityClient>(),
+                repository,
+                Options.Create(new IngestOptions { GitHubRepoAllowlist = repoAllowlist }),
+                NullLogger<GitHubIngestionService>.Instance,
+                new FakeClock(Instant.FromUtc(2026, 7, 28, 9, 0))
+            )
+        );
 
     /// <summary>
     /// Polls for a real completion signal rather than sleeping a guessed duration: a fixed
@@ -142,6 +198,225 @@ public class ProviderPollingWorkerServiceTests
         finally
         {
             await worker.StopAsync(CancellationToken.None);
+        }
+    }
+
+    [Fact]
+    public async Task AFailedProviderDoesNotStopTheRemainingProvidersOrTheWorker()
+    {
+        var ct = TestContext.Current.CancellationToken;
+        var anthropic = Substitute.For<IAnthropicUsageClient>();
+        anthropic
+            .GetUsageAsync(Arg.Any<LocalDate>(), Arg.Any<CancellationToken>())
+            .Returns(Task.FromException<IReadOnlyList<AnthropicUsageRecord>>(new("failed")));
+        var openAiCalled = new TaskCompletionSource(
+            TaskCreationOptions.RunContinuationsAsynchronously
+        );
+        var openAi = Substitute.For<IOpenAiUsageClient>();
+        openAi
+            .GetDailyUsageAsync(Arg.Any<LocalDate>(), Arg.Any<CancellationToken>())
+            .Returns(_ =>
+            {
+                openAiCalled.TrySetResult();
+                return Task.FromResult<IReadOnlyList<OpenAiUsageRecord>>([]);
+            });
+        var logger = new CapturingLogger();
+        var worker = CreateWorker(
+            configureServices: services =>
+            {
+                AddAnthropic(services, anthropic);
+                AddOpenAi(services, openAi);
+            },
+            logger: logger
+        );
+
+        await worker.StartAsync(ct);
+        try
+        {
+            await openAiCalled.Task.WaitAsync(TimeSpan.FromSeconds(30), ct);
+
+            logger.Messages.Should().Contain(m => m.Contains("Anthropic ingestion failed"));
+            worker.ExecuteTask.Should().NotBeNull();
+            worker.ExecuteTask!.IsCompleted.Should().BeFalse();
+        }
+        finally
+        {
+            await worker.StopAsync(CancellationToken.None);
+        }
+    }
+
+    [Fact]
+    public async Task EscalatesAProviderAfterThreeConsecutiveFailures()
+    {
+        var ct = TestContext.Current.CancellationToken;
+        var anthropic = Substitute.For<IAnthropicUsageClient>();
+        anthropic
+            .GetUsageAsync(Arg.Any<LocalDate>(), Arg.Any<CancellationToken>())
+            .Returns(Task.FromException<IReadOnlyList<AnthropicUsageRecord>>(new("failed")));
+        var logger = new CapturingLogger();
+        var worker = CreateWorker(
+            configureServices: services => AddAnthropic(services, anthropic),
+            logger: logger,
+            pollingIntervalMinutes: 0
+        );
+
+        await worker.StartAsync(ct);
+        try
+        {
+            await WaitUntilAsync(
+                () => logger.Messages.Any(m => m.Contains("3 consecutive polls")),
+                ct
+            );
+
+            logger.Messages.Should().Contain(m => m.Contains("provider may be misconfigured"));
+        }
+        finally
+        {
+            await worker.StopAsync(CancellationToken.None);
+        }
+    }
+
+    [Fact]
+    public async Task NamesEveryProviderArmAtStartup()
+    {
+        var ct = TestContext.Current.CancellationToken;
+        var logger = new CapturingLogger();
+        var worker = CreateWorker(logger: logger);
+
+        await worker.StartAsync(ct);
+        try
+        {
+            await WaitUntilAsync(() => worker.CyclesCompleted > 0, ct);
+
+            logger
+                .Messages.Should()
+                .Contain(m =>
+                    m.Contains("Anthropic: NOT CONFIGURED")
+                    && m.Contains("Copilot: NOT CONFIGURED")
+                    && m.Contains("Google: NOT CONFIGURED")
+                    && m.Contains("OpenAI: NOT CONFIGURED")
+                    && m.Contains("GitHub: NOT CONFIGURED")
+                );
+        }
+        finally
+        {
+            await worker.StopAsync(CancellationToken.None);
+        }
+    }
+
+    [Fact]
+    public async Task DoesNotStartAnotherCycleWhileAProviderCallIsStillRunning()
+    {
+        var ct = TestContext.Current.CancellationToken;
+        var entered = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var release = new TaskCompletionSource<IReadOnlyList<AnthropicUsageRecord>>(
+            TaskCreationOptions.RunContinuationsAsynchronously
+        );
+        var calls = 0;
+        var anthropic = Substitute.For<IAnthropicUsageClient>();
+        anthropic
+            .GetUsageAsync(Arg.Any<LocalDate>(), Arg.Any<CancellationToken>())
+            .Returns(_ =>
+            {
+                Interlocked.Increment(ref calls);
+                entered.TrySetResult();
+                return release.Task;
+            });
+        var worker = CreateWorker(
+            configureServices: services => AddAnthropic(services, anthropic),
+            pollingIntervalMinutes: 0
+        );
+
+        await worker.StartAsync(ct);
+        try
+        {
+            await entered.Task.WaitAsync(TimeSpan.FromSeconds(30), ct);
+
+            Volatile.Read(ref calls).Should().Be(1);
+            worker.CyclesCompleted.Should().Be(0);
+        }
+        finally
+        {
+            release.TrySetResult([]);
+            await worker.StopAsync(CancellationToken.None);
+        }
+    }
+
+    [Fact]
+    public async Task EscalatesGitHubWhenEveryConfiguredRepositoryFails()
+    {
+        var ct = TestContext.Current.CancellationToken;
+        string[] repoAllowlist = ["fixportal/one", "fixportal/two"];
+        var repository = Substitute.For<IGitHubActivityRepository>();
+        repository
+            .GetBackfillStatusAsync(Arg.Any<string>(), Arg.Any<CancellationToken>())
+            .Returns(
+                Task.FromException<GitHubBackfillStatus>(new InvalidOperationException("failed"))
+            );
+        var logger = new CapturingLogger();
+        var worker = CreateWorker(
+            configureServices: services => AddGitHub(services, repoAllowlist, repository),
+            logger: logger,
+            githubRepoAllowlist: repoAllowlist
+        );
+
+        await worker.StartAsync(ct);
+        try
+        {
+            await WaitUntilAsync(
+                () => logger.Messages.Any(m => m.Contains("GitHub ingestion failed")),
+                ct
+            );
+
+            worker.ExecuteTask.Should().NotBeNull();
+            worker.ExecuteTask!.IsCompleted.Should().BeFalse();
+        }
+        finally
+        {
+            await worker.StopAsync(CancellationToken.None);
+        }
+    }
+
+    private sealed class CapturingLogger : ILogger<ProviderPollingWorkerService>
+    {
+        private readonly object _gate = new();
+        private readonly List<string> _messages = [];
+
+        public IReadOnlyList<string> Messages
+        {
+            get
+            {
+                lock (_gate)
+                {
+                    return [.. _messages];
+                }
+            }
+        }
+
+        public IDisposable BeginScope<TState>(TState state)
+            where TState : notnull => NullScope.Instance;
+
+        public bool IsEnabled(LogLevel logLevel) => true;
+
+        public void Log<TState>(
+            LogLevel logLevel,
+            EventId eventId,
+            TState state,
+            Exception? exception,
+            Func<TState, Exception?, string> formatter
+        )
+        {
+            lock (_gate)
+            {
+                _messages.Add(formatter(state, exception));
+            }
+        }
+
+        private sealed class NullScope : IDisposable
+        {
+            public static readonly NullScope Instance = new();
+
+            public void Dispose() { }
         }
     }
 }
