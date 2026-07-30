@@ -64,6 +64,142 @@ public class IntelligenceWorkerExecutionTests
         }
     }
 
+    [Fact]
+    public async Task CatchupProcessesAtMostTheLatestSevenCompletedDays()
+    {
+        var ct = TestContext.Current.CancellationToken;
+        var clock = new FakeClock(Instant.FromUtc(2026, 7, 30, 9, 0));
+        var repository = Substitute.For<IUsageRepository>();
+        repository
+            .GetLatestInsightPeriodEndAsync(Arg.Any<CancellationToken>())
+            .Returns(new LocalDate(2026, 7, 1));
+        var generatedDates = new List<LocalDate>();
+        var generator = Substitute.For<IInsightGenerator>();
+        generator
+            .GenerateForDateAsync(Arg.Any<LocalDate>(), Arg.Any<CancellationToken>())
+            .Returns(call =>
+            {
+                generatedDates.Add(call.Arg<LocalDate>());
+                return 0;
+            });
+        var budgetCalled = new TaskCompletionSource(
+            TaskCreationOptions.RunContinuationsAsynchronously
+        );
+        var budget = Budget(repository, clock, () => budgetCalled.TrySetResult());
+        var services = new ServiceCollection()
+            .AddSingleton(repository)
+            .AddSingleton(generator)
+            .AddSingleton(budget)
+            .BuildServiceProvider();
+        var worker = new IntelligenceWorkerService(
+            services.GetRequiredService<IServiceScopeFactory>(),
+            clock,
+            NullLogger<IntelligenceWorkerService>.Instance
+        );
+
+        await worker.StartAsync(ct);
+        try
+        {
+            await budgetCalled.Task.WaitAsync(TimeSpan.FromSeconds(30), ct);
+
+            generatedDates
+                .Should()
+                .Equal(
+                    new LocalDate(2026, 7, 23),
+                    new LocalDate(2026, 7, 24),
+                    new LocalDate(2026, 7, 25),
+                    new LocalDate(2026, 7, 26),
+                    new LocalDate(2026, 7, 27),
+                    new LocalDate(2026, 7, 28),
+                    new LocalDate(2026, 7, 29)
+                );
+        }
+        finally
+        {
+            await worker.StopAsync(CancellationToken.None);
+        }
+    }
+
+    [Fact]
+    public async Task ExactMidnightSchedulesTheNextCycleForTomorrowInsteadOfSpinning()
+    {
+        var ct = TestContext.Current.CancellationToken;
+        var clock = new FakeClock(Instant.FromUtc(2026, 7, 30, 0, 0));
+        var repository = Substitute.For<IUsageRepository>();
+        repository
+            .GetLatestInsightPeriodEndAsync(Arg.Any<CancellationToken>())
+            .Returns(new LocalDate(2026, 7, 29));
+        var firstBudgetCall = new TaskCompletionSource(
+            TaskCreationOptions.RunContinuationsAsynchronously
+        );
+        var secondBudgetCall = new TaskCompletionSource(
+            TaskCreationOptions.RunContinuationsAsynchronously
+        );
+        var calls = 0;
+        var budget = Budget(
+            repository,
+            clock,
+            () =>
+            {
+                if (Interlocked.Increment(ref calls) == 1)
+                {
+                    firstBudgetCall.TrySetResult();
+                }
+                else
+                {
+                    secondBudgetCall.TrySetResult();
+                }
+            }
+        );
+        var services = new ServiceCollection()
+            .AddSingleton(repository)
+            .AddSingleton(budget)
+            .BuildServiceProvider();
+        var worker = new IntelligenceWorkerService(
+            services.GetRequiredService<IServiceScopeFactory>(),
+            clock,
+            NullLogger<IntelligenceWorkerService>.Instance
+        );
+
+        await worker.StartAsync(ct);
+        try
+        {
+            await firstBudgetCall.Task.WaitAsync(TimeSpan.FromSeconds(30), ct);
+
+            var completed = await Task.WhenAny(
+                secondBudgetCall.Task,
+                Task.Delay(TimeSpan.FromMilliseconds(100), ct)
+            );
+            completed.Should().NotBe(secondBudgetCall.Task);
+        }
+        finally
+        {
+            await worker.StopAsync(CancellationToken.None);
+        }
+    }
+
+    private static BudgetAlertService Budget(
+        IUsageRepository repository,
+        IClock clock,
+        Action onCall
+    )
+    {
+        var budget = Substitute.For<BudgetAlertService>(
+            repository,
+            clock,
+            Substitute.For<IAlertNotifier>(),
+            NullLogger<BudgetAlertService>.Instance
+        );
+        budget
+            .CheckAndAlertAsync(Arg.Any<CancellationToken>())
+            .Returns(_ =>
+            {
+                onCall();
+                return Task.CompletedTask;
+            });
+        return budget;
+    }
+
     private sealed class CapturingLogger : ILogger<IntelligenceWorkerService>
     {
         public List<string> Messages { get; } = [];
