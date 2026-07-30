@@ -98,6 +98,9 @@ public sealed class AiObservatoryApiFactory : WebApplicationFactory<Program>, IA
         return client;
     }
 
+    /// <summary>Client carrying no API key.</summary>
+    public HttpClient CreateAnonymousClient() => CreateClient();
+
     /// <summary>Client carrying the admin key — required for every write.</summary>
     public HttpClient CreateAdminClient()
     {
