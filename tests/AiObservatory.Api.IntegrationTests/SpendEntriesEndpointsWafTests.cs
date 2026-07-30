@@ -207,6 +207,36 @@ public class SpendEntriesEndpointsWafTests(AiObservatoryApiFactory factory)
     }
 
     [Fact]
+    public async Task MissingOccurredOnIsRejectedInsteadOfWritingTheDefaultDate()
+    {
+        using var client = factory.CreateAdminClient();
+        var ct = TestContext.Current.CancellationToken;
+        var (categoryId, vendorId) = await SeedCatalogAsync(client);
+
+        var response = await client.PostAsJsonAsync(
+            "/api/spend/entries",
+            new[]
+            {
+                new
+                {
+                    VendorId = vendorId,
+                    CategoryId = categoryId,
+                    Amount = 1m,
+                    Currency = "GBP",
+                    Source = "Portal",
+                },
+            },
+            ct
+        );
+        var result = (await response.Content.ReadFromJsonAsync<JsonElement>(ct))
+            .EnumerateArray()
+            .Single();
+
+        result.GetProperty("status").GetString().Should().Be("rejected");
+        result.GetProperty("reason").GetString().Should().Contain("OccurredOn");
+    }
+
+    [Fact]
     public async Task ManualEntriesAreNeverDeduplicated()
     {
         using var client = factory.CreateAdminClient();
