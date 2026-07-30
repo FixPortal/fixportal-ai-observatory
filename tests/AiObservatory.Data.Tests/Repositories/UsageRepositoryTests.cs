@@ -136,6 +136,82 @@ public class UsageRepositoryTests : IAsyncLifetime
     }
 
     [Fact]
+    public async Task ConcurrentRecordEventStoresAndAggregatesTheSharedKeyOnce()
+    {
+        var ct = TestContext.Current.CancellationToken;
+        var options = new DbContextOptionsBuilder<AiObservatoryDbContext>()
+            .UseNpgsql(_connStr, o => o.UseNodaTime())
+            .Options;
+        await using var firstContext = new AiObservatoryDbContext(options);
+        await using var secondContext = new AiObservatoryDbContext(options);
+        var firstRepository = new UsageRepository(firstContext);
+        var secondRepository = new UsageRepository(secondContext);
+
+        static UsageEvent NewEvent() =>
+            new()
+            {
+                Provider = Provider.OpenAI,
+                OccurredAt = Instant.FromUtc(2026, 6, 2, 10, 0),
+                IngestedAt = Instant.FromUtc(2026, 6, 2, 10, 1),
+                Model = "gpt-5.4",
+                InputTokens = 100,
+                OutputTokens = 50,
+                CostUsd = 0.01m,
+                EventKey = "openai:2026-06-02:gpt-5.4",
+            };
+
+        await using var gateConnection = new NpgsqlConnection(_connStr);
+        await gateConnection.OpenAsync(ct);
+        await using var gateTransaction = await gateConnection.BeginTransactionAsync(ct);
+        await using (var command = gateConnection.CreateCommand())
+        {
+            command.CommandText = """LOCK TABLE "UsageEvents" IN SHARE MODE""";
+            await command.ExecuteNonQueryAsync(ct);
+        }
+
+        var first = firstRepository.RecordEventAsync(NewEvent(), ct);
+        var second = secondRepository.RecordEventAsync(NewEvent(), ct);
+        await WaitForBlockedInsertsAsync(gateConnection, ct);
+        await gateTransaction.CommitAsync(ct);
+
+        var results = await Task.WhenAll(first, second);
+
+        results.Should().ContainSingle(r => !r.IsDuplicate);
+        results.Should().ContainSingle(r => r.IsDuplicate);
+        results[0].EventId.Should().Be(results[1].EventId);
+        (await _ctx.UsageEvents.AsNoTracking().CountAsync(ct)).Should().Be(1);
+        var aggregate = await _ctx.DailyAggregates.AsNoTracking().SingleAsync(ct);
+        aggregate.InputTokens.Should().Be(100);
+        aggregate.RequestCount.Should().Be(1);
+    }
+
+    private static async Task WaitForBlockedInsertsAsync(
+        NpgsqlConnection connection,
+        CancellationToken ct
+    )
+    {
+        using var timeout = CancellationTokenSource.CreateLinkedTokenSource(ct);
+        timeout.CancelAfter(TimeSpan.FromSeconds(30));
+
+        while (true)
+        {
+            await using var command = connection.CreateCommand();
+            command.CommandText = """
+                SELECT count(*)
+                FROM pg_locks locks
+                JOIN pg_class tables ON tables.oid = locks.relation
+                WHERE tables.relname = 'UsageEvents' AND NOT locks.granted
+                """;
+            if (Convert.ToInt32(await command.ExecuteScalarAsync(timeout.Token)) == 2)
+            {
+                return;
+            }
+
+            await Task.Delay(10, timeout.Token);
+        }
+    }
+
+    [Fact]
     public async Task PatchEventCost_updates_event_and_aggregate()
     {
         var ct = TestContext.Current.CancellationToken;
