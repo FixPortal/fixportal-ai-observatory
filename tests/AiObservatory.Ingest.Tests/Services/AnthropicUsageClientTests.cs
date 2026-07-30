@@ -1,4 +1,5 @@
 using System.Net;
+using System.Text.Json;
 using AiObservatory.Data.Pricing;
 using AiObservatory.Ingest.Services.Anthropic;
 using AwesomeAssertions;
@@ -202,5 +203,44 @@ public class AnthropicUsageClientTests
             sut.GetUsageAsync(new LocalDate(2026, 7, 1), TestContext.Current.CancellationToken);
 
         await act.Should().ThrowAsync<HttpRequestException>();
+    }
+
+    [Fact]
+    public async Task GetUsageAsync_ThrowsWhenInputTokensAreMissing()
+    {
+        var json = """
+            {
+              "data": [
+                {
+                  "starting_at": "2026-07-01T00:00:00Z",
+                  "ending_at": "2026-07-02T00:00:00Z",
+                  "results": [
+                    {
+                      "model": "claude-sonnet-5",
+                      "output_tokens": 10,
+                      "cache_read_input_tokens": 0,
+                      "cache_creation_input_tokens": 0
+                    }
+                  ]
+                }
+              ],
+              "has_more": false,
+              "next_page": null
+            }
+            """;
+        using var http = new HttpClient(new StubHandler(json))
+        {
+            BaseAddress = new Uri("https://api.anthropic.com"),
+        };
+        var sut = new AnthropicUsageClient(
+            http,
+            NullLogger<AnthropicUsageClient>.Instance,
+            Options.Create(TestPricing)
+        );
+
+        var act = () =>
+            sut.GetUsageAsync(new LocalDate(2026, 7, 1), TestContext.Current.CancellationToken);
+
+        await act.Should().ThrowAsync<JsonException>();
     }
 }

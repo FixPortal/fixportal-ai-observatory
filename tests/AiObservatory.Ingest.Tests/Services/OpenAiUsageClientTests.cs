@@ -1,4 +1,5 @@
 using System.Net;
+using System.Text.Json;
 using AiObservatory.Ingest.Services.OpenAi;
 using AwesomeAssertions;
 using Microsoft.Extensions.Logging.Abstractions;
@@ -194,5 +195,47 @@ public class OpenAiUsageClientTests
             );
 
         await act.Should().ThrowAsync<HttpRequestException>();
+    }
+
+    [Fact]
+    public async Task GetDailyUsageAsync_ThrowsWhenInputTokensAreMissing()
+    {
+        var json = """
+            {
+              "data": [
+                {
+                  "start_time": 1782864000,
+                  "end_time": 1782950400,
+                  "results": [
+                    {
+                      "model": "gpt-5.4",
+                      "output_tokens": 10,
+                      "input_cached_tokens": 0,
+                      "num_model_requests": 1
+                    }
+                  ]
+                }
+              ],
+              "has_more": false,
+              "next_page": null
+            }
+            """;
+        using var http = new HttpClient(new StubHandler(json))
+        {
+            BaseAddress = new Uri("https://api.openai.com"),
+        };
+        var sut = new OpenAiUsageClient(
+            http,
+            NullLogger<OpenAiUsageClient>.Instance,
+            Options.Create(TestPricing)
+        );
+
+        var act = () =>
+            sut.GetDailyUsageAsync(
+                new LocalDate(2026, 7, 1),
+                TestContext.Current.CancellationToken
+            );
+
+        await act.Should().ThrowAsync<JsonException>();
     }
 }
