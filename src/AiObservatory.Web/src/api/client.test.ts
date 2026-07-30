@@ -10,6 +10,7 @@ vi.mock('../auth/msal', () => msalMock)
 import {
   getAggregates, ApiError,
   createSpendCategory, patchSpendCategory, createSpendVendor, patchSpendVendor,
+  SPEND_SOURCE_VALUES,
 } from './client'
 
 function mockFetchOnce(status: number, body: unknown = []) {
@@ -84,6 +85,10 @@ beforeEach(() => {
 
 afterEach(() => {
   vi.unstubAllGlobals()
+})
+
+test('spend-source values match the backend enum wire contract', () => {
+  expect(SPEND_SOURCE_VALUES).toEqual(['manual', 'csv', 'portal', 'api'])
 })
 
 describe('authHeaders precedence: Entra > URL viewer key > self-host key > none', () => {
