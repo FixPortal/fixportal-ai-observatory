@@ -19,6 +19,8 @@ public class PromptBuilderTests
                 Model = "claude-opus-4-8",
                 InputTokens = 10_000,
                 OutputTokens = 2_000,
+                CacheReadTokens = 1_234,
+                CacheWriteTokens = 56,
                 CostUsd = 5.00m,
                 RequestCount = 10,
             },
@@ -58,7 +60,7 @@ public class PromptBuilderTests
         prompt.Should().Contain("£6.00"); // total API spend, converted to GBP
         prompt.Should().NotContain("$"); // never report in dollars
         prompt.Should().Contain("claude-opus-4-8");
-        prompt.Should().Contain("cache");
+        prompt.Should().Contain(", Cache: 1234 read, 56 write");
     }
 
     [Fact]

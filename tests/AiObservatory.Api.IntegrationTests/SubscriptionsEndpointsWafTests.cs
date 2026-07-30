@@ -97,11 +97,15 @@ public class SubscriptionsEndpointsWafTests(AiObservatoryApiFactory factory)
 
         var response = await client.PostAsJsonAsync(
             "/api/subscriptions",
-            ValidBody(),
+            ValidBody(provider: "openai"),
             TestContext.Current.CancellationToken
         );
 
         response.StatusCode.Should().Be(HttpStatusCode.Created);
+        var subscription = await response.Content.ReadFromJsonAsync<SubscriptionResponse>(
+            TestContext.Current.CancellationToken
+        );
+        subscription!.Provider.Should().Be("openai");
     }
 
     [Fact]
@@ -150,5 +154,5 @@ public class SubscriptionsEndpointsWafTests(AiObservatoryApiFactory factory)
         response.StatusCode.Should().Be(HttpStatusCode.OK);
     }
 
-    private sealed record SubscriptionResponse(Guid Id);
+    private sealed record SubscriptionResponse(Guid Id, string Provider);
 }
