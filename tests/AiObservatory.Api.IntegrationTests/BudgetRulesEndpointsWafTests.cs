@@ -53,4 +53,23 @@ public class BudgetRulesEndpointsWafTests(AiObservatoryApiFactory factory)
 
         response.StatusCode.Should().Be(HttpStatusCode.Created);
     }
+
+    [Fact]
+    public async Task PostBudgetRule_WhenPeriodIsAnOrdinal_ReturnsBadRequest()
+    {
+        using var client = factory.CreateAdminClient();
+
+        var response = await client.PostAsJsonAsync(
+            "/api/budget-rules",
+            new
+            {
+                Provider = (string?)null,
+                Period = 0,
+                ThresholdUsd = 25m,
+            },
+            TestContext.Current.CancellationToken
+        );
+
+        response.StatusCode.Should().Be(HttpStatusCode.BadRequest);
+    }
 }
