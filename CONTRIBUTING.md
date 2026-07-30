@@ -30,10 +30,44 @@ cd src/AiObservatory.Web && npm install && npm run dev
 
 Run the full local check — CI runs the same and must pass before a merge:
 
-```bash
-dotnet test                              # all .NET tests
-cd src/AiObservatory.Web && npm test     # Vitest unit tests
-npm run doctor                           # React Doctor diagnostics
+```powershell
+dotnet tool restore
+```
+
+```powershell
+dotnet csharpier check .
+```
+
+```powershell
+dotnet format AiObservatory.slnx analyzers --verify-no-changes --no-restore
+```
+
+```powershell
+dotnet build AiObservatory.slnx --configuration Release --no-restore
+```
+
+```powershell
+dotnet test AiObservatory.slnx --configuration Release --no-build
+```
+
+```powershell
+cd src\AiObservatory.Web
+```
+
+```powershell
+npm run lint
+```
+
+```powershell
+npm test
+```
+
+```powershell
+npm run build
+```
+
+```powershell
+npm run doctor
 ```
 
 The .NET tests need a PostgreSQL instance; the README shows a one-line Docker
