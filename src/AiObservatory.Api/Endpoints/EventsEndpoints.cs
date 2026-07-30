@@ -118,7 +118,7 @@ public static class EventsEndpoints
                     .CreateLogger("AiObservatory.Api.Pricing")
                     .LogWarning(
                         "No Anthropic pricing entry for model '{Model}' on {UsageDate}; using fallback rates. Add an entry to pricing.anthropic.json.",
-                        model,
+                        SanitizeLogValue(model),
                         usageDate
                     );
             }
@@ -227,6 +227,9 @@ public static class EventsEndpoints
                 }
             );
     }
+
+    internal static string SanitizeLogValue(string value) =>
+        value.Replace('\r', ' ').Replace('\n', ' ');
 }
 
 public record UsageEventRequest(
