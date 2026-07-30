@@ -86,28 +86,22 @@ public class ProviderPollingWorkerService(
 
     private void LogEnabledArms()
     {
-        try
-        {
-            using var scope = scopeFactory.CreateScope();
-            var sp = scope.ServiceProvider;
-            logger.LogInformation(
-                "Provider polling arms — Anthropic: {AnthropicState}, Copilot: {CopilotState}, "
-                    + "Google: {GoogleState}, OpenAI: {OpenAiState}, GitHub: {GitHubState}",
-                State<AnthropicIngestionService>(sp),
-                State<CopilotIngestionService>(sp),
-                State<GoogleIngestionService>(sp),
-                State<OpenAiIngestionService>(sp),
-                State<GitHubIngestionService>(sp)
-            );
-        }
-        catch (Exception ex)
-        {
-            logger.LogWarning(ex, "Provider polling worker could not determine enabled arms");
-        }
+        using var scope = scopeFactory.CreateScope();
+        var services = scope.ServiceProvider.GetRequiredService<IServiceProviderIsService>();
+        logger.LogInformation(
+            "Provider polling arms — Anthropic: {AnthropicState}, Copilot: {CopilotState}, "
+                + "Google: {GoogleState}, OpenAI: {OpenAiState}, GitHub: {GitHubState}",
+            State<AnthropicIngestionService>(services),
+            State<CopilotIngestionService>(services),
+            State<GoogleIngestionService>(services),
+            State<OpenAiIngestionService>(services),
+            State<GitHubIngestionService>(services)
+        );
     }
 
-    private static string State<TService>(IServiceProvider sp)
-        where TService : class => sp.GetService<TService>() is null ? "NOT CONFIGURED" : "enabled";
+    private static string State<TService>(IServiceProviderIsService services)
+        where TService : class =>
+        services.IsService(typeof(TService)) ? "enabled" : "NOT CONFIGURED";
 
     private async Task RunPollAsync(IReadOnlyList<LocalDate> dates, CancellationToken ct)
     {

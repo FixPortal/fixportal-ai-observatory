@@ -10,22 +10,30 @@ namespace AiObservatory.Ingest.Tests.Services;
 
 public class OpenAiUsageClientTests
 {
+    private static HttpResponseMessage CreateResponse(
+        HttpStatusCode statusCode,
+        string? json = null
+    )
+    {
+        var response = new HttpResponseMessage(statusCode);
+        if (json is not null)
+        {
+            response.Content = new StringContent(
+                json,
+                System.Text.Encoding.UTF8,
+                "application/json"
+            );
+        }
+
+        return response;
+    }
+
     private sealed class StubHandler(string json) : HttpMessageHandler
     {
         protected override Task<HttpResponseMessage> SendAsync(
             HttpRequestMessage request,
             CancellationToken cancellationToken
-        ) =>
-            Task.FromResult(
-                new HttpResponseMessage(HttpStatusCode.OK)
-                {
-                    Content = new StringContent(
-                        json,
-                        System.Text.Encoding.UTF8,
-                        "application/json"
-                    ),
-                }
-            );
+        ) => Task.FromResult(CreateResponse(HttpStatusCode.OK, json));
     }
 
     // Simulates a buggy/never-resolving OpenAI API: has_more is always true and next_page
@@ -49,16 +57,7 @@ public class OpenAiUsageClientTests
                   "next_page": "page-{{RequestCount}}"
                 }
                 """;
-            return Task.FromResult(
-                new HttpResponseMessage(HttpStatusCode.OK)
-                {
-                    Content = new StringContent(
-                        json,
-                        System.Text.Encoding.UTF8,
-                        "application/json"
-                    ),
-                }
-            );
+            return Task.FromResult(CreateResponse(HttpStatusCode.OK, json));
         }
     }
 
@@ -67,7 +66,7 @@ public class OpenAiUsageClientTests
         protected override Task<HttpResponseMessage> SendAsync(
             HttpRequestMessage request,
             CancellationToken cancellationToken
-        ) => Task.FromResult(new HttpResponseMessage(statusCode));
+        ) => Task.FromResult(CreateResponse(statusCode));
     }
 
     private static readonly OpenAiPricingOptions TestPricing = new()
