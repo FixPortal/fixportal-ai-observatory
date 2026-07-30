@@ -28,6 +28,44 @@ public class AnthropicUsageClientTests
             );
     }
 
+    private sealed class NeverResolvingHandler : HttpMessageHandler
+    {
+        public int RequestCount { get; private set; }
+
+        protected override Task<HttpResponseMessage> SendAsync(
+            HttpRequestMessage request,
+            CancellationToken cancellationToken
+        )
+        {
+            RequestCount++;
+            var json = $$"""
+                {
+                  "data": [],
+                  "has_more": true,
+                  "next_page": "page-{{RequestCount}}"
+                }
+                """;
+            return Task.FromResult(
+                new HttpResponseMessage(HttpStatusCode.OK)
+                {
+                    Content = new StringContent(
+                        json,
+                        System.Text.Encoding.UTF8,
+                        "application/json"
+                    ),
+                }
+            );
+        }
+    }
+
+    private sealed class StatusHandler(HttpStatusCode statusCode) : HttpMessageHandler
+    {
+        protected override Task<HttpResponseMessage> SendAsync(
+            HttpRequestMessage request,
+            CancellationToken cancellationToken
+        ) => Task.FromResult(new HttpResponseMessage(statusCode));
+    }
+
     private static readonly AnthropicPricingOptions TestPricing = new()
     {
         Pricing =
@@ -119,5 +157,50 @@ public class AnthropicUsageClientTests
         var records = await sut.GetUsageAsync(date, TestContext.Current.CancellationToken);
 
         records.Single().CostUsd.Should().Be(18.0m); // fallback: $3 input + $15 output per 1M tokens
+    }
+
+    [Fact]
+    public async Task GetUsageAsync_WhenHasMoreNeverResolves_StopsAtMaxPages()
+    {
+        using var handler = new NeverResolvingHandler();
+        using var http = new HttpClient(handler, disposeHandler: false)
+        {
+            BaseAddress = new Uri("https://api.anthropic.com"),
+        };
+        var sut = new AnthropicUsageClient(
+            http,
+            NullLogger<AnthropicUsageClient>.Instance,
+            Options.Create(TestPricing)
+        );
+
+        var records = await sut.GetUsageAsync(
+            new LocalDate(2026, 7, 1),
+            TestContext.Current.CancellationToken
+        );
+
+        records.Should().BeEmpty();
+        handler.RequestCount.Should().Be(100);
+    }
+
+    [Theory]
+    [InlineData(HttpStatusCode.Unauthorized)]
+    [InlineData(HttpStatusCode.TooManyRequests)]
+    [InlineData(HttpStatusCode.InternalServerError)]
+    public async Task GetUsageAsync_ThrowsWhenTheProviderReturnsAnError(HttpStatusCode statusCode)
+    {
+        using var http = new HttpClient(new StatusHandler(statusCode))
+        {
+            BaseAddress = new Uri("https://api.anthropic.com"),
+        };
+        var sut = new AnthropicUsageClient(
+            http,
+            NullLogger<AnthropicUsageClient>.Instance,
+            Options.Create(TestPricing)
+        );
+
+        var act = () =>
+            sut.GetUsageAsync(new LocalDate(2026, 7, 1), TestContext.Current.CancellationToken);
+
+        await act.Should().ThrowAsync<HttpRequestException>();
     }
 }
