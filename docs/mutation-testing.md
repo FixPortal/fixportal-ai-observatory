@@ -25,20 +25,29 @@ repository root and Stryker discovers *every* test project that references
 against every mutant, whatever `test-projects` says. Run from the unit test project and it
 uses that project alone.
 
-The difference, same config otherwise:
+The difference, same config otherwise, as measured in July 2026:
 
 | Invocation | Tests in the lane | Runtime |
 |---|---|---|
-| From repository root | 246 | >55 min (timed out) |
-| From `tests/AiObservatory.Api.Tests` | 133 | ~40s |
+| From repository root | 246 (unit + integration) | >55 min (timed out) |
+| From `tests/AiObservatory.Api.Tests` | 133 (unit only) | ~40s |
 
-The one-line check is Stryker's own startup log:
+**Do not use those test counts as the regression check.** They were a usable tell only while
+the unit project was small; it has since grown past 240 tests on its own (see *What the score
+means now*), so "how many tests" no longer distinguishes a correct run from a broken one, and
+the two numbers will keep converging.
 
-```text
-[INF] Number of tests found: 133 for project .../AiObservatory.Api.csproj.
+Check the **runtime and the per-mutant cost** instead — a correct run is seconds per mutant at
+worst, a broken one is tens of seconds. Stryker's startup log reports the count, and the
+`Number of tests found` line is still the right place to look; what matters is whether it is in
+the neighbourhood of `AiObservatory.Api.Tests`' own test count, which you can get from:
+
+```bash
+dotnet test tests/AiObservatory.Api.Tests --list-tests
 ```
 
-**246 means this has regressed.** Check it first whenever the run slows down.
+If the lane holds materially more tests than that project has, the integration project has been
+pulled in and this has regressed. Check it first whenever the run slows down.
 
 ## The test-project split is what makes that possible
 
@@ -103,12 +112,53 @@ decision. The globs cover the surfaces where a silent wrong answer costs money o
 data — FX conversion, billed spend and its idempotency keys, the ledger write path, and the
 auth filters.
 
-**Expect a low score, and read it correctly.** It is ~19%, against ~49% when the whole API
-was mutated with integration tests in the lane. That is not a regression in test quality;
-those two numbers measure different things. Most of the scoped mutants now report
-`NoCoverage` — the money paths are covered by integration tests, which are deliberately not
-in this lane. The honest reading is "the unit tests do not exercise the money paths", which
-is worth knowing and was previously hidden behind integration coverage.
+### What the score means now
+
+**Currently ~50% (2026-07-30), up from ~19%.** The ~19% was an honest reading of a real gap:
+most scoped mutants reported `NoCoverage` because the money paths — FX conversion, the GitHub
+billing sync, the ledger's own validation — were exercised only by integration tests, which
+are deliberately not in this lane. That gap has now been closed where it can be, by unit tests
+that take the services directly rather than through HTTP:
+
+- `GitHubBillingSyncServiceTests` — the product/vendor/category map, per-(month, product, SKU)
+  aggregation, the open-month upsert, and every skip decision (missing catalog row,
+  unresolvable rate, rounds-to-zero, rejected save).
+- `SpendEntryValidationTests` / `SpendCatalogValidationTests` — the two validators every
+  charge and catalog row passes through.
+- `FxRateProviderTests` — both rate paths, including the uncached-fallback retry.
+- `GitHubBillingDateConverterTests` — the month marker each charge is filed under.
+
+Doing this needed two things worth knowing about:
+
+- **`Microsoft.EntityFrameworkCore.InMemory` in the unit project.** Not a database: no server,
+  no container, nothing to connect to, microseconds per mutant. It is what makes a service
+  taking a `DbContext` mutation-testable at all. It does **not** enforce check constraints or
+  unique indexes, so anything asserting on those still belongs in the integration project.
+  `ArchitectureTests.Unit_test_project_must_not_reference_database_or_host_packages` documents
+  why it is not on the forbidden list.
+- **A few validators are `internal` rather than `private`,** with `InternalsVisibleTo` on the
+  API project — `SpendEntriesEndpoints.Validate`, `SpendCatalogEndpoints.Slug`/`ValidateName`/
+  `ValidateColorVar`. Reaching them through the HTTP pipeline would put them in the
+  integration project, outside this lane. Same precedent as
+  `GitHubActivityEndpoints.ComputeSuccessRate`.
+
+**The remainder is structural, not a backlog.** Of the ~195 mutants still `NoCoverage`:
+
+| File | Mutants | Why |
+|---|---:|---|
+| `SpendCatalogEndpoints.cs` | 93 | private async HTTP handler bodies |
+| `SpendEntriesEndpoints.cs` | 75 | private async HTTP handler bodies |
+| `GitHubBillingRegistration.cs` | 25 | DI wiring |
+
+Those handler bodies are covered — by the WAF tests in the integration project, which this
+lane deliberately excludes. Chasing them here would mean either booting a host (which is what
+made the run time out in the first place) or refactoring endpoints for testability, and
+neither buys a better engineering decision.
+
+Most surviving mutants are string literals and removed log statements, which are only killable
+by asserting on log text. One is genuinely equivalent: `isNew = true` on the insert path is
+unobservable because `Aggregate` guarantees one line per entry key per run, so no later line in
+the same run can collide with it.
 
 ## Reading a slow run
 

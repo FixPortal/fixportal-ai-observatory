@@ -126,6 +126,15 @@ public class ArchitectureTests
         // (ForwardedHeadersConfigTests) is a genuine unit test. It is Mvc.Testing —
         // WebApplicationFactory, which boots the real composition root — and the database
         // packages that mark a test as belonging in the integration project.
+        //
+        // Microsoft.EntityFrameworkCore.InMemory is deliberately NOT here either, for the same
+        // reason as TestHost: it is in-process with no server, no container and nothing to
+        // connect to, so it costs a mutant microseconds. It is what lets the money paths that
+        // take a DbContext (GitHubBillingSyncService) be mutated at all. What this rule is
+        // really protecting is "no external service, no host boot" — a provider that opens a
+        // connection (Npgsql) or a fixture that starts one (Testcontainers) still belongs in
+        // the integration project, and so does anything asserting on a check constraint or a
+        // unique index, which this provider does not enforce.
         var forbidden = new[] { "Npgsql", "Testcontainers", "Microsoft.AspNetCore.Mvc.Testing" };
 
         var offenders = typeof(ArchitectureTests)
