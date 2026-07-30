@@ -195,6 +195,11 @@ public static class SpendEntriesEndpoints
         source = SpendSource.Manual;
         currency = "GBP";
 
+        if (req.OccurredOn == default)
+        {
+            return "OccurredOn is required";
+        }
+
         if (!vendorIds.Contains(req.VendorId))
         {
             return $"Unknown VendorId: {req.VendorId}";
