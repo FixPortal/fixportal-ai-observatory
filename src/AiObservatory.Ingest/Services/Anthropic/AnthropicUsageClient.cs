@@ -88,12 +88,19 @@ public class AnthropicUsageClient(
         // results[] array; the bucket itself carries only the time window.
         foreach (var result in bucket.Results ?? [])
         {
+            if (result.InputTokens is null || result.OutputTokens is null)
+            {
+                throw new JsonException(
+                    "Anthropic usage result is missing input_tokens or output_tokens."
+                );
+            }
+
             var model = result.Model ?? "unknown";
             var costUsd = ComputeCost(
                 model,
                 date,
-                result.InputTokens,
-                result.OutputTokens,
+                result.InputTokens.Value,
+                result.OutputTokens.Value,
                 result.CacheReadInputTokens,
                 result.CacheCreationInputTokens
             );
@@ -102,8 +109,8 @@ public class AnthropicUsageClient(
                 new AnthropicUsageRecord(
                     Date: date,
                     Model: model,
-                    InputTokens: result.InputTokens,
-                    OutputTokens: result.OutputTokens,
+                    InputTokens: result.InputTokens.Value,
+                    OutputTokens: result.OutputTokens.Value,
                     CacheReadTokens: result.CacheReadInputTokens,
                     CacheWriteTokens: result.CacheCreationInputTokens,
                     CostUsd: costUsd,
@@ -173,8 +180,8 @@ public class AnthropicUsageClient(
 
     private sealed record AnthropicUsageResult(
         string? Model,
-        long InputTokens,
-        long OutputTokens,
+        long? InputTokens,
+        long? OutputTokens,
         long CacheReadInputTokens,
         long CacheCreationInputTokens
     );

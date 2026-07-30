@@ -66,33 +66,7 @@ public class OpenAiUsageClient(
 
             foreach (var bucket in response?.Data ?? [])
             {
-                foreach (var result in bucket.Results ?? [])
-                {
-                    if (string.IsNullOrEmpty(result.Model))
-                    {
-                        continue;
-                    }
-
-                    var cost = ComputeCost(
-                        result.Model,
-                        date,
-                        result.InputTokens,
-                        result.OutputTokens,
-                        result.InputCachedTokens
-                    );
-
-                    allRecords.Add(
-                        new OpenAiUsageRecord(
-                            Date: date,
-                            Model: result.Model,
-                            InputTokens: result.InputTokens,
-                            OutputTokens: result.OutputTokens,
-                            CachedInputTokens: result.InputCachedTokens,
-                            CostUsd: cost,
-                            RawJson: JsonSerializer.Serialize(result, options)
-                        )
-                    );
-                }
+                AddBucketRecords(bucket, date, options, allRecords);
             }
 
             hasMore = response?.HasMore == true && !string.IsNullOrEmpty(response.NextPage);
@@ -100,6 +74,46 @@ public class OpenAiUsageClient(
         }
 
         return allRecords;
+    }
+
+    private void AddBucketRecords(
+        OpenAiUsageBucket bucket,
+        LocalDate date,
+        JsonSerializerOptions options,
+        ICollection<OpenAiUsageRecord> records
+    )
+    {
+        foreach (var result in bucket.Results ?? [])
+        {
+            if (string.IsNullOrEmpty(result.Model))
+            {
+                continue;
+            }
+            if (result.InputTokens is null || result.OutputTokens is null)
+            {
+                throw new JsonException(
+                    "OpenAI usage result is missing input_tokens or output_tokens."
+                );
+            }
+
+            records.Add(
+                new OpenAiUsageRecord(
+                    Date: date,
+                    Model: result.Model,
+                    InputTokens: result.InputTokens.Value,
+                    OutputTokens: result.OutputTokens.Value,
+                    CachedInputTokens: result.InputCachedTokens,
+                    CostUsd: ComputeCost(
+                        result.Model,
+                        date,
+                        result.InputTokens.Value,
+                        result.OutputTokens.Value,
+                        result.InputCachedTokens
+                    ),
+                    RawJson: JsonSerializer.Serialize(result, options)
+                )
+            );
+        }
     }
 
     private decimal ComputeCost(
@@ -160,8 +174,8 @@ public class OpenAiUsageClient(
 
     private sealed record OpenAiUsageResult(
         string? Model,
-        long InputTokens,
-        long OutputTokens,
+        long? InputTokens,
+        long? OutputTokens,
         long InputCachedTokens,
         long NumModelRequests
     );
