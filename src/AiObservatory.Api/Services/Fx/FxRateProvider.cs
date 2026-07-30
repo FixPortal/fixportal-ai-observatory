@@ -23,7 +23,10 @@ public class FxRateProvider(HttpClient http, IMemoryCache cache, ILogger<FxRateP
         }
 
         var rate = await FetchGbpRateAsync(
-            "https://api.frankfurter.dev/v1/latest?from=USD&to=GBP", "USD->GBP", ct);
+            "https://api.frankfurter.dev/v1/latest?from=USD&to=GBP",
+            "USD->GBP",
+            ct
+        );
 
         if (rate <= 0m)
         {
@@ -47,7 +50,10 @@ public class FxRateProvider(HttpClient http, IMemoryCache cache, ILogger<FxRateP
     /// currency must fail the write rather than freeze an undetectably wrong rate.
     /// </exception>
     public virtual async Task<decimal> GetGbpRateOnAsync(
-        string currency, LocalDate on, CancellationToken ct = default)
+        string currency,
+        LocalDate on,
+        CancellationToken ct = default
+    )
     {
         var code = currency.ToUpperInvariant();
         if (code == "GBP")
@@ -67,13 +73,21 @@ public class FxRateProvider(HttpClient http, IMemoryCache cache, ILogger<FxRateP
         }
 
         var rate = await FetchGbpRateAsync(
-            $"https://api.frankfurter.dev/v1/{dateStr}?from={code}&to=GBP", $"{code}->GBP on {dateStr}", ct);
+            $"https://api.frankfurter.dev/v1/{dateStr}?from={code}&to=GBP",
+            $"{code}->GBP on {dateStr}",
+            ct
+        );
 
         if (rate <= 0m)
         {
             if (code == "USD")
             {
-                logger.LogWarning("FX {Code}->GBP missing for {Date}; using fallback {Fallback}", code, dateStr, Fallback);
+                logger.LogWarning(
+                    "FX {Code}->GBP missing for {Date}; using fallback {Fallback}",
+                    code,
+                    dateStr,
+                    Fallback
+                );
                 return Fallback; // not cached — allow a retry
             }
 
@@ -81,7 +95,7 @@ public class FxRateProvider(HttpClient http, IMemoryCache cache, ILogger<FxRateP
             throw new FxUnavailableException(code, on);
         }
 
-        cache.Set(key, rate);   // no expiry: a past date's rate cannot change
+        cache.Set(key, rate); // no expiry: a past date's rate cannot change
         return rate;
     }
 

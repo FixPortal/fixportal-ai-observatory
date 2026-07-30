@@ -20,9 +20,7 @@ public sealed class PostgresTestAssemblyFixture : IAsyncLifetime
             return;
         }
 
-        _container = new PostgreSqlBuilder("postgres:17")
-            .WithDatabase("postgres")
-            .Build();
+        _container = new PostgreSqlBuilder("postgres:17").WithDatabase("postgres").Build();
 
         try
         {
@@ -31,7 +29,9 @@ public sealed class PostgresTestAssemblyFixture : IAsyncLifetime
         catch (Exception ex)
         {
             throw new InvalidOperationException(
-                "Failed to start PostgreSQL for tests. Start Docker or set TEST_DB_CONNECTION.", ex);
+                "Failed to start PostgreSQL for tests. Start Docker or set TEST_DB_CONNECTION.",
+                ex
+            );
         }
         Environment.SetEnvironmentVariable("TEST_DB_CONNECTION", _container.GetConnectionString());
     }

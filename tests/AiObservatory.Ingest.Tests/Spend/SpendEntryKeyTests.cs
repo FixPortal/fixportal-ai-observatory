@@ -32,16 +32,28 @@ public class SpendEntryKeyTests
     }
 
     [Theory]
-    [InlineData("anthropic",  80.00, "GBP", "Top-up",  true)]
-    [InlineData("coderabbit", 80.00, "GBP", "Top-up",  false)]
-    [InlineData("anthropic",  80.01, "GBP", "Top-up",  false)]
-    [InlineData("anthropic",  80.00, "USD", "Top-up",  false)]
-    [InlineData("anthropic",  80.00, "GBP", "Credits", false)]
+    [InlineData("anthropic", 80.00, "GBP", "Top-up", true)]
+    [InlineData("coderabbit", 80.00, "GBP", "Top-up", false)]
+    [InlineData("anthropic", 80.01, "GBP", "Top-up", false)]
+    [InlineData("anthropic", 80.00, "USD", "Top-up", false)]
+    [InlineData("anthropic", 80.00, "GBP", "Credits", false)]
     public void EveryInputParticipatesInTheKey(
-        string vendor, double amount, string currency, string description, bool shouldMatch)
+        string vendor,
+        double amount,
+        string currency,
+        string description,
+        bool shouldMatch
+    )
     {
         var baseline = SpendEntryKey.Derive(Date, "anthropic", 80.00m, "GBP", "Top-up", 0);
-        var candidate = SpendEntryKey.Derive(Date, vendor, (decimal)amount, currency, description, 0);
+        var candidate = SpendEntryKey.Derive(
+            Date,
+            vendor,
+            (decimal)amount,
+            currency,
+            description,
+            0
+        );
 
         if (shouldMatch)
         {
@@ -74,7 +86,14 @@ public class SpendEntryKeyTests
     [Fact]
     public void KeyFitsTheColumn()
     {
-        var key = SpendEntryKey.Derive(Date, new string('v', 500), 80.00m, "GBP", new string('d', 500), 0);
+        var key = SpendEntryKey.Derive(
+            Date,
+            new string('v', 500),
+            80.00m,
+            "GBP",
+            new string('d', 500),
+            0
+        );
 
         key.Length.Should().BeLessThanOrEqualTo(200, "EntryKey is varchar(200)");
     }
@@ -83,8 +102,17 @@ public class SpendEntryKeyTests
     public void FieldsContainingPipesDoNotCollide()
     {
         var withPipeInCurrency = SpendEntryKey.Derive(Date, "anthropic", 80.00m, "USD|a", "b", 0);
-        var withPipeInDescription = SpendEntryKey.Derive(Date, "anthropic", 80.00m, "USD", "a|b", 0);
+        var withPipeInDescription = SpendEntryKey.Derive(
+            Date,
+            "anthropic",
+            80.00m,
+            "USD",
+            "a|b",
+            0
+        );
 
-        withPipeInCurrency.Should().NotBe(withPipeInDescription, "length-prefixing prevents pipe collisions");
+        withPipeInCurrency
+            .Should()
+            .NotBe(withPipeInDescription, "length-prefixing prevents pipe collisions");
     }
 }

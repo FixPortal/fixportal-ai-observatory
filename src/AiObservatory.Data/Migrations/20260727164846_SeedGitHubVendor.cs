@@ -25,8 +25,25 @@ namespace AiObservatory.Data.Migrations
         {
             migrationBuilder.InsertData(
                 table: "SpendVendors",
-                columns: new[] { "Id", "ArchivedAt", "DefaultCategoryId", "DisplayName", "Key", "Provider" },
-                values: new object[] { new Guid("22222222-2222-2222-2222-222222222212"), null, new Guid("11111111-1111-1111-1111-111111111104"), "GitHub", "github", null });
+                columns: new[]
+                {
+                    "Id",
+                    "ArchivedAt",
+                    "DefaultCategoryId",
+                    "DisplayName",
+                    "Key",
+                    "Provider",
+                },
+                values: new object[]
+                {
+                    new Guid("22222222-2222-2222-2222-222222222212"),
+                    null,
+                    new Guid("11111111-1111-1111-1111-111111111104"),
+                    "GitHub",
+                    "github",
+                    null,
+                }
+            );
         }
 
         /// <inheritdoc />
@@ -40,7 +57,8 @@ namespace AiObservatory.Data.Migrations
             // in practice it is referenced within a day of deploying.
             throw new NotSupportedException(
                 "SeedGitHubVendor cannot be rolled back once spend entries reference the "
-              + "seeded vendor. Roll forward, or archive the vendor instead.");
+                    + "seeded vendor. Roll forward, or archive the vendor instead."
+            );
         }
     }
 }

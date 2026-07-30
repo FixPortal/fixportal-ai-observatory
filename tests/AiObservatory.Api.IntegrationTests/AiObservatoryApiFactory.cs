@@ -6,7 +6,7 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Npgsql;
 
-namespace AiObservatory.Api.Tests;
+namespace AiObservatory.Api.IntegrationTests;
 
 /// <summary>
 /// WebApplicationFactory harness for AiObservatory.Api. Boots the real Program.cs
@@ -30,6 +30,7 @@ public sealed class AiObservatoryApiFactory : WebApplicationFactory<Program>, IA
 
     public string Environment { get; set; } = Environments.Development;
     public string? ApiKeyOverride { get; set; } = AdminKey;
+
     // Mutable test-fixture seam used by consumers even though the in-repo tests keep the default.
     // ReSharper disable once AutoPropertyCanBeMadeGetOnly.Global
     public string? ReadOnlyKeyOverride { get; set; } = ReadOnlyKey;
@@ -40,11 +41,12 @@ public sealed class AiObservatoryApiFactory : WebApplicationFactory<Program>, IA
 
     public AiObservatoryApiFactory()
     {
-        var baseConn = System.Environment.GetEnvironmentVariable("TEST_DB_CONNECTION")
+        var baseConn =
+            System.Environment.GetEnvironmentVariable("TEST_DB_CONNECTION")
             ?? "Host=localhost;Database=aiobs_test;Username=postgres;Password=postgres";
         _connectionString = new NpgsqlConnectionStringBuilder(baseConn)
         {
-            Database = $"aiobs_test_api_{Guid.NewGuid():N}"
+            Database = $"aiobs_test_api_{Guid.NewGuid():N}",
         }.ConnectionString;
     }
 
@@ -74,9 +76,14 @@ public sealed class AiObservatoryApiFactory : WebApplicationFactory<Program>, IA
         // construction) and strictly before builder.Build() triggers Program.Main.
         System.Environment.SetEnvironmentVariable("ASPNETCORE_ENVIRONMENT", Environment);
         System.Environment.SetEnvironmentVariable(
-            "DB_CONNECTION", _dbConnectionOverrideSet ? _dbConnectionOverride : _connectionString);
+            "DB_CONNECTION",
+            _dbConnectionOverrideSet ? _dbConnectionOverride : _connectionString
+        );
         System.Environment.SetEnvironmentVariable("OBSERVATORY_API_KEY", ApiKeyOverride);
-        System.Environment.SetEnvironmentVariable("OBSERVATORY_READONLY_API_KEY", ReadOnlyKeyOverride);
+        System.Environment.SetEnvironmentVariable(
+            "OBSERVATORY_READONLY_API_KEY",
+            ReadOnlyKeyOverride
+        );
         System.Environment.SetEnvironmentVariable("SWA_ORIGIN", "https://example.test");
         return base.CreateHost(builder);
     }

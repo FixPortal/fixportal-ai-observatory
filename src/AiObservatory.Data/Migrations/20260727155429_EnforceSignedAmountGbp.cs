@@ -25,7 +25,8 @@ namespace AiObservatory.Data.Migrations
             migrationBuilder.AddCheckConstraint(
                 name: "CK_SpendEntry_AmountGbp_SameSign",
                 table: "SpendEntries",
-                sql: "\"Amount\" * \"AmountGbp\" > 0");
+                sql: "\"Amount\" * \"AmountGbp\" > 0"
+            );
         }
 
         /// <inheritdoc />
@@ -33,7 +34,8 @@ namespace AiObservatory.Data.Migrations
         {
             migrationBuilder.DropCheckConstraint(
                 name: "CK_SpendEntry_AmountGbp_SameSign",
-                table: "SpendEntries");
+                table: "SpendEntries"
+            );
         }
     }
 }

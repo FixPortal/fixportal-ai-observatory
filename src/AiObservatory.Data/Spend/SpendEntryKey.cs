@@ -24,22 +24,25 @@ public static class SpendEntryKey
         decimal amount,
         string currency,
         string? description,
-        int occurrence)
+        int occurrence
+    )
     {
         // Invariant culture throughout: a machine with a comma decimal separator must not
         // derive a different key for the same charge. Each field is length-prefixed, so no
         // combination of field contents can produce the same material as a different
         // combination, pipes or other characters in the values included.
-        var material = string.Join('|',
+        var material = string.Join(
+            '|',
             Part(occurredOn.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture)),
             Part(vendorKey.Trim().ToLowerInvariant()),
             Part(amount.ToString("F4", CultureInfo.InvariantCulture)),
             Part(currency.Trim().ToUpperInvariant()),
             Part((description ?? string.Empty).Trim()),
-            Part(occurrence.ToString(CultureInfo.InvariantCulture)));
+            Part(occurrence.ToString(CultureInfo.InvariantCulture))
+        );
 
         var hash = SHA256.HashData(Encoding.UTF8.GetBytes(material));
-        return Convert.ToHexStringLower(hash);   // 64 chars, comfortably inside varchar(200)
+        return Convert.ToHexStringLower(hash); // 64 chars, comfortably inside varchar(200)
     }
 
     private static string Part(string s) => $"{s.Length}:{s}";

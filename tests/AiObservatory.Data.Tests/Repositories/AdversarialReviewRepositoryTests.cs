@@ -22,12 +22,13 @@ public class AdversarialReviewRepositoryTests : IAsyncLifetime
 
     public async ValueTask InitializeAsync()
     {
-        var baseConn = Environment.GetEnvironmentVariable("TEST_DB_CONNECTION")
+        var baseConn =
+            Environment.GetEnvironmentVariable("TEST_DB_CONNECTION")
             ?? "Host=localhost;Database=aiobs_test;Username=postgres;Password=postgres";
         // Keep the "_test" marker (DisposeAsync only drops a _test database).
         _connStr = new NpgsqlConnectionStringBuilder(baseConn)
         {
-            Database = $"aiobs_test_adversarial_{Guid.NewGuid():N}"
+            Database = $"aiobs_test_adversarial_{Guid.NewGuid():N}",
         }.ConnectionString;
         var options = new DbContextOptionsBuilder<AiObservatoryDbContext>()
             .UseNpgsql(_connStr, o => o.UseNodaTime())
@@ -56,24 +57,44 @@ public class AdversarialReviewRepositoryTests : IAsyncLifetime
     }
 
     private static AdversarialReviewRun Run(
-        string runId, string reviewer, string role, string model,
-        decimal costUsd = 0.10m, int raised = 3, int accepted = 2, int? chunkCount = null,
-        Instant? recordedAt = null) => new()
+        string runId,
+        string reviewer,
+        string role,
+        string model,
+        decimal costUsd = 0.10m,
+        int raised = 3,
+        int accepted = 2,
+        int? chunkCount = null,
+        Instant? recordedAt = null
+    ) =>
+        new()
         {
-            RunId = runId, Reviewer = reviewer, Role = role, Model = model,
-            IssuesRaised = role == "judge" ? 0 : raised, IssuesAccepted = role == "judge" ? 0 : accepted,
-            CostUsd = costUsd, ReviewDurationMs = 1000, ChunkCount = chunkCount,
-            RecordedAt = recordedAt ?? Instant.FromUtc(2026, 6, 27, 12, 0)
+            RunId = runId,
+            Reviewer = reviewer,
+            Role = role,
+            Model = model,
+            IssuesRaised = role == "judge" ? 0 : raised,
+            IssuesAccepted = role == "judge" ? 0 : accepted,
+            CostUsd = costUsd,
+            ReviewDurationMs = 1000,
+            ChunkCount = chunkCount,
+            RecordedAt = recordedAt ?? Instant.FromUtc(2026, 6, 27, 12, 0),
         };
 
     [Fact]
     public async Task Four_participants_sharing_one_runId_all_persist()
     {
         var ct = TestContext.Current.CancellationToken;
-        var id1 = await _repo.RecordRunAsync(Run("R1", "anthropic", "reviewer", "claude-sonnet-4-6"), ct);
+        var id1 = await _repo.RecordRunAsync(
+            Run("R1", "anthropic", "reviewer", "claude-sonnet-4-6"),
+            ct
+        );
         var id2 = await _repo.RecordRunAsync(Run("R1", "google", "reviewer", "gemini-2.5-pro"), ct);
         var id3 = await _repo.RecordRunAsync(Run("R1", "openai", "reviewer", "gpt-5.4"), ct);
-        var id4 = await _repo.RecordRunAsync(Run("R1", "anthropic", "judge", "claude-opus-4-8"), ct);
+        var id4 = await _repo.RecordRunAsync(
+            Run("R1", "anthropic", "judge", "claude-opus-4-8"),
+            ct
+        );
 
         id1.Existed.Should().BeFalse();
         id2.Existed.Should().BeFalse();
@@ -87,10 +108,31 @@ public class AdversarialReviewRepositoryTests : IAsyncLifetime
     {
         var ct = TestContext.Current.CancellationToken;
         var first = await _repo.RecordRunAsync(
-            Run("R2", "anthropic", "reviewer", "claude-sonnet-4-6", costUsd: 0m, raised: 0, accepted: 0), ct);
+            Run(
+                "R2",
+                "anthropic",
+                "reviewer",
+                "claude-sonnet-4-6",
+                costUsd: 0m,
+                raised: 0,
+                accepted: 0
+            ),
+            ct
+        );
         // Backfill the same participant with real numbers and a chunk count.
         var second = await _repo.RecordRunAsync(
-            Run("R2", "anthropic", "reviewer", "claude-sonnet-4-6", costUsd: 1.50m, raised: 9, accepted: 6, chunkCount: 4), ct);
+            Run(
+                "R2",
+                "anthropic",
+                "reviewer",
+                "claude-sonnet-4-6",
+                costUsd: 1.50m,
+                raised: 9,
+                accepted: 6,
+                chunkCount: 4
+            ),
+            ct
+        );
 
         first.Existed.Should().BeFalse();
         second.Existed.Should().BeTrue();

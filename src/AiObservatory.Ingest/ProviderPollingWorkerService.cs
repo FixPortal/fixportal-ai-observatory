@@ -15,7 +15,8 @@ public class ProviderPollingWorkerService(
     IServiceScopeFactory scopeFactory,
     IClock clock,
     ILogger<ProviderPollingWorkerService> logger,
-    IOptions<IngestOptions> options) : BackgroundService
+    IOptions<IngestOptions> options
+) : BackgroundService
 {
     // After this many consecutive failed polls a provider's log is escalated so persistent
     // breakage (misconfig, expired credential) stops reading as ordinary transient noise.
@@ -59,16 +60,23 @@ public class ProviderPollingWorkerService(
         var interval = options.Value.PollingInterval;
         var lookbackDays = Math.Max(1, options.Value.LookbackDays);
         logger.LogInformation(
-            "Provider polling worker started (interval: {Interval}, lookback: {LookbackDays}d)", interval, lookbackDays);
+            "Provider polling worker started (interval: {Interval}, lookback: {LookbackDays}d)",
+            interval,
+            lookbackDays
+        );
         while (!stoppingToken.IsCancellationRequested)
         {
             var yesterday = clock.GetCurrentInstant().InUtc().Date.PlusDays(-1);
             // Trailing window ending yesterday, oldest first.
-            var dates = Enumerable.Range(0, lookbackDays)
+            var dates = Enumerable
+                .Range(0, lookbackDays)
                 .Select(offset => yesterday.PlusDays(-(lookbackDays - 1 - offset)))
                 .ToList();
             await RunPollAsync(dates, stoppingToken);
-            Interlocked.Exchange(ref _lastCycleCompletedTicks, clock.GetCurrentInstant().ToUnixTimeTicks());
+            Interlocked.Exchange(
+                ref _lastCycleCompletedTicks,
+                clock.GetCurrentInstant().ToUnixTimeTicks()
+            );
             Interlocked.Increment(ref _cyclesCompleted);
             await Task.Delay(interval, stoppingToken);
         }
@@ -79,32 +87,62 @@ public class ProviderPollingWorkerService(
         await using var scope = scopeFactory.CreateAsyncScope();
         var sp = scope.ServiceProvider;
 
-        await TryIngestAsync<AnthropicIngestionService>(sp, "Anthropic",
-            (s, d) => s.IngestAsync(d, ct), dates, ct);
-        await TryIngestAsync<CopilotIngestionService>(sp, "Copilot",
-            (s, d) => s.IngestAsync(d, ct), dates, ct);
-        await TryIngestAsync<GoogleIngestionService>(sp, "Google",
-            (s, d) => s.IngestAsync(d, ct), dates, ct);
-        await TryIngestAsync<OpenAiIngestionService>(sp, "OpenAI",
-            (s, d) => s.IngestAsync(d, ct), dates, ct);
+        await TryIngestAsync<AnthropicIngestionService>(
+            sp,
+            "Anthropic",
+            (s, d) => s.IngestAsync(d, ct),
+            dates,
+            ct
+        );
+        await TryIngestAsync<CopilotIngestionService>(
+            sp,
+            "Copilot",
+            (s, d) => s.IngestAsync(d, ct),
+            dates,
+            ct
+        );
+        await TryIngestAsync<GoogleIngestionService>(
+            sp,
+            "Google",
+            (s, d) => s.IngestAsync(d, ct),
+            dates,
+            ct
+        );
+        await TryIngestAsync<OpenAiIngestionService>(
+            sp,
+            "OpenAI",
+            (s, d) => s.IngestAsync(d, ct),
+            dates,
+            ct
+        );
         // GitHub takes a since-date RANGE per call (unlike the other providers'
         // single-day calls), so it's invoked once per cycle with the earliest
         // lookback date, not once per date in `dates`.
-        await TryIngestAsync<GitHubIngestionService>(sp, "GitHub",
+        await TryIngestAsync<GitHubIngestionService>(
+            sp,
+            "GitHub",
             async (s, _) =>
             {
                 var failed = await s.IngestSinceAsync(dates[0], ct);
                 if (failed > 0 && failed == options.Value.GitHubRepoAllowlist.Length)
                 {
-                    throw new InvalidOperationException($"All {failed} configured GitHub repos failed to ingest this cycle");
+                    throw new InvalidOperationException(
+                        $"All {failed} configured GitHub repos failed to ingest this cycle"
+                    );
                 }
-            }, [dates[0]], ct);
+            },
+            [dates[0]],
+            ct
+        );
     }
 
     private async Task TryIngestAsync<TService>(
-        IServiceProvider sp, string name,
-        Func<TService, LocalDate, Task> action, IReadOnlyList<LocalDate> dates,
-        CancellationToken ct)
+        IServiceProvider sp,
+        string name,
+        Func<TService, LocalDate, Task> action,
+        IReadOnlyList<LocalDate> dates,
+        CancellationToken ct
+    )
         where TService : class
     {
         var service = sp.GetService<TService>();
@@ -130,9 +168,12 @@ public class ProviderPollingWorkerService(
             _consecutiveFailures[name] = count;
             if (count >= ConsecutiveFailureAlertThreshold)
             {
-                logger.LogError(ex,
+                logger.LogError(
+                    ex,
                     "{Provider} ingestion has failed {Count} consecutive polls — provider may be misconfigured or unavailable",
-                    name, count);
+                    name,
+                    count
+                );
             }
             else
             {

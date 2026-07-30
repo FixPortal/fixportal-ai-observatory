@@ -4,9 +4,13 @@ namespace AiObservatory.Api;
 // sensitive than the rest of the read surface (project/repo names reveal what
 // Chris is working on, unlike aggregate spend). The readonly viewer key is
 // never accepted here — only an Entra-authenticated user or the admin key.
-public class AdminOnlyApiKeyEndpointFilter(IConfiguration config, IHostEnvironment env) : IEndpointFilter
+public class AdminOnlyApiKeyEndpointFilter(IConfiguration config, IHostEnvironment env)
+    : IEndpointFilter
 {
-    public async ValueTask<object?> InvokeAsync(EndpointFilterInvocationContext context, EndpointFilterDelegate next)
+    public async ValueTask<object?> InvokeAsync(
+        EndpointFilterInvocationContext context,
+        EndpointFilterDelegate next
+    )
     {
         if (context.HttpContext.User.Identity?.IsAuthenticated == true)
         {
@@ -21,8 +25,10 @@ public class AdminOnlyApiKeyEndpointFilter(IConfiguration config, IHostEnvironme
             return env.IsDevelopment() ? await next(context) : Results.StatusCode(503);
         }
 
-        if (!context.HttpContext.Request.Headers.TryGetValue("X-Observatory-Key", out var provided)
-            || !ApiKeyComparer.FixedTimeEquals(provided.ToString(), expectedAdmin))
+        if (
+            !context.HttpContext.Request.Headers.TryGetValue("X-Observatory-Key", out var provided)
+            || !ApiKeyComparer.FixedTimeEquals(provided.ToString(), expectedAdmin)
+        )
         {
             return Results.Unauthorized();
         }

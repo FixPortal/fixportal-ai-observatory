@@ -23,7 +23,9 @@ namespace AiObservatory.Ingest.Services.Google;
 public class GoogleBillingClient(HttpClient http, string billingAccountId) : IGoogleBillingClient
 {
     public async Task<IReadOnlyList<GoogleBillingRecord>> GetDailySpendAsync(
-        LocalDate date, CancellationToken ct = default)
+        LocalDate date,
+        CancellationToken ct = default
+    )
     {
         var dateStr = LocalDatePattern.Iso.Format(date);
 
@@ -32,34 +34,54 @@ public class GoogleBillingClient(HttpClient http, string billingAccountId) : IGo
         {
             credential = credential.CreateScoped("https://www.googleapis.com/auth/cloud-platform");
         }
-        var token = await credential.UnderlyingCredential.GetAccessTokenForRequestAsync(cancellationToken: ct);
+        var token = await credential.UnderlyingCredential.GetAccessTokenForRequestAsync(
+            cancellationToken: ct
+        );
 
-        using var request = new HttpRequestMessage(HttpMethod.Get, $"/v1/{billingAccountId}/reports?startDate={dateStr}&endDate={dateStr}");
-        request.Headers.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", token);
+        using var request = new HttpRequestMessage(
+            HttpMethod.Get,
+            $"/v1/{billingAccountId}/reports?startDate={dateStr}&endDate={dateStr}"
+        );
+        request.Headers.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue(
+            "Bearer",
+            token
+        );
 
         using var responseMessage = await http.SendAsync(request, ct);
         responseMessage.EnsureSuccessStatusCode();
 
-        var response = await responseMessage.Content.ReadFromJsonAsync<GoogleBillingApiResponse>(cancellationToken: ct);
+        var response = await responseMessage.Content.ReadFromJsonAsync<GoogleBillingApiResponse>(
+            cancellationToken: ct
+        );
 
-        return response?.CostData?.Select(d => new GoogleBillingRecord(
-            ServiceDescription: d.ServiceId ?? "unknown",
-            Model: MapServiceToModel(d.ServiceId),
-            CostUsd: d.Cost,
-            RawJson: JsonSerializer.Serialize(d)
-        )).ToList() ?? [];
+        return response
+                ?.CostData?.Select(d => new GoogleBillingRecord(
+                    ServiceDescription: d.ServiceId ?? "unknown",
+                    Model: MapServiceToModel(d.ServiceId),
+                    CostUsd: d.Cost,
+                    RawJson: JsonSerializer.Serialize(d)
+                ))
+                .ToList()
+            ?? [];
     }
 
-    private static string MapServiceToModel(string? serviceId) => serviceId switch
-    {
-        string s when s.Contains("gemini-2.5-pro", StringComparison.OrdinalIgnoreCase) => "gemini-2.5-pro",
-        string s when s.Contains("gemini-2.5-flash", StringComparison.OrdinalIgnoreCase) => "gemini-2.5-flash",
-        string s when s.Contains("gemini-2.0-flash", StringComparison.OrdinalIgnoreCase) => "gemini-2.0-flash",
-        string s when s.Contains("gemini-1.5-pro", StringComparison.OrdinalIgnoreCase) => "gemini-1.5-pro",
-        string s when s.Contains("gemini-1.5-flash", StringComparison.OrdinalIgnoreCase) => "gemini-1.5-flash",
-        _ => serviceId ?? "unknown"
-    };
+    private static string MapServiceToModel(string? serviceId) =>
+        serviceId switch
+        {
+            string s when s.Contains("gemini-2.5-pro", StringComparison.OrdinalIgnoreCase) =>
+                "gemini-2.5-pro",
+            string s when s.Contains("gemini-2.5-flash", StringComparison.OrdinalIgnoreCase) =>
+                "gemini-2.5-flash",
+            string s when s.Contains("gemini-2.0-flash", StringComparison.OrdinalIgnoreCase) =>
+                "gemini-2.0-flash",
+            string s when s.Contains("gemini-1.5-pro", StringComparison.OrdinalIgnoreCase) =>
+                "gemini-1.5-pro",
+            string s when s.Contains("gemini-1.5-flash", StringComparison.OrdinalIgnoreCase) =>
+                "gemini-1.5-flash",
+            _ => serviceId ?? "unknown",
+        };
 
     private sealed record GoogleBillingApiResponse(List<GoogleCostEntry>? CostData);
+
     private sealed record GoogleCostEntry(string? ServiceId, decimal Cost);
 }

@@ -22,9 +22,13 @@ public sealed class InsightGenerator(
     InsightResponseParser parser,
     Fx.FxRateProvider fx,
     BudgetAlertService budgetAlertService,
-    IClock clock) : IInsightGenerator
+    IClock clock
+) : IInsightGenerator
 {
-    public async Task<int> GenerateForDateAsync(LocalDate analysisDate, CancellationToken ct = default)
+    public async Task<int> GenerateForDateAsync(
+        LocalDate analysisDate,
+        CancellationToken ct = default
+    )
     {
         if (!client.IsConfigured)
         {

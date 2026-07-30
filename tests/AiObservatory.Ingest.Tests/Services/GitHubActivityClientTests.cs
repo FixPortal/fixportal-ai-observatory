@@ -9,11 +9,15 @@ namespace AiObservatory.Ingest.Tests.Services;
 
 public class GitHubActivityClientTests
 {
-    private sealed class StubHandler(Func<HttpRequestMessage, HttpResponseMessage> respond) : HttpMessageHandler
+    private sealed class StubHandler(Func<HttpRequestMessage, HttpResponseMessage> respond)
+        : HttpMessageHandler
     {
         public List<string> RequestedUrls { get; } = [];
 
-        protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
+        protected override Task<HttpResponseMessage> SendAsync(
+            HttpRequestMessage request,
+            CancellationToken cancellationToken
+        )
         {
             RequestedUrls.Add(request.RequestUri!.ToString());
             return Task.FromResult(respond(request));
@@ -30,8 +34,14 @@ public class GitHubActivityClientTests
         return response;
     }
 
-    private static GitHubActivityClient CreateSut(StubHandler handler, ILogger<GitHubActivityClient>? logger = null) =>
-        new(new HttpClient(handler) { BaseAddress = new Uri("https://api.github.com") }, logger ?? NullLogger<GitHubActivityClient>.Instance);
+    private static GitHubActivityClient CreateSut(
+        StubHandler handler,
+        ILogger<GitHubActivityClient>? logger = null
+    ) =>
+        new(
+            new HttpClient(handler) { BaseAddress = new Uri("https://api.github.com") },
+            logger ?? NullLogger<GitHubActivityClient>.Instance
+        );
 
     // Captures Warning-level log entries so pagination-cap tests can assert the
     // client actually logged, without wrestling ILogger's generic Log<TState> overload
@@ -40,11 +50,18 @@ public class GitHubActivityClientTests
     {
         public List<string> Warnings { get; } = [];
 
-        public IDisposable? BeginScope<TState>(TState state) where TState : notnull => null;
+        public IDisposable? BeginScope<TState>(TState state)
+            where TState : notnull => null;
 
         public bool IsEnabled(LogLevel logLevel) => true;
 
-        public void Log<TState>(LogLevel logLevel, EventId eventId, TState state, Exception? exception, Func<TState, Exception?, string> formatter)
+        public void Log<TState>(
+            LogLevel logLevel,
+            EventId eventId,
+            TState state,
+            Exception? exception,
+            Func<TState, Exception?, string> formatter
+        )
         {
             if (logLevel == LogLevel.Warning)
             {
@@ -60,16 +77,24 @@ public class GitHubActivityClientTests
         {
             if (req.RequestUri!.ToString().Contains("/reviews"))
             {
-                return JsonResponse("""[{"submitted_at":"2026-07-01T12:00:00Z"},{"submitted_at":"2026-07-01T14:00:00Z"}]""");
+                return JsonResponse(
+                    """[{"submitted_at":"2026-07-01T12:00:00Z"},{"submitted_at":"2026-07-01T14:00:00Z"}]"""
+                );
             }
-            return JsonResponse("""
+            return JsonResponse(
+                """
                 [{"number":42,"title":"Add feature","user":{"login":"chris"},"state":"open",
                   "created_at":"2026-07-01T09:00:00Z","updated_at":"2026-07-01T09:00:00Z","merged_at":null,"closed_at":null}]
-                """);
+                """
+            );
         });
         var sut = CreateSut(handler);
 
-        var result = await sut.GetPullRequestsAsync("fix-portal/example", new LocalDate(2026, 7, 1), TestContext.Current.CancellationToken);
+        var result = await sut.GetPullRequestsAsync(
+            "fix-portal/example",
+            new LocalDate(2026, 7, 1),
+            TestContext.Current.CancellationToken
+        );
 
         var pr = result.Single();
         pr.Number.Should().Be(42);
@@ -88,14 +113,20 @@ public class GitHubActivityClientTests
             {
                 return JsonResponse("[]");
             }
-            return JsonResponse("""
+            return JsonResponse(
+                """
                 [{"number":1,"title":"WIP","user":{"login":"chris"},"state":"open",
                   "created_at":"2026-07-01T09:00:00Z","updated_at":"2026-07-01T09:00:00Z","merged_at":null,"closed_at":null}]
-                """);
+                """
+            );
         });
         var sut = CreateSut(handler);
 
-        var result = await sut.GetPullRequestsAsync("fix-portal/example", new LocalDate(2026, 7, 1), TestContext.Current.CancellationToken);
+        var result = await sut.GetPullRequestsAsync(
+            "fix-portal/example",
+            new LocalDate(2026, 7, 1),
+            TestContext.Current.CancellationToken
+        );
 
         result.Single().ReviewCount.Should().Be(0);
         result.Single().FirstReviewAt.Should().BeNull();
@@ -109,16 +140,24 @@ public class GitHubActivityClientTests
             if (req.RequestUri!.ToString().Contains("/reviews"))
             {
                 // Pending reviews omit submitted_at entirely.
-                return JsonResponse("""[{"submitted_at":null},{"submitted_at":"2026-07-01T14:00:00Z"}]""");
+                return JsonResponse(
+                    """[{"submitted_at":null},{"submitted_at":"2026-07-01T14:00:00Z"}]"""
+                );
             }
-            return JsonResponse("""
+            return JsonResponse(
+                """
                 [{"number":42,"title":"Add feature","user":{"login":"chris"},"state":"open",
                   "created_at":"2026-07-01T09:00:00Z","updated_at":"2026-07-01T09:00:00Z","merged_at":null,"closed_at":null}]
-                """);
+                """
+            );
         });
         var sut = CreateSut(handler);
 
-        var result = await sut.GetPullRequestsAsync("fix-portal/example", new LocalDate(2026, 7, 1), TestContext.Current.CancellationToken);
+        var result = await sut.GetPullRequestsAsync(
+            "fix-portal/example",
+            new LocalDate(2026, 7, 1),
+            TestContext.Current.CancellationToken
+        );
 
         var pr = result.Single();
         pr.ReviewCount.Should().Be(2);
@@ -138,15 +177,27 @@ public class GitHubActivityClientTests
             // Page 1: a full 100-row page (forces a second page request); page 2: short page, stop.
             if (req.RequestUri!.ToString().Contains("page=2"))
             {
-                return JsonResponse("""[{"number":2,"title":"b","user":{"login":"chris"},"state":"open","created_at":"2026-07-01T09:00:00Z","updated_at":"2026-07-01T09:00:00Z","merged_at":null,"closed_at":null}]""");
+                return JsonResponse(
+                    """[{"number":2,"title":"b","user":{"login":"chris"},"state":"open","created_at":"2026-07-01T09:00:00Z","updated_at":"2026-07-01T09:00:00Z","merged_at":null,"closed_at":null}]"""
+                );
             }
-            var page = string.Join(",", Enumerable.Range(1, 100).Select(i =>
-                $$"""{"number":{{i}},"title":"t","user":{"login":"chris"},"state":"open","created_at":"2026-07-01T09:00:00Z","updated_at":"2026-07-01T09:00:00Z","merged_at":null,"closed_at":null}"""));
+            var page = string.Join(
+                ",",
+                Enumerable
+                    .Range(1, 100)
+                    .Select(i =>
+                        $$"""{"number":{{i}},"title":"t","user":{"login":"chris"},"state":"open","created_at":"2026-07-01T09:00:00Z","updated_at":"2026-07-01T09:00:00Z","merged_at":null,"closed_at":null}"""
+                    )
+            );
             return JsonResponse($"[{page}]");
         });
         var sut = CreateSut(handler);
 
-        var result = await sut.GetPullRequestsAsync("fix-portal/example", new LocalDate(2026, 7, 1), TestContext.Current.CancellationToken);
+        var result = await sut.GetPullRequestsAsync(
+            "fix-portal/example",
+            new LocalDate(2026, 7, 1),
+            TestContext.Current.CancellationToken
+        );
 
         result.Should().HaveCount(101); // 100 from page 1 + 1 from page 2
     }
@@ -168,14 +219,20 @@ public class GitHubActivityClientTests
             {
                 return JsonResponse("""[]""");
             }
-            return JsonResponse("""
+            return JsonResponse(
+                """
                 [{"number":99,"title":"Old PR, recently merged","user":{"login":"chris"},"state":"closed",
                   "created_at":"2026-05-01T09:00:00Z","updated_at":"2026-07-01T10:00:00Z","merged_at":"2026-07-01T10:00:00Z","closed_at":"2026-07-01T10:00:00Z"}]
-                """);
+                """
+            );
         });
         var sut = CreateSut(handler);
 
-        var result = await sut.GetPullRequestsAsync("fix-portal/example", new LocalDate(2026, 7, 1), TestContext.Current.CancellationToken);
+        var result = await sut.GetPullRequestsAsync(
+            "fix-portal/example",
+            new LocalDate(2026, 7, 1),
+            TestContext.Current.CancellationToken
+        );
 
         var pr = result.Single();
         pr.Number.Should().Be(99);
@@ -191,14 +248,20 @@ public class GitHubActivityClientTests
             {
                 return JsonResponse("[]");
             }
-            return JsonResponse("""
+            return JsonResponse(
+                """
                 [{"number":42,"title":"Add feature","user":{"login":"chris"},"state":"closed",
                   "created_at":"2026-07-01T09:00:00Z","updated_at":"2026-07-01T10:00:00Z","merged_at":"2026-07-01T10:00:00Z","closed_at":"2026-07-01T10:00:00Z"}]
-                """);
+                """
+            );
         });
         var sut = CreateSut(handler);
 
-        var result = await sut.GetPullRequestsAsync("fix-portal/example", new LocalDate(2026, 7, 1), TestContext.Current.CancellationToken);
+        var result = await sut.GetPullRequestsAsync(
+            "fix-portal/example",
+            new LocalDate(2026, 7, 1),
+            TestContext.Current.CancellationToken
+        );
 
         result.Single().State.Should().Be("merged");
     }
@@ -214,14 +277,20 @@ public class GitHubActivityClientTests
             {
                 return JsonResponse("[]");
             }
-            return JsonResponse($$"""
+            return JsonResponse(
+                $$"""
                 [{"number":42,"title":"{{longTitle}}","user":{"login":"{{longAuthor}}"},"state":"open",
                   "created_at":"2026-07-01T09:00:00Z","updated_at":"2026-07-01T10:00:00Z","merged_at":null,"closed_at":null}]
-                """);
+                """
+            );
         });
         var sut = CreateSut(handler);
 
-        var result = await sut.GetPullRequestsAsync("fix-portal/example", new LocalDate(2026, 7, 1), TestContext.Current.CancellationToken);
+        var result = await sut.GetPullRequestsAsync(
+            "fix-portal/example",
+            new LocalDate(2026, 7, 1),
+            TestContext.Current.CancellationToken
+        );
 
         var pr = result.Single();
         pr.Title.Should().HaveLength(500);
@@ -240,21 +309,36 @@ public class GitHubActivityClientTests
             }
             if (url.Contains("/reviews"))
             {
-                var page = string.Join(",", Enumerable.Range(1, 100).Select(_ => """{"submitted_at":"2026-07-01T12:00:00Z"}"""));
+                var page = string.Join(
+                    ",",
+                    Enumerable
+                        .Range(1, 100)
+                        .Select(_ => """{"submitted_at":"2026-07-01T12:00:00Z"}""")
+                );
                 return JsonResponse($"[{page}]");
             }
-            return JsonResponse("""
+            return JsonResponse(
+                """
                 [{"number":42,"title":"Add feature","user":{"login":"chris"},"state":"open",
                   "created_at":"2026-07-01T09:00:00Z","updated_at":"2026-07-01T10:00:00Z","merged_at":null,"closed_at":null}]
-                """);
+                """
+            );
         });
         var sut = CreateSut(handler);
 
-        var result = await sut.GetPullRequestsAsync("fix-portal/example", new LocalDate(2026, 7, 1), TestContext.Current.CancellationToken);
+        var result = await sut.GetPullRequestsAsync(
+            "fix-portal/example",
+            new LocalDate(2026, 7, 1),
+            TestContext.Current.CancellationToken
+        );
 
         result.Single().ReviewCount.Should().Be(101);
-        handler.RequestedUrls.Should().Contain(u => u.Contains("/pulls/42/reviews?per_page=100&page=1"));
-        handler.RequestedUrls.Should().Contain(u => u.Contains("/pulls/42/reviews?per_page=100&page=2"));
+        handler
+            .RequestedUrls.Should()
+            .Contain(u => u.Contains("/pulls/42/reviews?per_page=100&page=1"));
+        handler
+            .RequestedUrls.Should()
+            .Contain(u => u.Contains("/pulls/42/reviews?per_page=100&page=2"));
     }
 
     [Fact]
@@ -266,14 +350,20 @@ public class GitHubActivityClientTests
             {
                 return JsonResponse("[]");
             }
-            return JsonResponse("""
+            return JsonResponse(
+                """
                 [{"number":43,"title":"Abandoned","user":{"login":"chris"},"state":"closed",
                   "created_at":"2026-07-01T09:00:00Z","updated_at":"2026-07-01T10:00:00Z","merged_at":null,"closed_at":"2026-07-01T10:00:00Z"}]
-                """);
+                """
+            );
         });
         var sut = CreateSut(handler);
 
-        var result = await sut.GetPullRequestsAsync("fix-portal/example", new LocalDate(2026, 7, 1), TestContext.Current.CancellationToken);
+        var result = await sut.GetPullRequestsAsync(
+            "fix-portal/example",
+            new LocalDate(2026, 7, 1),
+            TestContext.Current.CancellationToken
+        );
 
         result.Single().State.Should().Be("closed");
     }
@@ -284,7 +374,12 @@ public class GitHubActivityClientTests
         var handler = new StubHandler(_ => JsonResponse("[]", rateLimitRemaining: 10));
         var sut = CreateSut(handler);
 
-        var act = () => sut.GetPullRequestsAsync("fix-portal/example", new LocalDate(2026, 7, 1), TestContext.Current.CancellationToken);
+        var act = () =>
+            sut.GetPullRequestsAsync(
+                "fix-portal/example",
+                new LocalDate(2026, 7, 1),
+                TestContext.Current.CancellationToken
+            );
 
         await act.Should().ThrowAsync<GitHubRateLimitExceededException>();
     }
@@ -295,7 +390,12 @@ public class GitHubActivityClientTests
         var handler = new StubHandler(_ => new HttpResponseMessage(HttpStatusCode.Forbidden));
         var sut = CreateSut(handler);
 
-        var act = () => sut.GetPullRequestsAsync("fix-portal/private-no-access", new LocalDate(2026, 7, 1), TestContext.Current.CancellationToken);
+        var act = () =>
+            sut.GetPullRequestsAsync(
+                "fix-portal/private-no-access",
+                new LocalDate(2026, 7, 1),
+                TestContext.Current.CancellationToken
+            );
 
         await act.Should().ThrowAsync<HttpRequestException>();
     }
@@ -310,13 +410,19 @@ public class GitHubActivityClientTests
             {
                 return JsonResponse("""{"sha":"abc123","stats":{"additions":10,"deletions":2}}""");
             }
-            return JsonResponse("""
+            return JsonResponse(
+                """
                 [{"sha":"abc123","commit":{"author":{"name":"chris","date":"2026-07-01T09:00:00Z"}}}]
-                """);
+                """
+            );
         });
         var sut = CreateSut(handler);
 
-        var result = await sut.GetCommitsAsync("fix-portal/example", new LocalDate(2026, 7, 1), TestContext.Current.CancellationToken);
+        var result = await sut.GetCommitsAsync(
+            "fix-portal/example",
+            new LocalDate(2026, 7, 1),
+            TestContext.Current.CancellationToken
+        );
 
         var commit = result.Single();
         commit.Sha.Should().Be("abc123");
@@ -337,11 +443,18 @@ public class GitHubActivityClientTests
                 return JsonResponse("""{"sha":"abc123","stats":{"additions":10,"deletions":2}}""");
             }
             return JsonResponse(
-                "[{\"sha\":\"abc123\",\"commit\":{\"author\":{\"name\":\"" + longAuthor + "\",\"date\":\"2026-07-01T09:00:00Z\"}}}]");
+                "[{\"sha\":\"abc123\",\"commit\":{\"author\":{\"name\":\""
+                    + longAuthor
+                    + "\",\"date\":\"2026-07-01T09:00:00Z\"}}}]"
+            );
         });
         var sut = CreateSut(handler);
 
-        var result = await sut.GetCommitsAsync("fix-portal/example", new LocalDate(2026, 7, 1), TestContext.Current.CancellationToken);
+        var result = await sut.GetCommitsAsync(
+            "fix-portal/example",
+            new LocalDate(2026, 7, 1),
+            TestContext.Current.CancellationToken
+        );
 
         result.Single().Author.Should().HaveLength(200);
     }
@@ -359,7 +472,11 @@ public class GitHubActivityClientTests
         });
         var sut = CreateSut(handler);
 
-        await sut.GetCommitsAsync("fix-portal/example", new LocalDate(2026, 7, 1), TestContext.Current.CancellationToken);
+        await sut.GetCommitsAsync(
+            "fix-portal/example",
+            new LocalDate(2026, 7, 1),
+            TestContext.Current.CancellationToken
+        );
 
         // HttpClient does not URL-encode colons in the request URI passed to GetAsync.
         handler.RequestedUrls.Should().Contain(u => u.Contains("since=2026-07-01T00:00:00Z"));
@@ -368,12 +485,20 @@ public class GitHubActivityClientTests
     [Fact]
     public async Task GetWorkflowRunsAsync_UsesConclusionWhenCompleted()
     {
-        var handler = new StubHandler(_ => JsonResponse("""
-            {"workflow_runs":[{"id":123,"name":"CI","status":"completed","conclusion":"success","created_at":"2026-07-01T09:00:00Z"}]}
-            """));
+        var handler = new StubHandler(_ =>
+            JsonResponse(
+                """
+                {"workflow_runs":[{"id":123,"name":"CI","status":"completed","conclusion":"success","created_at":"2026-07-01T09:00:00Z"}]}
+                """
+            )
+        );
         var sut = CreateSut(handler);
 
-        var result = await sut.GetWorkflowRunsAsync("fix-portal/example", new LocalDate(2026, 7, 1), TestContext.Current.CancellationToken);
+        var result = await sut.GetWorkflowRunsAsync(
+            "fix-portal/example",
+            new LocalDate(2026, 7, 1),
+            TestContext.Current.CancellationToken
+        );
 
         var run = result.Single();
         run.RunId.Should().Be(123);
@@ -384,12 +509,20 @@ public class GitHubActivityClientTests
     [Fact]
     public async Task GetWorkflowRunsAsync_UsesStatusWhenNotYetCompleted()
     {
-        var handler = new StubHandler(_ => JsonResponse("""
-            {"workflow_runs":[{"id":124,"name":"CI","status":"in_progress","conclusion":null,"created_at":"2026-07-01T09:00:00Z"}]}
-            """));
+        var handler = new StubHandler(_ =>
+            JsonResponse(
+                """
+                {"workflow_runs":[{"id":124,"name":"CI","status":"in_progress","conclusion":null,"created_at":"2026-07-01T09:00:00Z"}]}
+                """
+            )
+        );
         var sut = CreateSut(handler);
 
-        var result = await sut.GetWorkflowRunsAsync("fix-portal/example", new LocalDate(2026, 7, 1), TestContext.Current.CancellationToken);
+        var result = await sut.GetWorkflowRunsAsync(
+            "fix-portal/example",
+            new LocalDate(2026, 7, 1),
+            TestContext.Current.CancellationToken
+        );
 
         result.Single().Status.Should().Be("in_progress");
     }
@@ -397,12 +530,20 @@ public class GitHubActivityClientTests
     [Fact]
     public async Task GetWorkflowRunsAsync_WhenNameIsNull_UsesPlaceholder()
     {
-        var handler = new StubHandler(_ => JsonResponse("""
-            {"workflow_runs":[{"id":124,"name":null,"status":"in_progress","conclusion":null,"created_at":"2026-07-01T09:00:00Z"}]}
-            """));
+        var handler = new StubHandler(_ =>
+            JsonResponse(
+                """
+                {"workflow_runs":[{"id":124,"name":null,"status":"in_progress","conclusion":null,"created_at":"2026-07-01T09:00:00Z"}]}
+                """
+            )
+        );
         var sut = CreateSut(handler);
 
-        var result = await sut.GetWorkflowRunsAsync("fix-portal/example", new LocalDate(2026, 7, 1), TestContext.Current.CancellationToken);
+        var result = await sut.GetWorkflowRunsAsync(
+            "fix-portal/example",
+            new LocalDate(2026, 7, 1),
+            TestContext.Current.CancellationToken
+        );
 
         result.Single().WorkflowName.Should().Be("(unnamed)");
     }
@@ -411,12 +552,20 @@ public class GitHubActivityClientTests
     public async Task GetWorkflowRunsAsync_TruncatesExternalStringsToDatabaseLimits()
     {
         var longName = new string('w', 250);
-        var handler = new StubHandler(_ => JsonResponse($$"""
-            {"workflow_runs":[{"id":124,"name":"{{longName}}","status":"in_progress","conclusion":null,"created_at":"2026-07-01T09:00:00Z"}]}
-            """));
+        var handler = new StubHandler(_ =>
+            JsonResponse(
+                $$"""
+                {"workflow_runs":[{"id":124,"name":"{{longName}}","status":"in_progress","conclusion":null,"created_at":"2026-07-01T09:00:00Z"}]}
+                """
+            )
+        );
         var sut = CreateSut(handler);
 
-        var result = await sut.GetWorkflowRunsAsync("fix-portal/example", new LocalDate(2026, 7, 1), TestContext.Current.CancellationToken);
+        var result = await sut.GetWorkflowRunsAsync(
+            "fix-portal/example",
+            new LocalDate(2026, 7, 1),
+            TestContext.Current.CancellationToken
+        );
 
         result.Single().WorkflowName.Should().HaveLength(200);
     }
@@ -427,13 +576,23 @@ public class GitHubActivityClientTests
         // WorkflowRunsPaginationCap is 1000 and PerPage is 100: every page returned here is
         // a full 100-row page, so the client never sees a short page to stop on naturally —
         // only the `page * PerPage >= WorkflowRunsPaginationCap` check (hit at page 10) does.
-        var fullPage = string.Join(",", Enumerable.Range(1, 100).Select(i =>
-            $$"""{"id":{{i}},"name":"CI","status":"completed","conclusion":"success","created_at":"2026-07-01T09:00:00Z"}"""));
+        var fullPage = string.Join(
+            ",",
+            Enumerable
+                .Range(1, 100)
+                .Select(i =>
+                    $$"""{"id":{{i}},"name":"CI","status":"completed","conclusion":"success","created_at":"2026-07-01T09:00:00Z"}"""
+                )
+        );
         var handler = new StubHandler(_ => JsonResponse($$"""{"workflow_runs":[{{fullPage}}]}"""));
         var logger = new CapturingLogger();
         var sut = CreateSut(handler, logger);
 
-        var result = await sut.GetWorkflowRunsAsync("fix-portal/example", new LocalDate(2026, 7, 1), TestContext.Current.CancellationToken);
+        var result = await sut.GetWorkflowRunsAsync(
+            "fix-portal/example",
+            new LocalDate(2026, 7, 1),
+            TestContext.Current.CancellationToken
+        );
 
         result.Should().HaveCount(1000); // 10 pages * 100, then the cap stops it
         // Since every stub response is a full page, a client that refetched page 1 forever
@@ -441,9 +600,15 @@ public class GitHubActivityClientTests
         // stopped at the cap rather than requesting an 11th page.
         foreach (var page in Enumerable.Range(1, 10))
         {
-            handler.RequestedUrls.Should().Contain(u => u.Contains($"page={page}", StringComparison.Ordinal));
+            handler
+                .RequestedUrls.Should()
+                .Contain(u => u.Contains($"page={page}", StringComparison.Ordinal));
         }
-        handler.RequestedUrls.Should().NotContain(u => u.Contains("page=11", StringComparison.Ordinal));
-        logger.Warnings.Should().ContainSingle(w => w.Contains("result cap", StringComparison.OrdinalIgnoreCase));
+        handler
+            .RequestedUrls.Should()
+            .NotContain(u => u.Contains("page=11", StringComparison.Ordinal));
+        logger
+            .Warnings.Should()
+            .ContainSingle(w => w.Contains("result cap", StringComparison.OrdinalIgnoreCase));
     }
 }

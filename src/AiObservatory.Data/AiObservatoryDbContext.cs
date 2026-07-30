@@ -10,24 +10,54 @@ public class AiObservatoryDbContext(DbContextOptions<AiObservatoryDbContext> opt
     // so HasData produces the same INSERT every time a migration is scaffolded -- a
     // random id here would make every future `dotnet ef migrations add` see a phantom
     // diff and try to delete-and-recreate these rows.
-    private static readonly Guid CodeReviewCategoryId = Guid.Parse("11111111-1111-1111-1111-111111111101");
-    private static readonly Guid CreditsCategoryId = Guid.Parse("11111111-1111-1111-1111-111111111102");
+    private static readonly Guid CodeReviewCategoryId = Guid.Parse(
+        "11111111-1111-1111-1111-111111111101"
+    );
+    private static readonly Guid CreditsCategoryId = Guid.Parse(
+        "11111111-1111-1111-1111-111111111102"
+    );
     private static readonly Guid CiCategoryId = Guid.Parse("11111111-1111-1111-1111-111111111103");
-    private static readonly Guid SubscriptionCategoryId = Guid.Parse("11111111-1111-1111-1111-111111111104");
-    private static readonly Guid CloudCategoryId = Guid.Parse("11111111-1111-1111-1111-111111111105");
+    private static readonly Guid SubscriptionCategoryId = Guid.Parse(
+        "11111111-1111-1111-1111-111111111104"
+    );
+    private static readonly Guid CloudCategoryId = Guid.Parse(
+        "11111111-1111-1111-1111-111111111105"
+    );
 
-    private static readonly Guid AnthropicVendorId = Guid.Parse("22222222-2222-2222-2222-222222222201");
-    private static readonly Guid GitHubActionsVendorId = Guid.Parse("22222222-2222-2222-2222-222222222202");
-    private static readonly Guid CodeRabbitVendorId = Guid.Parse("22222222-2222-2222-2222-222222222203");
+    private static readonly Guid AnthropicVendorId = Guid.Parse(
+        "22222222-2222-2222-2222-222222222201"
+    );
+    private static readonly Guid GitHubActionsVendorId = Guid.Parse(
+        "22222222-2222-2222-2222-222222222202"
+    );
+    private static readonly Guid CodeRabbitVendorId = Guid.Parse(
+        "22222222-2222-2222-2222-222222222203"
+    );
     private static readonly Guid GitarVendorId = Guid.Parse("22222222-2222-2222-2222-222222222204");
-    private static readonly Guid MoonshotVendorId = Guid.Parse("22222222-2222-2222-2222-222222222205");
-    private static readonly Guid OpenAiVendorId = Guid.Parse("22222222-2222-2222-2222-222222222206");
-    private static readonly Guid GoogleVendorId = Guid.Parse("22222222-2222-2222-2222-222222222207");
-    private static readonly Guid MicrosoftVendorId = Guid.Parse("22222222-2222-2222-2222-222222222208");
-    private static readonly Guid OpenRouterVendorId = Guid.Parse("22222222-2222-2222-2222-222222222209");
-    private static readonly Guid BlacksmithVendorId = Guid.Parse("22222222-2222-2222-2222-222222222210");
-    private static readonly Guid CopilotVendorId = Guid.Parse("22222222-2222-2222-2222-222222222211");
-    private static readonly Guid GitHubVendorId = Guid.Parse("22222222-2222-2222-2222-222222222212");
+    private static readonly Guid MoonshotVendorId = Guid.Parse(
+        "22222222-2222-2222-2222-222222222205"
+    );
+    private static readonly Guid OpenAiVendorId = Guid.Parse(
+        "22222222-2222-2222-2222-222222222206"
+    );
+    private static readonly Guid GoogleVendorId = Guid.Parse(
+        "22222222-2222-2222-2222-222222222207"
+    );
+    private static readonly Guid MicrosoftVendorId = Guid.Parse(
+        "22222222-2222-2222-2222-222222222208"
+    );
+    private static readonly Guid OpenRouterVendorId = Guid.Parse(
+        "22222222-2222-2222-2222-222222222209"
+    );
+    private static readonly Guid BlacksmithVendorId = Guid.Parse(
+        "22222222-2222-2222-2222-222222222210"
+    );
+    private static readonly Guid CopilotVendorId = Guid.Parse(
+        "22222222-2222-2222-2222-222222222211"
+    );
+    private static readonly Guid GitHubVendorId = Guid.Parse(
+        "22222222-2222-2222-2222-222222222212"
+    );
 
     public DbSet<UsageEvent> UsageEvents => Set<UsageEvent>();
     public DbSet<DailyAggregate> DailyAggregates => Set<DailyAggregate>();
@@ -50,35 +80,52 @@ public class AiObservatoryDbContext(DbContextOptions<AiObservatoryDbContext> opt
         {
             b.Property(e => e.Provider).HasConversion<string>();
             b.Property(e => e.RawPayload).HasColumnType("jsonb");
-            b.HasIndex(e => new { e.Provider, e.Model })
-             .HasFilter("\"Model\" IS NOT NULL");
+            b.HasIndex(e => new { e.Provider, e.Model }).HasFilter("\"Model\" IS NOT NULL");
             b.Property(e => e.EventKey).HasMaxLength(200);
             // EventKey is a unique idempotency key scoped per provider.
             b.HasIndex(e => new { e.Provider, e.EventKey })
-             .IsUnique()
-             .HasFilter("\"EventKey\" IS NOT NULL");
+                .IsUnique()
+                .HasFilter("\"EventKey\" IS NOT NULL");
 
             b.HasIndex(e => e.OccurredAt);
 
             b.ToTable(t =>
             {
-                t.HasCheckConstraint("CK_UsageEvent_InputTokens_NonNegative", "\"InputTokens\" >= 0");
-                t.HasCheckConstraint("CK_UsageEvent_OutputTokens_NonNegative", "\"OutputTokens\" >= 0");
-                t.HasCheckConstraint("CK_UsageEvent_CacheReadTokens_NonNegative", "\"CacheReadTokens\" IS NULL OR \"CacheReadTokens\" >= 0");
-                t.HasCheckConstraint("CK_UsageEvent_CacheWriteTokens_NonNegative", "\"CacheWriteTokens\" IS NULL OR \"CacheWriteTokens\" >= 0");
+                t.HasCheckConstraint(
+                    "CK_UsageEvent_InputTokens_NonNegative",
+                    "\"InputTokens\" >= 0"
+                );
+                t.HasCheckConstraint(
+                    "CK_UsageEvent_OutputTokens_NonNegative",
+                    "\"OutputTokens\" >= 0"
+                );
+                t.HasCheckConstraint(
+                    "CK_UsageEvent_CacheReadTokens_NonNegative",
+                    "\"CacheReadTokens\" IS NULL OR \"CacheReadTokens\" >= 0"
+                );
+                t.HasCheckConstraint(
+                    "CK_UsageEvent_CacheWriteTokens_NonNegative",
+                    "\"CacheWriteTokens\" IS NULL OR \"CacheWriteTokens\" >= 0"
+                );
                 // A subset can be neither negative nor larger than the set it is drawn from:
                 // the five-minute remainder is derived by subtraction, so an over-large 1h
                 // count would silently price part of the write twice.
                 t.HasCheckConstraint(
                     "CK_UsageEvent_CacheWrite1hTokens_WithinCacheWrite",
-                    "\"CacheWrite1hTokens\" IS NULL OR (\"CacheWrite1hTokens\" >= 0 AND \"CacheWrite1hTokens\" <= COALESCE(\"CacheWriteTokens\", 0))");
+                    "\"CacheWrite1hTokens\" IS NULL OR (\"CacheWrite1hTokens\" >= 0 AND \"CacheWrite1hTokens\" <= COALESCE(\"CacheWriteTokens\", 0))"
+                );
                 t.HasCheckConstraint("CK_UsageEvent_CostUsd_NonNegative", "\"CostUsd\" >= 0");
             });
         });
 
         modelBuilder.Entity<DailyAggregate>(b =>
         {
-            b.HasKey(d => new { d.Date, d.Provider, d.Model });
+            b.HasKey(d => new
+            {
+                d.Date,
+                d.Provider,
+                d.Model,
+            });
             b.Property(d => d.Provider).HasConversion<string>();
         });
 
@@ -98,11 +145,47 @@ public class AiObservatoryDbContext(DbContextOptions<AiObservatoryDbContext> opt
             // four — it has no token estimate behind it, so folding it into Subscription
             // would inflate a category that is meant to be comparable against the estimate.
             b.HasData(
-                new SpendCategory { Id = CodeReviewCategoryId, Key = "code-review", DisplayName = "Code Review", ColorVar = "--spend-code-review", SortOrder = 10 },
-                new SpendCategory { Id = CreditsCategoryId, Key = "credits", DisplayName = "Credits", ColorVar = "--spend-credits", SortOrder = 20 },
-                new SpendCategory { Id = CiCategoryId, Key = "ci", DisplayName = "CI", ColorVar = "--spend-ci", SortOrder = 30 },
-                new SpendCategory { Id = SubscriptionCategoryId, Key = "subscription", DisplayName = "Subscription", ColorVar = "--spend-subscription", SortOrder = 40 },
-                new SpendCategory { Id = CloudCategoryId, Key = "cloud", DisplayName = "Cloud", ColorVar = "--spend-cloud", SortOrder = 50 });
+                new SpendCategory
+                {
+                    Id = CodeReviewCategoryId,
+                    Key = "code-review",
+                    DisplayName = "Code Review",
+                    ColorVar = "--spend-code-review",
+                    SortOrder = 10,
+                },
+                new SpendCategory
+                {
+                    Id = CreditsCategoryId,
+                    Key = "credits",
+                    DisplayName = "Credits",
+                    ColorVar = "--spend-credits",
+                    SortOrder = 20,
+                },
+                new SpendCategory
+                {
+                    Id = CiCategoryId,
+                    Key = "ci",
+                    DisplayName = "CI",
+                    ColorVar = "--spend-ci",
+                    SortOrder = 30,
+                },
+                new SpendCategory
+                {
+                    Id = SubscriptionCategoryId,
+                    Key = "subscription",
+                    DisplayName = "Subscription",
+                    ColorVar = "--spend-subscription",
+                    SortOrder = 40,
+                },
+                new SpendCategory
+                {
+                    Id = CloudCategoryId,
+                    Key = "cloud",
+                    DisplayName = "Cloud",
+                    ColorVar = "--spend-cloud",
+                    SortOrder = 50,
+                }
+            );
         });
 
         modelBuilder.Entity<SpendVendor>(b =>
@@ -116,42 +199,127 @@ public class AiObservatoryDbContext(DbContextOptions<AiObservatoryDbContext> opt
             // not hard-deleted, so a hard delete fails loudly instead of silently clearing
             // the default.
             b.HasOne<SpendCategory>()
-             .WithMany()
-             .HasForeignKey(v => v.DefaultCategoryId)
-             .OnDelete(DeleteBehavior.Restrict);
+                .WithMany()
+                .HasForeignKey(v => v.DefaultCategoryId)
+                .OnDelete(DeleteBehavior.Restrict);
 
             // Provider is null for CodeRabbit, Gitar and GitHub Actions -- they have no
             // tokens to meter, which is the entire point of a separate vendor axis (spec §2).
             // Never assign one of these a Provider "helpfully"; that would fabricate a
             // token-estimate comparison that was never possible.
             b.HasData(
-                new SpendVendor { Id = AnthropicVendorId, Key = "anthropic", DisplayName = "Anthropic", Provider = Provider.Anthropic, DefaultCategoryId = CreditsCategoryId },
-                new SpendVendor { Id = GitHubActionsVendorId, Key = "github-actions", DisplayName = "GitHub Actions", Provider = null, DefaultCategoryId = CiCategoryId },
-                new SpendVendor { Id = CodeRabbitVendorId, Key = "coderabbit", DisplayName = "CodeRabbit", Provider = null, DefaultCategoryId = CodeReviewCategoryId },
-                new SpendVendor { Id = GitarVendorId, Key = "gitar", DisplayName = "Gitar", Provider = null, DefaultCategoryId = CodeReviewCategoryId },
-                new SpendVendor { Id = MoonshotVendorId, Key = "moonshot", DisplayName = "Moonshot", Provider = Provider.Moonshot, DefaultCategoryId = SubscriptionCategoryId },
+                new SpendVendor
+                {
+                    Id = AnthropicVendorId,
+                    Key = "anthropic",
+                    DisplayName = "Anthropic",
+                    Provider = Provider.Anthropic,
+                    DefaultCategoryId = CreditsCategoryId,
+                },
+                new SpendVendor
+                {
+                    Id = GitHubActionsVendorId,
+                    Key = "github-actions",
+                    DisplayName = "GitHub Actions",
+                    Provider = null,
+                    DefaultCategoryId = CiCategoryId,
+                },
+                new SpendVendor
+                {
+                    Id = CodeRabbitVendorId,
+                    Key = "coderabbit",
+                    DisplayName = "CodeRabbit",
+                    Provider = null,
+                    DefaultCategoryId = CodeReviewCategoryId,
+                },
+                new SpendVendor
+                {
+                    Id = GitarVendorId,
+                    Key = "gitar",
+                    DisplayName = "Gitar",
+                    Provider = null,
+                    DefaultCategoryId = CodeReviewCategoryId,
+                },
+                new SpendVendor
+                {
+                    Id = MoonshotVendorId,
+                    Key = "moonshot",
+                    DisplayName = "Moonshot",
+                    Provider = Provider.Moonshot,
+                    DefaultCategoryId = SubscriptionCategoryId,
+                },
                 // The five below carry real billed spend but had no vendor row, so none of it
                 // could be recorded. OpenAI in particular was an obvious omission from the
                 // original seed. Provider is set only where tokens are genuinely metered:
                 // Microsoft/Azure, OpenRouter and Blacksmith have no Provider enum member and
                 // no token estimate, so they stay null for the same reason CodeRabbit does.
-                new SpendVendor { Id = OpenAiVendorId, Key = "openai", DisplayName = "OpenAI", Provider = Provider.OpenAI, DefaultCategoryId = SubscriptionCategoryId },
-                new SpendVendor { Id = GoogleVendorId, Key = "google", DisplayName = "Google", Provider = Provider.Google, DefaultCategoryId = SubscriptionCategoryId },
-                new SpendVendor { Id = MicrosoftVendorId, Key = "microsoft", DisplayName = "Microsoft", Provider = null, DefaultCategoryId = CloudCategoryId },
-                new SpendVendor { Id = OpenRouterVendorId, Key = "openrouter", DisplayName = "OpenRouter", Provider = null, DefaultCategoryId = SubscriptionCategoryId },
-                new SpendVendor { Id = BlacksmithVendorId, Key = "blacksmith", DisplayName = "Blacksmith", Provider = null, DefaultCategoryId = CiCategoryId },
+                new SpendVendor
+                {
+                    Id = OpenAiVendorId,
+                    Key = "openai",
+                    DisplayName = "OpenAI",
+                    Provider = Provider.OpenAI,
+                    DefaultCategoryId = SubscriptionCategoryId,
+                },
+                new SpendVendor
+                {
+                    Id = GoogleVendorId,
+                    Key = "google",
+                    DisplayName = "Google",
+                    Provider = Provider.Google,
+                    DefaultCategoryId = SubscriptionCategoryId,
+                },
+                new SpendVendor
+                {
+                    Id = MicrosoftVendorId,
+                    Key = "microsoft",
+                    DisplayName = "Microsoft",
+                    Provider = null,
+                    DefaultCategoryId = CloudCategoryId,
+                },
+                new SpendVendor
+                {
+                    Id = OpenRouterVendorId,
+                    Key = "openrouter",
+                    DisplayName = "OpenRouter",
+                    Provider = null,
+                    DefaultCategoryId = SubscriptionCategoryId,
+                },
+                new SpendVendor
+                {
+                    Id = BlacksmithVendorId,
+                    Key = "blacksmith",
+                    DisplayName = "Blacksmith",
+                    Provider = null,
+                    DefaultCategoryId = CiCategoryId,
+                },
                 // Distinct from GitHub Actions on purpose. The ingest worker has been
                 // recording Copilot token usage since 2026-05-26, but there was no vendor to
                 // book the matching charge against, so Copilot was the one metered provider
                 // that could never be compared against its own estimate.
-                new SpendVendor { Id = CopilotVendorId, Key = "copilot", DisplayName = "GitHub Copilot", Provider = Provider.Copilot, DefaultCategoryId = SubscriptionCategoryId },
+                new SpendVendor
+                {
+                    Id = CopilotVendorId,
+                    Key = "copilot",
+                    DisplayName = "GitHub Copilot",
+                    Provider = Provider.Copilot,
+                    DefaultCategoryId = SubscriptionCategoryId,
+                },
                 // Everything GitHub bills that is NOT Actions compute: Advanced Security,
                 // Code Quality AI Credits, and any product line added later. Kept separate
                 // from github-actions because that vendor's display name is a promise about
                 // what the charge was for, and booking a Code Quality credit against
                 // "GitHub Actions" would misattribute it in every breakdown. Provider stays
                 // null: GitHub bills these in dollars with no token count behind them.
-                new SpendVendor { Id = GitHubVendorId, Key = "github", DisplayName = "GitHub", Provider = null, DefaultCategoryId = SubscriptionCategoryId });
+                new SpendVendor
+                {
+                    Id = GitHubVendorId,
+                    Key = "github",
+                    DisplayName = "GitHub",
+                    Provider = null,
+                    DefaultCategoryId = SubscriptionCategoryId,
+                }
+            );
         });
 
         modelBuilder.Entity<SpendEntry>(b =>
@@ -168,21 +336,21 @@ public class AiObservatoryDbContext(DbContextOptions<AiObservatoryDbContext> opt
             // exempt — PostgreSQL would allow repeated NULLs anyway, but the filter makes
             // the intent explicit and keeps the index small.
             b.HasIndex(e => new { e.Source, e.EntryKey })
-             .IsUnique()
-             .HasFilter("\"EntryKey\" IS NOT NULL");
+                .IsUnique()
+                .HasFilter("\"EntryKey\" IS NOT NULL");
 
             // Restrict: archiving is the soft delete for a vendor/category still in use, so
             // a hard delete of one with entries must fail loudly rather than cascade rows
             // out of the ledger.
             b.HasOne<SpendVendor>()
-             .WithMany()
-             .HasForeignKey(e => e.VendorId)
-             .OnDelete(DeleteBehavior.Restrict);
+                .WithMany()
+                .HasForeignKey(e => e.VendorId)
+                .OnDelete(DeleteBehavior.Restrict);
 
             b.HasOne<SpendCategory>()
-             .WithMany()
-             .HasForeignKey(e => e.CategoryId)
-             .OnDelete(DeleteBehavior.Restrict);
+                .WithMany()
+                .HasForeignKey(e => e.CategoryId)
+                .OnDelete(DeleteBehavior.Restrict);
 
             b.ToTable(t =>
             {
@@ -202,7 +370,10 @@ public class AiObservatoryDbContext(DbContextOptions<AiObservatoryDbContext> opt
                 // 4dp — deliberate. Such a row cannot contribute to a total anyway, and
                 // SaveRowAsync's DbUpdateException catch turns it into a per-row "rejected"
                 // verdict rather than failing the batch.
-                t.HasCheckConstraint("CK_SpendEntry_AmountGbp_SameSign", "\"Amount\" * \"AmountGbp\" > 0");
+                t.HasCheckConstraint(
+                    "CK_SpendEntry_AmountGbp_SameSign",
+                    "\"Amount\" * \"AmountGbp\" > 0"
+                );
                 t.HasCheckConstraint("CK_SpendEntry_FxRate_Positive", "\"FxRate\" > 0");
             });
         });
@@ -231,9 +402,18 @@ public class AiObservatoryDbContext(DbContextOptions<AiObservatoryDbContext> opt
             b.HasIndex(s => s.OccurredAt);
             b.ToTable(t =>
             {
-                t.HasCheckConstraint("CK_CavemanSession_OutputTokens_NonNegative", "\"OutputTokens\" >= 0");
-                t.HasCheckConstraint("CK_CavemanSession_EstSavedTokens_NonNegative", "\"EstSavedTokens\" >= 0");
-                t.HasCheckConstraint("CK_CavemanSession_EstSavedUsd_NonNegative", "\"EstSavedUsd\" >= 0");
+                t.HasCheckConstraint(
+                    "CK_CavemanSession_OutputTokens_NonNegative",
+                    "\"OutputTokens\" >= 0"
+                );
+                t.HasCheckConstraint(
+                    "CK_CavemanSession_EstSavedTokens_NonNegative",
+                    "\"EstSavedTokens\" >= 0"
+                );
+                t.HasCheckConstraint(
+                    "CK_CavemanSession_EstSavedUsd_NonNegative",
+                    "\"EstSavedUsd\" >= 0"
+                );
             });
         });
 
@@ -246,7 +426,10 @@ public class AiObservatoryDbContext(DbContextOptions<AiObservatoryDbContext> opt
             b.HasIndex(s => s.Project);
             b.ToTable(t =>
             {
-                t.HasCheckConstraint("CK_ClaudeActivitySession_ActiveSeconds_NonNegative", "\"ActiveSeconds\" >= 0");
+                t.HasCheckConstraint(
+                    "CK_ClaudeActivitySession_ActiveSeconds_NonNegative",
+                    "\"ActiveSeconds\" >= 0"
+                );
             });
         });
 
@@ -258,7 +441,12 @@ public class AiObservatoryDbContext(DbContextOptions<AiObservatoryDbContext> opt
             b.Property(p => p.State).HasMaxLength(20).IsRequired();
             b.HasIndex(p => new { p.Repo, p.Number }).IsUnique();
             b.HasIndex(p => p.CreatedAt);
-            b.ToTable(t => t.HasCheckConstraint("CK_GitHubPullRequest_ReviewCount_NonNegative", "\"ReviewCount\" >= 0"));
+            b.ToTable(t =>
+                t.HasCheckConstraint(
+                    "CK_GitHubPullRequest_ReviewCount_NonNegative",
+                    "\"ReviewCount\" >= 0"
+                )
+            );
         });
 
         modelBuilder.Entity<GitHubCommit>(b =>
@@ -292,16 +480,37 @@ public class AiObservatoryDbContext(DbContextOptions<AiObservatoryDbContext> opt
             b.Property(r => r.Repo).HasMaxLength(200);
             b.Property(r => r.Summary).HasMaxLength(80);
             b.Property(r => r.RunId).HasMaxLength(200).IsRequired();
-            b.HasIndex(r => new { r.RunId, r.Reviewer, r.Role }).IsUnique();
+            b.HasIndex(r => new
+                {
+                    r.RunId,
+                    r.Reviewer,
+                    r.Role,
+                })
+                .IsUnique();
             b.HasIndex(r => new { r.Reviewer, r.Model });
             b.HasIndex(r => r.RecordedAt);
             b.ToTable(t =>
             {
-                t.HasCheckConstraint("CK_AdversarialReviewRun_InputTokens_NonNegative", "\"InputTokens\" >= 0");
-                t.HasCheckConstraint("CK_AdversarialReviewRun_OutputTokens_NonNegative", "\"OutputTokens\" >= 0");
-                t.HasCheckConstraint("CK_AdversarialReviewRun_CostUsd_NonNegative", "\"CostUsd\" >= 0");
-                t.HasCheckConstraint("CK_AdversarialReviewRun_IssuesRaised_NonNegative", "\"IssuesRaised\" >= 0");
-                t.HasCheckConstraint("CK_AdversarialReviewRun_IssuesAccepted_NonNegative", "\"IssuesAccepted\" >= 0");
+                t.HasCheckConstraint(
+                    "CK_AdversarialReviewRun_InputTokens_NonNegative",
+                    "\"InputTokens\" >= 0"
+                );
+                t.HasCheckConstraint(
+                    "CK_AdversarialReviewRun_OutputTokens_NonNegative",
+                    "\"OutputTokens\" >= 0"
+                );
+                t.HasCheckConstraint(
+                    "CK_AdversarialReviewRun_CostUsd_NonNegative",
+                    "\"CostUsd\" >= 0"
+                );
+                t.HasCheckConstraint(
+                    "CK_AdversarialReviewRun_IssuesRaised_NonNegative",
+                    "\"IssuesRaised\" >= 0"
+                );
+                t.HasCheckConstraint(
+                    "CK_AdversarialReviewRun_IssuesAccepted_NonNegative",
+                    "\"IssuesAccepted\" >= 0"
+                );
             });
         });
     }

@@ -5,7 +5,7 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using NodaTime;
 
-namespace AiObservatory.Api.Tests;
+namespace AiObservatory.Api.IntegrationTests;
 
 /// <summary>
 /// AIO-C1: /api/dev/seed's empty-tables data-preservation guard. This is the fix for a
@@ -26,7 +26,11 @@ public class DevSeedEndpointTests
         using var client = factory.CreateAdminClient();
 
         // First seed call on a genuinely empty database succeeds.
-        var first = await client.PostAsync("/api/dev/seed", content: null, TestContext.Current.CancellationToken);
+        var first = await client.PostAsync(
+            "/api/dev/seed",
+            content: null,
+            TestContext.Current.CancellationToken
+        );
         first.EnsureSuccessStatusCode();
 
         // Simulate the exact incident shape: a self-hoster creates a Subscription and a
@@ -40,21 +44,25 @@ public class DevSeedEndpointTests
             await db.Insights.ExecuteDeleteAsync(TestContext.Current.CancellationToken);
             await db.UsageEvents.ExecuteDeleteAsync(TestContext.Current.CancellationToken);
 
-            db.Subscriptions.Add(new Subscription
-            {
-                Provider = Provider.OpenAI,
-                Name = "Self-hoster's own subscription",
-                CostAmount = 42m,
-                Currency = "USD",
-                BillingDay = 5,
-                ActiveFrom = new LocalDate(2026, 1, 1),
-            });
-            db.BudgetRules.Add(new BudgetRule
-            {
-                Provider = null,
-                Period = BillingPeriod.Daily,
-                ThresholdUsd = 99m,
-            });
+            db.Subscriptions.Add(
+                new Subscription
+                {
+                    Provider = Provider.OpenAI,
+                    Name = "Self-hoster's own subscription",
+                    CostAmount = 42m,
+                    Currency = "USD",
+                    BillingDay = 5,
+                    ActiveFrom = new LocalDate(2026, 1, 1),
+                }
+            );
+            db.BudgetRules.Add(
+                new BudgetRule
+                {
+                    Provider = null,
+                    Period = BillingPeriod.Daily,
+                    ThresholdUsd = 99m,
+                }
+            );
             await db.SaveChangesAsync(TestContext.Current.CancellationToken);
         }
 
@@ -68,7 +76,11 @@ public class DevSeedEndpointTests
         // Act: re-seed. The guard must cover Subscriptions/BudgetRules, not just
         // DailyAggregates — a guard that only checked DailyAggregates would see an "empty"
         // database here and destroy/duplicate the self-hoster's config.
-        var second = await client.PostAsync("/api/dev/seed", content: null, TestContext.Current.CancellationToken);
+        var second = await client.PostAsync(
+            "/api/dev/seed",
+            content: null,
+            TestContext.Current.CancellationToken
+        );
         second.EnsureSuccessStatusCode();
         var body = await second.Content.ReadAsStringAsync(TestContext.Current.CancellationToken);
         body.Should().Contain("Already seeded");
@@ -76,10 +88,18 @@ public class DevSeedEndpointTests
         var afterSubscriptionIds = await GetSubscriptionIdsAsync(factory);
         var afterBudgetRuleIds = await GetBudgetRuleIdsAsync(factory);
 
-        afterSubscriptionIds.Should().BeEquivalentTo(beforeSubscriptionIds,
-            "the self-hoster's pre-existing Subscription must survive a re-seed");
-        afterBudgetRuleIds.Should().BeEquivalentTo(beforeBudgetRuleIds,
-            "the self-hoster's pre-existing BudgetRule must survive a re-seed");
+        afterSubscriptionIds
+            .Should()
+            .BeEquivalentTo(
+                beforeSubscriptionIds,
+                "the self-hoster's pre-existing Subscription must survive a re-seed"
+            );
+        afterBudgetRuleIds
+            .Should()
+            .BeEquivalentTo(
+                beforeBudgetRuleIds,
+                "the self-hoster's pre-existing BudgetRule must survive a re-seed"
+            );
     }
 
     [Fact]
@@ -89,14 +109,20 @@ public class DevSeedEndpointTests
         await factory.InitializeAsync();
         using var client = factory.CreateAdminClient();
 
-        var response = await client.PostAsync("/api/dev/seed", content: null, TestContext.Current.CancellationToken);
+        var response = await client.PostAsync(
+            "/api/dev/seed",
+            content: null,
+            TestContext.Current.CancellationToken
+        );
         response.EnsureSuccessStatusCode();
         var body = await response.Content.ReadAsStringAsync(TestContext.Current.CancellationToken);
         body.Should().Contain("Seed successful");
 
         using var scope = factory.Services.CreateScope();
         var db = scope.ServiceProvider.GetRequiredService<AiObservatoryDbContext>();
-        (await db.DailyAggregates.AnyAsync(TestContext.Current.CancellationToken)).Should().BeTrue();
+        (await db.DailyAggregates.AnyAsync(TestContext.Current.CancellationToken))
+            .Should()
+            .BeTrue();
         (await db.Subscriptions.AnyAsync(TestContext.Current.CancellationToken)).Should().BeTrue();
         (await db.BudgetRules.AnyAsync(TestContext.Current.CancellationToken)).Should().BeTrue();
         (await db.Insights.AnyAsync(TestContext.Current.CancellationToken)).Should().BeTrue();
@@ -106,13 +132,17 @@ public class DevSeedEndpointTests
     {
         using var scope = factory.Services.CreateScope();
         var db = scope.ServiceProvider.GetRequiredService<AiObservatoryDbContext>();
-        return await db.Subscriptions.Select(s => s.Id).ToListAsync(TestContext.Current.CancellationToken);
+        return await db
+            .Subscriptions.Select(s => s.Id)
+            .ToListAsync(TestContext.Current.CancellationToken);
     }
 
     private static async Task<List<Guid>> GetBudgetRuleIdsAsync(AiObservatoryApiFactory factory)
     {
         using var scope = factory.Services.CreateScope();
         var db = scope.ServiceProvider.GetRequiredService<AiObservatoryDbContext>();
-        return await db.BudgetRules.Select(r => r.Id).ToListAsync(TestContext.Current.CancellationToken);
+        return await db
+            .BudgetRules.Select(r => r.Id)
+            .ToListAsync(TestContext.Current.CancellationToken);
     }
 }

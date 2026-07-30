@@ -20,88 +20,138 @@ public static class ActivityEndpoints
     {
         app.MapPost("/activity/sessions", UpsertActivitySessionsAsync);
 
-        app.MapGet("/activity/daily", async (
-            AiObservatoryDbContext db,
-            IClock clock,
-            string? from, string? to,
-            CancellationToken ct) =>
-        {
-            var today = clock.GetCurrentInstant().InUtc().Date;
-            if (!TryParseDateRange(from, to, today, out var start, out var end, out var error))
-            {
-                return error!;
-            }
+        app.MapGet(
+                "/activity/daily",
+                async (
+                    AiObservatoryDbContext db,
+                    IClock clock,
+                    string? from,
+                    string? to,
+                    CancellationToken ct
+                ) =>
+                {
+                    var today = clock.GetCurrentInstant().InUtc().Date;
+                    if (
+                        !TryParseDateRange(
+                            from,
+                            to,
+                            today,
+                            out var start,
+                            out var end,
+                            out var error
+                        )
+                    )
+                    {
+                        return error!;
+                    }
 
-            var startInstant = start.AtStartOfDayInZone(DateTimeZone.Utc).ToInstant();
-            var endInstant = end.PlusDays(1).AtStartOfDayInZone(DateTimeZone.Utc).ToInstant();
+                    var startInstant = start.AtStartOfDayInZone(DateTimeZone.Utc).ToInstant();
+                    var endInstant = end.PlusDays(1)
+                        .AtStartOfDayInZone(DateTimeZone.Utc)
+                        .ToInstant();
 
-            var sessions = await db.ClaudeActivitySessions
-                .AsNoTracking()
-                .Where(s => s.LastSeenAt > startInstant && s.StartedAt < endInstant)
-                .Where(IsAllowedProjectPredicate)
-                .Select(s => new ActivitySessionSlice(s.Project, s.StartedAt, s.LastSeenAt, s.ActiveSeconds))
-                .ToListAsync(ct);
+                    var sessions = await db
+                        .ClaudeActivitySessions.AsNoTracking()
+                        .Where(s => s.LastSeenAt > startInstant && s.StartedAt < endInstant)
+                        .Where(IsAllowedProjectPredicate)
+                        .Select(s => new ActivitySessionSlice(
+                            s.Project,
+                            s.StartedAt,
+                            s.LastSeenAt,
+                            s.ActiveSeconds
+                        ))
+                        .ToListAsync(ct);
 
-            var byDate = BuildDailyActivityResponses(sessions, start, end);
+                    var byDate = BuildDailyActivityResponses(sessions, start, end);
 
-            return Results.Ok(byDate);
-        }).AddEndpointFilter<AdminOnlyApiKeyEndpointFilter>();
+                    return Results.Ok(byDate);
+                }
+            )
+            .AddEndpointFilter<AdminOnlyApiKeyEndpointFilter>();
 
-        app.MapGet("/activity/by-project", async (
-            AiObservatoryDbContext db,
-            IClock clock,
-            string? from, string? to,
-            CancellationToken ct) =>
-        {
-            var today = clock.GetCurrentInstant().InUtc().Date;
-            if (!TryParseDateRange(from, to, today, out var start, out var end, out var error))
-            {
-                return error!;
-            }
+        app.MapGet(
+                "/activity/by-project",
+                async (
+                    AiObservatoryDbContext db,
+                    IClock clock,
+                    string? from,
+                    string? to,
+                    CancellationToken ct
+                ) =>
+                {
+                    var today = clock.GetCurrentInstant().InUtc().Date;
+                    if (
+                        !TryParseDateRange(
+                            from,
+                            to,
+                            today,
+                            out var start,
+                            out var end,
+                            out var error
+                        )
+                    )
+                    {
+                        return error!;
+                    }
 
-            var startInstant = start.AtStartOfDayInZone(DateTimeZone.Utc).ToInstant();
-            var endInstant = end.PlusDays(1).AtStartOfDayInZone(DateTimeZone.Utc).ToInstant();
+                    var startInstant = start.AtStartOfDayInZone(DateTimeZone.Utc).ToInstant();
+                    var endInstant = end.PlusDays(1)
+                        .AtStartOfDayInZone(DateTimeZone.Utc)
+                        .ToInstant();
 
-            var sessions = await db.ClaudeActivitySessions
-                .AsNoTracking()
-                .Where(s => s.StartedAt >= startInstant && s.StartedAt < endInstant)
-                .Where(IsAllowedProjectPredicate)
-                .Select(s => new { s.SessionId, s.Project, s.ActiveSeconds })
-                .ToListAsync(ct);
+                    var sessions = await db
+                        .ClaudeActivitySessions.AsNoTracking()
+                        .Where(s => s.StartedAt >= startInstant && s.StartedAt < endInstant)
+                        .Where(IsAllowedProjectPredicate)
+                        .Select(s => new
+                        {
+                            s.SessionId,
+                            s.Project,
+                            s.ActiveSeconds,
+                        })
+                        .ToListAsync(ct);
 
-            var totalSeconds = sessions.Sum(s => s.ActiveSeconds);
+                    var totalSeconds = sessions.Sum(s => s.ActiveSeconds);
 
-            var byProject = sessions
-                .GroupBy(s => s.Project)
-                .Select(g => new ProjectActivityResponse(
-                    g.Key,
-                    g.Select(s => s.SessionId).Distinct().Count(),
-                    g.Sum(s => s.ActiveSeconds),
-                    totalSeconds > 0 ? Math.Round(g.Sum(s => s.ActiveSeconds) * 100.0 / totalSeconds, 1) : 0))
-                .OrderByDescending(p => p.ActiveSeconds)
-                .ToList();
+                    var byProject = sessions
+                        .GroupBy(s => s.Project)
+                        .Select(g => new ProjectActivityResponse(
+                            g.Key,
+                            g.Select(s => s.SessionId).Distinct().Count(),
+                            g.Sum(s => s.ActiveSeconds),
+                            totalSeconds > 0
+                                ? Math.Round(g.Sum(s => s.ActiveSeconds) * 100.0 / totalSeconds, 1)
+                                : 0
+                        ))
+                        .OrderByDescending(p => p.ActiveSeconds)
+                        .ToList();
 
-            return Results.Ok(byProject);
-        }).AddEndpointFilter<AdminOnlyApiKeyEndpointFilter>();
+                    return Results.Ok(byProject);
+                }
+            )
+            .AddEndpointFilter<AdminOnlyApiKeyEndpointFilter>();
 
         // One-off cleanup for pre-allowlist ingestion noise (scratch dirs, other
         // orgs, non-git leaf-folder fallbacks like "claude-review"). Irreversible.
         // Admin-key gated, mirrors the /aggregates provider-scoped reset.
-        app.MapDelete("/activity/sessions/disallowed-projects", async (
-            AiObservatoryDbContext db,
-            CancellationToken ct) =>
-        {
-            var deleted = await DeleteDisallowedProjectSessionsAsync(db, ct);
+        app.MapDelete(
+                "/activity/sessions/disallowed-projects",
+                async (AiObservatoryDbContext db, CancellationToken ct) =>
+                {
+                    var deleted = await DeleteDisallowedProjectSessionsAsync(db, ct);
 
-            return Results.Ok(new { deletedSessions = deleted });
-        }).AddEndpointFilter<AdminOnlyApiKeyEndpointFilter>();
+                    return Results.Ok(new { deletedSessions = deleted });
+                }
+            )
+            .AddEndpointFilter<AdminOnlyApiKeyEndpointFilter>();
     }
 
     private static async Task<IResult> UpsertActivitySessionsAsync(
         ActivitySessionsRequest req,
         AiObservatoryDbContext db,
         IClock clock,
-        CancellationToken ct)
+        CancellationToken ct
+    )
     {
         if (req.Sessions is not { Count: > 0 })
         {
@@ -121,8 +171,8 @@ public static class ActivityEndpoints
         }
 
         var sessionIds = req.Sessions.Select(s => s.SessionId).ToList();
-        var existingSessionIds = await db.ClaudeActivitySessions
-            .Where(s => sessionIds.Contains(s.SessionId))
+        var existingSessionIds = await db
+            .ClaudeActivitySessions.Where(s => sessionIds.Contains(s.SessionId))
             .Select(s => s.SessionId)
             .ToHashSetAsync(ct);
 
@@ -137,8 +187,10 @@ public static class ActivityEndpoints
             await db.SaveChangesAsync(ct);
             await tx.CommitAsync(ct);
         }
-        catch (DbUpdateException ex) when (
-            ex.InnerException is PostgresException { SqlState: PostgresErrorCodes.UniqueViolation })
+        catch (DbUpdateException ex)
+            when (ex.InnerException
+                    is PostgresException { SqlState: PostgresErrorCodes.UniqueViolation }
+            )
         {
             // A concurrent request inserted one of these SessionIds between the existence
             // snapshot and SaveChanges. The merge is monotonic, so a retry converges.
@@ -148,7 +200,10 @@ public static class ActivityEndpoints
         return Results.Ok(new { Upserted = upserted });
     }
 
-    private static string? ValidateSessions(IReadOnlyCollection<ActivitySessionRequest> sessions, Instant now)
+    private static string? ValidateSessions(
+        IReadOnlyCollection<ActivitySessionRequest> sessions,
+        Instant now
+    )
     {
         var seenSessionIds = new HashSet<string>();
         foreach (var session in sessions)
@@ -205,7 +260,8 @@ public static class ActivityEndpoints
         IReadOnlySet<string> existingSessionIds,
         AiObservatoryDbContext db,
         Instant now,
-        CancellationToken ct)
+        CancellationToken ct
+    )
     {
         var upserted = 0;
         foreach (var session in sessions)
@@ -219,15 +275,17 @@ public static class ActivityEndpoints
             }
             else
             {
-                db.ClaudeActivitySessions.Add(new ClaudeActivitySession
-                {
-                    SessionId = session.SessionId,
-                    Project = session.Project,
-                    StartedAt = Instant.FromDateTimeOffset(session.StartedAtUtc),
-                    LastSeenAt = Instant.FromDateTimeOffset(session.LastSeenAtUtc),
-                    ActiveSeconds = session.ActiveSeconds,
-                    IngestedAt = now,
-                });
+                db.ClaudeActivitySessions.Add(
+                    new ClaudeActivitySession
+                    {
+                        SessionId = session.SessionId,
+                        Project = session.Project,
+                        StartedAt = Instant.FromDateTimeOffset(session.StartedAtUtc),
+                        LastSeenAt = Instant.FromDateTimeOffset(session.LastSeenAtUtc),
+                        ActiveSeconds = session.ActiveSeconds,
+                        IngestedAt = now,
+                    }
+                );
             }
             upserted++;
         }
@@ -238,20 +296,33 @@ public static class ActivityEndpoints
     private static async Task<bool> UpdateExistingSessionAsync(
         ActivitySessionRequest session,
         AiObservatoryDbContext db,
-        CancellationToken ct)
+        CancellationToken ct
+    )
     {
         var lastSeenAt = Instant.FromDateTimeOffset(session.LastSeenAtUtc);
 
         // Evaluate freshness and merge against the live row in one statement so
         // a concurrent newer write cannot be regressed by this request's snapshot.
-        var updated = await db.ClaudeActivitySessions
-            .Where(x => x.SessionId == session.SessionId
-                && (x.ActiveSeconds < session.ActiveSeconds || x.LastSeenAt < lastSeenAt))
-            .ExecuteUpdateAsync(upd => upd
-                .SetProperty(p => p.ActiveSeconds,
-                    p => p.ActiveSeconds > session.ActiveSeconds ? p.ActiveSeconds : session.ActiveSeconds)
-                .SetProperty(p => p.LastSeenAt,
-                    p => p.LastSeenAt > lastSeenAt ? p.LastSeenAt : lastSeenAt), ct);
+        var updated = await db
+            .ClaudeActivitySessions.Where(x =>
+                x.SessionId == session.SessionId
+                && (x.ActiveSeconds < session.ActiveSeconds || x.LastSeenAt < lastSeenAt)
+            )
+            .ExecuteUpdateAsync(
+                upd =>
+                    upd.SetProperty(
+                            p => p.ActiveSeconds,
+                            p =>
+                                p.ActiveSeconds > session.ActiveSeconds
+                                    ? p.ActiveSeconds
+                                    : session.ActiveSeconds
+                        )
+                        .SetProperty(
+                            p => p.LastSeenAt,
+                            p => p.LastSeenAt > lastSeenAt ? p.LastSeenAt : lastSeenAt
+                        ),
+                ct
+            );
 
         return updated > 0;
     }
@@ -267,7 +338,12 @@ public static class ActivityEndpoints
     // producer-side allowlist in the out-of-repo observe-sweep.ps1 hook.
     public static readonly string[] AllowedProjectOwners = ["FixPortal", "fix-portal"];
 
-    public sealed record ActivitySessionSlice(string Project, Instant StartedAt, Instant LastSeenAt, long ActiveSeconds);
+    public sealed record ActivitySessionSlice(
+        string Project,
+        Instant StartedAt,
+        Instant LastSeenAt,
+        long ActiveSeconds
+    );
 
     // Single source for the SQL-translatable allowlist rule, reused by every EF query
     // below instead of each carrying its own copy of the Any(...)/StartsWith(...) text.
@@ -278,32 +354,42 @@ public static class ActivityEndpoints
 
     // Negation of IsAllowedProjectPredicate, built once from the same expression body so
     // the "disallowed" side of the rule can never drift from the "allowed" side.
-    private static readonly Expression<Func<ClaudeActivitySession, bool>> IsDisallowedProjectPredicate =
-        Expression.Lambda<Func<ClaudeActivitySession, bool>>(
-            Expression.Not(IsAllowedProjectPredicate.Body), IsAllowedProjectPredicate.Parameters[0]);
+    private static readonly Expression<
+        Func<ClaudeActivitySession, bool>
+    > IsDisallowedProjectPredicate = Expression.Lambda<Func<ClaudeActivitySession, bool>>(
+        Expression.Not(IsAllowedProjectPredicate.Body),
+        IsAllowedProjectPredicate.Parameters[0]
+    );
 
     // In-memory counterpart of IsAllowedProjectPredicate. Kept as its own implementation
     // (not derived from the expression above) because it deliberately uses an ordinal
     // StartsWith — culture-sensitive comparison would be wrong here — whereas SQL
     // translation via Npgsql is byte/ordinal-equivalent regardless.
     public static bool IsAllowedProject(string project) =>
-        AllowedProjectOwners.Any(o => project == o || project.StartsWith(o + "/", StringComparison.Ordinal));
+        AllowedProjectOwners.Any(o =>
+            project == o || project.StartsWith(o + "/", StringComparison.Ordinal)
+        );
 
-    public static Task<int> DeleteDisallowedProjectSessionsAsync(AiObservatoryDbContext db, CancellationToken ct = default) =>
-        db.ClaudeActivitySessions
-            .Where(IsDisallowedProjectPredicate)
-            .ExecuteDeleteAsync(ct);
+    public static Task<int> DeleteDisallowedProjectSessionsAsync(
+        AiObservatoryDbContext db,
+        CancellationToken ct = default
+    ) => db.ClaudeActivitySessions.Where(IsDisallowedProjectPredicate).ExecuteDeleteAsync(ct);
 
     public static List<DailyActivityResponse> BuildDailyActivityResponses(
         IEnumerable<ActivitySessionSlice> sessions,
         LocalDate start,
-        LocalDate end)
+        LocalDate end
+    )
     {
         var startInstant = start.AtStartOfDayInZone(DateTimeZone.Utc).ToInstant();
         var endInstant = end.PlusDays(1).AtStartOfDayInZone(DateTimeZone.Utc).ToInstant();
         var slices = new List<(LocalDate Date, Instant Start, Instant End, long ActiveSeconds)>();
 
-        foreach (var session in sessions.Where(s => IsAllowedProject(s.Project) && s.LastSeenAt > s.StartedAt))
+        foreach (
+            var session in sessions.Where(s =>
+                IsAllowedProject(s.Project) && s.LastSeenAt > s.StartedAt
+            )
+        )
         {
             var clippedStart = Max(session.StartedAt, startInstant);
             var clippedEnd = Min(session.LastSeenAt, endInstant);
@@ -317,12 +403,19 @@ public static class ActivityEndpoints
             while (cursor < clippedEnd)
             {
                 var date = cursor.InUtc().Date;
-                var nextMidnight = date.PlusDays(1).AtStartOfDayInZone(DateTimeZone.Utc).ToInstant();
+                var nextMidnight = date.PlusDays(1)
+                    .AtStartOfDayInZone(DateTimeZone.Utc)
+                    .ToInstant();
                 var fragmentEnd = Min(clippedEnd, nextMidnight);
                 var fragmentSeconds = (fragmentEnd - cursor).TotalSeconds;
-                var activeSeconds = totalSeconds > 0
-                    ? (long)Math.Round(session.ActiveSeconds * fragmentSeconds / totalSeconds, MidpointRounding.AwayFromZero)
-                    : 0;
+                var activeSeconds =
+                    totalSeconds > 0
+                        ? (long)
+                            Math.Round(
+                                session.ActiveSeconds * fragmentSeconds / totalSeconds,
+                                MidpointRounding.AwayFromZero
+                            )
+                        : 0;
                 slices.Add((date, cursor, fragmentEnd, activeSeconds));
                 cursor = fragmentEnd;
             }
@@ -333,7 +426,8 @@ public static class ActivityEndpoints
             .Select(g => new DailyActivityResponse(
                 LocalDatePattern.Iso.Format(g.Key),
                 g.Sum(s => s.ActiveSeconds),
-                MergeIntervalSeconds(g.Select(s => (s.Start, s.End)))))
+                MergeIntervalSeconds(g.Select(s => (s.Start, s.End)))
+            ))
             .OrderBy(d => d.Date)
             .ToList();
     }
@@ -371,8 +465,13 @@ public static class ActivityEndpoints
     private static Instant Max(Instant a, Instant b) => a > b ? a : b;
 
     public static bool TryParseDateRange(
-        string? from, string? to, LocalDate today,
-        out LocalDate start, out LocalDate end, out IResult? error)
+        string? from,
+        string? to,
+        LocalDate today,
+        out LocalDate start,
+        out LocalDate end,
+        out IResult? error
+    )
     {
         error = null;
         start = today.PlusDays(-30);
@@ -380,7 +479,15 @@ public static class ActivityEndpoints
 
         if (from is not null)
         {
-            if (!DateOnly.TryParseExact(from, "yyyy-MM-dd", CultureInfo.InvariantCulture, DateTimeStyles.None, out var fromDate))
+            if (
+                !DateOnly.TryParseExact(
+                    from,
+                    "yyyy-MM-dd",
+                    CultureInfo.InvariantCulture,
+                    DateTimeStyles.None,
+                    out var fromDate
+                )
+            )
             {
                 error = Results.BadRequest("from must be yyyy-MM-dd");
                 return false;
@@ -390,7 +497,15 @@ public static class ActivityEndpoints
 
         if (to is not null)
         {
-            if (!DateOnly.TryParseExact(to, "yyyy-MM-dd", CultureInfo.InvariantCulture, DateTimeStyles.None, out var toDate))
+            if (
+                !DateOnly.TryParseExact(
+                    to,
+                    "yyyy-MM-dd",
+                    CultureInfo.InvariantCulture,
+                    DateTimeStyles.None,
+                    out var toDate
+                )
+            )
             {
                 error = Results.BadRequest("to must be yyyy-MM-dd");
                 return false;
@@ -420,4 +535,9 @@ public sealed record ActivitySessionsRequest(List<ActivitySessionRequest> Sessio
 
 public sealed record DailyActivityResponse(string Date, long ActiveSeconds, long WallClockSeconds);
 
-public sealed record ProjectActivityResponse(string Project, int SessionCount, long ActiveSeconds, double SharePercent);
+public sealed record ProjectActivityResponse(
+    string Project,
+    int SessionCount,
+    long ActiveSeconds,
+    double SharePercent
+);

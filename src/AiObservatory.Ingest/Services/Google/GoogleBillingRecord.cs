@@ -7,4 +7,5 @@ public record GoogleBillingRecord(
     string ServiceDescription,
     string Model,
     decimal CostUsd,
-    string RawJson);
+    string RawJson
+);

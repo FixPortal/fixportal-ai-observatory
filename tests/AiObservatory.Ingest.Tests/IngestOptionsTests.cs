@@ -14,7 +14,9 @@ public class IngestOptionsTests
 
     private static IConfiguration Config(params (string Key, string Value)[] entries) =>
         new ConfigurationBuilder()
-            .AddInMemoryCollection(entries.Select(e => new KeyValuePair<string, string?>(e.Key, e.Value)))
+            .AddInMemoryCollection(
+                entries.Select(e => new KeyValuePair<string, string?>(e.Key, e.Value))
+            )
             .Build();
 
     [Fact]
@@ -22,7 +24,10 @@ public class IngestOptionsTests
     {
         var cfg = Config(($"{Key}:0", "FixPortal/one"), ($"{Key}:1", "FixPortal/two"));
 
-        IngestOptions.ResolveGitHubRepoAllowlist(cfg).Should().Equal("FixPortal/one", "FixPortal/two");
+        IngestOptions
+            .ResolveGitHubRepoAllowlist(cfg)
+            .Should()
+            .Equal("FixPortal/one", "FixPortal/two");
     }
 
     [Theory]
@@ -32,15 +37,21 @@ public class IngestOptionsTests
     [InlineData("  FixPortal/one ,, FixPortal/two  ")]
     public void ResolveGitHubRepoAllowlist_WhenBoundAsDelimitedScalar_SplitsAndTrims(string value)
     {
-        IngestOptions.ResolveGitHubRepoAllowlist(Config((Key, value)))
-            .Should().Equal("FixPortal/one", "FixPortal/two");
+        IngestOptions
+            .ResolveGitHubRepoAllowlist(Config((Key, value)))
+            .Should()
+            .Equal("FixPortal/one", "FixPortal/two");
     }
 
     [Fact]
     public void ResolveGitHubRepoAllowlist_WhenScalarRepeatsARepo_DeduplicatesCaseInsensitively()
     {
-        IngestOptions.ResolveGitHubRepoAllowlist(Config((Key, "FixPortal/one,fixportal/ONE")))
-            .Should().ContainSingle().Which.Should().Be("FixPortal/one");
+        IngestOptions
+            .ResolveGitHubRepoAllowlist(Config((Key, "FixPortal/one,fixportal/ONE")))
+            .Should()
+            .ContainSingle()
+            .Which.Should()
+            .Be("FixPortal/one");
     }
 
     // App Service leaves an unresolvable Key Vault reference in place as a literal string.
@@ -49,7 +60,9 @@ public class IngestOptionsTests
     // has several — neither yields exactly two segments.
     [Theory]
     [InlineData("@Microsoft.KeyVault(VaultName=kv;SecretName=github-repo-allowlist)")]
-    [InlineData("@Microsoft.KeyVault(SecretUri=https://kv.vault.azure.net/secrets/github-repo-allowlist/)")]
+    [InlineData(
+        "@Microsoft.KeyVault(SecretUri=https://kv.vault.azure.net/secrets/github-repo-allowlist/)"
+    )]
     [InlineData("not-an-owner-repo")]
     [InlineData("too/many/segments")]
     [InlineData("/leading-slash")]
@@ -70,7 +83,9 @@ public class IngestOptionsTests
     [Fact]
     public void ResolveGitHubRepoAllowlist_WhenScalarMixesValidAndInvalid_KeepsOnlyTheValid()
     {
-        IngestOptions.ResolveGitHubRepoAllowlist(Config((Key, "FixPortal/one,garbage,FixPortal/two")))
-            .Should().Equal("FixPortal/one", "FixPortal/two");
+        IngestOptions
+            .ResolveGitHubRepoAllowlist(Config((Key, "FixPortal/one,garbage,FixPortal/two")))
+            .Should()
+            .Equal("FixPortal/one", "FixPortal/two");
     }
 }

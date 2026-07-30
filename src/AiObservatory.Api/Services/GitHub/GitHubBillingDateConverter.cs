@@ -25,20 +25,36 @@ namespace AiObservatory.Api.Services.GitHub;
 /// </summary>
 public sealed class GitHubBillingDateConverter : JsonConverter<DateOnly>
 {
-    public override DateOnly Read(ref Utf8JsonReader reader, Type typeToConvert, JsonSerializerOptions options)
+    public override DateOnly Read(
+        ref Utf8JsonReader reader,
+        Type typeToConvert,
+        JsonSerializerOptions options
+    )
     {
-        var raw = reader.GetString()
-            ?? throw new JsonException("GitHub billing date was null");
+        var raw = reader.GetString() ?? throw new JsonException("GitHub billing date was null");
 
         // Date-only first: it is the documented shape, and the cheaper parse.
-        if (DateOnly.TryParseExact(raw, "yyyy-MM-dd", CultureInfo.InvariantCulture,
-                DateTimeStyles.None, out var dateOnly))
+        if (
+            DateOnly.TryParseExact(
+                raw,
+                "yyyy-MM-dd",
+                CultureInfo.InvariantCulture,
+                DateTimeStyles.None,
+                out var dateOnly
+            )
+        )
         {
             return dateOnly;
         }
 
-        if (DateTimeOffset.TryParse(raw, CultureInfo.InvariantCulture,
-                DateTimeStyles.RoundtripKind, out var timestamp))
+        if (
+            DateTimeOffset.TryParse(
+                raw,
+                CultureInfo.InvariantCulture,
+                DateTimeStyles.RoundtripKind,
+                out var timestamp
+            )
+        )
         {
             // UtcDateTime, not LocalDateTime: the value is UTC-anchored, and reading it
             // through the machine's time zone could shift a month-start marker into the
@@ -50,6 +66,9 @@ public sealed class GitHubBillingDateConverter : JsonConverter<DateOnly>
         throw new JsonException($"Unrecognised GitHub billing date format: {raw}");
     }
 
-    public override void Write(Utf8JsonWriter writer, DateOnly value, JsonSerializerOptions options) =>
-        writer.WriteStringValue(value.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture));
+    public override void Write(
+        Utf8JsonWriter writer,
+        DateOnly value,
+        JsonSerializerOptions options
+    ) => writer.WriteStringValue(value.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture));
 }

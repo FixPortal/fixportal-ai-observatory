@@ -37,7 +37,8 @@ public static class SpendEntriesEndpoints
         FxRateProvider fx,
         IClock clock,
         ILoggerFactory loggerFactory,
-        CancellationToken ct)
+        CancellationToken ct
+    )
     {
         if (requests.Length == 0)
         {
@@ -52,7 +53,10 @@ public static class SpendEntriesEndpoints
         // Loaded once rather than per row: a CSV import is overwhelmingly the same handful
         // of vendors and categories repeated.
         var vendorIds = await db.SpendVendors.AsNoTracking().Select(v => v.Id).ToHashSetAsync(ct);
-        var categoryIds = await db.SpendCategories.AsNoTracking().Select(c => c.Id).ToHashSetAsync(ct);
+        var categoryIds = await db
+            .SpendCategories.AsNoTracking()
+            .Select(c => c.Id)
+            .ToHashSetAsync(ct);
 
         var results = new List<SpendEntryResult>(requests.Length);
         var now = clock.GetCurrentInstant();
@@ -89,7 +93,9 @@ public static class SpendEntriesEndpoints
                 // Frozen here, deliberately. See SpendEntry.AmountGbp.
                 AmountGbp = decimal.Round(req.Amount * rate, 4, MidpointRounding.ToEven),
                 FxRate = rate,
-                Description = string.IsNullOrWhiteSpace(req.Description) ? null : req.Description.Trim(),
+                Description = string.IsNullOrWhiteSpace(req.Description)
+                    ? null
+                    : req.Description.Trim(),
                 Source = source,
                 EntryKey = string.IsNullOrWhiteSpace(req.EntryKey) ? null : req.EntryKey.Trim(),
                 RecordedAt = now,
@@ -109,16 +115,22 @@ public static class SpendEntriesEndpoints
     /// below (duplicate-detection, then general failure) are unchanged in behaviour.
     /// </summary>
     private static async Task<SpendEntryResult> SaveRowAsync(
-        AiObservatoryDbContext db, SpendEntry entry, ILoggerFactory loggerFactory, CancellationToken ct)
+        AiObservatoryDbContext db,
+        SpendEntry entry,
+        ILoggerFactory loggerFactory,
+        CancellationToken ct
+    )
     {
         try
         {
             await db.SaveChangesAsync(ct);
             return new SpendEntryResult(entry.Id, "created", null);
         }
-        catch (DbUpdateException ex) when (
-            entry.EntryKey is not null
-            && ex.InnerException is PostgresException { SqlState: PostgresErrorCodes.UniqueViolation })
+        catch (DbUpdateException ex)
+            when (entry.EntryKey is not null
+                && ex.InnerException
+                    is PostgresException { SqlState: PostgresErrorCodes.UniqueViolation }
+            )
         {
             // The row already exists for this source and key. Report it rather than
             // failing the batch: re-importing an overlapping statement is routine.
@@ -129,7 +141,8 @@ public static class SpendEntriesEndpoints
             // silently misreported as a duplicate spend entry too; narrow the `when` to
             // the specific constraint name if that ever happens.
             db.Entry(entry).State = EntityState.Detached;
-            var existingId = await db.SpendEntries.AsNoTracking()
+            var existingId = await db
+                .SpendEntries.AsNoTracking()
                 .Where(e => e.Source == entry.Source && e.EntryKey == entry.EntryKey)
                 .Select(e => (Guid?)e.Id)
                 .FirstOrDefaultAsync(ct);
@@ -147,9 +160,16 @@ public static class SpendEntriesEndpoints
             // The exception is logged, not surfaced -- this repo is public, and the raw
             // Postgres message can carry column/constraint detail. Nothing here carries an
             // amount or description; only identifiers.
-            loggerFactory.CreateLogger("AiObservatory.Api.SpendEntries").LogError(ex,
-                "Failed to save spend entry {EntryId} (source {Source}, vendor {VendorId}, category {CategoryId})",
-                entry.Id, entry.Source, entry.VendorId, entry.CategoryId);
+            loggerFactory
+                .CreateLogger("AiObservatory.Api.SpendEntries")
+                .LogError(
+                    ex,
+                    "Failed to save spend entry {EntryId} (source {Source}, vendor {VendorId}, category {CategoryId})",
+                    entry.Id,
+                    entry.Source,
+                    entry.VendorId,
+                    entry.CategoryId
+                );
             db.Entry(entry).State = EntityState.Detached;
             return new SpendEntryResult(null, "rejected", "Could not save this entry");
         }
@@ -161,7 +181,8 @@ public static class SpendEntriesEndpoints
         HashSet<Guid> vendorIds,
         HashSet<Guid> categoryIds,
         out SpendSource source,
-        out string currency)
+        out string currency
+    )
     {
         source = SpendSource.Manual;
         currency = "GBP";
@@ -214,7 +235,8 @@ public static class SpendEntriesEndpoints
         string? to = null,
         Guid? vendorId = null,
         Guid? categoryId = null,
-        int limit = 5000)
+        int limit = 5000
+    )
     {
         // Bound as string and parsed here rather than LocalDate?: ASP.NET Core minimal-API
         // query binding needs a TryParse in the exact shape it expects, which NodaTime's
@@ -235,16 +257,28 @@ public static class SpendEntriesEndpoints
         }
 
         var q = db.SpendEntries.AsNoTracking();
-        if (fromDate is { } f) { q = q.Where(e => e.OccurredOn >= f); }
-        if (toDate is { } t) { q = q.Where(e => e.OccurredOn <= t); }
-        if (vendorId is { } v) { q = q.Where(e => e.VendorId == v); }
-        if (categoryId is { } c) { q = q.Where(e => e.CategoryId == c); }
+        if (fromDate is { } f)
+        {
+            q = q.Where(e => e.OccurredOn >= f);
+        }
+        if (toDate is { } t)
+        {
+            q = q.Where(e => e.OccurredOn <= t);
+        }
+        if (vendorId is { } v)
+        {
+            q = q.Where(e => e.VendorId == v);
+        }
+        if (categoryId is { } c)
+        {
+            q = q.Where(e => e.CategoryId == c);
+        }
 
         // Hard ceiling so an unbounded range cannot OOM the response; callers page by date.
         var capped = Math.Clamp(limit, 1, 5000);
 
-        var rows = await q
-            .OrderByDescending(e => e.OccurredOn).ThenByDescending(e => e.RecordedAt)
+        var rows = await q.OrderByDescending(e => e.OccurredOn)
+            .ThenByDescending(e => e.RecordedAt)
             .Take(capped)
             .ToListAsync(ct);
 
@@ -260,8 +294,15 @@ public static class SpendEntriesEndpoints
             return null;
         }
 
-        if (!DateOnly.TryParseExact(raw, "yyyy-MM-dd", CultureInfo.InvariantCulture,
-                DateTimeStyles.None, out var dateOnly))
+        if (
+            !DateOnly.TryParseExact(
+                raw,
+                "yyyy-MM-dd",
+                CultureInfo.InvariantCulture,
+                DateTimeStyles.None,
+                out var dateOnly
+            )
+        )
         {
             return "from/to must be yyyy-MM-dd";
         }
@@ -275,7 +316,8 @@ public static class SpendEntriesEndpoints
         SpendEntryPatchRequest req,
         AiObservatoryDbContext db,
         FxRateProvider fx,
-        CancellationToken ct)
+        CancellationToken ct
+    )
     {
         var entry = await db.SpendEntries.FindAsync([id], ct);
         if (entry is null)
@@ -302,8 +344,10 @@ public static class SpendEntriesEndpoints
 
         // Amount, currency or date changing all invalidate the stored conversion, so
         // re-resolve at the (possibly new) charge date rather than leave a stale GBP figure.
-        if ((req.Amount is not null || req.Currency is not null || req.OccurredOn is not null)
-            && await ReResolveFxAsync(entry, req.Currency, fx, ct) is { } fxError)
+        if (
+            (req.Amount is not null || req.Currency is not null || req.OccurredOn is not null)
+            && await ReResolveFxAsync(entry, req.Currency, fx, ct) is { } fxError
+        )
         {
             return Results.BadRequest(fxError);
         }
@@ -315,10 +359,22 @@ public static class SpendEntriesEndpoints
     /// <summary>Applies every field the request set, after validation has passed.</summary>
     private static void ApplyScalarFields(SpendEntry entry, SpendEntryPatchRequest req)
     {
-        if (req.Amount is { } amount) { entry.Amount = amount; }
-        if (req.OccurredOn is { } occurredOn) { entry.OccurredOn = occurredOn; }
-        if (req.VendorId is { } vendorId) { entry.VendorId = vendorId; }
-        if (req.CategoryId is { } categoryId) { entry.CategoryId = categoryId; }
+        if (req.Amount is { } amount)
+        {
+            entry.Amount = amount;
+        }
+        if (req.OccurredOn is { } occurredOn)
+        {
+            entry.OccurredOn = occurredOn;
+        }
+        if (req.VendorId is { } vendorId)
+        {
+            entry.VendorId = vendorId;
+        }
+        if (req.CategoryId is { } categoryId)
+        {
+            entry.CategoryId = categoryId;
+        }
         if (req.Description is { } description)
         {
             entry.Description = string.IsNullOrWhiteSpace(description) ? null : description.Trim();
@@ -331,14 +387,23 @@ public static class SpendEntriesEndpoints
     /// (a 500) rather than the clean 400 the POST path already gives for the same mistake.
     /// </summary>
     private static async Task<string?> ValidateReferencesAsync(
-        SpendEntryPatchRequest req, AiObservatoryDbContext db, CancellationToken ct)
+        SpendEntryPatchRequest req,
+        AiObservatoryDbContext db,
+        CancellationToken ct
+    )
     {
-        if (req.VendorId is { } vendorId && !await db.SpendVendors.AnyAsync(v => v.Id == vendorId, ct))
+        if (
+            req.VendorId is { } vendorId
+            && !await db.SpendVendors.AnyAsync(v => v.Id == vendorId, ct)
+        )
         {
             return $"Unknown VendorId: {vendorId}";
         }
 
-        if (req.CategoryId is { } categoryId && !await db.SpendCategories.AnyAsync(c => c.Id == categoryId, ct))
+        if (
+            req.CategoryId is { } categoryId
+            && !await db.SpendCategories.AnyAsync(c => c.Id == categoryId, ct)
+        )
         {
             return $"Unknown CategoryId: {categoryId}";
         }
@@ -348,7 +413,11 @@ public static class SpendEntriesEndpoints
 
     /// <summary>Re-resolves currency, FX rate and AmountGbp on <paramref name="entry"/>; returns an error, or null on success.</summary>
     private static async Task<string?> ReResolveFxAsync(
-        SpendEntry entry, string? requestedCurrency, FxRateProvider fx, CancellationToken ct)
+        SpendEntry entry,
+        string? requestedCurrency,
+        FxRateProvider fx,
+        CancellationToken ct
+    )
     {
         var currency = (requestedCurrency ?? entry.Currency).Trim().ToUpperInvariant();
         if (currency.Length != 3 || !currency.All(char.IsAsciiLetterUpper))
@@ -370,7 +439,11 @@ public static class SpendEntriesEndpoints
         return null;
     }
 
-    private static async Task<IResult> DeleteEntryAsync(Guid id, AiObservatoryDbContext db, CancellationToken ct)
+    private static async Task<IResult> DeleteEntryAsync(
+        Guid id,
+        AiObservatoryDbContext db,
+        CancellationToken ct
+    )
     {
         var deleted = await db.SpendEntries.Where(e => e.Id == id).ExecuteDeleteAsync(ct);
         return deleted == 0 ? Results.NotFound() : Results.NoContent();
@@ -385,7 +458,8 @@ public sealed record SpendEntryRequest(
     string? Currency,
     string? Description,
     string Source,
-    string? EntryKey);
+    string? EntryKey
+);
 
 public sealed record SpendEntryPatchRequest(
     LocalDate? OccurredOn,
@@ -393,7 +467,11 @@ public sealed record SpendEntryPatchRequest(
     Guid? CategoryId,
     decimal? Amount,
     string? Currency,
-    string? Description);
+    string? Description
+);
 
 /// <param name="Status">created | duplicate | rejected</param>
+// Serialized as the per-row API response; reflection-based JSON use is invisible to InspectCode.
+// ReSharper disable NotAccessedPositionalProperty.Global
 public sealed record SpendEntryResult(Guid? Id, string Status, string? Reason);
+// ReSharper restore NotAccessedPositionalProperty.Global

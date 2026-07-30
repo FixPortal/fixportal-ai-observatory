@@ -10,4 +10,5 @@ public record CopilotUsageRecord(
     int ActiveUsers,
     int TotalSuggestionsCount,
     int TotalAcceptancesCount,
-    string RawJson);
+    string RawJson
+);

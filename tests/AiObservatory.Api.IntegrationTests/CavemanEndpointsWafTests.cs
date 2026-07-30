@@ -5,7 +5,7 @@ using AwesomeAssertions;
 using Microsoft.Extensions.DependencyInjection;
 using NodaTime;
 
-namespace AiObservatory.Api.Tests;
+namespace AiObservatory.Api.IntegrationTests;
 
 /// <summary>
 /// AIO-H3: POST /api/caveman-sessions batch cap, in-batch duplicate SessionId, and
@@ -16,27 +16,36 @@ namespace AiObservatory.Api.Tests;
 [Collection("ApiFactory")]
 public class CavemanEndpointsWafTests(AiObservatoryApiFactory factory)
 {
-    private static object Session(string sessionId, DateTimeOffset occurredAtUtc, long outputTokens = 100) => new
-    {
-        SessionId = sessionId,
-        OccurredAtUtc = occurredAtUtc,
-        Mode = "caveman",
-        Model = "claude-sonnet-4-6",
-        OutputTokens = outputTokens,
-        EstSavedTokens = 10,
-        EstSavedUsd = 0.001m,
-    };
+    private static object Session(
+        string sessionId,
+        DateTimeOffset occurredAtUtc,
+        long outputTokens = 100
+    ) =>
+        new
+        {
+            SessionId = sessionId,
+            OccurredAtUtc = occurredAtUtc,
+            Mode = "caveman",
+            Model = "claude-sonnet-4-6",
+            OutputTokens = outputTokens,
+            EstSavedTokens = 10,
+            EstSavedUsd = 0.001m,
+        };
 
     [Fact]
     public async Task PostSessions_WhenBatchExceeds1000_ReturnsBadRequest()
     {
         using var client = factory.CreateAdminClient();
-        var sessions = Enumerable.Range(0, 1001)
+        var sessions = Enumerable
+            .Range(0, 1001)
             .Select(i => Session($"batch-cap-{i}-{Guid.NewGuid():N}", DateTimeOffset.UtcNow))
             .ToList();
 
         var response = await client.PostAsJsonAsync(
-            "/api/caveman-sessions", new { Sessions = sessions }, TestContext.Current.CancellationToken);
+            "/api/caveman-sessions",
+            new { Sessions = sessions },
+            TestContext.Current.CancellationToken
+        );
 
         response.StatusCode.Should().Be(HttpStatusCode.BadRequest);
     }
@@ -53,7 +62,10 @@ public class CavemanEndpointsWafTests(AiObservatoryApiFactory factory)
         };
 
         var response = await client.PostAsJsonAsync(
-            "/api/caveman-sessions", new { Sessions = sessions }, TestContext.Current.CancellationToken);
+            "/api/caveman-sessions",
+            new { Sessions = sessions },
+            TestContext.Current.CancellationToken
+        );
 
         response.StatusCode.Should().Be(HttpStatusCode.BadRequest);
     }
@@ -62,10 +74,16 @@ public class CavemanEndpointsWafTests(AiObservatoryApiFactory factory)
     public async Task PostSessions_WhenFutureOccurredAt_ReturnsBadRequest()
     {
         using var client = factory.CreateAdminClient();
-        var sessions = new[] { Session($"future-{Guid.NewGuid():N}", DateTimeOffset.UtcNow.AddHours(1)) };
+        var sessions = new[]
+        {
+            Session($"future-{Guid.NewGuid():N}", DateTimeOffset.UtcNow.AddHours(1)),
+        };
 
         var response = await client.PostAsJsonAsync(
-            "/api/caveman-sessions", new { Sessions = sessions }, TestContext.Current.CancellationToken);
+            "/api/caveman-sessions",
+            new { Sessions = sessions },
+            TestContext.Current.CancellationToken
+        );
 
         response.StatusCode.Should().Be(HttpStatusCode.BadRequest);
     }
@@ -78,26 +96,32 @@ public class CavemanEndpointsWafTests(AiObservatoryApiFactory factory)
         // Whole-second precision: Postgres timestamptz round-trips to microseconds, so a
         // sub-microsecond DateTimeOffset.UtcNow tick component would make the post-round-trip
         // equality check below flaky.
-        var newer = DateTimeOffset.FromUnixTimeSeconds(DateTimeOffset.UtcNow.AddMinutes(-1).ToUnixTimeSeconds());
+        var newer = DateTimeOffset.FromUnixTimeSeconds(
+            DateTimeOffset.UtcNow.AddMinutes(-1).ToUnixTimeSeconds()
+        );
         var older = newer.AddMinutes(-10);
 
         var first = await client.PostAsJsonAsync(
             "/api/caveman-sessions",
             new { Sessions = new[] { Session(sessionId, newer, outputTokens: 500) } },
-            TestContext.Current.CancellationToken);
+            TestContext.Current.CancellationToken
+        );
         first.EnsureSuccessStatusCode();
 
         // Replay an older, stale snapshot with a smaller OutputTokens for the same session.
         var replay = await client.PostAsJsonAsync(
             "/api/caveman-sessions",
             new { Sessions = new[] { Session(sessionId, older, outputTokens: 1) } },
-            TestContext.Current.CancellationToken);
+            TestContext.Current.CancellationToken
+        );
         replay.EnsureSuccessStatusCode();
 
         using var scope = factory.Services.CreateScope();
         var db = scope.ServiceProvider.GetRequiredService<AiObservatoryDbContext>();
         var stored = db.CavemanSessions.Single(s => s.SessionId == sessionId);
-        stored.OutputTokens.Should().Be(500, "the stale replay must not regress the newer snapshot's fields");
+        stored
+            .OutputTokens.Should()
+            .Be(500, "the stale replay must not regress the newer snapshot's fields");
         stored.OccurredAt.Should().Be(Instant.FromDateTimeOffset(newer));
     }
 
@@ -112,13 +136,15 @@ public class CavemanEndpointsWafTests(AiObservatoryApiFactory factory)
         var seed = await client.PostAsJsonAsync(
             "/api/caveman-sessions",
             new { Sessions = new[] { Session(sessionId, first, outputTokens: 100) } },
-            TestContext.Current.CancellationToken);
+            TestContext.Current.CancellationToken
+        );
         seed.EnsureSuccessStatusCode();
 
         var response = await client.PostAsJsonAsync(
             "/api/caveman-sessions",
             new { Sessions = new[] { Session(sessionId, newer, outputTokens: 999) } },
-            TestContext.Current.CancellationToken);
+            TestContext.Current.CancellationToken
+        );
         response.EnsureSuccessStatusCode();
 
         using var scope = factory.Services.CreateScope();

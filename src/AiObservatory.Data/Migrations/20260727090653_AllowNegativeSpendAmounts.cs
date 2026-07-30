@@ -19,16 +19,19 @@ namespace AiObservatory.Data.Migrations
         {
             migrationBuilder.DropCheckConstraint(
                 name: "CK_SpendEntry_Amount_NonNegative",
-                table: "SpendEntries");
+                table: "SpendEntries"
+            );
 
             migrationBuilder.DropCheckConstraint(
                 name: "CK_SpendEntry_AmountGbp_NonNegative",
-                table: "SpendEntries");
+                table: "SpendEntries"
+            );
 
             migrationBuilder.AddCheckConstraint(
                 name: "CK_SpendEntry_Amount_NonZero",
                 table: "SpendEntries",
-                sql: "\"Amount\" <> 0");
+                sql: "\"Amount\" <> 0"
+            );
         }
 
         /// <remarks>
@@ -45,17 +48,20 @@ namespace AiObservatory.Data.Migrations
         {
             migrationBuilder.DropCheckConstraint(
                 name: "CK_SpendEntry_Amount_NonZero",
-                table: "SpendEntries");
+                table: "SpendEntries"
+            );
 
             migrationBuilder.AddCheckConstraint(
                 name: "CK_SpendEntry_Amount_NonNegative",
                 table: "SpendEntries",
-                sql: "\"Amount\" >= 0");
+                sql: "\"Amount\" >= 0"
+            );
 
             migrationBuilder.AddCheckConstraint(
                 name: "CK_SpendEntry_AmountGbp_NonNegative",
                 table: "SpendEntries",
-                sql: "\"AmountGbp\" >= 0");
+                sql: "\"AmountGbp\" >= 0"
+            );
         }
     }
 }

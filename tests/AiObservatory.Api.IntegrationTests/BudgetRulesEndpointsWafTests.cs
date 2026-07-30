@@ -2,7 +2,7 @@ using System.Net;
 using System.Net.Http.Json;
 using AwesomeAssertions;
 
-namespace AiObservatory.Api.Tests;
+namespace AiObservatory.Api.IntegrationTests;
 
 /// <summary>
 /// AIO-H3: POST /api/budget-rules ThresholdUsd>0 guard. A zero/negative threshold would
@@ -18,9 +18,18 @@ public class BudgetRulesEndpointsWafTests(AiObservatoryApiFactory factory)
     public async Task PostBudgetRule_WhenThresholdNotPositive_ReturnsBadRequest(decimal threshold)
     {
         using var client = factory.CreateAdminClient();
-        var body = new { Provider = (string?)null, Period = "daily", ThresholdUsd = threshold };
+        var body = new
+        {
+            Provider = (string?)null,
+            Period = "daily",
+            ThresholdUsd = threshold,
+        };
 
-        var response = await client.PostAsJsonAsync("/api/budget-rules", body, TestContext.Current.CancellationToken);
+        var response = await client.PostAsJsonAsync(
+            "/api/budget-rules",
+            body,
+            TestContext.Current.CancellationToken
+        );
 
         response.StatusCode.Should().Be(HttpStatusCode.BadRequest);
     }
@@ -29,9 +38,18 @@ public class BudgetRulesEndpointsWafTests(AiObservatoryApiFactory factory)
     public async Task PostBudgetRule_WhenThresholdPositive_ReturnsCreated()
     {
         using var client = factory.CreateAdminClient();
-        var body = new { Provider = (string?)null, Period = "weekly", ThresholdUsd = 25m };
+        var body = new
+        {
+            Provider = (string?)null,
+            Period = "weekly",
+            ThresholdUsd = 25m,
+        };
 
-        var response = await client.PostAsJsonAsync("/api/budget-rules", body, TestContext.Current.CancellationToken);
+        var response = await client.PostAsJsonAsync(
+            "/api/budget-rules",
+            body,
+            TestContext.Current.CancellationToken
+        );
 
         response.StatusCode.Should().Be(HttpStatusCode.Created);
     }

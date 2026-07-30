@@ -4,7 +4,8 @@ using MimeKit;
 
 namespace AiObservatory.Api.Services;
 
-public sealed class EmailAlertNotifier(ISmtpClient smtpClient, IConfiguration config) : IAlertNotifier
+public sealed class EmailAlertNotifier(ISmtpClient smtpClient, IConfiguration config)
+    : IAlertNotifier
 {
     public async Task NotifyAsync(BudgetAlertPayload payload, CancellationToken ct = default)
     {
@@ -31,11 +32,13 @@ public sealed class EmailAlertNotifier(ISmtpClient smtpClient, IConfiguration co
             using var message = new MimeMessage();
             message.From.Add(MailboxAddress.Parse(from));
             message.To.Add(MailboxAddress.Parse(to));
-            message.Subject = $"Budget alert: {payload.Provider} {payload.Period} spend exceeded ${payload.ThresholdUsd:F2}";
+            message.Subject =
+                $"Budget alert: {payload.Provider} {payload.Period} spend exceeded ${payload.ThresholdUsd:F2}";
             message.Body = new TextPart("plain")
             {
-                Text = $"Total {payload.Period.ToLower()} spend for {payload.Provider} reached ${payload.ActualSpend:F2}, " +
-                       $"exceeding your ${payload.ThresholdUsd:F2} threshold.\n\nTriggered at: {payload.TriggeredAt:u}"
+                Text =
+                    $"Total {payload.Period.ToLower()} spend for {payload.Provider} reached ${payload.ActualSpend:F2}, "
+                    + $"exceeding your ${payload.ThresholdUsd:F2} threshold.\n\nTriggered at: {payload.TriggeredAt:u}",
             };
 
             await smtpClient.SendAsync(message, ct);

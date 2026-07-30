@@ -17,9 +17,13 @@ public class GitHubActivityRepositoryTests : IAsyncLifetime
 
     public async ValueTask InitializeAsync()
     {
-        var baseConn = Environment.GetEnvironmentVariable("TEST_DB_CONNECTION")
+        var baseConn =
+            Environment.GetEnvironmentVariable("TEST_DB_CONNECTION")
             ?? "Host=localhost;Database=aiobs_test;Username=postgres;Password=postgres";
-        _connStr = new NpgsqlConnectionStringBuilder(baseConn) { Database = $"aiobs_test_github_{Guid.NewGuid():N}" }.ConnectionString;
+        _connStr = new NpgsqlConnectionStringBuilder(baseConn)
+        {
+            Database = $"aiobs_test_github_{Guid.NewGuid():N}",
+        }.ConnectionString;
         var options = new DbContextOptionsBuilder<AiObservatoryDbContext>()
             .UseNpgsql(_connStr, o => o.UseNodaTime())
             .Options;
@@ -40,16 +44,36 @@ public class GitHubActivityRepositoryTests : IAsyncLifetime
         }
     }
 
-    private static GitHubPullRequestRecord Pr(string state = "open", int reviewCount = 0, Instant? firstReviewAt = null) =>
-        new("fix-portal/example", 42, "Add feature", "chris", state,
-            Instant.FromUtc(2026, 7, 1, 9, 0), null, null, firstReviewAt, reviewCount);
+    private static GitHubPullRequestRecord Pr(
+        string state = "open",
+        int reviewCount = 0,
+        Instant? firstReviewAt = null
+    ) =>
+        new(
+            "fix-portal/example",
+            42,
+            "Add feature",
+            "chris",
+            state,
+            Instant.FromUtc(2026, 7, 1, 9, 0),
+            null,
+            null,
+            firstReviewAt,
+            reviewCount
+        );
 
     [Fact]
     public async Task UpsertPullRequestAsync_WhenNew_Inserts()
     {
-        await _repo.UpsertPullRequestAsync(Pr(), Instant.FromUtc(2026, 7, 1, 10, 0), TestContext.Current.CancellationToken);
+        await _repo.UpsertPullRequestAsync(
+            Pr(),
+            Instant.FromUtc(2026, 7, 1, 10, 0),
+            TestContext.Current.CancellationToken
+        );
 
-        var stored = await _ctx.GitHubPullRequests.SingleAsync(TestContext.Current.CancellationToken);
+        var stored = await _ctx.GitHubPullRequests.SingleAsync(
+            TestContext.Current.CancellationToken
+        );
         stored.State.Should().Be("open");
         stored.ReviewCount.Should().Be(0);
     }
@@ -62,7 +86,9 @@ public class GitHubActivityRepositoryTests : IAsyncLifetime
 
         await _repo.UpsertPullRequestAsync(
             Pr(state: "merged", reviewCount: 2, firstReviewAt: Instant.FromUtc(2026, 7, 1, 11, 0)),
-            Instant.FromUtc(2026, 7, 2, 10, 0), ct);
+            Instant.FromUtc(2026, 7, 2, 10, 0),
+            ct
+        );
 
         var stored = await _ctx.GitHubPullRequests.SingleAsync(ct);
         stored.State.Should().Be("merged");
@@ -77,9 +103,17 @@ public class GitHubActivityRepositoryTests : IAsyncLifetime
     {
         var ct = TestContext.Current.CancellationToken;
         var firstReviewAt = Instant.FromUtc(2026, 7, 1, 11, 0);
-        await _repo.UpsertPullRequestAsync(Pr(reviewCount: 4, firstReviewAt: firstReviewAt), Instant.FromUtc(2026, 7, 1, 10, 0), ct);
+        await _repo.UpsertPullRequestAsync(
+            Pr(reviewCount: 4, firstReviewAt: firstReviewAt),
+            Instant.FromUtc(2026, 7, 1, 10, 0),
+            ct
+        );
 
-        await _repo.UpsertPullRequestAsync(Pr(state: "merged", reviewCount: 0, firstReviewAt: null), Instant.FromUtc(2026, 7, 2, 10, 0), ct);
+        await _repo.UpsertPullRequestAsync(
+            Pr(state: "merged", reviewCount: 0, firstReviewAt: null),
+            Instant.FromUtc(2026, 7, 2, 10, 0),
+            ct
+        );
 
         var stored = await _ctx.GitHubPullRequests.SingleAsync(ct);
         stored.State.Should().Be("merged");
@@ -112,7 +146,14 @@ public class GitHubActivityRepositoryTests : IAsyncLifetime
     public async Task UpsertCommitAsync_WhenRepolled_IsNoOpNotDuplicate()
     {
         var ct = TestContext.Current.CancellationToken;
-        var commit = new GitHubCommitRecord("fix-portal/example", "abc123", "chris", Instant.FromUtc(2026, 7, 1, 9, 0), 10, 2);
+        var commit = new GitHubCommitRecord(
+            "fix-portal/example",
+            "abc123",
+            "chris",
+            Instant.FromUtc(2026, 7, 1, 9, 0),
+            10,
+            2
+        );
 
         await _repo.UpsertCommitAsync(commit, Instant.FromUtc(2026, 7, 1, 10, 0), ct);
         await _repo.UpsertCommitAsync(commit, Instant.FromUtc(2026, 7, 2, 10, 0), ct);
@@ -126,7 +167,14 @@ public class GitHubActivityRepositoryTests : IAsyncLifetime
     {
         var ct = TestContext.Current.CancellationToken;
         var sha256 = new string('a', 64);
-        var commit = new GitHubCommitRecord("fix-portal/example", sha256, "chris", Instant.FromUtc(2026, 7, 1, 9, 0), 10, 2);
+        var commit = new GitHubCommitRecord(
+            "fix-portal/example",
+            sha256,
+            "chris",
+            Instant.FromUtc(2026, 7, 1, 9, 0),
+            10,
+            2
+        );
 
         await _repo.UpsertCommitAsync(commit, Instant.FromUtc(2026, 7, 1, 10, 0), ct);
 
@@ -138,7 +186,14 @@ public class GitHubActivityRepositoryTests : IAsyncLifetime
     public async Task UpsertCommitAsync_TruncatesExternalStringsToDatabaseLimits()
     {
         var ct = TestContext.Current.CancellationToken;
-        var commit = new GitHubCommitRecord(new string('r', 250), "abc123", new string('a', 250), Instant.FromUtc(2026, 7, 1, 9, 0), 10, 2);
+        var commit = new GitHubCommitRecord(
+            new string('r', 250),
+            "abc123",
+            new string('a', 250),
+            Instant.FromUtc(2026, 7, 1, 9, 0),
+            10,
+            2
+        );
 
         await _repo.UpsertCommitAsync(commit, Instant.FromUtc(2026, 7, 1, 10, 0), ct);
 
@@ -151,10 +206,23 @@ public class GitHubActivityRepositoryTests : IAsyncLifetime
     public async Task UpsertWorkflowRunAsync_WhenStatusChanges_UpdatesStatus()
     {
         var ct = TestContext.Current.CancellationToken;
-        var run = new GitHubWorkflowRunRecord("fix-portal/example", 999, "ci.yml", "in_progress", Instant.FromUtc(2026, 7, 1, 9, 0));
+        var run = new GitHubWorkflowRunRecord(
+            "fix-portal/example",
+            999,
+            "ci.yml",
+            "in_progress",
+            Instant.FromUtc(2026, 7, 1, 9, 0)
+        );
 
         await _repo.UpsertWorkflowRunAsync(run, Instant.FromUtc(2026, 7, 1, 9, 0), ct);
-        await _repo.UpsertWorkflowRunAsync(run with { Status = "success" }, Instant.FromUtc(2026, 7, 1, 9, 5), ct);
+        await _repo.UpsertWorkflowRunAsync(
+            run with
+            {
+                Status = "success",
+            },
+            Instant.FromUtc(2026, 7, 1, 9, 5),
+            ct
+        );
 
         var stored = await _ctx.GitHubWorkflowRuns.SingleAsync(ct);
         stored.Status.Should().Be("success");
@@ -164,10 +232,24 @@ public class GitHubActivityRepositoryTests : IAsyncLifetime
     public async Task UpsertWorkflowRunAsync_WhenWorkflowNameChanges_UpdatesWorkflowName()
     {
         var ct = TestContext.Current.CancellationToken;
-        var run = new GitHubWorkflowRunRecord("fix-portal/example", 999, "old.yml", "in_progress", Instant.FromUtc(2026, 7, 1, 9, 0));
+        var run = new GitHubWorkflowRunRecord(
+            "fix-portal/example",
+            999,
+            "old.yml",
+            "in_progress",
+            Instant.FromUtc(2026, 7, 1, 9, 0)
+        );
 
         await _repo.UpsertWorkflowRunAsync(run, Instant.FromUtc(2026, 7, 1, 9, 0), ct);
-        await _repo.UpsertWorkflowRunAsync(run with { WorkflowName = "new.yml", Status = "success" }, Instant.FromUtc(2026, 7, 1, 9, 5), ct);
+        await _repo.UpsertWorkflowRunAsync(
+            run with
+            {
+                WorkflowName = "new.yml",
+                Status = "success",
+            },
+            Instant.FromUtc(2026, 7, 1, 9, 5),
+            ct
+        );
 
         var stored = await _ctx.GitHubWorkflowRuns.SingleAsync(ct);
         stored.WorkflowName.Should().Be("new.yml");
@@ -178,7 +260,13 @@ public class GitHubActivityRepositoryTests : IAsyncLifetime
     public async Task UpsertWorkflowRunAsync_TruncatesExternalStringsToDatabaseLimits()
     {
         var ct = TestContext.Current.CancellationToken;
-        var run = new GitHubWorkflowRunRecord(new string('r', 250), 999, new string('w', 250), new string('s', 25), Instant.FromUtc(2026, 7, 1, 9, 0));
+        var run = new GitHubWorkflowRunRecord(
+            new string('r', 250),
+            999,
+            new string('w', 250),
+            new string('s', 25),
+            Instant.FromUtc(2026, 7, 1, 9, 0)
+        );
 
         await _repo.UpsertWorkflowRunAsync(run, Instant.FromUtc(2026, 7, 1, 9, 0), ct);
 
@@ -191,7 +279,10 @@ public class GitHubActivityRepositoryTests : IAsyncLifetime
     [Fact]
     public async Task GetBackfillStatusAsync_WhenNoRowsForRepo_AllFalse()
     {
-        var result = await _repo.GetBackfillStatusAsync("fix-portal/never-seen", TestContext.Current.CancellationToken);
+        var result = await _repo.GetBackfillStatusAsync(
+            "fix-portal/never-seen",
+            TestContext.Current.CancellationToken
+        );
         result.HasPullRequests.Should().BeFalse();
         result.HasCommits.Should().BeFalse();
         result.HasWorkflowRuns.Should().BeFalse();
@@ -205,8 +296,17 @@ public class GitHubActivityRepositoryTests : IAsyncLifetime
         // status is independent, not OR'd into one repo-wide bool.
         var ct = TestContext.Current.CancellationToken;
         await _repo.UpsertCommitAsync(
-            new GitHubCommitRecord("fix-portal/example", "abc123", "chris", Instant.FromUtc(2026, 7, 1, 9, 0), 1, 0),
-            Instant.FromUtc(2026, 7, 1, 9, 0), ct);
+            new GitHubCommitRecord(
+                "fix-portal/example",
+                "abc123",
+                "chris",
+                Instant.FromUtc(2026, 7, 1, 9, 0),
+                1,
+                0
+            ),
+            Instant.FromUtc(2026, 7, 1, 9, 0),
+            ct
+        );
 
         var result = await _repo.GetBackfillStatusAsync("fix-portal/example", ct);
         result.HasPullRequests.Should().BeFalse();

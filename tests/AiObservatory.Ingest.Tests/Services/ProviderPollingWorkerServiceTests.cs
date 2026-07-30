@@ -1,4 +1,3 @@
-using AiObservatory.Ingest;
 using AwesomeAssertions;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging.Abstractions;
@@ -30,7 +29,8 @@ public class ProviderPollingWorkerServiceTests
             NullLogger<ProviderPollingWorkerService>.Instance,
             // A long interval so the worker completes exactly one cycle then parks on the
             // delay, rather than spinning while the assertions run.
-            Options.Create(new IngestOptions { PollingIntervalMinutes = 60, LookbackDays = 1 }));
+            Options.Create(new IngestOptions { PollingIntervalMinutes = 60, LookbackDays = 1 })
+        );
     }
 
     /// <summary>
@@ -56,8 +56,9 @@ public class ProviderPollingWorkerServiceTests
         var worker = CreateWorker();
 
         worker.CyclesCompleted.Should().Be(0);
-        worker.LastCycleCompletedAt.Should().BeNull(
-            "/healthz must not claim a cycle has run before one has");
+        worker
+            .LastCycleCompletedAt.Should()
+            .BeNull("/healthz must not claim a cycle has run before one has");
 
         await Task.CompletedTask;
     }
@@ -74,8 +75,12 @@ public class ProviderPollingWorkerServiceTests
             await WaitUntilAsync(() => worker.CyclesCompleted > 0, ct);
 
             worker.CyclesCompleted.Should().BeGreaterThan(0);
-            worker.LastCycleCompletedAt.Should().Be(Instant.FromUtc(2026, 7, 28, 9, 0),
-                "the timestamp comes from the injected clock, not the wall clock");
+            worker
+                .LastCycleCompletedAt.Should()
+                .Be(
+                    Instant.FromUtc(2026, 7, 28, 9, 0),
+                    "the timestamp comes from the injected clock, not the wall clock"
+                );
         }
         finally
         {
@@ -100,8 +105,12 @@ public class ProviderPollingWorkerServiceTests
         {
             await WaitUntilAsync(() => worker.CyclesCompleted > 0, ct);
 
-            worker.LastCycleCompletedAt.Should().Be(epoch,
-                "0 ticks is 1970-01-01T00:00:00Z, a real timestamp — not a null sentinel");
+            worker
+                .LastCycleCompletedAt.Should()
+                .Be(
+                    epoch,
+                    "0 ticks is 1970-01-01T00:00:00Z, a real timestamp — not a null sentinel"
+                );
         }
         finally
         {
@@ -124,8 +133,11 @@ public class ProviderPollingWorkerServiceTests
             // host is still up is the silent death the endpoint exists to surface, so it
             // must NOT be true merely because a cycle finished and the loop is waiting.
             worker.ExecuteTask.Should().NotBeNull();
-            worker.ExecuteTask!.IsCompleted.Should().BeFalse(
-                "the worker parks on the polling delay between cycles — it has not stopped");
+            worker
+                .ExecuteTask!.IsCompleted.Should()
+                .BeFalse(
+                    "the worker parks on the polling delay between cycles — it has not stopped"
+                );
         }
         finally
         {

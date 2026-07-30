@@ -34,7 +34,8 @@ public sealed record EventCostRecord(
     long InputTokens,
     long OutputTokens,
     long? CacheWriteTokens,
-    decimal CostUsd);
+    decimal CostUsd
+);
 
 public interface IUsageRepository
 {
@@ -51,29 +52,52 @@ public interface IUsageRepository
     Task<PurgeResult> PurgeProviderAsync(Provider provider, CancellationToken ct = default);
 
     Task UpsertDailyAggregateAsync(
-        LocalDate date, Provider provider, string model,
-        long inputTokens, long outputTokens, long cacheReadTokens, long cacheWriteTokens, decimal costUsd,
-        int requestCount = 1, CancellationToken ct = default);
+        LocalDate date,
+        Provider provider,
+        string model,
+        long inputTokens,
+        long outputTokens,
+        long cacheReadTokens,
+        long cacheWriteTokens,
+        decimal costUsd,
+        int requestCount = 1,
+        CancellationToken ct = default
+    );
 
     Task<IReadOnlyList<DailyAggregate>> GetAggregatesAsync(
-        LocalDate from, LocalDate to, CancellationToken ct = default);
+        LocalDate from,
+        LocalDate to,
+        CancellationToken ct = default
+    );
 
     Task<IReadOnlyList<BudgetRule>> GetBudgetRulesAsync(CancellationToken ct = default);
-    Task SetBudgetRuleTriggeredAsync(Guid ruleId, Instant triggeredAt, CancellationToken ct = default);
+    Task SetBudgetRuleTriggeredAsync(
+        Guid ruleId,
+        Instant triggeredAt,
+        CancellationToken ct = default
+    );
 
     Task AddInsightAsync(Insight insight, CancellationToken ct = default);
     Task<IReadOnlyList<Insight>> GetUnacknowledgedInsightsAsync(CancellationToken ct = default);
     Task AcknowledgeInsightAsync(Guid insightId, Instant at, CancellationToken ct = default);
     Task<LocalDate?> GetLatestInsightPeriodEndAsync(CancellationToken ct = default);
 
-    Task<IReadOnlyList<Subscription>> GetActiveSubscriptionsAsync(LocalDate today, CancellationToken ct = default);
+    Task<IReadOnlyList<Subscription>> GetActiveSubscriptionsAsync(
+        LocalDate today,
+        CancellationToken ct = default
+    );
 
     /// <summary>
     /// Updates <c>CostUsd</c> on the event identified by <paramref name="provider"/> +
     /// <paramref name="eventKey"/> and adjusts the corresponding DailyAggregate by the same
     /// delta, atomically. Returns null when no event with that key exists.
     /// </summary>
-    Task<PatchEventCostResult?> PatchEventCostAsync(Provider provider, string eventKey, decimal newCostUsd, CancellationToken ct = default);
+    Task<PatchEventCostResult?> PatchEventCostAsync(
+        Provider provider,
+        string eventKey,
+        decimal newCostUsd,
+        CancellationToken ct = default
+    );
 
     /// <summary>
     /// Returns raw events for <paramref name="provider"/>, ordered by <c>OccurredAt</c>,
@@ -83,5 +107,10 @@ public interface IUsageRepository
     /// be dumped unbounded in one request — page by date window for more.
     /// </summary>
     Task<IReadOnlyList<EventCostRecord>> GetEventsByProviderAsync(
-        Provider provider, Instant? from = null, Instant? to = null, int limit = 10_000, CancellationToken ct = default);
+        Provider provider,
+        Instant? from = null,
+        Instant? to = null,
+        int limit = 10_000,
+        CancellationToken ct = default
+    );
 }

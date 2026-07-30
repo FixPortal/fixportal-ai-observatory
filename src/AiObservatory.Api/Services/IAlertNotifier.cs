@@ -5,7 +5,8 @@ public record BudgetAlertPayload(
     string Period,
     decimal ThresholdUsd,
     decimal ActualSpend,
-    DateTimeOffset TriggeredAt);
+    DateTimeOffset TriggeredAt
+);
 
 public interface IAlertNotifier
 {

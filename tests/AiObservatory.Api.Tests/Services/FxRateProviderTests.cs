@@ -14,8 +14,11 @@ namespace AiObservatory.Api.Tests.Services;
 public class FxRateProviderTests
 {
     private static FxRateProvider Create(StubHttpMessageHandler handler) =>
-        new(new HttpClient(handler), new MemoryCache(new MemoryCacheOptions()),
-            NullLogger<FxRateProvider>.Instance);
+        new(
+            new HttpClient(handler),
+            new MemoryCache(new MemoryCacheOptions()),
+            NullLogger<FxRateProvider>.Instance
+        );
 
     [Fact]
     public async Task GbpShortCircuitsToOneAndMakesNoRequest()
@@ -23,10 +26,16 @@ public class FxRateProviderTests
         var handler = new StubHttpMessageHandler(HttpStatusCode.OK, "{}");
         var sut = Create(handler);
 
-        var rate = await sut.GetGbpRateOnAsync("GBP", new LocalDate(2026, 3, 15), TestContext.Current.CancellationToken);
+        var rate = await sut.GetGbpRateOnAsync(
+            "GBP",
+            new LocalDate(2026, 3, 15),
+            TestContext.Current.CancellationToken
+        );
 
         rate.Should().Be(1m);
-        handler.Requested.Should().BeEmpty("GBP needs no conversion, so it must not cost a network call");
+        handler
+            .Requested.Should()
+            .BeEmpty("GBP needs no conversion, so it must not cost a network call");
     }
 
     [Fact]
@@ -35,11 +44,19 @@ public class FxRateProviderTests
         var handler = new StubHttpMessageHandler(HttpStatusCode.OK, """{"rates":{"GBP":0.7412}}""");
         var sut = Create(handler);
 
-        var rate = await sut.GetGbpRateOnAsync("USD", new LocalDate(2026, 3, 15), TestContext.Current.CancellationToken);
+        var rate = await sut.GetGbpRateOnAsync(
+            "USD",
+            new LocalDate(2026, 3, 15),
+            TestContext.Current.CancellationToken
+        );
 
         rate.Should().Be(0.7412m);
-        handler.Requested.Should().ContainSingle()
-            .Which.Should().Contain("/v1/2026-03-15").And.Contain("from=USD");
+        handler
+            .Requested.Should()
+            .ContainSingle()
+            .Which.Should()
+            .Contain("/v1/2026-03-15")
+            .And.Contain("from=USD");
     }
 
     [Fact]
@@ -52,7 +69,9 @@ public class FxRateProviderTests
         await sut.GetGbpRateOnAsync("USD", date, TestContext.Current.CancellationToken);
         await sut.GetGbpRateOnAsync("USD", date, TestContext.Current.CancellationToken);
 
-        handler.Requested.Should().ContainSingle("a historical rate is immutable, so it caches indefinitely");
+        handler
+            .Requested.Should()
+            .ContainSingle("a historical rate is immutable, so it caches indefinitely");
     }
 
     [Fact]
@@ -61,7 +80,11 @@ public class FxRateProviderTests
         var handler = new StubHttpMessageHandler(HttpStatusCode.ServiceUnavailable, "");
         var sut = Create(handler);
 
-        var rate = await sut.GetGbpRateOnAsync("USD", new LocalDate(2026, 3, 15), TestContext.Current.CancellationToken);
+        var rate = await sut.GetGbpRateOnAsync(
+            "USD",
+            new LocalDate(2026, 3, 15),
+            TestContext.Current.CancellationToken
+        );
 
         // 0.79m is FxRateProvider's private Fallback constant, documented as a recent
         // USD->GBP rate. USD is the only currency phase-1 entries offer besides GBP, so it
@@ -78,8 +101,10 @@ public class FxRateProviderTests
 
         var act = () => sut.GetGbpRateOnAsync("EUR", date, TestContext.Current.CancellationToken);
 
-        var ex = await act.Should().ThrowAsync<FxUnavailableException>(
-            "freezing a USD-shaped fallback rate against a EUR charge would be undetectably wrong");
+        var ex = await act.Should()
+            .ThrowAsync<FxUnavailableException>(
+                "freezing a USD-shaped fallback rate against a EUR charge would be undetectably wrong"
+            );
         ex.Which.Message.Should().Contain("EUR").And.Contain("2026-03-15");
     }
 }

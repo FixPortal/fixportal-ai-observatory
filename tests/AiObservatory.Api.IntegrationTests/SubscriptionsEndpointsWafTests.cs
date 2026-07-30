@@ -2,7 +2,7 @@ using System.Net;
 using System.Net.Http.Json;
 using AwesomeAssertions;
 
-namespace AiObservatory.Api.Tests;
+namespace AiObservatory.Api.IntegrationTests;
 
 /// <summary>
 /// AIO-H3: /api/subscriptions validation branches (currency allowlist, BillingDay range,
@@ -13,7 +13,12 @@ namespace AiObservatory.Api.Tests;
 public class SubscriptionsEndpointsWafTests(AiObservatoryApiFactory factory)
 {
     private static object ValidBody(
-        string provider = "anthropic", string currency = "USD", int billingDay = 1, decimal costAmount = 10m) => new
+        string provider = "anthropic",
+        string currency = "USD",
+        int billingDay = 1,
+        decimal costAmount = 10m
+    ) =>
+        new
         {
             Provider = provider,
             Name = "Test subscription",
@@ -31,7 +36,11 @@ public class SubscriptionsEndpointsWafTests(AiObservatoryApiFactory factory)
     {
         using var client = factory.CreateAdminClient();
 
-        var response = await client.PostAsJsonAsync("/api/subscriptions", ValidBody(currency: currency), TestContext.Current.CancellationToken);
+        var response = await client.PostAsJsonAsync(
+            "/api/subscriptions",
+            ValidBody(currency: currency),
+            TestContext.Current.CancellationToken
+        );
 
         response.StatusCode.Should().Be(HttpStatusCode.BadRequest);
     }
@@ -44,7 +53,11 @@ public class SubscriptionsEndpointsWafTests(AiObservatoryApiFactory factory)
     {
         using var client = factory.CreateAdminClient();
 
-        var response = await client.PostAsJsonAsync("/api/subscriptions", ValidBody(billingDay: billingDay), TestContext.Current.CancellationToken);
+        var response = await client.PostAsJsonAsync(
+            "/api/subscriptions",
+            ValidBody(billingDay: billingDay),
+            TestContext.Current.CancellationToken
+        );
 
         response.StatusCode.Should().Be(HttpStatusCode.BadRequest);
     }
@@ -54,7 +67,11 @@ public class SubscriptionsEndpointsWafTests(AiObservatoryApiFactory factory)
     {
         using var client = factory.CreateAdminClient();
 
-        var response = await client.PostAsJsonAsync("/api/subscriptions", ValidBody(costAmount: -5m), TestContext.Current.CancellationToken);
+        var response = await client.PostAsJsonAsync(
+            "/api/subscriptions",
+            ValidBody(costAmount: -5m),
+            TestContext.Current.CancellationToken
+        );
 
         response.StatusCode.Should().Be(HttpStatusCode.BadRequest);
     }
@@ -64,7 +81,11 @@ public class SubscriptionsEndpointsWafTests(AiObservatoryApiFactory factory)
     {
         using var client = factory.CreateAdminClient();
 
-        var response = await client.PostAsJsonAsync("/api/subscriptions", ValidBody(provider: "not-a-provider"), TestContext.Current.CancellationToken);
+        var response = await client.PostAsJsonAsync(
+            "/api/subscriptions",
+            ValidBody(provider: "not-a-provider"),
+            TestContext.Current.CancellationToken
+        );
 
         response.StatusCode.Should().Be(HttpStatusCode.BadRequest);
     }
@@ -74,7 +95,11 @@ public class SubscriptionsEndpointsWafTests(AiObservatoryApiFactory factory)
     {
         using var client = factory.CreateAdminClient();
 
-        var response = await client.PostAsJsonAsync("/api/subscriptions", ValidBody(), TestContext.Current.CancellationToken);
+        var response = await client.PostAsJsonAsync(
+            "/api/subscriptions",
+            ValidBody(),
+            TestContext.Current.CancellationToken
+        );
 
         response.StatusCode.Should().Be(HttpStatusCode.Created);
     }
@@ -83,12 +108,21 @@ public class SubscriptionsEndpointsWafTests(AiObservatoryApiFactory factory)
     public async Task PatchExtraUsage_WhenAmountNegative_ReturnsBadRequest()
     {
         using var client = factory.CreateAdminClient();
-        var created = await client.PostAsJsonAsync("/api/subscriptions", ValidBody(), TestContext.Current.CancellationToken);
+        var created = await client.PostAsJsonAsync(
+            "/api/subscriptions",
+            ValidBody(),
+            TestContext.Current.CancellationToken
+        );
         created.EnsureSuccessStatusCode();
-        var sub = await created.Content.ReadFromJsonAsync<SubscriptionResponse>(TestContext.Current.CancellationToken);
+        var sub = await created.Content.ReadFromJsonAsync<SubscriptionResponse>(
+            TestContext.Current.CancellationToken
+        );
 
         var response = await client.PatchAsJsonAsync(
-            $"/api/subscriptions/{sub!.Id}/extra-usage", new { Amount = -1m }, TestContext.Current.CancellationToken);
+            $"/api/subscriptions/{sub!.Id}/extra-usage",
+            new { Amount = -1m },
+            TestContext.Current.CancellationToken
+        );
 
         response.StatusCode.Should().Be(HttpStatusCode.BadRequest);
     }
@@ -97,12 +131,21 @@ public class SubscriptionsEndpointsWafTests(AiObservatoryApiFactory factory)
     public async Task PatchExtraUsage_WhenAmountNonNegative_ReturnsOk()
     {
         using var client = factory.CreateAdminClient();
-        var created = await client.PostAsJsonAsync("/api/subscriptions", ValidBody(), TestContext.Current.CancellationToken);
+        var created = await client.PostAsJsonAsync(
+            "/api/subscriptions",
+            ValidBody(),
+            TestContext.Current.CancellationToken
+        );
         created.EnsureSuccessStatusCode();
-        var sub = await created.Content.ReadFromJsonAsync<SubscriptionResponse>(TestContext.Current.CancellationToken);
+        var sub = await created.Content.ReadFromJsonAsync<SubscriptionResponse>(
+            TestContext.Current.CancellationToken
+        );
 
         var response = await client.PatchAsJsonAsync(
-            $"/api/subscriptions/{sub!.Id}/extra-usage", new { Amount = 12.5m }, TestContext.Current.CancellationToken);
+            $"/api/subscriptions/{sub!.Id}/extra-usage",
+            new { Amount = 12.5m },
+            TestContext.Current.CancellationToken
+        );
 
         response.StatusCode.Should().Be(HttpStatusCode.OK);
     }

@@ -13,6 +13,7 @@ public sealed class DailyAggregate
     public long CacheWriteTokens { get; set; }
 
     /// <summary>The one-hour-TTL subset of <see cref="CacheWriteTokens"/>.</summary>
+    // ReSharper disable once InconsistentNaming
     public long CacheWrite1hTokens { get; set; }
 
     public decimal CostUsd { get; set; }

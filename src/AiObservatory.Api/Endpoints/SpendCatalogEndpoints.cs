@@ -20,7 +20,8 @@ public static class SpendCatalogEndpoints
     public static IEndpointRouteBuilder MapSpendCatalogEndpoints(this IEndpointRouteBuilder app)
     {
         app.MapGet("/spend/categories", GetCategoriesAsync);
-        app.MapGet("/spend/categories/{id:guid}", GetCategoryByIdAsync).WithName("GetSpendCategoryById");
+        app.MapGet("/spend/categories/{id:guid}", GetCategoryByIdAsync)
+            .WithName("GetSpendCategoryById");
         app.MapPost("/spend/categories", CreateCategoryAsync);
         app.MapPatch("/spend/categories/{id:guid}", PatchCategoryAsync);
 
@@ -33,7 +34,10 @@ public static class SpendCatalogEndpoints
     }
 
     private static async Task<IResult> GetCategoriesAsync(
-        AiObservatoryDbContext db, CancellationToken ct, bool includeArchived = false)
+        AiObservatoryDbContext db,
+        CancellationToken ct,
+        bool includeArchived = false
+    )
     {
         var q = db.SpendCategories.AsNoTracking();
         if (!includeArchived)
@@ -41,22 +45,35 @@ public static class SpendCatalogEndpoints
             q = q.Where(c => c.ArchivedAt == null);
         }
 
-        return Results.Ok(await q.OrderBy(c => c.SortOrder).ThenBy(c => c.DisplayName).ToListAsync(ct));
+        return Results.Ok(
+            await q.OrderBy(c => c.SortOrder).ThenBy(c => c.DisplayName).ToListAsync(ct)
+        );
     }
 
-    private static async Task<IResult> GetCategoryByIdAsync(Guid id, AiObservatoryDbContext db, CancellationToken ct)
+    private static async Task<IResult> GetCategoryByIdAsync(
+        Guid id,
+        AiObservatoryDbContext db,
+        CancellationToken ct
+    )
     {
-        var category = await db.SpendCategories.AsNoTracking().FirstOrDefaultAsync(c => c.Id == id, ct);
+        var category = await db
+            .SpendCategories.AsNoTracking()
+            .FirstOrDefaultAsync(c => c.Id == id, ct);
         return category is not null ? Results.Ok(category) : Results.NotFound();
     }
 
     private static async Task<IResult> CreateCategoryAsync(
-        SpendCategoryRequest req, AiObservatoryDbContext db, CancellationToken ct)
+        SpendCategoryRequest req,
+        AiObservatoryDbContext db,
+        CancellationToken ct
+    )
     {
         var key = Slug(req.Key);
         if (key is null || ValidateName(req.DisplayName) is not null)
         {
-            return Results.BadRequest("Key must be a slug of 60 characters or fewer and DisplayName is required");
+            return Results.BadRequest(
+                "Key must be a slug of 60 characters or fewer and DisplayName is required"
+            );
         }
 
         if (ValidateColorVar(req.ColorVar) is { } colorError)
@@ -81,8 +98,10 @@ public static class SpendCatalogEndpoints
         {
             await db.SaveChangesAsync(ct);
         }
-        catch (DbUpdateException ex) when (
-            ex.InnerException is PostgresException { SqlState: PostgresErrorCodes.UniqueViolation })
+        catch (DbUpdateException ex)
+            when (ex.InnerException
+                    is PostgresException { SqlState: PostgresErrorCodes.UniqueViolation }
+            )
         {
             // Two concurrent creates of the same key both pass the AnyAsync pre-check above
             // -- one wins the unique index and this one lands here. Same message as the
@@ -94,7 +113,12 @@ public static class SpendCatalogEndpoints
     }
 
     private static async Task<IResult> PatchCategoryAsync(
-        Guid id, SpendCatalogPatchRequest req, AiObservatoryDbContext db, IClock clock, CancellationToken ct)
+        Guid id,
+        SpendCatalogPatchRequest req,
+        AiObservatoryDbContext db,
+        IClock clock,
+        CancellationToken ct
+    )
     {
         var category = await db.SpendCategories.FindAsync([id], ct);
         if (category is null)
@@ -104,25 +128,40 @@ public static class SpendCatalogEndpoints
 
         if (req.DisplayName is { } name)
         {
-            if (ValidateName(name) is { } error) { return Results.BadRequest(error); }
+            if (ValidateName(name) is { } error)
+            {
+                return Results.BadRequest(error);
+            }
             category.DisplayName = name.Trim();
         }
 
         if (req.ColorVar is { } color)
         {
-            if (ValidateColorVar(color) is { } colorError) { return Results.BadRequest(colorError); }
+            if (ValidateColorVar(color) is { } colorError)
+            {
+                return Results.BadRequest(colorError);
+            }
             category.ColorVar = color.Trim();
         }
-        if (req.SortOrder is { } order) { category.SortOrder = order; }
+        if (req.SortOrder is { } order)
+        {
+            category.SortOrder = order;
+        }
         // Archiving is a soft delete: historical entries keep resolving their category.
-        if (req.Archived is { } archived) { category.ArchivedAt = archived ? clock.GetCurrentInstant() : null; }
+        if (req.Archived is { } archived)
+        {
+            category.ArchivedAt = archived ? clock.GetCurrentInstant() : null;
+        }
 
         await db.SaveChangesAsync(ct);
         return Results.Ok(category);
     }
 
     private static async Task<IResult> GetVendorsAsync(
-        AiObservatoryDbContext db, CancellationToken ct, bool includeArchived = false)
+        AiObservatoryDbContext db,
+        CancellationToken ct,
+        bool includeArchived = false
+    )
     {
         var q = db.SpendVendors.AsNoTracking();
         if (!includeArchived)
@@ -133,19 +172,28 @@ public static class SpendCatalogEndpoints
         return Results.Ok(await q.OrderBy(v => v.DisplayName).ToListAsync(ct));
     }
 
-    private static async Task<IResult> GetVendorByIdAsync(Guid id, AiObservatoryDbContext db, CancellationToken ct)
+    private static async Task<IResult> GetVendorByIdAsync(
+        Guid id,
+        AiObservatoryDbContext db,
+        CancellationToken ct
+    )
     {
         var vendor = await db.SpendVendors.AsNoTracking().FirstOrDefaultAsync(v => v.Id == id, ct);
         return vendor is not null ? Results.Ok(vendor) : Results.NotFound();
     }
 
     private static async Task<IResult> CreateVendorAsync(
-        SpendVendorRequest req, AiObservatoryDbContext db, CancellationToken ct)
+        SpendVendorRequest req,
+        AiObservatoryDbContext db,
+        CancellationToken ct
+    )
     {
         var key = Slug(req.Key);
         if (key is null || ValidateName(req.DisplayName) is not null)
         {
-            return Results.BadRequest("Key must be a slug of 60 characters or fewer and DisplayName is required");
+            return Results.BadRequest(
+                "Key must be a slug of 60 characters or fewer and DisplayName is required"
+            );
         }
 
         // Null is legitimate and common: CodeRabbit, Gitar and GitHub Actions have no
@@ -153,7 +201,10 @@ public static class SpendCatalogEndpoints
         Provider? provider = null;
         if (!string.IsNullOrWhiteSpace(req.Provider))
         {
-            if (!Enum.TryParse<Provider>(req.Provider, ignoreCase: true, out var parsed) || !Enum.IsDefined(parsed))
+            if (
+                !Enum.TryParse<Provider>(req.Provider, ignoreCase: true, out var parsed)
+                || !Enum.IsDefined(parsed)
+            )
             {
                 return Results.BadRequest($"Unknown provider: {req.Provider}");
             }
@@ -165,8 +216,10 @@ public static class SpendCatalogEndpoints
             return Results.Conflict($"Vendor key already exists: {key}");
         }
 
-        if (req.DefaultCategoryId is { } categoryId
-            && !await db.SpendCategories.AnyAsync(c => c.Id == categoryId, ct))
+        if (
+            req.DefaultCategoryId is { } categoryId
+            && !await db.SpendCategories.AnyAsync(c => c.Id == categoryId, ct)
+        )
         {
             return Results.BadRequest($"Unknown DefaultCategoryId: {categoryId}");
         }
@@ -183,8 +236,10 @@ public static class SpendCatalogEndpoints
         {
             await db.SaveChangesAsync(ct);
         }
-        catch (DbUpdateException ex) when (
-            ex.InnerException is PostgresException { SqlState: PostgresErrorCodes.UniqueViolation })
+        catch (DbUpdateException ex)
+            when (ex.InnerException
+                    is PostgresException { SqlState: PostgresErrorCodes.UniqueViolation }
+            )
         {
             // Same race as CreateCategoryAsync above: the pre-check passed for both
             // concurrent callers, the unique index only stops one of them.
@@ -195,7 +250,12 @@ public static class SpendCatalogEndpoints
     }
 
     private static async Task<IResult> PatchVendorAsync(
-        Guid id, SpendVendorPatchRequest req, AiObservatoryDbContext db, IClock clock, CancellationToken ct)
+        Guid id,
+        SpendVendorPatchRequest req,
+        AiObservatoryDbContext db,
+        IClock clock,
+        CancellationToken ct
+    )
     {
         var vendor = await db.SpendVendors.FindAsync([id], ct);
         if (vendor is null)
@@ -205,7 +265,10 @@ public static class SpendCatalogEndpoints
 
         if (req.DisplayName is { } name)
         {
-            if (ValidateName(name) is { } error) { return Results.BadRequest(error); }
+            if (ValidateName(name) is { } error)
+            {
+                return Results.BadRequest(error);
+            }
             vendor.DisplayName = name.Trim();
         }
 
@@ -213,12 +276,22 @@ public static class SpendCatalogEndpoints
         // alone. Anything else (including an explicit JSON null) is a deliberate write.
         if (req.DefaultCategoryId.ValueKind is not JsonValueKind.Undefined)
         {
-            var (categoryId, categoryError) = await ResolveDefaultCategoryAsync(req.DefaultCategoryId, db, ct);
-            if (categoryError is not null) { return Results.BadRequest(categoryError); }
+            var (categoryId, categoryError) = await ResolveDefaultCategoryAsync(
+                req.DefaultCategoryId,
+                db,
+                ct
+            );
+            if (categoryError is not null)
+            {
+                return Results.BadRequest(categoryError);
+            }
             vendor.DefaultCategoryId = categoryId;
         }
 
-        if (req.Archived is { } archived) { vendor.ArchivedAt = archived ? clock.GetCurrentInstant() : null; }
+        if (req.Archived is { } archived)
+        {
+            vendor.ArchivedAt = archived ? clock.GetCurrentInstant() : null;
+        }
 
         await db.SaveChangesAsync(ct);
         return Results.Ok(vendor);
@@ -231,14 +304,20 @@ public static class SpendCatalogEndpoints
     /// two cannot be distinguished by a plain <c>Guid?</c>.
     /// </summary>
     private static async Task<(Guid? CategoryId, string? Error)> ResolveDefaultCategoryAsync(
-        JsonElement element, AiObservatoryDbContext db, CancellationToken ct)
+        JsonElement element,
+        AiObservatoryDbContext db,
+        CancellationToken ct
+    )
     {
         if (element.ValueKind is JsonValueKind.Null)
         {
             return (null, null);
         }
 
-        if (element.ValueKind is not JsonValueKind.String || !element.TryGetGuid(out var categoryId))
+        if (
+            element.ValueKind is not JsonValueKind.String
+            || !element.TryGetGuid(out var categoryId)
+        )
         {
             return (null, "DefaultCategoryId must be a GUID string or null");
         }
@@ -254,9 +333,7 @@ public static class SpendCatalogEndpoints
             : null;
 
     private static string? ValidateColorVar(string? color) =>
-        color is { Length: > 60 }
-            ? "ColorVar must be 60 characters or fewer"
-            : null;
+        color is { Length: > 60 } ? "ColorVar must be 60 characters or fewer" : null;
 
     /// <summary>Normalises a key to a lower-case slug, or null when it cannot be one.</summary>
     private static string? Slug(string? raw)
@@ -271,11 +348,26 @@ public static class SpendCatalogEndpoints
     }
 }
 
-public sealed record SpendCategoryRequest(string Key, string DisplayName, string? ColorVar, int SortOrder);
+public sealed record SpendCategoryRequest(
+    string Key,
+    string DisplayName,
+    string? ColorVar,
+    int SortOrder
+);
 
-public sealed record SpendVendorRequest(string Key, string DisplayName, string? Provider, Guid? DefaultCategoryId);
+public sealed record SpendVendorRequest(
+    string Key,
+    string DisplayName,
+    string? Provider,
+    Guid? DefaultCategoryId
+);
 
-public sealed record SpendCatalogPatchRequest(string? DisplayName, string? ColorVar, int? SortOrder, bool? Archived);
+public sealed record SpendCatalogPatchRequest(
+    string? DisplayName,
+    string? ColorVar,
+    int? SortOrder,
+    bool? Archived
+);
 
 /// <param name="DefaultCategoryId">
 /// Deliberately a <see cref="JsonElement"/> rather than a <c>Guid?</c>: the column is
@@ -286,4 +378,8 @@ public sealed record SpendCatalogPatchRequest(string? DisplayName, string? Color
 /// <see cref="JsonValueKind.Undefined"/> — while an explicit <c>null</c> arrives as
 /// <see cref="JsonValueKind.Null"/>, so the two stay distinguishable.
 /// </param>
-public sealed record SpendVendorPatchRequest(string? DisplayName, JsonElement DefaultCategoryId, bool? Archived);
+public sealed record SpendVendorPatchRequest(
+    string? DisplayName,
+    JsonElement DefaultCategoryId,
+    bool? Archived
+);

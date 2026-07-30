@@ -48,7 +48,9 @@ public class ForwardedHeadersConfigTests
         request.Headers.Add("X-Forwarded-For", "1.2.3.4"); // attacker-controlled
 
         var response = await client.SendAsync(request, TestContext.Current.CancellationToken);
-        var observedIp = await response.Content.ReadAsStringAsync(TestContext.Current.CancellationToken);
+        var observedIp = await response.Content.ReadAsStringAsync(
+            TestContext.Current.CancellationToken
+        );
 
         // 8.8.8.8 is not in KnownIPNetworks: the spoofed header must be ignored and the
         // real connecting address kept — NOT the attacker-supplied 1.2.3.4.
@@ -65,33 +67,38 @@ public class ForwardedHeadersConfigTests
         request.Headers.Add("X-Forwarded-For", "203.0.113.9"); // real client IP, forwarded by the trusted nginx sidecar
 
         var response = await client.SendAsync(request, TestContext.Current.CancellationToken);
-        var observedIp = await response.Content.ReadAsStringAsync(TestContext.Current.CancellationToken);
+        var observedIp = await response.Content.ReadAsStringAsync(
+            TestContext.Current.CancellationToken
+        );
 
         observedIp.Should().Be("203.0.113.9");
     }
 
     private static async Task<IHost> BuildTestHostAsync(System.Net.IPAddress remoteIp)
     {
-        var builder = new HostBuilder()
-            .ConfigureWebHost(webBuilder =>
-            {
-                webBuilder
-                    .UseTestServer()
-                    .Configure(app =>
-                    {
-                        // Simulate the request arriving from a specific "connecting" peer
-                        // (nginx sidecar vs. a direct public caller) before ForwardedHeaders runs.
-                        app.Use(async (ctx, next) =>
+        var builder = new HostBuilder().ConfigureWebHost(webBuilder =>
+        {
+            webBuilder
+                .UseTestServer()
+                .Configure(app =>
+                {
+                    // Simulate the request arriving from a specific "connecting" peer
+                    // (nginx sidecar vs. a direct public caller) before ForwardedHeaders runs.
+                    app.Use(
+                        async (ctx, next) =>
                         {
                             ctx.Connection.RemoteIpAddress = remoteIp;
                             await next();
-                        });
+                        }
+                    );
 
-                        app.UseForwardedHeaders(Options(Program.ConfigureForwardedHeaders));
+                    app.UseForwardedHeaders(Options(Program.ConfigureForwardedHeaders));
 
-                        app.Run(ctx => ctx.Response.WriteAsync(ctx.Connection.RemoteIpAddress?.ToString() ?? ""));
-                    });
-            });
+                    app.Run(ctx =>
+                        ctx.Response.WriteAsync(ctx.Connection.RemoteIpAddress?.ToString() ?? "")
+                    );
+                });
+        });
 
         return await builder.StartAsync(TestContext.Current.CancellationToken);
     }

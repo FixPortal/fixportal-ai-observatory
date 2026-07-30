@@ -15,15 +15,14 @@ namespace AiObservatory.Data.Migrations
                 table: "AdversarialReviewRuns",
                 type: "character varying(80)",
                 maxLength: 80,
-                nullable: true);
+                nullable: true
+            );
         }
 
         /// <inheritdoc />
         protected override void Down(MigrationBuilder migrationBuilder)
         {
-            migrationBuilder.DropColumn(
-                name: "Summary",
-                table: "AdversarialReviewRuns");
+            migrationBuilder.DropColumn(name: "Summary", table: "AdversarialReviewRuns");
         }
     }
 }
