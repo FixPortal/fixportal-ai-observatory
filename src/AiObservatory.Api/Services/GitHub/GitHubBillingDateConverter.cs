@@ -47,11 +47,18 @@ public sealed class GitHubBillingDateConverter : JsonConverter<DateOnly>
             return dateOnly;
         }
 
+        // AssumeUniversal, not RoundtripKind: a timestamp carrying no offset at all
+        // ("2026-07-01T00:00:00") is otherwise read as MACHINE-LOCAL and then converted to
+        // UTC below, which shifts a midnight month marker into the previous month anywhere
+        // east of Greenwich — 2026-07-01 becomes 2026-06-30 on a BST machine, filing a whole
+        // month's GitHub spend under the wrong period, and only on some machines. GitHub
+        // currently always sends the Z, so this is latent rather than live; an explicit
+        // offset is still honoured exactly as before.
         if (
             DateTimeOffset.TryParse(
                 raw,
                 CultureInfo.InvariantCulture,
-                DateTimeStyles.RoundtripKind,
+                DateTimeStyles.AssumeUniversal | DateTimeStyles.AdjustToUniversal,
                 out var timestamp
             )
         )
