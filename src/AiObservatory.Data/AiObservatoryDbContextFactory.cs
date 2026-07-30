@@ -10,8 +10,10 @@ public class AiObservatoryDbContextFactory : IDesignTimeDbContextFactory<AiObser
     public AiObservatoryDbContext CreateDbContext(string[] args)
     {
         var options = new DbContextOptionsBuilder<AiObservatoryDbContext>()
-            .UseNpgsql("Host=localhost;Database=aiobservatory;Username=postgres;Password=postgres",
-                npgsql => npgsql.UseNodaTime())
+            .UseNpgsql(
+                "Host=localhost;Database=aiobservatory;Username=postgres;Password=postgres",
+                npgsql => npgsql.UseNodaTime()
+            )
             .Options;
         return new AiObservatoryDbContext(options);
     }

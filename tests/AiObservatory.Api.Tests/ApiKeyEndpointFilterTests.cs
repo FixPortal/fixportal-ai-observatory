@@ -29,7 +29,11 @@ public class ApiKeyEndpointFilterTests
     [InlineData("POST", "Development", true, 200)]
     [InlineData("POST", "Production", false, 503)]
     public async Task InvokeAsync_WhenKeysNotConfigured_FailsClosedOutsideDev(
-        string method, string environment, bool expectNext, int expectedStatus)
+        string method,
+        string environment,
+        bool expectNext,
+        int expectedStatus
+    )
     {
         // Arrange
         _env.EnvironmentName.Returns(environment);
@@ -228,8 +232,15 @@ public class ApiKeyEndpointFilterTests
         _config["OBSERVATORY_API_KEY"].Returns("admin-key-12345");
         _config["OBSERVATORY_READONLY_API_KEY"].Returns("readonly-key-12345");
 
-        var httpContext = CreateHttpContext(method, user: new ClaimsPrincipal(new ClaimsIdentity(
-            [new Claim(ClaimTypes.Name, "chris")], authenticationType: "Bearer")));
+        var httpContext = CreateHttpContext(
+            method,
+            user: new ClaimsPrincipal(
+                new ClaimsIdentity(
+                    [new Claim(ClaimTypes.Name, "chris")],
+                    authenticationType: "Bearer"
+                )
+            )
+        );
         var context = EndpointFilterInvocationContext.Create(httpContext);
 
         var nextCalled = false;
@@ -318,10 +329,12 @@ public class ApiKeyEndpointFilterTests
         nextCalled.Should().BeFalse();
         result.Should().BeOfType<UnauthorizedHttpResult>();
     }
+
     private static DefaultHttpContext CreateHttpContext(
         string method,
         string? key = null,
-        ClaimsPrincipal? user = null)
+        ClaimsPrincipal? user = null
+    )
     {
         var context = new DefaultHttpContext
         {

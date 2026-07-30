@@ -18,32 +18,57 @@ public class CopilotIngestionServiceTests
     public async Task IngestAsync_writes_flat_usage_event_for_subscription_day()
     {
         var date = new LocalDate(2026, 6, 1);
-        _client.GetDailyUsageAsync(date, Arg.Any<CancellationToken>())
-            .Returns(new CopilotUsageRecord(
-                Date: date, ActiveUsers: 1, TotalSuggestionsCount: 142,
-                TotalAcceptancesCount: 89, RawJson: "{}"));
+        _client
+            .GetDailyUsageAsync(date, Arg.Any<CancellationToken>())
+            .Returns(
+                new CopilotUsageRecord(
+                    Date: date,
+                    ActiveUsers: 1,
+                    TotalSuggestionsCount: 142,
+                    TotalAcceptancesCount: 89,
+                    RawJson: "{}"
+                )
+            );
 
-        var sut = new CopilotIngestionService(_client, _repo, _clock, NullLogger<CopilotIngestionService>.Instance);
+        var sut = new CopilotIngestionService(
+            _client,
+            _repo,
+            _clock,
+            NullLogger<CopilotIngestionService>.Instance
+        );
         await sut.IngestAsync(date, TestContext.Current.CancellationToken);
 
-        await _repo.Received(1).RecordEventAsync(
-            Arg.Is<UsageEvent>(e =>
-                e != null &&
-                e.Provider == Provider.Copilot &&
-                e.CostUsd == 0m &&
-                e.EventKey == "copilot:2026-06-01:copilot"),
-            Arg.Any<CancellationToken>());
+        await _repo
+            .Received(1)
+            .RecordEventAsync(
+                Arg.Is<UsageEvent>(e =>
+                    e != null
+                    && e.Provider == Provider.Copilot
+                    && e.CostUsd == 0m
+                    && e.EventKey == "copilot:2026-06-01:copilot"
+                ),
+                Arg.Any<CancellationToken>()
+            );
     }
 
     [Fact]
     public async Task IngestAsync_does_nothing_when_client_returns_null()
     {
         var date = new LocalDate(2026, 6, 1);
-        _client.GetDailyUsageAsync(date, Arg.Any<CancellationToken>()).Returns((CopilotUsageRecord?)null);
+        _client
+            .GetDailyUsageAsync(date, Arg.Any<CancellationToken>())
+            .Returns((CopilotUsageRecord?)null);
 
-        var sut = new CopilotIngestionService(_client, _repo, _clock, NullLogger<CopilotIngestionService>.Instance);
+        var sut = new CopilotIngestionService(
+            _client,
+            _repo,
+            _clock,
+            NullLogger<CopilotIngestionService>.Instance
+        );
         await sut.IngestAsync(date, TestContext.Current.CancellationToken);
 
-        await _repo.DidNotReceive().RecordEventAsync(Arg.Any<UsageEvent>(), Arg.Any<CancellationToken>());
+        await _repo
+            .DidNotReceive()
+            .RecordEventAsync(Arg.Any<UsageEvent>(), Arg.Any<CancellationToken>());
     }
 }

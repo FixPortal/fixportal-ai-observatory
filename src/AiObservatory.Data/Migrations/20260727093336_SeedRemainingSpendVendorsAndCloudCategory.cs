@@ -21,20 +21,81 @@ namespace AiObservatory.Data.Migrations
         {
             migrationBuilder.InsertData(
                 table: "SpendCategories",
-                columns: new[] { "Id", "ArchivedAt", "ColorVar", "DisplayName", "Key", "SortOrder" },
-                values: new object[] { new Guid("11111111-1111-1111-1111-111111111105"), null, "--spend-cloud", "Cloud", "cloud", 50 });
+                columns: new[]
+                {
+                    "Id",
+                    "ArchivedAt",
+                    "ColorVar",
+                    "DisplayName",
+                    "Key",
+                    "SortOrder",
+                },
+                values: new object[]
+                {
+                    new Guid("11111111-1111-1111-1111-111111111105"),
+                    null,
+                    "--spend-cloud",
+                    "Cloud",
+                    "cloud",
+                    50,
+                }
+            );
 
             migrationBuilder.InsertData(
                 table: "SpendVendors",
-                columns: new[] { "Id", "ArchivedAt", "DefaultCategoryId", "DisplayName", "Key", "Provider" },
+                columns: new[]
+                {
+                    "Id",
+                    "ArchivedAt",
+                    "DefaultCategoryId",
+                    "DisplayName",
+                    "Key",
+                    "Provider",
+                },
                 values: new object[,]
                 {
-                    { new Guid("22222222-2222-2222-2222-222222222206"), null, new Guid("11111111-1111-1111-1111-111111111104"), "OpenAI", "openai", "OpenAI" },
-                    { new Guid("22222222-2222-2222-2222-222222222207"), null, new Guid("11111111-1111-1111-1111-111111111104"), "Google", "google", "Google" },
-                    { new Guid("22222222-2222-2222-2222-222222222209"), null, new Guid("11111111-1111-1111-1111-111111111104"), "OpenRouter", "openrouter", null },
-                    { new Guid("22222222-2222-2222-2222-222222222210"), null, new Guid("11111111-1111-1111-1111-111111111103"), "Blacksmith", "blacksmith", null },
-                    { new Guid("22222222-2222-2222-2222-222222222208"), null, new Guid("11111111-1111-1111-1111-111111111105"), "Microsoft", "microsoft", null }
-                });
+                    {
+                        new Guid("22222222-2222-2222-2222-222222222206"),
+                        null,
+                        new Guid("11111111-1111-1111-1111-111111111104"),
+                        "OpenAI",
+                        "openai",
+                        "OpenAI",
+                    },
+                    {
+                        new Guid("22222222-2222-2222-2222-222222222207"),
+                        null,
+                        new Guid("11111111-1111-1111-1111-111111111104"),
+                        "Google",
+                        "google",
+                        "Google",
+                    },
+                    {
+                        new Guid("22222222-2222-2222-2222-222222222209"),
+                        null,
+                        new Guid("11111111-1111-1111-1111-111111111104"),
+                        "OpenRouter",
+                        "openrouter",
+                        null,
+                    },
+                    {
+                        new Guid("22222222-2222-2222-2222-222222222210"),
+                        null,
+                        new Guid("11111111-1111-1111-1111-111111111103"),
+                        "Blacksmith",
+                        "blacksmith",
+                        null,
+                    },
+                    {
+                        new Guid("22222222-2222-2222-2222-222222222208"),
+                        null,
+                        new Guid("11111111-1111-1111-1111-111111111105"),
+                        "Microsoft",
+                        "microsoft",
+                        null,
+                    },
+                }
+            );
         }
 
         /// <inheritdoc />
@@ -47,7 +108,8 @@ namespace AiObservatory.Data.Migrations
             // catalog panel — which is the soft delete these rows are actually meant to use.
             throw new NotSupportedException(
                 "SeedRemainingSpendVendorsAndCloudCategory cannot be rolled back once spend entries "
-              + "reference the seeded rows. Roll forward, or archive the vendor/category instead.");
+                    + "reference the seeded rows. Roll forward, or archive the vendor/category instead."
+            );
         }
     }
 }

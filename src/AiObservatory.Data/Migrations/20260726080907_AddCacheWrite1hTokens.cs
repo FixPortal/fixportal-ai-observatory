@@ -14,19 +14,22 @@ namespace AiObservatory.Data.Migrations
                 name: "CacheWrite1hTokens",
                 table: "UsageEvents",
                 type: "bigint",
-                nullable: true);
+                nullable: true
+            );
 
             migrationBuilder.AddColumn<long>(
                 name: "CacheWrite1hTokens",
                 table: "DailyAggregates",
                 type: "bigint",
                 nullable: false,
-                defaultValue: 0L);
+                defaultValue: 0L
+            );
 
             migrationBuilder.AddCheckConstraint(
                 name: "CK_UsageEvent_CacheWrite1hTokens_WithinCacheWrite",
                 table: "UsageEvents",
-                sql: "\"CacheWrite1hTokens\" IS NULL OR (\"CacheWrite1hTokens\" >= 0 AND \"CacheWrite1hTokens\" <= COALESCE(\"CacheWriteTokens\", 0))");
+                sql: "\"CacheWrite1hTokens\" IS NULL OR (\"CacheWrite1hTokens\" >= 0 AND \"CacheWrite1hTokens\" <= COALESCE(\"CacheWriteTokens\", 0))"
+            );
         }
 
         /// <inheritdoc />
@@ -34,15 +37,12 @@ namespace AiObservatory.Data.Migrations
         {
             migrationBuilder.DropCheckConstraint(
                 name: "CK_UsageEvent_CacheWrite1hTokens_WithinCacheWrite",
-                table: "UsageEvents");
+                table: "UsageEvents"
+            );
 
-            migrationBuilder.DropColumn(
-                name: "CacheWrite1hTokens",
-                table: "UsageEvents");
+            migrationBuilder.DropColumn(name: "CacheWrite1hTokens", table: "UsageEvents");
 
-            migrationBuilder.DropColumn(
-                name: "CacheWrite1hTokens",
-                table: "DailyAggregates");
+            migrationBuilder.DropColumn(name: "CacheWrite1hTokens", table: "DailyAggregates");
         }
     }
 }

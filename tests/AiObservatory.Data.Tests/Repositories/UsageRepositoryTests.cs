@@ -18,11 +18,12 @@ public class UsageRepositoryTests : IAsyncLifetime
 
     public async ValueTask InitializeAsync()
     {
-        var baseConn = Environment.GetEnvironmentVariable("TEST_DB_CONNECTION")
+        var baseConn =
+            Environment.GetEnvironmentVariable("TEST_DB_CONNECTION")
             ?? "Host=localhost;Database=aiobs_test;Username=postgres;Password=postgres";
         _connStr = new NpgsqlConnectionStringBuilder(baseConn)
         {
-            Database = $"aiobs_test_usage_{Guid.NewGuid():N}"
+            Database = $"aiobs_test_usage_{Guid.NewGuid():N}",
         }.ConnectionString;
         var options = new DbContextOptionsBuilder<AiObservatoryDbContext>()
             .UseNpgsql(_connStr, o => o.UseNodaTime())
@@ -61,12 +62,15 @@ public class UsageRepositoryTests : IAsyncLifetime
             Model = "claude-sonnet-4-6",
             InputTokens = 1000,
             OutputTokens = 500,
-            CostUsd = 0.005m
+            CostUsd = 0.005m,
         };
 
         await _repo.AddUsageEventAsync(evt, TestContext.Current.CancellationToken);
 
-        var saved = await _ctx.UsageEvents.FindAsync([evt.Id], TestContext.Current.CancellationToken);
+        var saved = await _ctx.UsageEvents.FindAsync(
+            [evt.Id],
+            TestContext.Current.CancellationToken
+        );
         saved.Should().NotBeNull();
         saved!.InputTokens.Should().Be(1000);
     }
@@ -74,20 +78,24 @@ public class UsageRepositoryTests : IAsyncLifetime
     [Fact]
     public async Task RecordEvent_with_same_eventKey_records_and_aggregates_once()
     {
-        static UsageEvent NewEvent() => new()
-        {
-            Provider = Provider.Copilot,
-            OccurredAt = Instant.FromUtc(2026, 6, 2, 10, 0),
-            IngestedAt = Instant.FromUtc(2026, 6, 2, 10, 0),
-            Model = "gpt-5.4",
-            InputTokens = 100,
-            OutputTokens = 50,
-            CostUsd = 0.01m,
-            EventKey = "copilot:session-abc:gpt-5.4"
-        };
+        static UsageEvent NewEvent() =>
+            new()
+            {
+                Provider = Provider.Copilot,
+                OccurredAt = Instant.FromUtc(2026, 6, 2, 10, 0),
+                IngestedAt = Instant.FromUtc(2026, 6, 2, 10, 0),
+                Model = "gpt-5.4",
+                InputTokens = 100,
+                OutputTokens = 50,
+                CostUsd = 0.01m,
+                EventKey = "copilot:session-abc:gpt-5.4",
+            };
 
         var first = await _repo.RecordEventAsync(NewEvent(), TestContext.Current.CancellationToken);
-        var second = await _repo.RecordEventAsync(NewEvent(), TestContext.Current.CancellationToken);
+        var second = await _repo.RecordEventAsync(
+            NewEvent(),
+            TestContext.Current.CancellationToken
+        );
 
         first.IsDuplicate.Should().BeFalse();
         second.IsDuplicate.Should().BeTrue();
@@ -102,19 +110,23 @@ public class UsageRepositoryTests : IAsyncLifetime
     [Fact]
     public async Task RecordEvent_without_eventKey_records_every_submission()
     {
-        static UsageEvent NewEvent() => new()
-        {
-            Provider = Provider.Anthropic,
-            OccurredAt = Instant.FromUtc(2026, 6, 2, 10, 0),
-            IngestedAt = Instant.FromUtc(2026, 6, 2, 10, 0),
-            Model = "claude-sonnet-4-6",
-            InputTokens = 100,
-            OutputTokens = 50,
-            CostUsd = 0.01m
-        };
+        static UsageEvent NewEvent() =>
+            new()
+            {
+                Provider = Provider.Anthropic,
+                OccurredAt = Instant.FromUtc(2026, 6, 2, 10, 0),
+                IngestedAt = Instant.FromUtc(2026, 6, 2, 10, 0),
+                Model = "claude-sonnet-4-6",
+                InputTokens = 100,
+                OutputTokens = 50,
+                CostUsd = 0.01m,
+            };
 
         var first = await _repo.RecordEventAsync(NewEvent(), TestContext.Current.CancellationToken);
-        var second = await _repo.RecordEventAsync(NewEvent(), TestContext.Current.CancellationToken);
+        var second = await _repo.RecordEventAsync(
+            NewEvent(),
+            TestContext.Current.CancellationToken
+        );
 
         first.IsDuplicate.Should().BeFalse();
         second.IsDuplicate.Should().BeFalse();
@@ -139,13 +151,18 @@ public class UsageRepositoryTests : IAsyncLifetime
             OutputTokens = 800,
             CacheWriteTokens = 480,
             CostUsd = 0.0024m,
-            EventKey = "gemini:sess-abc:gemini-3.5-flash"
+            EventKey = "gemini:sess-abc:gemini-3.5-flash",
         };
         await _repo.RecordEventAsync(evt, ct);
 
         // PATCH to the corrected cost.
         var newCost = 12000 * 1.50m / 1_000_000 + 800 * 9.00m / 1_000_000 + 480 * 3.50m / 1_000_000;
-        var result = await _repo.PatchEventCostAsync(Provider.Google, "gemini:sess-abc:gemini-3.5-flash", newCost, ct);
+        var result = await _repo.PatchEventCostAsync(
+            Provider.Google,
+            "gemini:sess-abc:gemini-3.5-flash",
+            newCost,
+            ct
+        );
 
         result.Should().NotBeNull();
         result!.OldCostUsd.Should().Be(0.0024m);
@@ -155,8 +172,10 @@ public class UsageRepositoryTests : IAsyncLifetime
         var saved = await _ctx.UsageEvents.AsNoTracking().FirstAsync(e => e.Id == evt.Id, ct);
         saved.CostUsd.Should().Be(newCost);
 
-        var agg = await _ctx.DailyAggregates
-            .FirstOrDefaultAsync(a => a.Model == "gemini-3.5-flash", ct);
+        var agg = await _ctx.DailyAggregates.FirstOrDefaultAsync(
+            a => a.Model == "gemini-3.5-flash",
+            ct
+        );
         agg.Should().NotBeNull();
         // Aggregate delta = newCost - 0.0024m; check it's updated correctly.
         agg!.CostUsd.Should().BeApproximately(newCost, precision: 0.000001m);
@@ -169,7 +188,8 @@ public class UsageRepositoryTests : IAsyncLifetime
             Provider.Google,
             "gemini:nonexistent:model",
             0.01m,
-            TestContext.Current.CancellationToken);
+            TestContext.Current.CancellationToken
+        );
 
         result.Should().BeNull();
     }
@@ -188,17 +208,24 @@ public class UsageRepositoryTests : IAsyncLifetime
             InputTokens = 5000,
             OutputTokens = 200,
             CostUsd = 0.0083m,
-            EventKey = "gemini:sess-xyz:gemini-2.5-pro"
+            EventKey = "gemini:sess-xyz:gemini-2.5-pro",
         };
         await _repo.RecordEventAsync(evt, ct);
 
-        var result = await _repo.PatchEventCostAsync(Provider.Google, "gemini:sess-xyz:gemini-2.5-pro", 0.0083m, ct);
+        var result = await _repo.PatchEventCostAsync(
+            Provider.Google,
+            "gemini:sess-xyz:gemini-2.5-pro",
+            0.0083m,
+            ct
+        );
 
         result.Should().NotBeNull();
         result!.OldCostUsd.Should().Be(0.0083m);
         result.NewCostUsd.Should().Be(0.0083m);
         // CostUsd unchanged on the entity.
-        (await _ctx.UsageEvents.FindAsync([evt.Id], ct))!.CostUsd.Should().Be(0.0083m);
+        (await _ctx.UsageEvents.FindAsync([evt.Id], ct))!
+            .CostUsd.Should()
+            .Be(0.0083m);
     }
 
     [Fact]
@@ -206,17 +233,34 @@ public class UsageRepositoryTests : IAsyncLifetime
     {
         var date = new LocalDate(2026, 6, 1);
 
-        await _repo.UpsertDailyAggregateAsync(date, Provider.Anthropic, "claude-sonnet-4-6",
-            inputTokens: 1000, outputTokens: 500, cacheReadTokens: 100, cacheWriteTokens: 50, costUsd: 0.005m,
-            ct: TestContext.Current.CancellationToken);
+        await _repo.UpsertDailyAggregateAsync(
+            date,
+            Provider.Anthropic,
+            "claude-sonnet-4-6",
+            inputTokens: 1000,
+            outputTokens: 500,
+            cacheReadTokens: 100,
+            cacheWriteTokens: 50,
+            costUsd: 0.005m,
+            ct: TestContext.Current.CancellationToken
+        );
 
-        await _repo.UpsertDailyAggregateAsync(date, Provider.Anthropic, "claude-sonnet-4-6",
-            inputTokens: 2000, outputTokens: 800, cacheReadTokens: 200, cacheWriteTokens: 80, costUsd: 0.009m,
-            ct: TestContext.Current.CancellationToken);
+        await _repo.UpsertDailyAggregateAsync(
+            date,
+            Provider.Anthropic,
+            "claude-sonnet-4-6",
+            inputTokens: 2000,
+            outputTokens: 800,
+            cacheReadTokens: 200,
+            cacheWriteTokens: 80,
+            costUsd: 0.009m,
+            ct: TestContext.Current.CancellationToken
+        );
 
-        var agg = await _ctx.DailyAggregates
-            .FirstOrDefaultAsync(a => a.Date == date && a.Model == "claude-sonnet-4-6",
-                TestContext.Current.CancellationToken);
+        var agg = await _ctx.DailyAggregates.FirstOrDefaultAsync(
+            a => a.Date == date && a.Model == "claude-sonnet-4-6",
+            TestContext.Current.CancellationToken
+        );
         agg.Should().NotBeNull();
         agg!.InputTokens.Should().Be(2000);
         agg.CacheReadTokens.Should().Be(200);

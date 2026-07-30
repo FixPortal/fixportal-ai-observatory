@@ -15,7 +15,8 @@ public static class SubscriptionsEndpoints
     public static IEndpointRouteBuilder MapSubscriptionsEndpoints(this IEndpointRouteBuilder app)
     {
         app.MapGet("/subscriptions", GetSubscriptionsAsync);
-        app.MapGet("/subscriptions/{id:guid}", GetSubscriptionByIdAsync).WithName("GetSubscriptionById");
+        app.MapGet("/subscriptions/{id:guid}", GetSubscriptionByIdAsync)
+            .WithName("GetSubscriptionById");
         app.MapPost("/subscriptions", CreateSubscriptionAsync);
         app.MapPut("/subscriptions/{id:guid}", UpdateSubscriptionAsync);
         app.MapPatch("/subscriptions/{id:guid}/extra-usage", UpdateExtraUsageAsync);
@@ -36,7 +37,8 @@ public static class SubscriptionsEndpoints
     private static async Task<IResult> CreateSubscriptionAsync(
         SubscriptionRequest req,
         AiObservatoryDbContext db,
-        CancellationToken ct)
+        CancellationToken ct
+    )
     {
         var error = ValidateSubscription(req, out var provider, out var currency);
         if (error is not null)
@@ -55,7 +57,8 @@ public static class SubscriptionsEndpoints
         Guid id,
         SubscriptionRequest req,
         AiObservatoryDbContext db,
-        CancellationToken ct)
+        CancellationToken ct
+    )
     {
         var error = ValidateSubscription(req, out var provider, out var currency);
         if (error is not null)
@@ -78,7 +81,8 @@ public static class SubscriptionsEndpoints
         Guid id,
         ExtraUsageRequest req,
         AiObservatoryDbContext db,
-        CancellationToken ct)
+        CancellationToken ct
+    )
     {
         // Reject a negative extra-usage amount: it would deflate the subscription's
         // total spend, its % of budget, and the over-budget flag (frontend guard alone
@@ -108,9 +112,13 @@ public static class SubscriptionsEndpoints
     private static IResult? ValidateSubscription(
         SubscriptionRequest req,
         out Provider provider,
-        out string currency)
+        out string currency
+    )
     {
-        if (!Enum.TryParse(req.Provider, ignoreCase: true, out provider) || !Enum.IsDefined(provider))
+        if (
+            !Enum.TryParse(req.Provider, ignoreCase: true, out provider)
+            || !Enum.IsDefined(provider)
+        )
         {
             currency = "";
             return Results.BadRequest($"Unknown provider: {req.Provider}");
@@ -140,7 +148,12 @@ public static class SubscriptionsEndpoints
             : null;
     }
 
-    private static void Apply(SubscriptionRequest req, Provider provider, string currency, Subscription sub)
+    private static void Apply(
+        SubscriptionRequest req,
+        Provider provider,
+        string currency,
+        Subscription sub
+    )
     {
         sub.Provider = provider;
         sub.Name = req.Name;

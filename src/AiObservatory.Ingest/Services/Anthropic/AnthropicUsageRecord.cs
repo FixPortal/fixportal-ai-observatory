@@ -10,4 +10,5 @@ public record AnthropicUsageRecord(
     long CacheReadTokens,
     long CacheWriteTokens,
     decimal CostUsd,
-    string RawJson);
+    string RawJson
+);

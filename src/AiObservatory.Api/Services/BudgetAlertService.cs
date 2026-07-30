@@ -5,7 +5,11 @@ using NodaTime;
 namespace AiObservatory.Api.Services;
 
 public class BudgetAlertService(
-    IUsageRepository repository, IClock clock, IAlertNotifier notifier, ILogger<BudgetAlertService> logger)
+    IUsageRepository repository,
+    IClock clock,
+    IAlertNotifier notifier,
+    ILogger<BudgetAlertService> logger
+)
 {
     // virtual to match the other de-interfaced services (FxRateProvider, AnthropicIntelligenceClient):
     // overridable for subclass-mocking now that IBudgetAlertService is gone.
@@ -34,7 +38,8 @@ public class BudgetAlertService(
         BillingPeriod period,
         LocalDate today,
         LocalDate yesterday,
-        LocalDate monthStart) =>
+        LocalDate monthStart
+    ) =>
         // Daily uses yesterday, the last completed day. At the worker's UTC-midnight
         // run, today's spend is approximately zero.
         period switch
@@ -42,14 +47,15 @@ public class BudgetAlertService(
             BillingPeriod.Daily => (yesterday, yesterday),
             BillingPeriod.Weekly => (today.PlusDays(-6), today),
             BillingPeriod.Monthly => (monthStart, today),
-            _ => (yesterday, yesterday)
+            _ => (yesterday, yesterday),
         };
 
     private static bool AlreadyFired(
         BudgetRule rule,
         LocalDate today,
         LocalDate yesterday,
-        LocalDate monthStart)
+        LocalDate monthStart
+    )
     {
         if (!rule.LastTriggeredAt.HasValue)
         {
@@ -62,7 +68,7 @@ public class BudgetAlertService(
             BillingPeriod.Daily => lastDate >= yesterday,
             BillingPeriod.Weekly => lastDate >= today.PlusDays(-6),
             BillingPeriod.Monthly => lastDate >= monthStart,
-            _ => false
+            _ => false,
         };
     }
 
@@ -71,7 +77,8 @@ public class BudgetAlertService(
         LocalDate from,
         LocalDate to,
         Instant now,
-        CancellationToken ct)
+        CancellationToken ct
+    )
     {
         var aggregates = await repository.GetAggregatesAsync(from, to, ct);
         var relevantAggregates = rule.Provider.HasValue
@@ -91,8 +98,11 @@ public class BudgetAlertService(
             PeriodEnd = to,
             InsightType = InsightType.BudgetAlert,
             Title = $"Budget alert: {rule.Period} spend exceeded ${rule.ThresholdUsd:F2}",
-            Body = $"Total {rule.Period.ToString().ToLower()} spend reached ${totalSpend:F2}, exceeding your ${rule.ThresholdUsd:F2} threshold.",
-            Data = System.Text.Json.JsonSerializer.Serialize(new { threshold = rule.ThresholdUsd, actual = totalSpend })
+            Body =
+                $"Total {rule.Period.ToString().ToLower()} spend reached ${totalSpend:F2}, exceeding your ${rule.ThresholdUsd:F2} threshold.",
+            Data = System.Text.Json.JsonSerializer.Serialize(
+                new { threshold = rule.ThresholdUsd, actual = totalSpend }
+            ),
         };
 
         var payload = new BudgetAlertPayload(
@@ -100,7 +110,8 @@ public class BudgetAlertService(
             rule.Period.ToString(),
             rule.ThresholdUsd,
             totalSpend,
-            now.ToDateTimeOffset());
+            now.ToDateTimeOffset()
+        );
 
         try
         {
@@ -112,9 +123,12 @@ public class BudgetAlertService(
         catch (Exception ex) when (ex is not OperationCanceledException)
         {
             // One rule's delivery failure must not abort the remaining rules this cycle.
-            logger.LogError(ex,
+            logger.LogError(
+                ex,
                 "Budget alert delivery failed for rule {RuleId} ({Period}); will retry next cycle",
-                rule.Id, rule.Period);
+                rule.Id,
+                rule.Period
+            );
         }
     }
 }

@@ -2,7 +2,10 @@ namespace AiObservatory.Api;
 
 public class ApiKeyEndpointFilter(IConfiguration config, IHostEnvironment env) : IEndpointFilter
 {
-    public async ValueTask<object?> InvokeAsync(EndpointFilterInvocationContext context, EndpointFilterDelegate next)
+    public async ValueTask<object?> InvokeAsync(
+        EndpointFilterInvocationContext context,
+        EndpointFilterDelegate next
+    )
     {
         // A human signed in via Entra (JWT bearer) gets full access — read and write.
         // Machine callers (the observe-stop / sweeper / gemini-review hooks) carry no
@@ -24,7 +27,8 @@ public class ApiKeyEndpointFilter(IConfiguration config, IHostEnvironment env) :
         EndpointFilterInvocationContext context,
         EndpointFilterDelegate next,
         string? expectedAdmin,
-        string? expectedReadonly)
+        string? expectedReadonly
+    )
     {
         if (string.IsNullOrEmpty(expectedReadonly))
         {
@@ -51,7 +55,8 @@ public class ApiKeyEndpointFilter(IConfiguration config, IHostEnvironment env) :
 
         var providedKey = provided.ToString();
         var matchesReadonly = ApiKeyComparer.FixedTimeEquals(providedKey, expectedReadonly);
-        var matchesAdmin = !string.IsNullOrEmpty(expectedAdmin)
+        var matchesAdmin =
+            !string.IsNullOrEmpty(expectedAdmin)
             && ApiKeyComparer.FixedTimeEquals(providedKey, expectedAdmin);
 
         if (!matchesReadonly && !matchesAdmin)
@@ -65,7 +70,8 @@ public class ApiKeyEndpointFilter(IConfiguration config, IHostEnvironment env) :
     private async ValueTask<object?> AuthorizeAdminAsync(
         EndpointFilterInvocationContext context,
         EndpointFilterDelegate next,
-        string? expectedAdmin)
+        string? expectedAdmin
+    )
     {
         if (string.IsNullOrEmpty(expectedAdmin))
         {
@@ -82,10 +88,8 @@ public class ApiKeyEndpointFilter(IConfiguration config, IHostEnvironment env) :
 
     private async ValueTask<object?> ContinueInDevelopmentAsync(
         EndpointFilterInvocationContext context,
-        EndpointFilterDelegate next) =>
-        env.IsDevelopment()
-            ? await next(context)
-            : Results.StatusCode(503);
+        EndpointFilterDelegate next
+    ) => env.IsDevelopment() ? await next(context) : Results.StatusCode(503);
 
     private static bool HasMatchingKey(EndpointFilterInvocationContext context, string expected) =>
         context.HttpContext.Request.Headers.TryGetValue("X-Observatory-Key", out var provided)

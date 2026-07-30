@@ -20,6 +20,7 @@ public sealed class UsageEvent
     /// 1.25x), so the split is what makes the cache-write line cost correctly. Null means
     /// the producer reported no breakdown, which prices as all-five-minute.
     /// </summary>
+    // ReSharper disable once InconsistentNaming
     public long? CacheWrite1hTokens { get; init; }
 
     public decimal CostUsd { get; init; }

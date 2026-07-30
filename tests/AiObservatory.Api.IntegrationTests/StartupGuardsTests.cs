@@ -2,7 +2,7 @@ using System.Net;
 using AwesomeAssertions;
 using Microsoft.Extensions.Hosting;
 
-namespace AiObservatory.Api.Tests;
+namespace AiObservatory.Api.IntegrationTests;
 
 /// <summary>
 /// Composition-root startup guards in Program.cs — each is a documented fix for a real
@@ -17,7 +17,9 @@ public class StartupGuardsTests
     [Theory]
     [InlineData(null)]
     [InlineData("change-me")]
-    public async Task Startup_WhenApiKeyIsUnsetOrPlaceholder_ThrowsOutsideDevelopment(string? apiKey)
+    public async Task Startup_WhenApiKeyIsUnsetOrPlaceholder_ThrowsOutsideDevelopment(
+        string? apiKey
+    )
     {
         await using var factory = new AiObservatoryApiFactory
         {
@@ -30,8 +32,9 @@ public class StartupGuardsTests
         var thrown = Record.Exception(() => factory.Services);
 
         thrown.Should().NotBeNull();
-        ExceptionChainContains(thrown!, "OBSERVATORY_API_KEY").Should().BeTrue(
-            $"the exception chain should mention OBSERVATORY_API_KEY; got: {thrown}");
+        ExceptionChainContains(thrown!, "OBSERVATORY_API_KEY")
+            .Should()
+            .BeTrue($"the exception chain should mention OBSERVATORY_API_KEY; got: {thrown}");
     }
 
     [Trait("Category", "Integration")]
@@ -54,7 +57,10 @@ public class StartupGuardsTests
     [Fact]
     public async Task Startup_WhenDbConnectionUnset_ThrowsRegardlessOfEnvironment()
     {
-        await using var factory = new AiObservatoryApiFactory { Environment = Environments.Development };
+        await using var factory = new AiObservatoryApiFactory
+        {
+            Environment = Environments.Development,
+        };
         factory.SetDbConnection(null);
 
         // The delegate is invoked before the await-using scope disposes the factory.
@@ -62,8 +68,9 @@ public class StartupGuardsTests
         var thrown = Record.Exception(() => factory.Services);
 
         thrown.Should().NotBeNull();
-        ExceptionChainContains(thrown!, "DB_CONNECTION").Should().BeTrue(
-            $"the exception chain should mention DB_CONNECTION; got: {thrown}");
+        ExceptionChainContains(thrown!, "DB_CONNECTION")
+            .Should()
+            .BeTrue($"the exception chain should mention DB_CONNECTION; got: {thrown}");
     }
 
     /// <summary>Walks Exception/InnerException (and AggregateException.InnerExceptions) looking
@@ -87,11 +94,18 @@ public class StartupGuardsTests
     [Fact]
     public async Task DevSeedRoute_Returns404InProduction()
     {
-        await using var factory = new AiObservatoryApiFactory { Environment = Environments.Production };
+        await using var factory = new AiObservatoryApiFactory
+        {
+            Environment = Environments.Production,
+        };
         await factory.InitializeAsync();
         using var client = factory.CreateAdminClient();
 
-        var response = await client.PostAsync("/api/dev/seed", content: null, TestContext.Current.CancellationToken);
+        var response = await client.PostAsync(
+            "/api/dev/seed",
+            content: null,
+            TestContext.Current.CancellationToken
+        );
 
         response.StatusCode.Should().Be(HttpStatusCode.NotFound);
     }
@@ -100,11 +114,18 @@ public class StartupGuardsTests
     [Fact]
     public async Task DevSeedRoute_IsReachableInDevelopment()
     {
-        await using var factory = new AiObservatoryApiFactory { Environment = Environments.Development };
+        await using var factory = new AiObservatoryApiFactory
+        {
+            Environment = Environments.Development,
+        };
         await factory.InitializeAsync();
         using var client = factory.CreateAdminClient();
 
-        var response = await client.PostAsync("/api/dev/seed", content: null, TestContext.Current.CancellationToken);
+        var response = await client.PostAsync(
+            "/api/dev/seed",
+            content: null,
+            TestContext.Current.CancellationToken
+        );
 
         response.StatusCode.Should().NotBe(HttpStatusCode.NotFound);
     }

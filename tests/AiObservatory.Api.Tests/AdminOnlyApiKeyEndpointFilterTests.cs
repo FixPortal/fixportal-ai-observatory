@@ -21,13 +21,20 @@ public class AdminOnlyApiKeyEndpointFilterTests
     }
 
     private static EndpointFilterInvocationContext BuildContext(
-        string method, string? key = null, bool authenticated = false)
+        string method,
+        string? key = null,
+        bool authenticated = false
+    )
     {
         var httpContext = new DefaultHttpContext();
         if (authenticated)
         {
-            httpContext.User = new ClaimsPrincipal(new ClaimsIdentity(
-                [new Claim(ClaimTypes.Name, "chris")], authenticationType: "Bearer"));
+            httpContext.User = new ClaimsPrincipal(
+                new ClaimsIdentity(
+                    [new Claim(ClaimTypes.Name, "chris")],
+                    authenticationType: "Bearer"
+                )
+            );
         }
         httpContext.Request.Method = method;
         if (key is not null)
@@ -45,7 +52,10 @@ public class AdminOnlyApiKeyEndpointFilterTests
 
         var nextCalled = false;
         ValueTask<object?> Next(EndpointFilterInvocationContext _)
-        { nextCalled = true; return ValueTask.FromResult<object?>(Results.Ok()); }
+        {
+            nextCalled = true;
+            return ValueTask.FromResult<object?>(Results.Ok());
+        }
 
         var result = await _sut.InvokeAsync(context, Next);
 
@@ -64,7 +74,10 @@ public class AdminOnlyApiKeyEndpointFilterTests
 
         var nextCalled = false;
         ValueTask<object?> Next(EndpointFilterInvocationContext _)
-        { nextCalled = true; return ValueTask.FromResult<object?>(Results.Ok()); }
+        {
+            nextCalled = true;
+            return ValueTask.FromResult<object?>(Results.Ok());
+        }
 
         var result = await _sut.InvokeAsync(context, Next);
 
@@ -80,7 +93,10 @@ public class AdminOnlyApiKeyEndpointFilterTests
 
         var nextCalled = false;
         ValueTask<object?> Next(EndpointFilterInvocationContext _)
-        { nextCalled = true; return ValueTask.FromResult<object?>(Results.Ok()); }
+        {
+            nextCalled = true;
+            return ValueTask.FromResult<object?>(Results.Ok());
+        }
 
         var result = await _sut.InvokeAsync(context, Next);
 
@@ -96,7 +112,10 @@ public class AdminOnlyApiKeyEndpointFilterTests
 
         var nextCalled = false;
         ValueTask<object?> Next(EndpointFilterInvocationContext _)
-        { nextCalled = true; return ValueTask.FromResult<object?>(Results.Ok()); }
+        {
+            nextCalled = true;
+            return ValueTask.FromResult<object?>(Results.Ok());
+        }
 
         var result = await _sut.InvokeAsync(context, Next);
 
@@ -108,7 +127,10 @@ public class AdminOnlyApiKeyEndpointFilterTests
     [InlineData("Development", true, 200)]
     [InlineData("Production", false, 503)]
     public async Task InvokeAsync_WhenAdminKeyNotConfigured_FailsClosedOutsideDev(
-        string environment, bool expectNext, int expectedStatus)
+        string environment,
+        bool expectNext,
+        int expectedStatus
+    )
     {
         _env.EnvironmentName.Returns(environment);
         _config["OBSERVATORY_API_KEY"].Returns((string?)null);
@@ -116,7 +138,10 @@ public class AdminOnlyApiKeyEndpointFilterTests
 
         var nextCalled = false;
         ValueTask<object?> Next(EndpointFilterInvocationContext _)
-        { nextCalled = true; return ValueTask.FromResult<object?>(Results.Ok()); }
+        {
+            nextCalled = true;
+            return ValueTask.FromResult<object?>(Results.Ok());
+        }
 
         var result = await _sut.InvokeAsync(context, Next);
 

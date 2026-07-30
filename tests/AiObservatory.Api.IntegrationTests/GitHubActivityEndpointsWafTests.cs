@@ -6,7 +6,7 @@ using AwesomeAssertions;
 using Microsoft.Extensions.DependencyInjection;
 using NodaTime;
 
-namespace AiObservatory.Api.Tests;
+namespace AiObservatory.Api.IntegrationTests;
 
 /// <summary>
 /// GET /api/github/commits/summary regression coverage. The endpoint 500'd in production —
@@ -32,24 +32,42 @@ public class GitHubActivityEndpointsWafTests(AiObservatoryApiFactory factory)
             db.GitHubCommits.AddRange(
                 new GitHubCommit
                 {
-                    Repo = "FixPortal/waf-commit-summary-test", Sha = "a1", Author = "chris",
-                    CommittedAt = committedAt, Additions = 10, Deletions = 2, IngestedAt = committedAt,
+                    Repo = "FixPortal/waf-commit-summary-test",
+                    Sha = "a1",
+                    Author = "chris",
+                    CommittedAt = committedAt,
+                    Additions = 10,
+                    Deletions = 2,
+                    IngestedAt = committedAt,
                 },
                 new GitHubCommit
                 {
-                    Repo = "FixPortal/waf-commit-summary-test", Sha = "a2", Author = "chris",
-                    CommittedAt = committedAt, Additions = 5, Deletions = 1, IngestedAt = committedAt,
-                });
+                    Repo = "FixPortal/waf-commit-summary-test",
+                    Sha = "a2",
+                    Author = "chris",
+                    CommittedAt = committedAt,
+                    Additions = 5,
+                    Deletions = 1,
+                    IngestedAt = committedAt,
+                }
+            );
             await db.SaveChangesAsync(TestContext.Current.CancellationToken);
         }
 
         using var client = factory.CreateAdminClient();
         var response = await client.GetAsync(
-            "/api/github/commits/summary?from=2019-05-29&to=2019-05-29", TestContext.Current.CancellationToken);
+            "/api/github/commits/summary?from=2019-05-29&to=2019-05-29",
+            TestContext.Current.CancellationToken
+        );
 
         response.StatusCode.Should().Be(HttpStatusCode.OK);
-        var summaries = await response.Content.ReadFromJsonAsync<List<GitHubCommitSummaryRow>>(TestContext.Current.CancellationToken);
-        var row = summaries.Should().ContainSingle(s => s.Repo == "FixPortal/waf-commit-summary-test").Which;
+        var summaries = await response.Content.ReadFromJsonAsync<List<GitHubCommitSummaryRow>>(
+            TestContext.Current.CancellationToken
+        );
+        var row = summaries
+            .Should()
+            .ContainSingle(s => s.Repo == "FixPortal/waf-commit-summary-test")
+            .Which;
         row.CommitCount.Should().Be(2);
         row.Additions.Should().Be(15);
         row.Deletions.Should().Be(3);
@@ -70,32 +88,46 @@ public class GitHubActivityEndpointsWafTests(AiObservatoryApiFactory factory)
     /// </para>
     /// </summary>
     [Theory]
-    [InlineData("fixportal/waf-casing-test")]   // what the worker writes
-    [InlineData("FixPortal/waf-casing-test")]   // display casing, must keep working
+    [InlineData("fixportal/waf-casing-test")] // what the worker writes
+    [InlineData("FixPortal/waf-casing-test")] // display casing, must keep working
     public async Task GetCommitsSummary_MatchesTheRepoAllowlistRegardlessOfCase(string repo)
     {
         var committedAt = Instant.FromUtc(2019, 6, 14, 12, 0);
         using (var scope = factory.Services.CreateScope())
         {
             var db = scope.ServiceProvider.GetRequiredService<AiObservatoryDbContext>();
-            db.GitHubCommits.Add(new GitHubCommit
-            {
-                Repo = repo, Sha = $"case-{Guid.NewGuid():N}", Author = "chris",
-                CommittedAt = committedAt, Additions = 7, Deletions = 3, IngestedAt = committedAt,
-            });
+            db.GitHubCommits.Add(
+                new GitHubCommit
+                {
+                    Repo = repo,
+                    Sha = $"case-{Guid.NewGuid():N}",
+                    Author = "chris",
+                    CommittedAt = committedAt,
+                    Additions = 7,
+                    Deletions = 3,
+                    IngestedAt = committedAt,
+                }
+            );
             await db.SaveChangesAsync(TestContext.Current.CancellationToken);
         }
 
         using var client = factory.CreateAdminClient();
         var response = await client.GetAsync(
-            "/api/github/commits/summary?from=2019-06-14&to=2019-06-14", TestContext.Current.CancellationToken);
+            "/api/github/commits/summary?from=2019-06-14&to=2019-06-14",
+            TestContext.Current.CancellationToken
+        );
 
         response.StatusCode.Should().Be(HttpStatusCode.OK);
         var summaries = await response.Content.ReadFromJsonAsync<List<GitHubCommitSummaryRow>>(
-            TestContext.Current.CancellationToken);
+            TestContext.Current.CancellationToken
+        );
 
-        summaries.Should().Contain(s => s.Repo == repo,
-            "a repo owned by an allowlisted org must survive the filter whatever its casing");
+        summaries
+            .Should()
+            .Contain(
+                s => s.Repo == repo,
+                "a repo owned by an allowlisted org must survive the filter whatever its casing"
+            );
     }
 
     /// <summary>A repo outside the allowlist must still be excluded — the fix widens casing, not scope.</summary>
@@ -106,23 +138,38 @@ public class GitHubActivityEndpointsWafTests(AiObservatoryApiFactory factory)
         using (var scope = factory.Services.CreateScope())
         {
             var db = scope.ServiceProvider.GetRequiredService<AiObservatoryDbContext>();
-            db.GitHubCommits.Add(new GitHubCommit
-            {
-                Repo = "someoneelse/not-ours", Sha = $"out-{Guid.NewGuid():N}", Author = "chris",
-                CommittedAt = committedAt, Additions = 1, Deletions = 1, IngestedAt = committedAt,
-            });
+            db.GitHubCommits.Add(
+                new GitHubCommit
+                {
+                    Repo = "someoneelse/not-ours",
+                    Sha = $"out-{Guid.NewGuid():N}",
+                    Author = "chris",
+                    CommittedAt = committedAt,
+                    Additions = 1,
+                    Deletions = 1,
+                    IngestedAt = committedAt,
+                }
+            );
             await db.SaveChangesAsync(TestContext.Current.CancellationToken);
         }
 
         using var client = factory.CreateAdminClient();
         var response = await client.GetAsync(
-            "/api/github/commits/summary?from=2019-06-15&to=2019-06-15", TestContext.Current.CancellationToken);
+            "/api/github/commits/summary?from=2019-06-15&to=2019-06-15",
+            TestContext.Current.CancellationToken
+        );
 
         var summaries = await response.Content.ReadFromJsonAsync<List<GitHubCommitSummaryRow>>(
-            TestContext.Current.CancellationToken);
+            TestContext.Current.CancellationToken
+        );
 
         summaries.Should().NotContain(s => s.Repo == "someoneelse/not-ours");
     }
 
-    private sealed record GitHubCommitSummaryRow(string Repo, int CommitCount, int Additions, int Deletions);
+    private sealed record GitHubCommitSummaryRow(
+        string Repo,
+        int CommitCount,
+        int Additions,
+        int Deletions
+    );
 }

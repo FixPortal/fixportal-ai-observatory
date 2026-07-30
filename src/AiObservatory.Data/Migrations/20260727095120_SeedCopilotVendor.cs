@@ -21,8 +21,25 @@ namespace AiObservatory.Data.Migrations
         {
             migrationBuilder.InsertData(
                 table: "SpendVendors",
-                columns: new[] { "Id", "ArchivedAt", "DefaultCategoryId", "DisplayName", "Key", "Provider" },
-                values: new object[] { new Guid("22222222-2222-2222-2222-222222222211"), null, new Guid("11111111-1111-1111-1111-111111111104"), "GitHub Copilot", "copilot", "Copilot" });
+                columns: new[]
+                {
+                    "Id",
+                    "ArchivedAt",
+                    "DefaultCategoryId",
+                    "DisplayName",
+                    "Key",
+                    "Provider",
+                },
+                values: new object[]
+                {
+                    new Guid("22222222-2222-2222-2222-222222222211"),
+                    null,
+                    new Guid("11111111-1111-1111-1111-111111111104"),
+                    "GitHub Copilot",
+                    "copilot",
+                    "Copilot",
+                }
+            );
         }
 
         /// <inheritdoc />
@@ -34,7 +51,8 @@ namespace AiObservatory.Data.Migrations
             // vendor through the catalog panel, which is the soft delete it is meant to use.
             throw new NotSupportedException(
                 "SeedCopilotVendor cannot be rolled back once spend entries reference the "
-              + "seeded vendor. Roll forward, or archive the vendor instead.");
+                    + "seeded vendor. Roll forward, or archive the vendor instead."
+            );
         }
     }
 }

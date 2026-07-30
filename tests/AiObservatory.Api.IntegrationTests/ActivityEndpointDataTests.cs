@@ -6,7 +6,7 @@ using Microsoft.EntityFrameworkCore;
 using NodaTime;
 using Npgsql;
 
-namespace AiObservatory.Api.Tests;
+namespace AiObservatory.Api.IntegrationTests;
 
 // Requires TEST_DB_CONNECTION env var pointing at a real PostgreSQL instance.
 [Trait("Category", "Integration")]
@@ -17,9 +17,13 @@ public class ActivityEndpointDataTests : IAsyncLifetime
 
     public async ValueTask InitializeAsync()
     {
-        var baseConn = Environment.GetEnvironmentVariable("TEST_DB_CONNECTION")
+        var baseConn =
+            Environment.GetEnvironmentVariable("TEST_DB_CONNECTION")
             ?? "Host=localhost;Database=aiobs_test;Username=postgres;Password=postgres";
-        _connStr = new NpgsqlConnectionStringBuilder(baseConn) { Database = "aiobs_test_activity_api" }.ConnectionString;
+        _connStr = new NpgsqlConnectionStringBuilder(baseConn)
+        {
+            Database = "aiobs_test_activity_api",
+        }.ConnectionString;
         var options = new DbContextOptionsBuilder<AiObservatoryDbContext>()
             .UseNpgsql(_connStr, o => o.UseNodaTime())
             .Options;
@@ -50,14 +54,15 @@ public class ActivityEndpointDataTests : IAsyncLifetime
             Session("allowed-org-repo", "FixPortal/example"),
             Session("wrong-prefix", "fix-portal-other/example"),
             Session("wrong-case", "FIX-PORTAL/example"),
-            Session("retired-personal-owner", "chris-fixportal/tooling"));
+            Session("retired-personal-owner", "chris-fixportal/tooling")
+        );
         await _ctx.SaveChangesAsync(ct);
 
         var deleted = await ActivityEndpoints.DeleteDisallowedProjectSessionsAsync(_ctx, ct);
 
         deleted.Should().Be(3);
-        var remaining = await _ctx.ClaudeActivitySessions
-            .OrderBy(s => s.SessionId)
+        var remaining = await _ctx
+            .ClaudeActivitySessions.OrderBy(s => s.SessionId)
             .Select(s => s.SessionId)
             .ToListAsync(ct);
         remaining.Should().Equal("allowed-legacy-owner", "allowed-legacy-repo", "allowed-org-repo");

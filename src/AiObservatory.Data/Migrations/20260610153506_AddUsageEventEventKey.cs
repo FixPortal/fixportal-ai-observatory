@@ -15,25 +15,23 @@ public partial class AddUsageEventEventKey : Migration
             table: "UsageEvents",
             type: "character varying(200)",
             maxLength: 200,
-            nullable: true);
+            nullable: true
+        );
 
         migrationBuilder.CreateIndex(
             name: "IX_UsageEvents_EventKey",
             table: "UsageEvents",
             column: "EventKey",
             unique: true,
-            filter: "\"EventKey\" IS NOT NULL");
+            filter: "\"EventKey\" IS NOT NULL"
+        );
     }
 
     /// <inheritdoc />
     protected override void Down(MigrationBuilder migrationBuilder)
     {
-        migrationBuilder.DropIndex(
-            name: "IX_UsageEvents_EventKey",
-            table: "UsageEvents");
+        migrationBuilder.DropIndex(name: "IX_UsageEvents_EventKey", table: "UsageEvents");
 
-        migrationBuilder.DropColumn(
-            name: "EventKey",
-            table: "UsageEvents");
+        migrationBuilder.DropColumn(name: "EventKey", table: "UsageEvents");
     }
 }

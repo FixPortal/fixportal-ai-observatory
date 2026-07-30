@@ -23,7 +23,8 @@ public class GitHubBillingSyncService(
     AiObservatoryDbContext db,
     FxRateProvider fx,
     IClock clock,
-    ILogger<GitHubBillingSyncService> logger)
+    ILogger<GitHubBillingSyncService> logger
+)
 {
     /// <summary>Every GitHub charge is denominated in USD, whatever the payment method.</summary>
     private const string Currency = "USD";
@@ -58,7 +59,10 @@ public class GitHubBillingSyncService(
     /// anyone teaches this map about it — a silently dropped line is exactly the
     /// understatement this service exists to fix.
     /// </summary>
-    private static readonly (string VendorKey, string CategoryKey) Fallback = ("github", "subscription");
+    private static readonly (string VendorKey, string CategoryKey) Fallback = (
+        "github",
+        "subscription"
+    );
 
     public async Task<int> SyncAsync(CancellationToken ct = default)
     {
@@ -79,9 +83,11 @@ public class GitHubBillingSyncService(
             return 0;
         }
 
-        var vendors = await db.SpendVendors.AsNoTracking()
+        var vendors = await db
+            .SpendVendors.AsNoTracking()
             .ToDictionaryAsync(v => v.Key, v => v.Id, StringComparer.OrdinalIgnoreCase, ct);
-        var categories = await db.SpendCategories.AsNoTracking()
+        var categories = await db
+            .SpendCategories.AsNoTracking()
             .ToDictionaryAsync(c => c.Key, c => c.Id, StringComparer.OrdinalIgnoreCase, ct);
 
         var lines = Aggregate(items).ToList();
@@ -90,8 +96,10 @@ public class GitHubBillingSyncService(
         // FirstOrDefaultAsync per line. Tracked, not AsNoTracking: the matches found here are
         // the entities the update path mutates.
         var keys = lines.ConvertAll(EntryKeyFor);
-        var existing = await db.SpendEntries
-            .Where(e => e.Source == SpendSource.Api && e.EntryKey != null && keys.Contains(e.EntryKey))
+        var existing = await db
+            .SpendEntries.Where(e =>
+                e.Source == SpendSource.Api && e.EntryKey != null && keys.Contains(e.EntryKey)
+            )
             .ToDictionaryAsync(e => e.EntryKey!, ct);
 
         var written = 0;
@@ -120,12 +128,22 @@ public class GitHubBillingSyncService(
     /// </summary>
     private static IEnumerable<BillingLine> Aggregate(IEnumerable<GitHubBillingUsageItem> items) =>
         items
-            .GroupBy(i => (Month: LocalDate.FromDateOnly(i.Date).With(DateAdjusters.StartOfMonth),
-                           i.Product,
-                           i.Sku))
-            .Select(g => new BillingLine(g.Key.Month, g.Key.Product, g.Key.Sku, g.Sum(i => i.NetAmount)))
+            .GroupBy(i =>
+                (
+                    Month: LocalDate.FromDateOnly(i.Date).With(DateAdjusters.StartOfMonth),
+                    i.Product,
+                    i.Sku
+                )
+            )
+            .Select(g => new BillingLine(
+                g.Key.Month,
+                g.Key.Product,
+                g.Key.Sku,
+                g.Sum(i => i.NetAmount)
+            ))
             .Where(l => l.NetAmount != 0m)
-            .OrderBy(l => l.Month).ThenBy(l => l.Product, StringComparer.Ordinal);
+            .OrderBy(l => l.Month)
+            .ThenBy(l => l.Product, StringComparer.Ordinal);
 
     /// <returns><c>true</c> when a row was inserted or its amount changed.</returns>
     private async Task<bool> UpsertAsync(
@@ -133,18 +151,26 @@ public class GitHubBillingSyncService(
         Dictionary<string, SpendEntry> existingByKey,
         Dictionary<string, Guid> vendors,
         Dictionary<string, Guid> categories,
-        CancellationToken ct)
+        CancellationToken ct
+    )
     {
-        var (vendorKey, categoryKey) = ProductMap.TryGetValue(line.Product, out var mapped) ? mapped : Fallback;
+        var (vendorKey, categoryKey) = ProductMap.TryGetValue(line.Product, out var mapped)
+            ? mapped
+            : Fallback;
 
-        if (!vendors.TryGetValue(vendorKey, out var vendorId) ||
-            !categories.TryGetValue(categoryKey, out var categoryId))
+        if (
+            !vendors.TryGetValue(vendorKey, out var vendorId)
+            || !categories.TryGetValue(categoryKey, out var categoryId)
+        )
         {
             // Seeded rows, so this only fires if someone hard-deleted one. Skip the line
             // rather than fail the sync: the remaining products still belong in the ledger.
             logger.LogWarning(
                 "GitHub billing: no vendor '{VendorKey}' or category '{CategoryKey}' for product {Product}",
-                vendorKey, categoryKey, line.Product);
+                vendorKey,
+                categoryKey,
+                line.Product
+            );
             return false;
         }
 
@@ -174,7 +200,10 @@ public class GitHubBillingSyncService(
         {
             logger.LogWarning(
                 "GitHub billing: {Sku} for {Month} rounds to zero GBP at rate {Rate}; skipped",
-                line.Sku, line.Month, rate);
+                line.Sku,
+                line.Month,
+                rate
+            );
             return false;
         }
 
@@ -234,9 +263,13 @@ public class GitHubBillingSyncService(
             // and carry on: the remaining products still belong in the ledger. Logged, not
             // surfaced — this repo is public and a raw Postgres message can carry column and
             // constraint detail.
-            logger.LogError(ex,
+            logger.LogError(
+                ex,
                 "GitHub billing: could not save entry for {Product}/{Sku} in {Month}",
-                line.Product, line.Sku, line.Month);
+                line.Product,
+                line.Sku,
+                line.Month
+            );
 
             // Detached for an insert; for a failed UPDATE the entity is still tracked as
             // Modified, so leaving it would make the very next line's SaveChangesAsync retry
@@ -265,10 +298,17 @@ public class GitHubBillingSyncService(
     /// the amount is what changes as an open month accrues.
     /// </summary>
     private static string EntryKeyFor(BillingLine line) =>
-        Truncate($"github:{line.Month.ToString("yyyy-MM", CultureInfo.InvariantCulture)}:{line.Product}:{line.Sku}");
+        Truncate(
+            $"github:{line.Month.ToString("yyyy-MM", CultureInfo.InvariantCulture)}:{line.Product}:{line.Sku}"
+        );
 
     /// <summary>Both Description and EntryKey are varchar(200); a long SKU must not fail the write.</summary>
     private static string Truncate(string value) => value.Length <= 200 ? value : value[..200];
 
-    private sealed record BillingLine(LocalDate Month, string Product, string Sku, decimal NetAmount);
+    private sealed record BillingLine(
+        LocalDate Month,
+        string Product,
+        string Sku,
+        decimal NetAmount
+    );
 }

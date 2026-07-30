@@ -14,14 +14,13 @@ public partial class AddExtraUsageCost : Migration
             name: "ExtraUsageCost",
             table: "Subscriptions",
             type: "numeric",
-            nullable: true);
+            nullable: true
+        );
     }
 
     /// <inheritdoc />
     protected override void Down(MigrationBuilder migrationBuilder)
     {
-        migrationBuilder.DropColumn(
-            name: "ExtraUsageCost",
-            table: "Subscriptions");
+        migrationBuilder.DropColumn(name: "ExtraUsageCost", table: "Subscriptions");
     }
 }

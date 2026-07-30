@@ -19,13 +19,16 @@ public class GitHubBillingClientTests
         // grossAmount deliberately differs from netAmount here: with a zero discount the two
         // are equal, and the assertion below could not tell "reads netAmount" apart from
         // "reads grossAmount" if a later edit confused the two.
-        var handler = new StubHttpMessageHandler(HttpStatusCode.OK, """
-        {"usageItems":[
-          {"date":"2026-07-01T00:00:00Z","product":"code_quality","sku":"Code Quality AI Credits",
-           "quantity":1201.41527,"grossAmount":15.0,"discountAmount":2.9858473,"netAmount":12.0141527,
-           "repositoryName":"fixportal-service-centerprise","unitType":"AICredits","pricePerUnit":0.01}
-        ]}
-        """);
+        var handler = new StubHttpMessageHandler(
+            HttpStatusCode.OK,
+            """
+            {"usageItems":[
+              {"date":"2026-07-01T00:00:00Z","product":"code_quality","sku":"Code Quality AI Credits",
+               "quantity":1201.41527,"grossAmount":15.0,"discountAmount":2.9858473,"netAmount":12.0141527,
+               "repositoryName":"fixportal-service-centerprise","unitType":"AICredits","pricePerUnit":0.01}
+            ]}
+            """
+        );
         using var http = ClientFor(handler);
 
         var items = await Create(http).GetUsageAsync(2026, TestContext.Current.CancellationToken);
@@ -33,10 +36,17 @@ public class GitHubBillingClientTests
         items.Should().ContainSingle();
         items[0].Product.Should().Be("code_quality");
         items[0].Sku.Should().Be("Code Quality AI Credits");
-        items[0].NetAmount.Should().Be(12.0141527m,
-            "net is gross minus the discount — gross would double-count the included allowance");
-        handler.Requested.Should().ContainSingle()
-            .Which.Should().Contain("/organizations/FixPortal/settings/billing/usage")
+        items[0]
+            .NetAmount.Should()
+            .Be(
+                12.0141527m,
+                "net is gross minus the discount — gross would double-count the included allowance"
+            );
+        handler
+            .Requested.Should()
+            .ContainSingle()
+            .Which.Should()
+            .Contain("/organizations/FixPortal/settings/billing/usage")
             .And.Contain("year=2026");
     }
 
@@ -51,11 +61,14 @@ public class GitHubBillingClientTests
     [InlineData("2026-07-01")]
     public async Task AcceptsBothTheDocumentedAndTheLiveDateFormat(string date)
     {
-        var handler = new StubHttpMessageHandler(HttpStatusCode.OK, $$"""
-        {"usageItems":[
-          {"date":"{{date}}","product":"actions","sku":"Actions Linux","netAmount":9.402}
-        ]}
-        """);
+        var handler = new StubHttpMessageHandler(
+            HttpStatusCode.OK,
+            $$"""
+            {"usageItems":[
+              {"date":"{{date}}","product":"actions","sku":"Actions Linux","netAmount":9.402}
+            ]}
+            """
+        );
         using var http = ClientFor(handler);
 
         var items = await Create(http).GetUsageAsync(2026, TestContext.Current.CancellationToken);
@@ -74,9 +87,12 @@ public class GitHubBillingClientTests
 
         var items = await Create(http).GetUsageAsync(2026, TestContext.Current.CancellationToken);
 
-        items.Should().BeEmpty(
-            "a token missing the billing scope must degrade to a visible gap, not take the "
-          + "worker's whole daily cycle down with it");
+        items
+            .Should()
+            .BeEmpty(
+                "a token missing the billing scope must degrade to a visible gap, not take the "
+                    + "worker's whole daily cycle down with it"
+            );
     }
 
     [Fact]
@@ -84,8 +100,9 @@ public class GitHubBillingClientTests
     {
         var handler = new StubHttpMessageHandler(HttpStatusCode.InternalServerError, "{}");
         using var http = ClientFor(handler);
+        var client = Create(http);
 
-        var act = () => Create(http).GetUsageAsync(2026, TestContext.Current.CancellationToken);
+        var act = () => client.GetUsageAsync(2026, TestContext.Current.CancellationToken);
 
         await act.Should().ThrowAsync<HttpRequestException>();
     }

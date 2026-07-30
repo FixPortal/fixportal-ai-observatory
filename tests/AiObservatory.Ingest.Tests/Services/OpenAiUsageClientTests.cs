@@ -11,11 +11,20 @@ public class OpenAiUsageClientTests
 {
     private sealed class StubHandler(string json) : HttpMessageHandler
     {
-        protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken) =>
-            Task.FromResult(new HttpResponseMessage(HttpStatusCode.OK)
-            {
-                Content = new StringContent(json, System.Text.Encoding.UTF8, "application/json"),
-            });
+        protected override Task<HttpResponseMessage> SendAsync(
+            HttpRequestMessage request,
+            CancellationToken cancellationToken
+        ) =>
+            Task.FromResult(
+                new HttpResponseMessage(HttpStatusCode.OK)
+                {
+                    Content = new StringContent(
+                        json,
+                        System.Text.Encoding.UTF8,
+                        "application/json"
+                    ),
+                }
+            );
     }
 
     // Simulates a buggy/never-resolving OpenAI API: has_more is always true and next_page
@@ -26,7 +35,10 @@ public class OpenAiUsageClientTests
     {
         public int RequestCount { get; private set; }
 
-        protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
+        protected override Task<HttpResponseMessage> SendAsync(
+            HttpRequestMessage request,
+            CancellationToken cancellationToken
+        )
         {
             RequestCount++;
             var json = $$"""
@@ -36,10 +48,16 @@ public class OpenAiUsageClientTests
                   "next_page": "page-{{RequestCount}}"
                 }
                 """;
-            return Task.FromResult(new HttpResponseMessage(HttpStatusCode.OK)
-            {
-                Content = new StringContent(json, System.Text.Encoding.UTF8, "application/json"),
-            });
+            return Task.FromResult(
+                new HttpResponseMessage(HttpStatusCode.OK)
+                {
+                    Content = new StringContent(
+                        json,
+                        System.Text.Encoding.UTF8,
+                        "application/json"
+                    ),
+                }
+            );
         }
     }
 
@@ -55,8 +73,15 @@ public class OpenAiUsageClientTests
 
     private static OpenAiUsageClient CreateSut(LocalDate bucketDate, string model)
     {
-        var startTime = bucketDate.AtStartOfDayInZone(DateTimeZone.Utc).ToInstant().ToUnixTimeSeconds();
-        var endTime = bucketDate.PlusDays(1).AtStartOfDayInZone(DateTimeZone.Utc).ToInstant().ToUnixTimeSeconds();
+        var startTime = bucketDate
+            .AtStartOfDayInZone(DateTimeZone.Utc)
+            .ToInstant()
+            .ToUnixTimeSeconds();
+        var endTime = bucketDate
+            .PlusDays(1)
+            .AtStartOfDayInZone(DateTimeZone.Utc)
+            .ToInstant()
+            .ToUnixTimeSeconds();
         var json = $$"""
             {
               "data": [
@@ -78,8 +103,15 @@ public class OpenAiUsageClientTests
               "next_page": null
             }
             """;
-        var http = new HttpClient(new StubHandler(json)) { BaseAddress = new Uri("https://api.openai.com") };
-        return new OpenAiUsageClient(http, NullLogger<OpenAiUsageClient>.Instance, Options.Create(TestPricing));
+        var http = new HttpClient(new StubHandler(json))
+        {
+            BaseAddress = new Uri("https://api.openai.com"),
+        };
+        return new OpenAiUsageClient(
+            http,
+            NullLogger<OpenAiUsageClient>.Instance,
+            Options.Create(TestPricing)
+        );
     }
 
     [Fact]
@@ -114,9 +146,16 @@ public class OpenAiUsageClientTests
         using var handler = new NeverResolvingHandler();
         using var http = new HttpClient(handler, disposeHandler: false);
         http.BaseAddress = new Uri("https://api.openai.com");
-        var sut = new OpenAiUsageClient(http, NullLogger<OpenAiUsageClient>.Instance, Options.Create(TestPricing));
+        var sut = new OpenAiUsageClient(
+            http,
+            NullLogger<OpenAiUsageClient>.Instance,
+            Options.Create(TestPricing)
+        );
 
-        var records = await sut.GetDailyUsageAsync(new LocalDate(2026, 7, 1), TestContext.Current.CancellationToken);
+        var records = await sut.GetDailyUsageAsync(
+            new LocalDate(2026, 7, 1),
+            TestContext.Current.CancellationToken
+        );
 
         records.Should().BeEmpty();
         handler.RequestCount.Should().Be(100);

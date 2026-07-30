@@ -24,6 +24,8 @@ public class AnthropicPricingOptions
 /// 2x base input), so a deployment that writes exclusively one-hour entries is understated
 /// by ~60% on the cache-write line if only the five-minute rate exists.
 /// </param>
+// JSON property names are an existing ingestion configuration contract.
+// ReSharper disable InconsistentNaming
 public sealed record AnthropicPricingEntry(
     string ModelPrefix,
     decimal Input,
@@ -32,14 +34,19 @@ public sealed record AnthropicPricingEntry(
     decimal CacheWrite,
     decimal CacheWrite1h,
     LocalDate? EffectiveFrom = null,
-    LocalDate? EffectiveTo = null);
+    LocalDate? EffectiveTo = null
+);
 
+// ReSharper restore InconsistentNaming
+
+// ReSharper disable once InconsistentNaming
 public sealed record PricingRates(
     decimal Input,
     decimal Output,
     decimal CacheRead,
     decimal CacheWrite,
-    decimal CacheWrite1h);
+    decimal CacheWrite1h
+);
 
 /// <summary>
 /// Resolves a model id and usage date to a rate row.
@@ -66,11 +73,14 @@ public static class AnthropicPricingResolver
     public static AnthropicPricingEntry? Match(
         this AnthropicPricingOptions options,
         string model,
-        LocalDate usageDate) =>
-        options.Pricing
-            .Where(e => model.StartsWith(e.ModelPrefix, StringComparison.OrdinalIgnoreCase))
-            .Where(e => (e.EffectiveFrom is null || usageDate >= e.EffectiveFrom)
-                     && (e.EffectiveTo is null || usageDate <= e.EffectiveTo))
+        LocalDate usageDate
+    ) =>
+        options
+            .Pricing.Where(e => model.StartsWith(e.ModelPrefix, StringComparison.OrdinalIgnoreCase))
+            .Where(e =>
+                (e.EffectiveFrom is null || usageDate >= e.EffectiveFrom)
+                && (e.EffectiveTo is null || usageDate <= e.EffectiveTo)
+            )
             .OrderByDescending(e => e.ModelPrefix.Length)
             .ThenByDescending(e => e.EffectiveFrom is not null || e.EffectiveTo is not null)
             .FirstOrDefault();
@@ -90,8 +100,8 @@ public static class AnthropicPricingResolver
     public static PricingRates ResolveRates(
         this AnthropicPricingOptions options,
         string model,
-        LocalDate usageDate) =>
-        options.Match(model, usageDate)?.ToRates() ?? options.FallbackPricing;
+        LocalDate usageDate
+    ) => options.Match(model, usageDate)?.ToRates() ?? options.FallbackPricing;
 
     /// <summary>Cost in USD for a token quantity at the given rates (rates are per million).</summary>
     /// <param name="cacheWriteTokens">ALL cache-write tokens, both TTLs.</param>
@@ -100,24 +110,27 @@ public static class AnthropicPricingResolver
     /// the five-minute rate. Callers with no TTL breakdown (the Anthropic usage-report API does
     /// not publish one) pass 0, which prices everything at the five-minute rate as before.
     /// </param>
+    // ReSharper disable InconsistentNaming
     public static decimal ComputeCost(
         PricingRates rates,
         long inputTokens,
         long outputTokens,
         long cacheReadTokens,
         long cacheWriteTokens,
-        long cacheWrite1hTokens = 0)
+        long cacheWrite1hTokens = 0
+    )
     {
         // Clamped rather than asserted: this is a money path, and the transcripts it is fed
         // from are not perfectly self-consistent. Measured over 281,354 cache-bearing
         // assistant messages, 3 report a 1h count fractionally above their own total. The
         // API rejects that shape at the boundary, so this only guards a caller that bypasses
         // it -- at the cost of pricing the overflow as 1h, the dearer of the two.
-        var cacheWrite5m = Math.Max(0L, cacheWriteTokens - cacheWrite1hTokens);
+        var cacheWrite5M = Math.Max(0L, cacheWriteTokens - cacheWrite1hTokens);
         return inputTokens / 1_000_000m * rates.Input
             + outputTokens / 1_000_000m * rates.Output
             + cacheReadTokens / 1_000_000m * rates.CacheRead
-            + cacheWrite5m / 1_000_000m * rates.CacheWrite
+            + cacheWrite5M / 1_000_000m * rates.CacheWrite
             + cacheWrite1hTokens / 1_000_000m * rates.CacheWrite1h;
     }
+    // ReSharper restore InconsistentNaming
 }

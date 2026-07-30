@@ -6,7 +6,7 @@ using AwesomeAssertions;
 using Microsoft.Extensions.DependencyInjection;
 using NodaTime;
 
-namespace AiObservatory.Api.Tests;
+namespace AiObservatory.Api.IntegrationTests;
 
 /// <summary>
 /// AIO-H3: GET /api/aggregates malformed-date and from&gt;to validation, plus the
@@ -24,7 +24,10 @@ public class AggregatesEndpointsWafTests(AiObservatoryApiFactory factory)
     {
         using var client = factory.CreateReadOnlyClient();
 
-        var response = await client.GetAsync($"/api/aggregates?{param}={value}", TestContext.Current.CancellationToken);
+        var response = await client.GetAsync(
+            $"/api/aggregates?{param}={value}",
+            TestContext.Current.CancellationToken
+        );
 
         response.StatusCode.Should().Be(HttpStatusCode.BadRequest);
     }
@@ -35,7 +38,9 @@ public class AggregatesEndpointsWafTests(AiObservatoryApiFactory factory)
         using var client = factory.CreateReadOnlyClient();
 
         var response = await client.GetAsync(
-            "/api/aggregates?from=2026-06-15&to=2026-06-01", TestContext.Current.CancellationToken);
+            "/api/aggregates?from=2026-06-15&to=2026-06-01",
+            TestContext.Current.CancellationToken
+        );
 
         response.StatusCode.Should().Be(HttpStatusCode.BadRequest);
     }
@@ -49,25 +54,31 @@ public class AggregatesEndpointsWafTests(AiObservatoryApiFactory factory)
         using (var scope = factory.Services.CreateScope())
         {
             var db = scope.ServiceProvider.GetRequiredService<AiObservatoryDbContext>();
-            db.DailyAggregates.Add(new DailyAggregate
-            {
-                Date = date,
-                Provider = Provider.Anthropic,
-                Model = "waf-iso-format-test",
-                InputTokens = 1,
-                OutputTokens = 1,
-                CostUsd = 0.01m,
-                RequestCount = 1,
-            });
+            db.DailyAggregates.Add(
+                new DailyAggregate
+                {
+                    Date = date,
+                    Provider = Provider.Anthropic,
+                    Model = "waf-iso-format-test",
+                    InputTokens = 1,
+                    OutputTokens = 1,
+                    CostUsd = 0.01m,
+                    RequestCount = 1,
+                }
+            );
             await db.SaveChangesAsync(TestContext.Current.CancellationToken);
         }
 
         using var client = factory.CreateReadOnlyClient();
         var response = await client.GetAsync(
-            "/api/aggregates?from=2019-05-29&to=2019-05-29", TestContext.Current.CancellationToken);
+            "/api/aggregates?from=2019-05-29&to=2019-05-29",
+            TestContext.Current.CancellationToken
+        );
         response.EnsureSuccessStatusCode();
 
-        var rows = await response.Content.ReadFromJsonAsync<List<AggregateRow>>(TestContext.Current.CancellationToken);
+        var rows = await response.Content.ReadFromJsonAsync<List<AggregateRow>>(
+            TestContext.Current.CancellationToken
+        );
         rows.Should().ContainSingle();
         // Regression guard: must be strict yyyy-MM-dd, never the server culture's long-date
         // format ("29 May 2019") that broke the frontend's slice/sort and scrambled the axis.

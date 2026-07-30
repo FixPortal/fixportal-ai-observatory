@@ -16,7 +16,9 @@ public static class GitHubBillingRegistration
     /// </para>
     /// </summary>
     public static IServiceCollection AddGitHubBilling(
-        this IServiceCollection services, IConfiguration configuration)
+        this IServiceCollection services,
+        IConfiguration configuration
+    )
     {
         var token = configuration["GITHUB_TOKEN"];
         var org = configuration["GITHUB_BILLING_ORG"];
@@ -26,21 +28,26 @@ public static class GitHubBillingRegistration
             return services;
         }
 
-        services.AddHttpClient(GitHubBillingClient.HttpClientName, c =>
-        {
-            c.BaseAddress = GitHubApi;
-            c.DefaultRequestHeaders.Add("Authorization", $"Bearer {token}");
-            c.DefaultRequestHeaders.Add("User-Agent", "fpaiobs-api");
-            c.DefaultRequestHeaders.Add("X-GitHub-Api-Version", "2022-11-28");
-            // Bounded well below the 100s default: this runs inside the daily background
-            // cycle, and a hung GitHub must not hold that cycle open indefinitely.
-            c.Timeout = TimeSpan.FromSeconds(30);
-        });
+        services.AddHttpClient(
+            GitHubBillingClient.HttpClientName,
+            c =>
+            {
+                c.BaseAddress = GitHubApi;
+                c.DefaultRequestHeaders.Add("Authorization", $"Bearer {token}");
+                c.DefaultRequestHeaders.Add("User-Agent", "fpaiobs-api");
+                c.DefaultRequestHeaders.Add("X-GitHub-Api-Version", "2022-11-28");
+                // Bounded well below the 100s default: this runs inside the daily background
+                // cycle, and a hung GitHub must not hold that cycle open indefinitely.
+                c.Timeout = TimeSpan.FromSeconds(30);
+            }
+        );
 
         services.AddScoped(sp => new GitHubBillingClient(
-            sp.GetRequiredService<IHttpClientFactory>().CreateClient(GitHubBillingClient.HttpClientName),
+            sp.GetRequiredService<IHttpClientFactory>()
+                .CreateClient(GitHubBillingClient.HttpClientName),
             org!,
-            sp.GetRequiredService<ILogger<GitHubBillingClient>>()));
+            sp.GetRequiredService<ILogger<GitHubBillingClient>>()
+        ));
 
         services.AddScoped<GitHubBillingSyncService>();
         return services;
@@ -53,6 +60,6 @@ public static class GitHubBillingRegistration
     /// off. Mirrors the same gate in AiObservatory.Ingest's composition root.
     /// </summary>
     private static bool IsConfigured(string? value) =>
-        !string.IsNullOrEmpty(value) &&
-        !value.StartsWith("@Microsoft.KeyVault(", StringComparison.OrdinalIgnoreCase);
+        !string.IsNullOrEmpty(value)
+        && !value.StartsWith("@Microsoft.KeyVault(", StringComparison.OrdinalIgnoreCase);
 }

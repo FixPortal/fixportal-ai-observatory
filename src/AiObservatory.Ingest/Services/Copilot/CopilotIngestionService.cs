@@ -8,7 +8,8 @@ public class CopilotIngestionService(
     ICopilotUsageClient client,
     IUsageRepository repository,
     IClock clock,
-    ILogger<CopilotIngestionService> logger)
+    ILogger<CopilotIngestionService> logger
+)
 {
     public async Task IngestAsync(LocalDate date, CancellationToken ct = default)
     {
@@ -33,9 +34,13 @@ public class CopilotIngestionService(
             OutputTokens = 0,
             CostUsd = 0m,
             EventKey = eventKey,
-            RawPayload = record.RawJson
+            RawPayload = record.RawJson,
         };
         await repository.RecordEventAsync(evt, ct);
-        logger.LogInformation("Copilot: ingested activity record for {Date} ({ActiveUsers} active users)", date, record.ActiveUsers);
+        logger.LogInformation(
+            "Copilot: ingested activity record for {Date} ({ActiveUsers} active users)",
+            date,
+            record.ActiveUsers
+        );
     }
 }

@@ -16,6 +16,7 @@ public sealed record OpenAiPricingEntry(
     decimal Output,
     decimal CacheRead,
     LocalDate? EffectiveFrom = null,
-    LocalDate? EffectiveTo = null);
+    LocalDate? EffectiveTo = null
+);
 
 public sealed record PricingRates3(decimal Input, decimal Output, decimal CacheRead);

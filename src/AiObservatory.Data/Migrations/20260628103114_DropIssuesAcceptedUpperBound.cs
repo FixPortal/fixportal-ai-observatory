@@ -12,12 +12,14 @@ namespace AiObservatory.Data.Migrations
         {
             migrationBuilder.DropCheckConstraint(
                 name: "CK_AdversarialReviewRun_IssuesAccepted_Valid",
-                table: "AdversarialReviewRuns");
+                table: "AdversarialReviewRuns"
+            );
 
             migrationBuilder.AddCheckConstraint(
                 name: "CK_AdversarialReviewRun_IssuesAccepted_NonNegative",
                 table: "AdversarialReviewRuns",
-                sql: "\"IssuesAccepted\" >= 0");
+                sql: "\"IssuesAccepted\" >= 0"
+            );
         }
 
         /// <inheritdoc />
@@ -27,9 +29,10 @@ namespace AiObservatory.Data.Migrations
             // (cross-exam credited findings), Postgres rejects re-adding the old
             // upper-bound constraint. Normalise or purge such rows before downgrading.
             throw new InvalidOperationException(
-                "DropIssuesAcceptedUpperBound is not reversible. " +
-                "Rows with IssuesAccepted > IssuesRaised may exist; " +
-                "cap or purge them before attempting a downgrade.");
+                "DropIssuesAcceptedUpperBound is not reversible. "
+                    + "Rows with IssuesAccepted > IssuesRaised may exist; "
+                    + "cap or purge them before attempting a downgrade."
+            );
         }
     }
 }

@@ -23,7 +23,8 @@ public static class CavemanEndpoints
         CavemanSessionsRequest req,
         AiObservatoryDbContext db,
         IClock clock,
-        CancellationToken ct)
+        CancellationToken ct
+    )
     {
         if (req.Sessions is not { Count: > 0 })
         {
@@ -43,8 +44,8 @@ public static class CavemanEndpoints
         }
 
         var sessionIds = req.Sessions.Select(s => s.SessionId).ToList();
-        var existingSessionIds = await db.CavemanSessions
-            .Where(s => sessionIds.Contains(s.SessionId))
+        var existingSessionIds = await db
+            .CavemanSessions.Where(s => sessionIds.Contains(s.SessionId))
             .Select(s => s.SessionId)
             .ToHashSetAsync(ct);
 
@@ -56,8 +57,10 @@ public static class CavemanEndpoints
             await db.SaveChangesAsync(ct);
             await tx.CommitAsync(ct);
         }
-        catch (DbUpdateException ex) when (
-            ex.InnerException is PostgresException { SqlState: PostgresErrorCodes.UniqueViolation })
+        catch (DbUpdateException ex)
+            when (ex.InnerException
+                    is PostgresException { SqlState: PostgresErrorCodes.UniqueViolation }
+            )
         {
             // Concurrent insert of one of these SessionIds; LWW makes a retry converge.
             await tx.RollbackAsync(ct);
@@ -66,7 +69,10 @@ public static class CavemanEndpoints
         return Results.Ok(new { Upserted = upserted });
     }
 
-    private static string? ValidateSessions(IReadOnlyCollection<CavemanSessionRequest> sessions, Instant now)
+    private static string? ValidateSessions(
+        IReadOnlyCollection<CavemanSessionRequest> sessions,
+        Instant now
+    )
     {
         var seenSessionIds = new HashSet<string>();
         foreach (var session in sessions)
@@ -98,7 +104,8 @@ public static class CavemanEndpoints
         IEnumerable<CavemanSessionRequest> sessions,
         IReadOnlySet<string> existingSessionIds,
         AiObservatoryDbContext db,
-        CancellationToken ct)
+        CancellationToken ct
+    )
     {
         var upserted = 0;
         foreach (var session in sessions)
@@ -109,15 +116,20 @@ public static class CavemanEndpoints
             {
                 // Evaluate LWW against the live row so a concurrent newer write cannot
                 // be regressed by this request's preloaded existence snapshot.
-                var updated = await db.CavemanSessions
-                    .Where(x => x.SessionId == session.SessionId && x.OccurredAt <= occurredAt)
-                    .ExecuteUpdateAsync(upd => upd
-                        .SetProperty(p => p.OccurredAt, occurredAt)
-                        .SetProperty(p => p.Mode, session.Mode)
-                        .SetProperty(p => p.Model, session.Model)
-                        .SetProperty(p => p.OutputTokens, session.OutputTokens)
-                        .SetProperty(p => p.EstSavedTokens, session.EstSavedTokens)
-                        .SetProperty(p => p.EstSavedUsd, session.EstSavedUsd), ct);
+                var updated = await db
+                    .CavemanSessions.Where(x =>
+                        x.SessionId == session.SessionId && x.OccurredAt <= occurredAt
+                    )
+                    .ExecuteUpdateAsync(
+                        upd =>
+                            upd.SetProperty(p => p.OccurredAt, occurredAt)
+                                .SetProperty(p => p.Mode, session.Mode)
+                                .SetProperty(p => p.Model, session.Model)
+                                .SetProperty(p => p.OutputTokens, session.OutputTokens)
+                                .SetProperty(p => p.EstSavedTokens, session.EstSavedTokens)
+                                .SetProperty(p => p.EstSavedUsd, session.EstSavedUsd),
+                        ct
+                    );
                 if (updated == 0)
                 {
                     continue;
@@ -125,16 +137,18 @@ public static class CavemanEndpoints
             }
             else
             {
-                db.CavemanSessions.Add(new CavemanSession
-                {
-                    SessionId = session.SessionId,
-                    OccurredAt = occurredAt,
-                    Mode = session.Mode,
-                    Model = session.Model,
-                    OutputTokens = session.OutputTokens,
-                    EstSavedTokens = session.EstSavedTokens,
-                    EstSavedUsd = session.EstSavedUsd,
-                });
+                db.CavemanSessions.Add(
+                    new CavemanSession
+                    {
+                        SessionId = session.SessionId,
+                        OccurredAt = occurredAt,
+                        Mode = session.Mode,
+                        Model = session.Model,
+                        OutputTokens = session.OutputTokens,
+                        EstSavedTokens = session.EstSavedTokens,
+                        EstSavedUsd = session.EstSavedUsd,
+                    }
+                );
             }
             upserted++;
         }
@@ -142,15 +156,19 @@ public static class CavemanEndpoints
         return upserted;
     }
 
-    private static async Task<IResult> GetCavemanStatsAsync(AiObservatoryDbContext db, CancellationToken ct)
+    private static async Task<IResult> GetCavemanStatsAsync(
+        AiObservatoryDbContext db,
+        CancellationToken ct
+    )
     {
-        var stats = await db.CavemanSessions
-            .GroupBy(s => true)
+        var stats = await db
+            .CavemanSessions.GroupBy(s => true)
             .Select(g => new CavemanStatsResponse(
                 g.Count(),
                 g.Sum(s => s.OutputTokens),
                 g.Sum(s => s.EstSavedTokens),
-                g.Sum(s => s.EstSavedUsd)))
+                g.Sum(s => s.EstSavedUsd)
+            ))
             .FirstOrDefaultAsync(ct);
 
         return Results.Ok(stats ?? new CavemanStatsResponse(0, 0, 0, 0m));

@@ -3,6 +3,7 @@ namespace AiObservatory.Ingest;
 public class IngestOptions
 {
     public const string SectionName = "Ingest";
+
     // Setters are populated by Microsoft.Extensions.Configuration options binding.
     // ReSharper disable once AutoPropertyCanBeMadeGetOnly.Global
     public int PollingIntervalMinutes { get; set; } = 60;
@@ -51,12 +52,12 @@ public class IngestOptions
     // several. Without that, splitting the literal on ',' would register the GitHub client
     // with garbage repos and 404 hourly forever.
     private static string[] Clean(IEnumerable<string> values) =>
-    [
-        .. values
-            .Select(v => v.Trim())
-            .Where(IsOwnerRepo)
-            .Distinct(StringComparer.OrdinalIgnoreCase),
-    ];
+        [
+            .. values
+                .Select(v => v.Trim())
+                .Where(IsOwnerRepo)
+                .Distinct(StringComparer.OrdinalIgnoreCase),
+        ];
 
     private static bool IsOwnerRepo(string value)
     {

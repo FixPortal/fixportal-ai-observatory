@@ -23,9 +23,13 @@ public class EmailAlertNotifierTests
         var sut = new EmailAlertNotifier(smtp, config);
         await sut.NotifyAsync(MakePayload(), TestContext.Current.CancellationToken);
 
-        await smtp.DidNotReceive().ConnectAsync(
-            Arg.Any<string>(), Arg.Any<int>(),
-            Arg.Any<SecureSocketOptions>(), Arg.Any<CancellationToken>());
+        await smtp.DidNotReceive()
+            .ConnectAsync(
+                Arg.Any<string>(),
+                Arg.Any<int>(),
+                Arg.Any<SecureSocketOptions>(),
+                Arg.Any<CancellationToken>()
+            );
     }
 
     [Fact]
@@ -36,25 +40,40 @@ public class EmailAlertNotifierTests
         // reports connected after ConnectAsync so the finally-block disconnect runs.
         smtp.IsConnected.Returns(true);
         MimeMessage? sent = null;
-        smtp.When(x => x.SendAsync(Arg.Any<MimeMessage>(), Arg.Any<CancellationToken>(), Arg.Any<ITransferProgress>()))
+        smtp.When(x =>
+                x.SendAsync(
+                    Arg.Any<MimeMessage>(),
+                    Arg.Any<CancellationToken>(),
+                    Arg.Any<ITransferProgress>()
+                )
+            )
             .Do(x => sent = x.Arg<MimeMessage>());
 
         var config = new ConfigurationBuilder()
-            .AddInMemoryCollection(new Dictionary<string, string?>
-            {
-                ["BUDGET_ALERT_EMAIL_TO"] = "alerts@example.com",
-                ["BUDGET_ALERT_EMAIL_FROM"] = "obs@example.com",
-                ["BUDGET_ALERT_SMTP_HOST"] = "smtp.example.com",
-                ["BUDGET_ALERT_SMTP_USER"] = "obs@example.com",
-                ["BUDGET_ALERT_SMTP_PASS"] = "secret",
-            })
+            .AddInMemoryCollection(
+                new Dictionary<string, string?>
+                {
+                    ["BUDGET_ALERT_EMAIL_TO"] = "alerts@example.com",
+                    ["BUDGET_ALERT_EMAIL_FROM"] = "obs@example.com",
+                    ["BUDGET_ALERT_SMTP_HOST"] = "smtp.example.com",
+                    ["BUDGET_ALERT_SMTP_USER"] = "obs@example.com",
+                    ["BUDGET_ALERT_SMTP_PASS"] = "secret",
+                }
+            )
             .Build();
 
         var sut = new EmailAlertNotifier(smtp, config);
         await sut.NotifyAsync(MakePayload(), TestContext.Current.CancellationToken);
 
-        await smtp.Received(1).ConnectAsync("smtp.example.com", 587, SecureSocketOptions.StartTls, Arg.Any<CancellationToken>());
-        await smtp.Received(1).AuthenticateAsync("obs@example.com", "secret", Arg.Any<CancellationToken>());
+        await smtp.Received(1)
+            .ConnectAsync(
+                "smtp.example.com",
+                587,
+                SecureSocketOptions.StartTls,
+                Arg.Any<CancellationToken>()
+            );
+        await smtp.Received(1)
+            .AuthenticateAsync("obs@example.com", "secret", Arg.Any<CancellationToken>());
         await smtp.Received(1).DisconnectAsync(true, Arg.Any<CancellationToken>());
 
         sent.Should().NotBeNull();

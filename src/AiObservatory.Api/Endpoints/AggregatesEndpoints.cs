@@ -29,14 +29,24 @@ public static class AggregatesEndpoints
         IClock clock,
         string? from,
         string? to,
-        CancellationToken ct)
+        CancellationToken ct
+    )
     {
         var today = clock.GetCurrentInstant().InUtc().Date;
-        LocalDate start, end;
+        LocalDate start,
+            end;
 
         if (from is not null)
         {
-            if (!DateOnly.TryParseExact(from, "yyyy-MM-dd", CultureInfo.InvariantCulture, DateTimeStyles.None, out var fromDate))
+            if (
+                !DateOnly.TryParseExact(
+                    from,
+                    "yyyy-MM-dd",
+                    CultureInfo.InvariantCulture,
+                    DateTimeStyles.None,
+                    out var fromDate
+                )
+            )
             {
                 return Results.BadRequest("from must be yyyy-MM-dd");
             }
@@ -50,7 +60,15 @@ public static class AggregatesEndpoints
 
         if (to is not null)
         {
-            if (!DateOnly.TryParseExact(to, "yyyy-MM-dd", CultureInfo.InvariantCulture, DateTimeStyles.None, out var toDate))
+            if (
+                !DateOnly.TryParseExact(
+                    to,
+                    "yyyy-MM-dd",
+                    CultureInfo.InvariantCulture,
+                    DateTimeStyles.None,
+                    out var toDate
+                )
+            )
             {
                 return Results.BadRequest("to must be yyyy-MM-dd");
             }
@@ -67,10 +85,12 @@ public static class AggregatesEndpoints
             return Results.BadRequest("from must be on or before to");
         }
 
-        var data = await db.DailyAggregates
-            .AsNoTracking()
+        var data = await db
+            .DailyAggregates.AsNoTracking()
             .Where(a => a.Date >= start && a.Date <= end)
-            .OrderBy(a => a.Date).ThenBy(a => a.Provider).ThenBy(a => a.Model)
+            .OrderBy(a => a.Date)
+            .ThenBy(a => a.Provider)
+            .ThenBy(a => a.Model)
             .Select(a => new
             {
                 // Explicit ISO yyyy-MM-dd. LocalDate.ToString() with no pattern uses the
@@ -90,7 +110,7 @@ public static class AggregatesEndpoints
                 // one on every other field, while understating cost by ~60% on this line.
                 a.CacheWrite1hTokens,
                 a.CostUsd,
-                a.RequestCount
+                a.RequestCount,
             })
             .ToListAsync(ct);
 
@@ -100,21 +120,28 @@ public static class AggregatesEndpoints
     private static async Task<IResult> PurgeAggregatesAsync(
         string? provider,
         IUsageRepository repo,
-        CancellationToken ct)
+        CancellationToken ct
+    )
     {
-        if (string.IsNullOrWhiteSpace(provider)
+        if (
+            string.IsNullOrWhiteSpace(provider)
             || !Enum.TryParse<Provider>(provider, ignoreCase: true, out var parsed)
-            || !Enum.IsDefined(parsed))
+            || !Enum.IsDefined(parsed)
+        )
         {
-            return Results.BadRequest("provider query parameter is required (anthropic|google|openai|copilot)");
+            return Results.BadRequest(
+                "provider query parameter is required (anthropic|google|openai|copilot)"
+            );
         }
 
         var result = await repo.PurgeProviderAsync(parsed, ct);
-        return Results.Ok(new
-        {
-            provider = parsed.ToString(),
-            deletedEvents = result.DeletedEvents,
-            deletedAggregates = result.DeletedAggregates
-        });
+        return Results.Ok(
+            new
+            {
+                provider = parsed.ToString(),
+                deletedEvents = result.DeletedEvents,
+                deletedAggregates = result.DeletedAggregates,
+            }
+        );
     }
 }

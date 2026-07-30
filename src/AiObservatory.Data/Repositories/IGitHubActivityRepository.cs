@@ -3,14 +3,34 @@ using NodaTime;
 namespace AiObservatory.Data.Repositories;
 
 public record GitHubPullRequestRecord(
-    string Repo, int Number, string Title, string Author, string State,
-    Instant CreatedAt, Instant? MergedAt, Instant? ClosedAt, Instant? FirstReviewAt, int ReviewCount);
+    string Repo,
+    int Number,
+    string Title,
+    string Author,
+    string State,
+    Instant CreatedAt,
+    Instant? MergedAt,
+    Instant? ClosedAt,
+    Instant? FirstReviewAt,
+    int ReviewCount
+);
 
 public record GitHubCommitRecord(
-    string Repo, string Sha, string Author, Instant CommittedAt, int Additions, int Deletions);
+    string Repo,
+    string Sha,
+    string Author,
+    Instant CommittedAt,
+    int Additions,
+    int Deletions
+);
 
 public record GitHubWorkflowRunRecord(
-    string Repo, long RunId, string WorkflowName, string Status, Instant CreatedAt);
+    string Repo,
+    long RunId,
+    string WorkflowName,
+    string Status,
+    Instant CreatedAt
+);
 
 // Per-table backfill state for a repo. Checked independently — not folded into a
 // single "has any data" bool — because a repo can have PRs backfilled while a
@@ -20,8 +40,20 @@ public record GitHubBackfillStatus(bool HasPullRequests, bool HasCommits, bool H
 
 public interface IGitHubActivityRepository
 {
-    Task UpsertPullRequestAsync(GitHubPullRequestRecord record, Instant ingestedAt, CancellationToken ct = default);
-    Task UpsertCommitAsync(GitHubCommitRecord record, Instant ingestedAt, CancellationToken ct = default);
-    Task UpsertWorkflowRunAsync(GitHubWorkflowRunRecord record, Instant ingestedAt, CancellationToken ct = default);
+    Task UpsertPullRequestAsync(
+        GitHubPullRequestRecord record,
+        Instant ingestedAt,
+        CancellationToken ct = default
+    );
+    Task UpsertCommitAsync(
+        GitHubCommitRecord record,
+        Instant ingestedAt,
+        CancellationToken ct = default
+    );
+    Task UpsertWorkflowRunAsync(
+        GitHubWorkflowRunRecord record,
+        Instant ingestedAt,
+        CancellationToken ct = default
+    );
     Task<GitHubBackfillStatus> GetBackfillStatusAsync(string repo, CancellationToken ct = default);
 }

@@ -17,41 +17,64 @@ namespace AiObservatory.Data.Migrations
                 columns: table => new
                 {
                     Id = table.Column<Guid>(type: "uuid", nullable: false),
-                    SessionId = table.Column<string>(type: "character varying(200)", maxLength: 200, nullable: false),
-                    Project = table.Column<string>(type: "character varying(200)", maxLength: 200, nullable: false),
-                    StartedAt = table.Column<Instant>(type: "timestamp with time zone", nullable: false),
-                    LastSeenAt = table.Column<Instant>(type: "timestamp with time zone", nullable: false),
+                    SessionId = table.Column<string>(
+                        type: "character varying(200)",
+                        maxLength: 200,
+                        nullable: false
+                    ),
+                    Project = table.Column<string>(
+                        type: "character varying(200)",
+                        maxLength: 200,
+                        nullable: false
+                    ),
+                    StartedAt = table.Column<Instant>(
+                        type: "timestamp with time zone",
+                        nullable: false
+                    ),
+                    LastSeenAt = table.Column<Instant>(
+                        type: "timestamp with time zone",
+                        nullable: false
+                    ),
                     ActiveSeconds = table.Column<long>(type: "bigint", nullable: false),
-                    IngestedAt = table.Column<Instant>(type: "timestamp with time zone", nullable: false)
+                    IngestedAt = table.Column<Instant>(
+                        type: "timestamp with time zone",
+                        nullable: false
+                    ),
                 },
                 constraints: table =>
                 {
                     table.PrimaryKey("PK_ClaudeActivitySessions", x => x.Id);
-                    table.CheckConstraint("CK_ClaudeActivitySession_ActiveSeconds_NonNegative", "\"ActiveSeconds\" >= 0");
-                });
+                    table.CheckConstraint(
+                        "CK_ClaudeActivitySession_ActiveSeconds_NonNegative",
+                        "\"ActiveSeconds\" >= 0"
+                    );
+                }
+            );
 
             migrationBuilder.CreateIndex(
                 name: "IX_ClaudeActivitySessions_Project",
                 table: "ClaudeActivitySessions",
-                column: "Project");
+                column: "Project"
+            );
 
             migrationBuilder.CreateIndex(
                 name: "IX_ClaudeActivitySessions_SessionId",
                 table: "ClaudeActivitySessions",
                 column: "SessionId",
-                unique: true);
+                unique: true
+            );
 
             migrationBuilder.CreateIndex(
                 name: "IX_ClaudeActivitySessions_StartedAt",
                 table: "ClaudeActivitySessions",
-                column: "StartedAt");
+                column: "StartedAt"
+            );
         }
 
         /// <inheritdoc />
         protected override void Down(MigrationBuilder migrationBuilder)
         {
-            migrationBuilder.DropTable(
-                name: "ClaudeActivitySessions");
+            migrationBuilder.DropTable(name: "ClaudeActivitySessions");
         }
     }
 }

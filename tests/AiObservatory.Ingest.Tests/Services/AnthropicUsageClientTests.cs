@@ -12,19 +12,44 @@ public class AnthropicUsageClientTests
 {
     private sealed class StubHandler(string json) : HttpMessageHandler
     {
-        protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken) =>
-            Task.FromResult(new HttpResponseMessage(HttpStatusCode.OK)
-            {
-                Content = new StringContent(json, System.Text.Encoding.UTF8, "application/json"),
-            });
+        protected override Task<HttpResponseMessage> SendAsync(
+            HttpRequestMessage request,
+            CancellationToken cancellationToken
+        ) =>
+            Task.FromResult(
+                new HttpResponseMessage(HttpStatusCode.OK)
+                {
+                    Content = new StringContent(
+                        json,
+                        System.Text.Encoding.UTF8,
+                        "application/json"
+                    ),
+                }
+            );
     }
 
     private static readonly AnthropicPricingOptions TestPricing = new()
     {
         Pricing =
         [
-            new AnthropicPricingEntry("claude-sonnet-5", 2.0m, 10.0m, 0.20m, 2.50m, 4.00m, EffectiveTo: new LocalDate(2026, 8, 31)),
-            new AnthropicPricingEntry("claude-sonnet-5", 3.0m, 15.0m, 0.30m, 3.75m, 6.00m, EffectiveFrom: new LocalDate(2026, 9, 1)),
+            new AnthropicPricingEntry(
+                "claude-sonnet-5",
+                2.0m,
+                10.0m,
+                0.20m,
+                2.50m,
+                4.00m,
+                EffectiveTo: new LocalDate(2026, 8, 31)
+            ),
+            new AnthropicPricingEntry(
+                "claude-sonnet-5",
+                3.0m,
+                15.0m,
+                0.30m,
+                3.75m,
+                6.00m,
+                EffectiveFrom: new LocalDate(2026, 9, 1)
+            ),
         ],
         FallbackPricing = new PricingRates(3.0m, 15.0m, 0.30m, 3.75m, 6.00m),
     };
@@ -52,8 +77,15 @@ public class AnthropicUsageClientTests
               "next_page": null
             }
             """;
-        var http = new HttpClient(new StubHandler(json)) { BaseAddress = new Uri("https://api.anthropic.com") };
-        return new AnthropicUsageClient(http, NullLogger<AnthropicUsageClient>.Instance, Options.Create(TestPricing));
+        var http = new HttpClient(new StubHandler(json))
+        {
+            BaseAddress = new Uri("https://api.anthropic.com"),
+        };
+        return new AnthropicUsageClient(
+            http,
+            NullLogger<AnthropicUsageClient>.Instance,
+            Options.Create(TestPricing)
+        );
     }
 
     [Fact]

@@ -1,6 +1,7 @@
+// ReSharper disable RedundantUsingDirective
 using System.Globalization;
+// ReSharper restore RedundantUsingDirective
 using System.Net;
-using System.Net.Http.Json;
 using System.Text.Json.Serialization;
 
 namespace AiObservatory.Api.Services.GitHub;
@@ -40,10 +41,13 @@ public class GitHubBillingClient(HttpClient http, string org, ILogger<GitHubBill
     /// worker's whole daily cycle and taking the other background steps down with it.
     /// </remarks>
     public virtual async Task<IReadOnlyList<GitHubBillingUsageItem>> GetUsageAsync(
-        int year, CancellationToken ct = default)
+        int year,
+        CancellationToken ct = default
+    )
     {
-        var url = $"/organizations/{Uri.EscapeDataString(org)}/settings/billing/usage" +
-                  $"?year={year.ToString(CultureInfo.InvariantCulture)}";
+        var url =
+            $"/organizations/{Uri.EscapeDataString(org)}/settings/billing/usage"
+            + $"?year={year.ToString(CultureInfo.InvariantCulture)}";
 
         using var response = await http.GetAsync(url, ct);
 
@@ -54,7 +58,9 @@ public class GitHubBillingClient(HttpClient http, string org, ILogger<GitHubBill
             // way, and neither is retryable, so log once per cycle and move on.
             logger.LogWarning(
                 "GitHub billing usage unavailable for {Org} ({Status}) — token likely lacks billing read scope",
-                org, (int)response.StatusCode);
+                org,
+                (int)response.StatusCode
+            );
             return [];
         }
 
@@ -84,4 +90,5 @@ public sealed record GitHubBillingUsageItem(
     [property: JsonConverter(typeof(GitHubBillingDateConverter))] DateOnly Date,
     string Product,
     string Sku,
-    decimal NetAmount);
+    decimal NetAmount
+);
