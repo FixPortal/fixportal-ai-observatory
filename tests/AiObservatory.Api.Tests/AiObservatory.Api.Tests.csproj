@@ -20,6 +20,13 @@
          Microsoft.AspNetCore.Mvc.Testing: WebApplicationFactory boots the real composition
          root and belongs in the integration project. -->
     <PackageReference Include="Microsoft.AspNetCore.TestHost" />
+    <!-- The EF in-memory provider, NOT a database: no server, no container, no migrations,
+         nothing to install. It exists here so the money paths (GitHub billing sync, the
+         ledger write path) can be mutation-tested at all — they take a DbContext, and
+         PostgreSQL-backed coverage lives in the integration project, deliberately outside
+         Stryker's lane. Constraints and unique indexes are NOT enforced by this provider;
+         anything asserting on those belongs in the integration project. -->
+    <PackageReference Include="Microsoft.EntityFrameworkCore.InMemory" />
     <PackageReference Include="coverlet.collector">
       <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
       <PrivateAssets>all</PrivateAssets>

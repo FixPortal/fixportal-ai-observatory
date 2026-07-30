@@ -17,4 +17,15 @@
     <ProjectReference Include="..\AiObservatory.Data\AiObservatory.Data.csproj" />
   </ItemGroup>
 
+  <ItemGroup>
+    <!--
+      The unit lane needs the money-path validators (SpendEntriesEndpoints.Validate,
+      SpendCatalogEndpoints.Slug/ValidateName/ValidateColorVar, ApiKeyComparer) reachable
+      without booting the HTTP pipeline, because host-booting tests live in the integration
+      project which Stryker deliberately does not mutate. Internal rather than public so the
+      widened reach stops at the test assembly and these stay off the API's surface.
+    -->
+    <InternalsVisibleTo Include="AiObservatory.Api.Tests" />
+  </ItemGroup>
+
 </Project>

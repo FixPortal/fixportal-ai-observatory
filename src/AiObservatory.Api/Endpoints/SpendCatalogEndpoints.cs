@@ -327,16 +327,21 @@ public static class SpendCatalogEndpoints
             : (null, $"Unknown DefaultCategoryId: {categoryId}");
     }
 
-    private static string? ValidateName(string? name) =>
+    // The three validators below are internal rather than private so the unit lane can
+    // exercise them directly: they gate what enters the catalog the ledger's totals group by,
+    // and driving them through HTTP would move them into the integration project, outside
+    // Stryker's lane.
+
+    internal static string? ValidateName(string? name) =>
         string.IsNullOrWhiteSpace(name) || name.Length > 100
             ? "DisplayName is required and must be 100 characters or fewer"
             : null;
 
-    private static string? ValidateColorVar(string? color) =>
+    internal static string? ValidateColorVar(string? color) =>
         color is { Length: > 60 } ? "ColorVar must be 60 characters or fewer" : null;
 
     /// <summary>Normalises a key to a lower-case slug, or null when it cannot be one.</summary>
-    private static string? Slug(string? raw)
+    internal static string? Slug(string? raw)
     {
         var trimmed = raw?.Trim().ToLowerInvariant();
         if (string.IsNullOrEmpty(trimmed) || trimmed.Length > 60)

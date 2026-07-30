@@ -175,8 +175,16 @@ public static class SpendEntriesEndpoints
         }
     }
 
-    /// <summary>Returns a rejection reason, or null when the request is sound.</summary>
-    private static string? Validate(
+    /// <summary>
+    /// Returns a rejection reason, or null when the request is sound.
+    /// <para>
+    /// Public so the unit lane can exercise it directly — every branch here decides whether a
+    /// real charge reaches the ledger, and reaching them through the HTTP pipeline would put
+    /// this in the integration project, outside Stryker's lane. Same reasoning as
+    /// <see cref="GitHubActivityEndpoints.ComputeSuccessRate"/>.
+    /// </para>
+    /// </summary>
+    internal static string? Validate(
         SpendEntryRequest req,
         HashSet<Guid> vendorIds,
         HashSet<Guid> categoryIds,

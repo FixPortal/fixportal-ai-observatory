@@ -107,4 +107,156 @@ public class FxRateProviderTests
             );
         ex.Which.Message.Should().Contain("EUR").And.Contain("2026-03-15");
     }
+
+    /// <summary>
+    /// A lower-case currency must resolve to the same rate and the same cache entry as its
+    /// upper-case form. The ledger accepts "usd" (validation upper-cases it), but a caller
+    /// reaching this directly must not get a second cache slot or a miss on the GBP shortcut.
+    /// </summary>
+    [Theory]
+    [InlineData("gbp")]
+    [InlineData("Gbp")]
+    public async Task TreatsTheCurrencyCodeCaseInsensitively(string currency)
+    {
+        var handler = new StubHttpMessageHandler(HttpStatusCode.OK, "{}");
+        var sut = Create(handler);
+
+        var rate = await sut.GetGbpRateOnAsync(
+            currency,
+            new LocalDate(2026, 3, 15),
+            TestContext.Current.CancellationToken
+        );
+
+        rate.Should().Be(1m);
+        handler.Requested.Should().BeEmpty();
+    }
+
+    [Fact]
+    public async Task DoesNotCacheTheFallbackSoALaterCallCanStillSucceed()
+    {
+        var handler = new StubHttpMessageHandler(HttpStatusCode.ServiceUnavailable, "");
+        var sut = Create(handler);
+        var date = new LocalDate(2026, 3, 15);
+
+        await sut.GetGbpRateOnAsync("USD", date, TestContext.Current.CancellationToken);
+        await sut.GetGbpRateOnAsync("USD", date, TestContext.Current.CancellationToken);
+
+        handler
+            .Requested.Should()
+            .HaveCount(
+                2,
+                "caching 0.79 would freeze the fallback for every later write of that date"
+            );
+    }
+
+    /// <summary>
+    /// A 200 whose body carries no GBP rate is a distinct failure from an outage and reaches
+    /// the same "no rate" branch — the fetch collapses both into 0m deliberately.
+    /// </summary>
+    [Fact]
+    public async Task TreatsAResponseWithoutAGbpRateAsUnavailable()
+    {
+        var handler = new StubHttpMessageHandler(HttpStatusCode.OK, """{"rates":{"EUR":1.17}}""");
+        var sut = Create(handler);
+
+        var act = () =>
+            sut.GetGbpRateOnAsync(
+                "EUR",
+                new LocalDate(2026, 3, 15),
+                TestContext.Current.CancellationToken
+            );
+
+        await act.Should().ThrowAsync<FxUnavailableException>();
+    }
+
+    [Fact]
+    public async Task TreatsAnAbsentRatesObjectAsUnavailable()
+    {
+        var handler = new StubHttpMessageHandler(HttpStatusCode.OK, "{}");
+        var sut = Create(handler);
+
+        var act = () =>
+            sut.GetGbpRateOnAsync(
+                "EUR",
+                new LocalDate(2026, 3, 15),
+                TestContext.Current.CancellationToken
+            );
+
+        await act.Should().ThrowAsync<FxUnavailableException>();
+    }
+
+    /// <summary>
+    /// A caller-cancelled request must abort rather than land on the fallback: the ledger is
+    /// the first caller where a wrong rate is frozen permanently rather than just mis-rendered.
+    /// </summary>
+    [Fact]
+    public async Task PropagatesTheCallersCancellation()
+    {
+        var handler = new StubHttpMessageHandler(HttpStatusCode.OK, """{"rates":{"GBP":0.74}}""");
+        var sut = Create(handler);
+        using var cts = new CancellationTokenSource();
+        await cts.CancelAsync();
+
+        var act = () => sut.GetGbpRateOnAsync("USD", new LocalDate(2026, 3, 15), cts.Token);
+
+        await act.Should().ThrowAsync<OperationCanceledException>();
+    }
+
+    [Fact]
+    public async Task LatestRateReadsTheUndatedEndpoint()
+    {
+        var handler = new StubHttpMessageHandler(HttpStatusCode.OK, """{"rates":{"GBP":0.7412}}""");
+        var sut = Create(handler);
+
+        var rate = await sut.GetUsdToGbpAsync(TestContext.Current.CancellationToken);
+
+        rate.Should().Be(0.7412m);
+        handler
+            .Requested.Should()
+            .ContainSingle()
+            .Which.Should()
+            .Contain("/v1/latest")
+            .And.Contain("from=USD");
+    }
+
+    [Fact]
+    public async Task LatestRateIsCachedSoRepeatedRendersCostOneCall()
+    {
+        var handler = new StubHttpMessageHandler(HttpStatusCode.OK, """{"rates":{"GBP":0.7412}}""");
+        var sut = Create(handler);
+
+        await sut.GetUsdToGbpAsync(TestContext.Current.CancellationToken);
+        await sut.GetUsdToGbpAsync(TestContext.Current.CancellationToken);
+
+        handler.Requested.Should().ContainSingle();
+    }
+
+    /// <summary>
+    /// Unlike the dated path, this one never throws: it renders an estimate, so an FX outage
+    /// must degrade the figure rather than break insight generation.
+    /// </summary>
+    [Fact]
+    public async Task LatestRateFallsBackOnAnOutageRatherThanThrowing()
+    {
+        var handler = new StubHttpMessageHandler(HttpStatusCode.ServiceUnavailable, "");
+        var sut = Create(handler);
+
+        var rate = await sut.GetUsdToGbpAsync(TestContext.Current.CancellationToken);
+
+        rate.Should().Be(0.79m);
+    }
+
+    [Fact]
+    public async Task LatestRateDoesNotCacheTheFallback()
+    {
+        var handler = new StubHttpMessageHandler(HttpStatusCode.ServiceUnavailable, "");
+        var sut = Create(handler);
+
+        await sut.GetUsdToGbpAsync(TestContext.Current.CancellationToken);
+        await sut.GetUsdToGbpAsync(TestContext.Current.CancellationToken);
+
+        handler
+            .Requested.Should()
+            .HaveCount(2, "the fallback is not cached, so the next call retries the real rate");
+    }
 }
