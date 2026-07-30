@@ -12,6 +12,8 @@ public class IntelligenceWorkerService(
 {
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
+        LogEnabledArms();
+
         while (!stoppingToken.IsCancellationRequested)
         {
             await RunAnalysisCatchupAsync(stoppingToken);
@@ -97,6 +99,40 @@ public class IntelligenceWorkerService(
             // long-running worker survives to the next iteration.
             logger.LogError(ex, "Intelligence worker failed for date {Date}", analysisDate);
         }
+    }
+
+    /// <summary>
+    /// States once, at startup, which optional arms this worker actually has. Without it an
+    /// unregistered arm is indistinguishable from a registered one that found nothing: both
+    /// produce no output at all, so a silently dead arm reads as a quiet one. That cost real
+    /// diagnosis time on the GitHub billing sync, which had been unregistered — and therefore
+    /// returning immediately — while looking exactly like a sync finding no new spend.
+    /// <para>
+    /// Logged rather than enforced: an absent arm is a legitimate local and preview
+    /// configuration, so this must never stop the worker starting.
+    /// </para>
+    /// </summary>
+    internal void LogEnabledArms()
+    {
+        bool gitHubBilling;
+        try
+        {
+            using var scope = scopeFactory.CreateScope();
+            gitHubBilling =
+                scope.ServiceProvider.GetService<GitHubBillingSyncService>() is not null;
+        }
+        catch (Exception ex)
+        {
+            // Diagnostics must not be the thing that stops the worker booting.
+            logger.LogWarning(ex, "Intelligence worker could not determine which arms are enabled");
+            return;
+        }
+
+        logger.LogInformation(
+            "Intelligence worker arms — analysis catchup: enabled, budget check: enabled, "
+                + "GitHub billing sync: {GitHubBillingState}",
+            gitHubBilling ? "enabled" : "NOT CONFIGURED (no entries will be written)"
+        );
     }
 
     /// <summary>
