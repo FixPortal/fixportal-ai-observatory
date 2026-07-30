@@ -344,4 +344,58 @@ public class UsageRepositoryTests : IAsyncLifetime
         agg.CostUsd.Should().Be(0.009m);
         agg.RequestCount.Should().Be(1);
     }
+
+    [Theory]
+    [InlineData(nameof(DailyAggregate.InputTokens))]
+    [InlineData(nameof(DailyAggregate.OutputTokens))]
+    [InlineData(nameof(DailyAggregate.CacheReadTokens))]
+    [InlineData(nameof(DailyAggregate.CacheWriteTokens))]
+    [InlineData(nameof(DailyAggregate.CacheWrite1hTokens))]
+    [InlineData(nameof(DailyAggregate.CostUsd))]
+    [InlineData(nameof(DailyAggregate.RequestCount))]
+    public async Task DailyAggregateRejectsNegativeNumericValues(string property)
+    {
+        var aggregate = new DailyAggregate
+        {
+            Date = new LocalDate(2026, 7, 30),
+            Provider = Provider.Anthropic,
+            Model = property,
+            InputTokens = 1,
+            OutputTokens = 1,
+            CacheReadTokens = 1,
+            CacheWriteTokens = 1,
+            CacheWrite1hTokens = 1,
+            CostUsd = 1m,
+            RequestCount = 1,
+        };
+        switch (property)
+        {
+            case nameof(DailyAggregate.InputTokens):
+                aggregate.InputTokens = -1;
+                break;
+            case nameof(DailyAggregate.OutputTokens):
+                aggregate.OutputTokens = -1;
+                break;
+            case nameof(DailyAggregate.CacheReadTokens):
+                aggregate.CacheReadTokens = -1;
+                break;
+            case nameof(DailyAggregate.CacheWriteTokens):
+                aggregate.CacheWriteTokens = -1;
+                break;
+            case nameof(DailyAggregate.CacheWrite1hTokens):
+                aggregate.CacheWrite1hTokens = -1;
+                break;
+            case nameof(DailyAggregate.CostUsd):
+                aggregate.CostUsd = -1m;
+                break;
+            case nameof(DailyAggregate.RequestCount):
+                aggregate.RequestCount = -1;
+                break;
+        }
+        _ctx.DailyAggregates.Add(aggregate);
+
+        var act = () => _ctx.SaveChangesAsync(TestContext.Current.CancellationToken);
+
+        await act.Should().ThrowAsync<DbUpdateException>();
+    }
 }
