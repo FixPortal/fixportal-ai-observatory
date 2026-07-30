@@ -403,9 +403,9 @@ FodyWeavers.xsd
 .idea/
 .ai/
 
-# Claude Code
-.claude/settings.local.json
-.claude/worktrees/
+# Claude Code: ignore machine-local runtime state and review worktrees while retaining policy.
+.claude/*
+!.claude/review-policy.json
 .superpowers/
 
 #### Project additions ####

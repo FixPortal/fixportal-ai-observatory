@@ -3,7 +3,7 @@ name: coverage
 # Standalone (not the shared fixportal-workflows reusable) because this suite's
 # tests run against a real Postgres: they read TEST_DB_CONNECTION. Service
 # containers can't be toggled by a reusable-workflow input, so the Postgres
-# setup lives here, mirroring ci.yml. Report-only.
+# setup lives here, mirroring ci.yml.
 
 on:
   pull_request:
@@ -21,9 +21,8 @@ permissions:
 
 jobs:
   coverage:
-    name: Coverage (.NET, advisory)
+    name: Coverage (.NET)
     runs-on: ubuntu-latest
-    continue-on-error: true
     services:
       postgres:
         # ECR Public mirror of the official image (un-throttled anonymous pulls);
