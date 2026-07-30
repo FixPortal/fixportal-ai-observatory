@@ -127,6 +127,34 @@ public class AiObservatoryDbContext(DbContextOptions<AiObservatoryDbContext> opt
                 d.Model,
             });
             b.Property(d => d.Provider).HasConversion<string>();
+            b.ToTable(t =>
+            {
+                t.HasCheckConstraint(
+                    "CK_DailyAggregate_InputTokens_NonNegative",
+                    "\"InputTokens\" >= 0"
+                );
+                t.HasCheckConstraint(
+                    "CK_DailyAggregate_OutputTokens_NonNegative",
+                    "\"OutputTokens\" >= 0"
+                );
+                t.HasCheckConstraint(
+                    "CK_DailyAggregate_CacheReadTokens_NonNegative",
+                    "\"CacheReadTokens\" >= 0"
+                );
+                t.HasCheckConstraint(
+                    "CK_DailyAggregate_CacheWriteTokens_NonNegative",
+                    "\"CacheWriteTokens\" >= 0"
+                );
+                t.HasCheckConstraint(
+                    "CK_DailyAggregate_CacheWrite1hTokens_WithinCacheWrite",
+                    "\"CacheWrite1hTokens\" >= 0 AND \"CacheWrite1hTokens\" <= \"CacheWriteTokens\""
+                );
+                t.HasCheckConstraint("CK_DailyAggregate_CostUsd_NonNegative", "\"CostUsd\" >= 0");
+                t.HasCheckConstraint(
+                    "CK_DailyAggregate_RequestCount_NonNegative",
+                    "\"RequestCount\" >= 0"
+                );
+            });
         });
 
         modelBuilder.Entity<SpendCategory>(b =>
