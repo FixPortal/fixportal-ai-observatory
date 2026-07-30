@@ -50,19 +50,7 @@ var dbConnection =
     ?? throw new InvalidOperationException("DB_CONNECTION configuration is missing.");
 builder.Services.AddDataLayer(dbConnection);
 
-// Self-host safety: refuse to boot outside Development with the documented
-// placeholder admin key, so an exposed deploy can't run with a guessable
-// credential. The local Docker demo runs in Development and may keep "change-me".
-var adminKey = builder.Configuration["OBSERVATORY_API_KEY"];
-if (
-    !builder.Environment.IsDevelopment()
-    && (string.IsNullOrWhiteSpace(adminKey) || adminKey == "change-me")
-)
-{
-    throw new InvalidOperationException(
-        "OBSERVATORY_API_KEY must be set to a non-default value outside Development."
-    );
-}
+Program.ValidateApiKeys(builder);
 builder.Services.AddSingleton<IClock>(SystemClock.Instance);
 
 // Bound unconditionally: Anthropic events are priced server-side at ingest, so a missing
@@ -414,6 +402,34 @@ await app.RunAsync();
 public partial class Program
 {
     protected Program() { }
+
+    internal static void ValidateApiKeys(WebApplicationBuilder builder)
+    {
+        if (builder.Environment.IsDevelopment())
+        {
+            return;
+        }
+
+        ValidateApiKey(builder.Configuration["OBSERVATORY_API_KEY"], "OBSERVATORY_API_KEY");
+        ValidateApiKey(
+            builder.Configuration["OBSERVATORY_READONLY_API_KEY"],
+            "OBSERVATORY_READONLY_API_KEY"
+        );
+    }
+
+    private static void ValidateApiKey(string? value, string name)
+    {
+        if (
+            string.IsNullOrWhiteSpace(value)
+            || value == "change-me"
+            || value.StartsWith("@Microsoft.KeyVault(", StringComparison.OrdinalIgnoreCase)
+        )
+        {
+            throw new InvalidOperationException(
+                $"{name} must be set to a non-default value outside Development."
+            );
+        }
+    }
 
     internal static void AddApplicationInsightsIfConfigured(WebApplicationBuilder builder)
     {

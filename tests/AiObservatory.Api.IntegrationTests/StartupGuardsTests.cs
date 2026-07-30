@@ -14,9 +14,13 @@ namespace AiObservatory.Api.IntegrationTests;
 /// </summary>
 public class StartupGuardsTests
 {
+    private const string KeyVaultReference =
+        "@Microsoft.KeyVault(VaultName=fpaiobs-kv;SecretName=observatory-api-key)";
+
     [Theory]
     [InlineData(null)]
     [InlineData("change-me")]
+    [InlineData(KeyVaultReference)]
     public async Task Startup_WhenApiKeyIsUnsetOrPlaceholder_ThrowsOutsideDevelopment(
         string? apiKey
     )
@@ -35,6 +39,30 @@ public class StartupGuardsTests
         ExceptionChainContains(thrown!, "OBSERVATORY_API_KEY")
             .Should()
             .BeTrue($"the exception chain should mention OBSERVATORY_API_KEY; got: {thrown}");
+    }
+
+    [Theory]
+    [InlineData(null)]
+    [InlineData("change-me")]
+    [InlineData(KeyVaultReference)]
+    public async Task Startup_WhenReadOnlyApiKeyIsUnsetOrPlaceholder_ThrowsOutsideDevelopment(
+        string? apiKey
+    )
+    {
+        await using var factory = new AiObservatoryApiFactory
+        {
+            Environment = Environments.Production,
+            ReadOnlyKeyOverride = apiKey,
+        };
+
+        var thrown = Record.Exception(() => factory.Services);
+
+        thrown.Should().NotBeNull();
+        ExceptionChainContains(thrown!, "OBSERVATORY_READONLY_API_KEY")
+            .Should()
+            .BeTrue(
+                $"the exception chain should mention OBSERVATORY_READONLY_API_KEY; got: {thrown}"
+            );
     }
 
     [Trait("Category", "Integration")]
