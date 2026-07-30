@@ -338,6 +338,11 @@ public static class SpendEntriesEndpoints
             return Results.NotFound();
         }
 
+        if (req.OccurredOn is { } occurredOn && occurredOn == default)
+        {
+            return Results.BadRequest("OccurredOn is required");
+        }
+
         if (req.Amount is 0)
         {
             return Results.BadRequest("Amount must not be zero");

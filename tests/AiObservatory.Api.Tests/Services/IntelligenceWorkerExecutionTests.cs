@@ -25,19 +25,7 @@ public class IntelligenceWorkerExecutionTests
         var budgetCalled = new TaskCompletionSource(
             TaskCreationOptions.RunContinuationsAsynchronously
         );
-        var budget = Substitute.For<BudgetAlertService>(
-            repository,
-            clock,
-            Substitute.For<IAlertNotifier>(),
-            NullLogger<BudgetAlertService>.Instance
-        );
-        budget
-            .CheckAndAlertAsync(Arg.Any<CancellationToken>())
-            .Returns(_ =>
-            {
-                budgetCalled.TrySetResult();
-                return Task.CompletedTask;
-            });
+        var budget = Budget(repository, clock, () => budgetCalled.TrySetResult());
         var services = new ServiceCollection()
             .AddSingleton(repository)
             .AddSingleton(budget)

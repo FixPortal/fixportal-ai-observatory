@@ -65,6 +65,25 @@ public class StartupGuardsTests
             );
     }
 
+    [Fact]
+    public async Task Startup_WhenAdminAndReadOnlyKeysMatch_ThrowsOutsideDevelopment()
+    {
+        const string sharedKey = "same-production-key";
+        await using var factory = new AiObservatoryApiFactory
+        {
+            Environment = Environments.Production,
+            ApiKeyOverride = sharedKey,
+            ReadOnlyKeyOverride = sharedKey,
+        };
+
+        var thrown = Record.Exception(() => factory.Services);
+
+        thrown.Should().NotBeNull();
+        ExceptionChainContains(thrown!, "must be different")
+            .Should()
+            .BeTrue($"the exception chain should reject identical API keys; got: {thrown}");
+    }
+
     [Trait("Category", "Integration")]
     [Fact]
     public async Task Startup_WhenApiKeyIsPlaceholder_SucceedsInDevelopment()

@@ -410,11 +410,17 @@ public partial class Program
             return;
         }
 
-        ValidateApiKey(builder.Configuration["OBSERVATORY_API_KEY"], "OBSERVATORY_API_KEY");
-        ValidateApiKey(
-            builder.Configuration["OBSERVATORY_READONLY_API_KEY"],
-            "OBSERVATORY_READONLY_API_KEY"
-        );
+        var adminKey = builder.Configuration["OBSERVATORY_API_KEY"];
+        var readOnlyKey = builder.Configuration["OBSERVATORY_READONLY_API_KEY"];
+        ValidateApiKey(adminKey, "OBSERVATORY_API_KEY");
+        ValidateApiKey(readOnlyKey, "OBSERVATORY_READONLY_API_KEY");
+
+        if (ApiKeyComparer.FixedTimeEquals(adminKey!, readOnlyKey!))
+        {
+            throw new InvalidOperationException(
+                "OBSERVATORY_API_KEY and OBSERVATORY_READONLY_API_KEY must be different outside Development."
+            );
+        }
     }
 
     private static void ValidateApiKey(string? value, string name)
