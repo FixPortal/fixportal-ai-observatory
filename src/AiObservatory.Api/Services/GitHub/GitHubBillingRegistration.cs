@@ -15,17 +15,14 @@ public static class GitHubBillingRegistration
     /// activity token, even though both read the same secret.
     /// </para>
     /// </summary>
-    public static IServiceCollection AddGitHubBilling(
-        this IServiceCollection services,
-        IConfiguration configuration
-    )
+    public static void AddGitHubBilling(this IServiceCollection services, IConfiguration configuration)
     {
         var token = configuration["GITHUB_TOKEN"];
         var org = configuration["GITHUB_BILLING_ORG"];
 
         if (!IsConfigured(token) || !IsConfigured(org))
         {
-            return services;
+            return;
         }
 
         services.AddHttpClient(
@@ -43,14 +40,12 @@ public static class GitHubBillingRegistration
         );
 
         services.AddScoped(sp => new GitHubBillingClient(
-            sp.GetRequiredService<IHttpClientFactory>()
-                .CreateClient(GitHubBillingClient.HttpClientName),
+            sp.GetRequiredService<IHttpClientFactory>().CreateClient(GitHubBillingClient.HttpClientName),
             org!,
             sp.GetRequiredService<ILogger<GitHubBillingClient>>()
         ));
 
         services.AddScoped<GitHubBillingSyncService>();
-        return services;
     }
 
     /// <summary>
@@ -60,6 +55,5 @@ public static class GitHubBillingRegistration
     /// off. Mirrors the same gate in AiObservatory.Ingest's composition root.
     /// </summary>
     private static bool IsConfigured(string? value) =>
-        !string.IsNullOrEmpty(value)
-        && !value.StartsWith("@Microsoft.KeyVault(", StringComparison.OrdinalIgnoreCase);
+        !string.IsNullOrEmpty(value) && !value.StartsWith("@Microsoft.KeyVault(", StringComparison.OrdinalIgnoreCase);
 }

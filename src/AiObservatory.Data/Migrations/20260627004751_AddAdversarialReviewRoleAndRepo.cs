@@ -10,10 +10,7 @@ namespace AiObservatory.Data.Migrations
         /// <inheritdoc />
         protected override void Up(MigrationBuilder migrationBuilder)
         {
-            migrationBuilder.DropIndex(
-                name: "IX_AdversarialReviewRuns_RunId",
-                table: "AdversarialReviewRuns"
-            );
+            migrationBuilder.DropIndex(name: "IX_AdversarialReviewRuns_RunId", table: "AdversarialReviewRuns");
 
             migrationBuilder.AddColumn<string>(
                 name: "Repo",

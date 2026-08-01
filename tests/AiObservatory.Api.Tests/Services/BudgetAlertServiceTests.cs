@@ -25,11 +25,7 @@ public class BudgetAlertServiceTests
         };
         _repo.GetBudgetRulesAsync(Arg.Any<CancellationToken>()).Returns([rule]);
         _repo
-            .GetAggregatesAsync(
-                Arg.Any<LocalDate>(),
-                Arg.Any<LocalDate>(),
-                Arg.Any<CancellationToken>()
-            )
+            .GetAggregatesAsync(Arg.Any<LocalDate>(), Arg.Any<LocalDate>(), Arg.Any<CancellationToken>())
             .Returns([
                 new DailyAggregate
                 {
@@ -43,27 +39,18 @@ public class BudgetAlertServiceTests
                 },
             ]);
 
-        var sut = new BudgetAlertService(
-            _repo,
-            _clock,
-            _notifier,
-            NullLogger<BudgetAlertService>.Instance
-        );
+        var sut = new BudgetAlertService(_repo, _clock, _notifier, NullLogger<BudgetAlertService>.Instance);
         await sut.CheckAndAlertAsync(TestContext.Current.CancellationToken);
 
         await _repo
             .Received(1)
             .AddInsightAsync(
                 Arg.Is<Insight>(i =>
-                    i != null
-                    && i.InsightType == InsightType.BudgetAlert
-                    && i.Title.Contains("Budget")
+                    i != null && i.InsightType == InsightType.BudgetAlert && i.Title.Contains("Budget")
                 ),
                 Arg.Any<CancellationToken>()
             );
-        await _repo
-            .Received(1)
-            .SetBudgetRuleTriggeredAsync(rule.Id, Arg.Any<Instant>(), Arg.Any<CancellationToken>());
+        await _repo.Received(1).SetBudgetRuleTriggeredAsync(rule.Id, Arg.Any<Instant>(), Arg.Any<CancellationToken>());
         await _notifier
             .Received(1)
             .NotifyAsync(
@@ -83,11 +70,7 @@ public class BudgetAlertServiceTests
         };
         _repo.GetBudgetRulesAsync(Arg.Any<CancellationToken>()).Returns([rule]);
         _repo
-            .GetAggregatesAsync(
-                Arg.Any<LocalDate>(),
-                Arg.Any<LocalDate>(),
-                Arg.Any<CancellationToken>()
-            )
+            .GetAggregatesAsync(Arg.Any<LocalDate>(), Arg.Any<LocalDate>(), Arg.Any<CancellationToken>())
             .Returns([
                 new DailyAggregate
                 {
@@ -101,17 +84,10 @@ public class BudgetAlertServiceTests
                 },
             ]);
 
-        var sut = new BudgetAlertService(
-            _repo,
-            _clock,
-            _notifier,
-            NullLogger<BudgetAlertService>.Instance
-        );
+        var sut = new BudgetAlertService(_repo, _clock, _notifier, NullLogger<BudgetAlertService>.Instance);
         await sut.CheckAndAlertAsync(TestContext.Current.CancellationToken);
 
-        await _repo
-            .DidNotReceive()
-            .AddInsightAsync(Arg.Any<Insight>(), Arg.Any<CancellationToken>());
+        await _repo.DidNotReceive().AddInsightAsync(Arg.Any<Insight>(), Arg.Any<CancellationToken>());
     }
 
     [Fact]
@@ -126,30 +102,15 @@ public class BudgetAlertServiceTests
             ThresholdUsd = 10m,
         };
         _repo.GetBudgetRulesAsync(Arg.Any<CancellationToken>()).Returns([rule]);
-        _repo
-            .GetAggregatesAsync(
-                Arg.Any<LocalDate>(),
-                Arg.Any<LocalDate>(),
-                Arg.Any<CancellationToken>()
-            )
-            .Returns([]);
+        _repo.GetAggregatesAsync(Arg.Any<LocalDate>(), Arg.Any<LocalDate>(), Arg.Any<CancellationToken>()).Returns([]);
 
-        var sut = new BudgetAlertService(
-            _repo,
-            _clock,
-            _notifier,
-            NullLogger<BudgetAlertService>.Instance
-        );
+        var sut = new BudgetAlertService(_repo, _clock, _notifier, NullLogger<BudgetAlertService>.Instance);
         await sut.CheckAndAlertAsync(TestContext.Current.CancellationToken);
 
         // Clock is 2026-06-02, so the daily window is yesterday = 2026-06-01.
         await _repo
             .Received(1)
-            .GetAggregatesAsync(
-                new LocalDate(2026, 6, 1),
-                new LocalDate(2026, 6, 1),
-                Arg.Any<CancellationToken>()
-            );
+            .GetAggregatesAsync(new LocalDate(2026, 6, 1), new LocalDate(2026, 6, 1), Arg.Any<CancellationToken>());
     }
 
     [Fact]
@@ -164,11 +125,7 @@ public class BudgetAlertServiceTests
         };
         _repo.GetBudgetRulesAsync(Arg.Any<CancellationToken>()).Returns([rule]);
         _repo
-            .GetAggregatesAsync(
-                Arg.Any<LocalDate>(),
-                Arg.Any<LocalDate>(),
-                Arg.Any<CancellationToken>()
-            )
+            .GetAggregatesAsync(Arg.Any<LocalDate>(), Arg.Any<LocalDate>(), Arg.Any<CancellationToken>())
             .Returns([
                 new DailyAggregate
                 {
@@ -182,17 +139,10 @@ public class BudgetAlertServiceTests
                 },
             ]);
 
-        var sut = new BudgetAlertService(
-            _repo,
-            _clock,
-            _notifier,
-            NullLogger<BudgetAlertService>.Instance
-        );
+        var sut = new BudgetAlertService(_repo, _clock, _notifier, NullLogger<BudgetAlertService>.Instance);
         await sut.CheckAndAlertAsync(TestContext.Current.CancellationToken);
 
-        await _repo
-            .DidNotReceive()
-            .AddInsightAsync(Arg.Any<Insight>(), Arg.Any<CancellationToken>());
+        await _repo.DidNotReceive().AddInsightAsync(Arg.Any<Insight>(), Arg.Any<CancellationToken>());
     }
 
     // AIO-H2 -------------------------------------------------------------------------
@@ -211,11 +161,7 @@ public class BudgetAlertServiceTests
         };
         _repo.GetBudgetRulesAsync(Arg.Any<CancellationToken>()).Returns([rule]);
         _repo
-            .GetAggregatesAsync(
-                Arg.Any<LocalDate>(),
-                Arg.Any<LocalDate>(),
-                Arg.Any<CancellationToken>()
-            )
+            .GetAggregatesAsync(Arg.Any<LocalDate>(), Arg.Any<LocalDate>(), Arg.Any<CancellationToken>())
             .Returns([
                 new DailyAggregate
                 {
@@ -232,27 +178,16 @@ public class BudgetAlertServiceTests
             .NotifyAsync(Arg.Any<BudgetAlertPayload>(), Arg.Any<CancellationToken>())
             .Returns(Task.FromException(new InvalidOperationException("SMTP unreachable")));
 
-        var sut = new BudgetAlertService(
-            _repo,
-            _clock,
-            _notifier,
-            NullLogger<BudgetAlertService>.Instance
-        );
+        var sut = new BudgetAlertService(_repo, _clock, _notifier, NullLogger<BudgetAlertService>.Instance);
 
         // The failure must not escape CheckAndAlertAsync — one rule's delivery failure
         // must not abort evaluation of the remaining rules this cycle.
         await sut.CheckAndAlertAsync(TestContext.Current.CancellationToken);
 
+        await _repo.DidNotReceive().AddInsightAsync(Arg.Any<Insight>(), Arg.Any<CancellationToken>());
         await _repo
             .DidNotReceive()
-            .AddInsightAsync(Arg.Any<Insight>(), Arg.Any<CancellationToken>());
-        await _repo
-            .DidNotReceive()
-            .SetBudgetRuleTriggeredAsync(
-                Arg.Any<Guid>(),
-                Arg.Any<Instant>(),
-                Arg.Any<CancellationToken>()
-            );
+            .SetBudgetRuleTriggeredAsync(Arg.Any<Guid>(), Arg.Any<Instant>(), Arg.Any<CancellationToken>());
     }
 
     [Fact]
@@ -273,11 +208,7 @@ public class BudgetAlertServiceTests
         };
         _repo.GetBudgetRulesAsync(Arg.Any<CancellationToken>()).Returns([failing, healthy]);
         _repo
-            .GetAggregatesAsync(
-                Arg.Any<LocalDate>(),
-                Arg.Any<LocalDate>(),
-                Arg.Any<CancellationToken>()
-            )
+            .GetAggregatesAsync(Arg.Any<LocalDate>(), Arg.Any<LocalDate>(), Arg.Any<CancellationToken>())
             .Returns([
                 new DailyAggregate
                 {
@@ -316,28 +247,15 @@ public class BudgetAlertServiceTests
             )
             .Returns(Task.CompletedTask);
 
-        var sut = new BudgetAlertService(
-            _repo,
-            _clock,
-            _notifier,
-            NullLogger<BudgetAlertService>.Instance
-        );
+        var sut = new BudgetAlertService(_repo, _clock, _notifier, NullLogger<BudgetAlertService>.Instance);
         await sut.CheckAndAlertAsync(TestContext.Current.CancellationToken);
 
         await _repo
             .DidNotReceive()
-            .SetBudgetRuleTriggeredAsync(
-                failing.Id,
-                Arg.Any<Instant>(),
-                Arg.Any<CancellationToken>()
-            );
+            .SetBudgetRuleTriggeredAsync(failing.Id, Arg.Any<Instant>(), Arg.Any<CancellationToken>());
         await _repo
             .Received(1)
-            .SetBudgetRuleTriggeredAsync(
-                healthy.Id,
-                Arg.Any<Instant>(),
-                Arg.Any<CancellationToken>()
-            );
+            .SetBudgetRuleTriggeredAsync(healthy.Id, Arg.Any<Instant>(), Arg.Any<CancellationToken>());
     }
 
     [Fact]
@@ -354,11 +272,7 @@ public class BudgetAlertServiceTests
         // Anthropic alone is under threshold; Google's spend would push a combined total
         // over threshold, but must not count towards an Anthropic-scoped rule.
         _repo
-            .GetAggregatesAsync(
-                Arg.Any<LocalDate>(),
-                Arg.Any<LocalDate>(),
-                Arg.Any<CancellationToken>()
-            )
+            .GetAggregatesAsync(Arg.Any<LocalDate>(), Arg.Any<LocalDate>(), Arg.Any<CancellationToken>())
             .Returns([
                 new DailyAggregate
                 {
@@ -382,17 +296,10 @@ public class BudgetAlertServiceTests
                 },
             ]);
 
-        var sut = new BudgetAlertService(
-            _repo,
-            _clock,
-            _notifier,
-            NullLogger<BudgetAlertService>.Instance
-        );
+        var sut = new BudgetAlertService(_repo, _clock, _notifier, NullLogger<BudgetAlertService>.Instance);
         await sut.CheckAndAlertAsync(TestContext.Current.CancellationToken);
 
-        await _repo
-            .DidNotReceive()
-            .AddInsightAsync(Arg.Any<Insight>(), Arg.Any<CancellationToken>());
+        await _repo.DidNotReceive().AddInsightAsync(Arg.Any<Insight>(), Arg.Any<CancellationToken>());
     }
 
     [Fact]
@@ -408,11 +315,7 @@ public class BudgetAlertServiceTests
         };
         _repo.GetBudgetRulesAsync(Arg.Any<CancellationToken>()).Returns([rule]);
         _repo
-            .GetAggregatesAsync(
-                Arg.Any<LocalDate>(),
-                Arg.Any<LocalDate>(),
-                Arg.Any<CancellationToken>()
-            )
+            .GetAggregatesAsync(Arg.Any<LocalDate>(), Arg.Any<LocalDate>(), Arg.Any<CancellationToken>())
             .Returns([
                 new DailyAggregate
                 {
@@ -426,17 +329,10 @@ public class BudgetAlertServiceTests
                 },
             ]);
 
-        var sut = new BudgetAlertService(
-            _repo,
-            _clock,
-            _notifier,
-            NullLogger<BudgetAlertService>.Instance
-        );
+        var sut = new BudgetAlertService(_repo, _clock, _notifier, NullLogger<BudgetAlertService>.Instance);
         await sut.CheckAndAlertAsync(TestContext.Current.CancellationToken);
 
-        await _repo
-            .DidNotReceive()
-            .AddInsightAsync(Arg.Any<Insight>(), Arg.Any<CancellationToken>());
+        await _repo.DidNotReceive().AddInsightAsync(Arg.Any<Insight>(), Arg.Any<CancellationToken>());
     }
 
     [Fact]
@@ -451,11 +347,7 @@ public class BudgetAlertServiceTests
         };
         _repo.GetBudgetRulesAsync(Arg.Any<CancellationToken>()).Returns([rule]);
         _repo
-            .GetAggregatesAsync(
-                Arg.Any<LocalDate>(),
-                Arg.Any<LocalDate>(),
-                Arg.Any<CancellationToken>()
-            )
+            .GetAggregatesAsync(Arg.Any<LocalDate>(), Arg.Any<LocalDate>(), Arg.Any<CancellationToken>())
             .Returns([
                 new DailyAggregate
                 {
@@ -469,12 +361,7 @@ public class BudgetAlertServiceTests
                 },
             ]);
 
-        var sut = new BudgetAlertService(
-            _repo,
-            _clock,
-            _notifier,
-            NullLogger<BudgetAlertService>.Instance
-        );
+        var sut = new BudgetAlertService(_repo, _clock, _notifier, NullLogger<BudgetAlertService>.Instance);
         await sut.CheckAndAlertAsync(TestContext.Current.CancellationToken);
 
         await _repo.Received(1).AddInsightAsync(Arg.Any<Insight>(), Arg.Any<CancellationToken>());
@@ -493,11 +380,7 @@ public class BudgetAlertServiceTests
         };
         _repo.GetBudgetRulesAsync(Arg.Any<CancellationToken>()).Returns([rule]);
         _repo
-            .GetAggregatesAsync(
-                Arg.Any<LocalDate>(),
-                Arg.Any<LocalDate>(),
-                Arg.Any<CancellationToken>()
-            )
+            .GetAggregatesAsync(Arg.Any<LocalDate>(), Arg.Any<LocalDate>(), Arg.Any<CancellationToken>())
             .Returns([
                 new DailyAggregate
                 {
@@ -511,17 +394,10 @@ public class BudgetAlertServiceTests
                 },
             ]);
 
-        var sut = new BudgetAlertService(
-            _repo,
-            _clock,
-            _notifier,
-            NullLogger<BudgetAlertService>.Instance
-        );
+        var sut = new BudgetAlertService(_repo, _clock, _notifier, NullLogger<BudgetAlertService>.Instance);
         await sut.CheckAndAlertAsync(TestContext.Current.CancellationToken);
 
-        await _repo
-            .DidNotReceive()
-            .AddInsightAsync(Arg.Any<Insight>(), Arg.Any<CancellationToken>());
+        await _repo.DidNotReceive().AddInsightAsync(Arg.Any<Insight>(), Arg.Any<CancellationToken>());
     }
 
     [Fact]
@@ -536,11 +412,7 @@ public class BudgetAlertServiceTests
         };
         _repo.GetBudgetRulesAsync(Arg.Any<CancellationToken>()).Returns([rule]);
         _repo
-            .GetAggregatesAsync(
-                Arg.Any<LocalDate>(),
-                Arg.Any<LocalDate>(),
-                Arg.Any<CancellationToken>()
-            )
+            .GetAggregatesAsync(Arg.Any<LocalDate>(), Arg.Any<LocalDate>(), Arg.Any<CancellationToken>())
             .Returns([
                 new DailyAggregate
                 {
@@ -554,12 +426,7 @@ public class BudgetAlertServiceTests
                 },
             ]);
 
-        var sut = new BudgetAlertService(
-            _repo,
-            _clock,
-            _notifier,
-            NullLogger<BudgetAlertService>.Instance
-        );
+        var sut = new BudgetAlertService(_repo, _clock, _notifier, NullLogger<BudgetAlertService>.Instance);
         await sut.CheckAndAlertAsync(TestContext.Current.CancellationToken);
 
         await _repo.Received(1).AddInsightAsync(Arg.Any<Insight>(), Arg.Any<CancellationToken>());

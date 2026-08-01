@@ -16,11 +16,7 @@ namespace AiObservatory.Api.IntegrationTests;
 [Collection("ApiFactory")]
 public class CavemanEndpointsWafTests(AiObservatoryApiFactory factory)
 {
-    private static object Session(
-        string sessionId,
-        DateTimeOffset occurredAtUtc,
-        long outputTokens = 100
-    ) =>
+    private static object Session(string sessionId, DateTimeOffset occurredAtUtc, long outputTokens = 100) =>
         new
         {
             SessionId = sessionId,
@@ -74,10 +70,7 @@ public class CavemanEndpointsWafTests(AiObservatoryApiFactory factory)
     public async Task PostSessions_WhenFutureOccurredAt_ReturnsBadRequest()
     {
         using var client = factory.CreateAdminClient();
-        var sessions = new[]
-        {
-            Session($"future-{Guid.NewGuid():N}", DateTimeOffset.UtcNow.AddHours(1)),
-        };
+        var sessions = new[] { Session($"future-{Guid.NewGuid():N}", DateTimeOffset.UtcNow.AddHours(1)) };
 
         var response = await client.PostAsJsonAsync(
             "/api/caveman-sessions",
@@ -96,9 +89,7 @@ public class CavemanEndpointsWafTests(AiObservatoryApiFactory factory)
         // Whole-second precision: Postgres timestamptz round-trips to microseconds, so a
         // sub-microsecond DateTimeOffset.UtcNow tick component would make the post-round-trip
         // equality check below flaky.
-        var newer = DateTimeOffset.FromUnixTimeSeconds(
-            DateTimeOffset.UtcNow.AddMinutes(-1).ToUnixTimeSeconds()
-        );
+        var newer = DateTimeOffset.FromUnixTimeSeconds(DateTimeOffset.UtcNow.AddMinutes(-1).ToUnixTimeSeconds());
         var older = newer.AddMinutes(-10);
 
         var first = await client.PostAsJsonAsync(
@@ -119,9 +110,7 @@ public class CavemanEndpointsWafTests(AiObservatoryApiFactory factory)
         using var scope = factory.Services.CreateScope();
         var db = scope.ServiceProvider.GetRequiredService<AiObservatoryDbContext>();
         var stored = db.CavemanSessions.Single(s => s.SessionId == sessionId);
-        stored
-            .OutputTokens.Should()
-            .Be(500, "the stale replay must not regress the newer snapshot's fields");
+        stored.OutputTokens.Should().Be(500, "the stale replay must not regress the newer snapshot's fields");
         stored.OccurredAt.Should().Be(Instant.FromDateTimeOffset(newer));
     }
 

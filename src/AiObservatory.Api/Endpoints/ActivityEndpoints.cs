@@ -22,44 +22,22 @@ public static class ActivityEndpoints
 
         app.MapGet(
                 "/activity/daily",
-                async (
-                    AiObservatoryDbContext db,
-                    IClock clock,
-                    string? from,
-                    string? to,
-                    CancellationToken ct
-                ) =>
+                async (AiObservatoryDbContext db, IClock clock, string? from, string? to, CancellationToken ct) =>
                 {
                     var today = clock.GetCurrentInstant().InUtc().Date;
-                    if (
-                        !TryParseDateRange(
-                            from,
-                            to,
-                            today,
-                            out var start,
-                            out var end,
-                            out var error
-                        )
-                    )
+                    if (!TryParseDateRange(from, to, today, out var start, out var end, out var error))
                     {
                         return error!;
                     }
 
                     var startInstant = start.AtStartOfDayInZone(DateTimeZone.Utc).ToInstant();
-                    var endInstant = end.PlusDays(1)
-                        .AtStartOfDayInZone(DateTimeZone.Utc)
-                        .ToInstant();
+                    var endInstant = end.PlusDays(1).AtStartOfDayInZone(DateTimeZone.Utc).ToInstant();
 
                     var sessions = await db
                         .ClaudeActivitySessions.AsNoTracking()
                         .Where(s => s.LastSeenAt > startInstant && s.StartedAt < endInstant)
                         .Where(IsAllowedProjectPredicate)
-                        .Select(s => new ActivitySessionSlice(
-                            s.Project,
-                            s.StartedAt,
-                            s.LastSeenAt,
-                            s.ActiveSeconds
-                        ))
+                        .Select(s => new ActivitySessionSlice(s.Project, s.StartedAt, s.LastSeenAt, s.ActiveSeconds))
                         .ToListAsync(ct);
 
                     var byDate = BuildDailyActivityResponses(sessions, start, end);
@@ -71,33 +49,16 @@ public static class ActivityEndpoints
 
         app.MapGet(
                 "/activity/by-project",
-                async (
-                    AiObservatoryDbContext db,
-                    IClock clock,
-                    string? from,
-                    string? to,
-                    CancellationToken ct
-                ) =>
+                async (AiObservatoryDbContext db, IClock clock, string? from, string? to, CancellationToken ct) =>
                 {
                     var today = clock.GetCurrentInstant().InUtc().Date;
-                    if (
-                        !TryParseDateRange(
-                            from,
-                            to,
-                            today,
-                            out var start,
-                            out var end,
-                            out var error
-                        )
-                    )
+                    if (!TryParseDateRange(from, to, today, out var start, out var end, out var error))
                     {
                         return error!;
                     }
 
                     var startInstant = start.AtStartOfDayInZone(DateTimeZone.Utc).ToInstant();
-                    var endInstant = end.PlusDays(1)
-                        .AtStartOfDayInZone(DateTimeZone.Utc)
-                        .ToInstant();
+                    var endInstant = end.PlusDays(1).AtStartOfDayInZone(DateTimeZone.Utc).ToInstant();
 
                     var sessions = await db
                         .ClaudeActivitySessions.AsNoTracking()
@@ -119,9 +80,7 @@ public static class ActivityEndpoints
                             g.Key,
                             g.Select(s => s.SessionId).Distinct().Count(),
                             g.Sum(s => s.ActiveSeconds),
-                            totalSeconds > 0
-                                ? Math.Round(g.Sum(s => s.ActiveSeconds) * 100.0 / totalSeconds, 1)
-                                : 0
+                            totalSeconds > 0 ? Math.Round(g.Sum(s => s.ActiveSeconds) * 100.0 / totalSeconds, 1) : 0
                         ))
                         .OrderByDescending(p => p.ActiveSeconds)
                         .ToList();
@@ -188,9 +147,7 @@ public static class ActivityEndpoints
             await tx.CommitAsync(ct);
         }
         catch (DbUpdateException ex)
-            when (ex.InnerException
-                    is PostgresException { SqlState: PostgresErrorCodes.UniqueViolation }
-            )
+            when (ex.InnerException is PostgresException { SqlState: PostgresErrorCodes.UniqueViolation })
         {
             // A concurrent request inserted one of these SessionIds between the existence
             // snapshot and SaveChanges. The merge is monotonic, so a retry converges.
@@ -200,10 +157,7 @@ public static class ActivityEndpoints
         return Results.Ok(new { Upserted = upserted });
     }
 
-    private static string? ValidateSessions(
-        IReadOnlyCollection<ActivitySessionRequest> sessions,
-        Instant now
-    )
+    private static string? ValidateSessions(IReadOnlyCollection<ActivitySessionRequest> sessions, Instant now)
     {
         var seenSessionIds = new HashSet<string>();
         foreach (var session in sessions)
@@ -312,15 +266,9 @@ public static class ActivityEndpoints
                 upd =>
                     upd.SetProperty(
                             p => p.ActiveSeconds,
-                            p =>
-                                p.ActiveSeconds > session.ActiveSeconds
-                                    ? p.ActiveSeconds
-                                    : session.ActiveSeconds
+                            p => p.ActiveSeconds > session.ActiveSeconds ? p.ActiveSeconds : session.ActiveSeconds
                         )
-                        .SetProperty(
-                            p => p.LastSeenAt,
-                            p => p.LastSeenAt > lastSeenAt ? p.LastSeenAt : lastSeenAt
-                        ),
+                        .SetProperty(p => p.LastSeenAt, p => p.LastSeenAt > lastSeenAt ? p.LastSeenAt : lastSeenAt),
                 ct
             );
 
@@ -349,26 +297,23 @@ public static class ActivityEndpoints
     // below instead of each carrying its own copy of the Any(...)/StartsWith(...) text.
     // IsAllowedProject (below) intentionally stays a separate, ordinal-comparison
     // implementation for the in-memory path — see its own comment.
-    public static readonly Expression<Func<ClaudeActivitySession, bool>> IsAllowedProjectPredicate =
-        s => AllowedProjectOwners.Any(o => s.Project == o || s.Project.StartsWith(o + "/"));
+    public static readonly Expression<Func<ClaudeActivitySession, bool>> IsAllowedProjectPredicate = s =>
+        AllowedProjectOwners.Any(o => s.Project == o || s.Project.StartsWith(o + "/"));
 
     // Negation of IsAllowedProjectPredicate, built once from the same expression body so
     // the "disallowed" side of the rule can never drift from the "allowed" side.
-    private static readonly Expression<
-        Func<ClaudeActivitySession, bool>
-    > IsDisallowedProjectPredicate = Expression.Lambda<Func<ClaudeActivitySession, bool>>(
-        Expression.Not(IsAllowedProjectPredicate.Body),
-        IsAllowedProjectPredicate.Parameters[0]
-    );
+    private static readonly Expression<Func<ClaudeActivitySession, bool>> IsDisallowedProjectPredicate =
+        Expression.Lambda<Func<ClaudeActivitySession, bool>>(
+            Expression.Not(IsAllowedProjectPredicate.Body),
+            IsAllowedProjectPredicate.Parameters[0]
+        );
 
     // In-memory counterpart of IsAllowedProjectPredicate. Kept as its own implementation
     // (not derived from the expression above) because it deliberately uses an ordinal
     // StartsWith — culture-sensitive comparison would be wrong here — whereas SQL
     // translation via Npgsql is byte/ordinal-equivalent regardless.
     public static bool IsAllowedProject(string project) =>
-        AllowedProjectOwners.Any(o =>
-            project == o || project.StartsWith(o + "/", StringComparison.Ordinal)
-        );
+        AllowedProjectOwners.Any(o => project == o || project.StartsWith(o + "/", StringComparison.Ordinal));
 
     public static Task<int> DeleteDisallowedProjectSessionsAsync(
         AiObservatoryDbContext db,
@@ -385,11 +330,7 @@ public static class ActivityEndpoints
         var endInstant = end.PlusDays(1).AtStartOfDayInZone(DateTimeZone.Utc).ToInstant();
         var slices = new List<(LocalDate Date, Instant Start, Instant End, long ActiveSeconds)>();
 
-        foreach (
-            var session in sessions.Where(s =>
-                IsAllowedProject(s.Project) && s.LastSeenAt > s.StartedAt
-            )
-        )
+        foreach (var session in sessions.Where(s => IsAllowedProject(s.Project) && s.LastSeenAt > s.StartedAt))
         {
             var clippedStart = Max(session.StartedAt, startInstant);
             var clippedEnd = Min(session.LastSeenAt, endInstant);
@@ -403,9 +344,7 @@ public static class ActivityEndpoints
             while (cursor < clippedEnd)
             {
                 var date = cursor.InUtc().Date;
-                var nextMidnight = date.PlusDays(1)
-                    .AtStartOfDayInZone(DateTimeZone.Utc)
-                    .ToInstant();
+                var nextMidnight = date.PlusDays(1).AtStartOfDayInZone(DateTimeZone.Utc).ToInstant();
                 var fragmentEnd = Min(clippedEnd, nextMidnight);
                 var fragmentSeconds = (fragmentEnd - cursor).TotalSeconds;
                 var activeSeconds =
@@ -535,9 +474,4 @@ public sealed record ActivitySessionsRequest(List<ActivitySessionRequest> Sessio
 
 public sealed record DailyActivityResponse(string Date, long ActiveSeconds, long WallClockSeconds);
 
-public sealed record ProjectActivityResponse(
-    string Project,
-    int SessionCount,
-    long ActiveSeconds,
-    double SharePercent
-);
+public sealed record ProjectActivityResponse(string Project, int SessionCount, long ActiveSeconds, double SharePercent);

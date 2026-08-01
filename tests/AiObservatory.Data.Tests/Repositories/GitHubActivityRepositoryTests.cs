@@ -71,9 +71,7 @@ public class GitHubActivityRepositoryTests : IAsyncLifetime
             TestContext.Current.CancellationToken
         );
 
-        var stored = await _ctx.GitHubPullRequests.SingleAsync(
-            TestContext.Current.CancellationToken
-        );
+        var stored = await _ctx.GitHubPullRequests.SingleAsync(TestContext.Current.CancellationToken);
         stored.State.Should().Be("open");
         stored.ReviewCount.Should().Be(0);
     }
@@ -215,14 +213,7 @@ public class GitHubActivityRepositoryTests : IAsyncLifetime
         );
 
         await _repo.UpsertWorkflowRunAsync(run, Instant.FromUtc(2026, 7, 1, 9, 0), ct);
-        await _repo.UpsertWorkflowRunAsync(
-            run with
-            {
-                Status = "success",
-            },
-            Instant.FromUtc(2026, 7, 1, 9, 5),
-            ct
-        );
+        await _repo.UpsertWorkflowRunAsync(run with { Status = "success" }, Instant.FromUtc(2026, 7, 1, 9, 5), ct);
 
         var stored = await _ctx.GitHubWorkflowRuns.SingleAsync(ct);
         stored.Status.Should().Be("success");
@@ -279,10 +270,7 @@ public class GitHubActivityRepositoryTests : IAsyncLifetime
     [Fact]
     public async Task GetBackfillStatusAsync_WhenNoRowsForRepo_AllFalse()
     {
-        var result = await _repo.GetBackfillStatusAsync(
-            "fix-portal/never-seen",
-            TestContext.Current.CancellationToken
-        );
+        var result = await _repo.GetBackfillStatusAsync("fix-portal/never-seen", TestContext.Current.CancellationToken);
         result.HasPullRequests.Should().BeFalse();
         result.HasCommits.Should().BeFalse();
         result.HasWorkflowRuns.Should().BeFalse();
@@ -296,14 +284,7 @@ public class GitHubActivityRepositoryTests : IAsyncLifetime
         // status is independent, not OR'd into one repo-wide bool.
         var ct = TestContext.Current.CancellationToken;
         await _repo.UpsertCommitAsync(
-            new GitHubCommitRecord(
-                "fix-portal/example",
-                "abc123",
-                "chris",
-                Instant.FromUtc(2026, 7, 1, 9, 0),
-                1,
-                0
-            ),
+            new GitHubCommitRecord("fix-portal/example", "abc123", "chris", Instant.FromUtc(2026, 7, 1, 9, 0), 1, 0),
             Instant.FromUtc(2026, 7, 1, 9, 0),
             ct
         );

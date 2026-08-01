@@ -30,10 +30,7 @@ public class AdminOnlyApiKeyEndpointFilterTests
         if (authenticated)
         {
             httpContext.User = new ClaimsPrincipal(
-                new ClaimsIdentity(
-                    [new Claim(ClaimTypes.Name, "chris")],
-                    authenticationType: "Bearer"
-                )
+                new ClaimsIdentity([new Claim(ClaimTypes.Name, "chris")], authenticationType: "Bearer")
             );
         }
         httpContext.Request.Method = method;

@@ -15,16 +15,13 @@ public static class BudgetRulesEndpoints
     {
         app.MapGet(
             "/budget-rules",
-            async (AiObservatoryDbContext db) =>
-                Results.Ok(await db.BudgetRules.AsNoTracking().ToListAsync())
+            async (AiObservatoryDbContext db) => Results.Ok(await db.BudgetRules.AsNoTracking().ToListAsync())
         );
 
         app.MapGet(
             "/budget-rules/email-status",
             (IConfiguration config) =>
-                Results.Ok(
-                    new { configured = !string.IsNullOrEmpty(config["BUDGET_ALERT_EMAIL_TO"]) }
-                )
+                Results.Ok(new { configured = !string.IsNullOrEmpty(config["BUDGET_ALERT_EMAIL_TO"]) })
         );
 
         app.MapGet(
@@ -73,8 +70,4 @@ public static class BudgetRulesEndpoints
     }
 }
 
-public sealed record CreateBudgetRuleRequest(
-    Provider? Provider,
-    BillingPeriod Period,
-    decimal ThresholdUsd
-);
+public sealed record CreateBudgetRuleRequest(Provider? Provider, BillingPeriod Period, decimal ThresholdUsd);

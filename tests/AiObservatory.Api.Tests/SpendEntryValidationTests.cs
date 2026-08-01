@@ -15,18 +15,8 @@ public class SpendEntryValidationTests
     private static readonly Guid KnownVendorId = Guid.NewGuid();
     private static readonly Guid KnownCategoryId = Guid.NewGuid();
 
-    private static string? Validate(
-        SpendEntryRequest req,
-        out SpendSource source,
-        out string currency
-    ) =>
-        SpendEntriesEndpoints.Validate(
-            req,
-            [KnownVendorId],
-            [KnownCategoryId],
-            out source,
-            out currency
-        );
+    private static string? Validate(SpendEntryRequest req, out SpendSource source, out string currency) =>
+        SpendEntriesEndpoints.Validate(req, [KnownVendorId], [KnownCategoryId], out source, out currency);
 
     private static SpendEntryRequest Request(
         decimal amount = 10m,
@@ -117,10 +107,7 @@ public class SpendEntryValidationTests
 
         currency
             .Should()
-            .Be(
-                expected,
-                "the currency reaches FxRateProvider and the cache key, both of which are case-sensitive"
-            );
+            .Be(expected, "the currency reaches FxRateProvider and the cache key, both of which are case-sensitive");
     }
 
     [Theory]

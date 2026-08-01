@@ -22,12 +22,7 @@ public class GoogleIngestionServiceTests
             .GetDailySpendAsync(date, Arg.Any<CancellationToken>())
             .Returns([new GoogleBillingRecord("AI Platform", "gemini-2.5-pro", 2.50m, "{}")]);
 
-        var sut = new GoogleIngestionService(
-            _client,
-            _repo,
-            _clock,
-            NullLogger<GoogleIngestionService>.Instance
-        );
+        var sut = new GoogleIngestionService(_client, _repo, _clock, NullLogger<GoogleIngestionService>.Instance);
         await sut.IngestAsync(date, TestContext.Current.CancellationToken);
 
         await _repo
@@ -54,16 +49,9 @@ public class GoogleIngestionServiceTests
         var date = new LocalDate(2026, 6, 1);
         _client.GetDailySpendAsync(date, Arg.Any<CancellationToken>()).Returns([]);
 
-        var sut = new GoogleIngestionService(
-            _client,
-            _repo,
-            _clock,
-            NullLogger<GoogleIngestionService>.Instance
-        );
+        var sut = new GoogleIngestionService(_client, _repo, _clock, NullLogger<GoogleIngestionService>.Instance);
         await sut.IngestAsync(date, TestContext.Current.CancellationToken);
 
-        await _repo
-            .DidNotReceive()
-            .RecordEventAsync(Arg.Any<UsageEvent>(), Arg.Any<CancellationToken>());
+        await _repo.DidNotReceive().RecordEventAsync(Arg.Any<UsageEvent>(), Arg.Any<CancellationToken>());
     }
 }

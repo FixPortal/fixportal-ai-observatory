@@ -66,11 +66,7 @@ public partial class FixEventKeyIndexCompound : Migration
             defaultValue: 0L
         );
 
-        migrationBuilder.CreateIndex(
-            name: "IX_UsageEvents_OccurredAt",
-            table: "UsageEvents",
-            column: "OccurredAt"
-        );
+        migrationBuilder.CreateIndex(name: "IX_UsageEvents_OccurredAt", table: "UsageEvents", column: "OccurredAt");
 
         migrationBuilder.CreateIndex(
             name: "IX_UsageEvents_Provider_EventKey",
@@ -118,30 +114,15 @@ public partial class FixEventKeyIndexCompound : Migration
 
         migrationBuilder.DropIndex(name: "IX_UsageEvents_Provider_EventKey", table: "UsageEvents");
 
-        migrationBuilder.DropCheckConstraint(
-            name: "CK_UsageEvent_CacheReadTokens_NonNegative",
-            table: "UsageEvents"
-        );
+        migrationBuilder.DropCheckConstraint(name: "CK_UsageEvent_CacheReadTokens_NonNegative", table: "UsageEvents");
 
-        migrationBuilder.DropCheckConstraint(
-            name: "CK_UsageEvent_CacheWriteTokens_NonNegative",
-            table: "UsageEvents"
-        );
+        migrationBuilder.DropCheckConstraint(name: "CK_UsageEvent_CacheWriteTokens_NonNegative", table: "UsageEvents");
 
-        migrationBuilder.DropCheckConstraint(
-            name: "CK_UsageEvent_CostUsd_NonNegative",
-            table: "UsageEvents"
-        );
+        migrationBuilder.DropCheckConstraint(name: "CK_UsageEvent_CostUsd_NonNegative", table: "UsageEvents");
 
-        migrationBuilder.DropCheckConstraint(
-            name: "CK_UsageEvent_InputTokens_NonNegative",
-            table: "UsageEvents"
-        );
+        migrationBuilder.DropCheckConstraint(name: "CK_UsageEvent_InputTokens_NonNegative", table: "UsageEvents");
 
-        migrationBuilder.DropCheckConstraint(
-            name: "CK_UsageEvent_OutputTokens_NonNegative",
-            table: "UsageEvents"
-        );
+        migrationBuilder.DropCheckConstraint(name: "CK_UsageEvent_OutputTokens_NonNegative", table: "UsageEvents");
 
         migrationBuilder.DropColumn(name: "CacheReadTokens", table: "DailyAggregates");
 

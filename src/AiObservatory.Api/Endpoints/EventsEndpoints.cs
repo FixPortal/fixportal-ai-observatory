@@ -36,10 +36,7 @@ public static class EventsEndpoints
         HttpContext ctx
     )
     {
-        if (
-            !Enum.TryParse<Provider>(req.Provider, ignoreCase: true, out var provider)
-            || !Enum.IsDefined(provider)
-        )
+        if (!Enum.TryParse<Provider>(req.Provider, ignoreCase: true, out var provider) || !Enum.IsDefined(provider))
         {
             return Results.BadRequest($"Unknown provider: {req.Provider}");
         }
@@ -84,9 +81,7 @@ public static class EventsEndpoints
         // Backfilled events (e.g. from the local usage sweeper) carry the time the
         // usage actually happened so they aggregate onto the right day; live hooks
         // omit it and get the ingestion instant, as before.
-        var occurredAt = req.OccurredAtUtc is { } supplied
-            ? Instant.FromDateTimeOffset(supplied)
-            : now;
+        var occurredAt = req.OccurredAtUtc is { } supplied ? Instant.FromDateTimeOffset(supplied) : now;
         if (occurredAt > now + Duration.FromMinutes(5))
         {
             return Results.BadRequest("OccurredAtUtc must not be in the future");
@@ -153,11 +148,7 @@ public static class EventsEndpoints
 
         return result.IsDuplicate
             ? Results.Ok(new { Id = result.EventId, Duplicate = true })
-            : Results.CreatedAtRoute(
-                "GetEventById",
-                new { id = result.EventId },
-                new { Id = result.EventId }
-            );
+            : Results.CreatedAtRoute("GetEventById", new { id = result.EventId }, new { Id = result.EventId });
     }
 
     private static async Task<IResult> GetEventsAsync(
@@ -169,10 +160,7 @@ public static class EventsEndpoints
         int limit = 10_000
     )
     {
-        if (
-            !Enum.TryParse<Provider>(provider, ignoreCase: true, out var parsed)
-            || !Enum.IsDefined(parsed)
-        )
+        if (!Enum.TryParse<Provider>(provider, ignoreCase: true, out var parsed) || !Enum.IsDefined(parsed))
         {
             return Results.BadRequest($"Unknown provider: {provider}");
         }
@@ -181,13 +169,7 @@ public static class EventsEndpoints
         var toInstant = to is { } t ? Instant.FromDateTimeOffset(t) : (Instant?)null;
         var cappedLimit = Math.Clamp(limit, 1, 10_000);
 
-        var events = await repo.GetEventsByProviderAsync(
-            parsed,
-            fromInstant,
-            toInstant,
-            cappedLimit,
-            ct
-        );
+        var events = await repo.GetEventsByProviderAsync(parsed, fromInstant, toInstant, cappedLimit, ct);
         return Results.Ok(events);
     }
 
@@ -199,10 +181,7 @@ public static class EventsEndpoints
         CancellationToken ct
     )
     {
-        if (
-            !Enum.TryParse<Provider>(provider, ignoreCase: true, out var parsed)
-            || !Enum.IsDefined(parsed)
-        )
+        if (!Enum.TryParse<Provider>(provider, ignoreCase: true, out var parsed) || !Enum.IsDefined(parsed))
         {
             return Results.BadRequest($"Unknown provider: {provider}");
         }
@@ -228,8 +207,7 @@ public static class EventsEndpoints
             );
     }
 
-    internal static string SanitizeLogValue(string value) =>
-        value.Replace('\r', ' ').Replace('\n', ' ');
+    internal static string SanitizeLogValue(string value) => value.Replace('\r', ' ').Replace('\n', ' ');
 }
 
 public record UsageEventRequest(

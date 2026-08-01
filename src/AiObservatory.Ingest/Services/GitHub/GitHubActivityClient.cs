@@ -8,8 +8,7 @@ namespace AiObservatory.Ingest.Services.GitHub;
 
 // Calls the GitHub REST API directly (no out-of-repo hook, unlike Claude Activity).
 // Requires a PAT with contents:read, pull-requests:read, actions:read.
-public class GitHubActivityClient(HttpClient http, ILogger<GitHubActivityClient> logger)
-    : IGitHubActivityClient
+public class GitHubActivityClient(HttpClient http, ILogger<GitHubActivityClient> logger) : IGitHubActivityClient
 {
     // Stop calling GitHub once headroom drops this low — leaves margin for other
     // callers (e.g. the Copilot client sharing the same token) within the hour window.
@@ -47,9 +46,7 @@ public class GitHubActivityClient(HttpClient http, ILogger<GitHubActivityClient>
             );
             CheckRateLimit(response);
             response.EnsureSuccessStatusCode();
-            var prs =
-                await response.Content.ReadFromJsonAsync<List<PullRequestDto>>(JsonOptions, ct)
-                ?? [];
+            var prs = await response.Content.ReadFromJsonAsync<List<PullRequestDto>>(JsonOptions, ct) ?? [];
 
             var reachedOlderThanSince = false;
             foreach (var pr in prs)
@@ -80,11 +77,7 @@ public class GitHubActivityClient(HttpClient http, ILogger<GitHubActivityClient>
     )
     {
         var createdAt = InstantPattern.ExtendedIso.Parse(pullRequest.CreatedAt).Value;
-        var (reviewCount, firstReviewAt) = await GetReviewSummaryAsync(
-            repo,
-            pullRequest.Number,
-            ct
-        );
+        var (reviewCount, firstReviewAt) = await GetReviewSummaryAsync(repo, pullRequest.Number, ct);
         Instant? mergedAt = pullRequest.MergedAt is null
             ? null
             : InstantPattern.ExtendedIso.Parse(pullRequest.MergedAt).Value;
@@ -99,9 +92,7 @@ public class GitHubActivityClient(HttpClient http, ILogger<GitHubActivityClient>
             Truncate(state, 20),
             createdAt,
             mergedAt,
-            pullRequest.ClosedAt is null
-                ? null
-                : InstantPattern.ExtendedIso.Parse(pullRequest.ClosedAt).Value,
+            pullRequest.ClosedAt is null ? null : InstantPattern.ExtendedIso.Parse(pullRequest.ClosedAt).Value,
             firstReviewAt,
             reviewCount
         );
@@ -123,8 +114,7 @@ public class GitHubActivityClient(HttpClient http, ILogger<GitHubActivityClient>
             );
             CheckRateLimit(response);
             response.EnsureSuccessStatusCode();
-            var pageReviews =
-                await response.Content.ReadFromJsonAsync<List<ReviewDto>>(JsonOptions, ct) ?? [];
+            var pageReviews = await response.Content.ReadFromJsonAsync<List<ReviewDto>>(JsonOptions, ct) ?? [];
             reviews.AddRange(pageReviews);
             if (pageReviews.Count < PerPage)
             {
@@ -172,9 +162,7 @@ public class GitHubActivityClient(HttpClient http, ILogger<GitHubActivityClient>
     {
         // GitHub's `since` param on this endpoint requires a full timestamp, not a bare date —
         // a bare date is silently ignored by the API and would return the repo's entire history.
-        var sinceStr = InstantPattern.ExtendedIso.Format(
-            since.AtStartOfDayInZone(DateTimeZone.Utc).ToInstant()
-        );
+        var sinceStr = InstantPattern.ExtendedIso.Format(since.AtStartOfDayInZone(DateTimeZone.Utc).ToInstant());
         var results = new List<GitHubCommitRecord>();
         var page = 1;
         while (true)
@@ -185,18 +173,13 @@ public class GitHubActivityClient(HttpClient http, ILogger<GitHubActivityClient>
             );
             CheckRateLimit(response);
             response.EnsureSuccessStatusCode();
-            var commits =
-                await response.Content.ReadFromJsonAsync<List<CommitListDto>>(JsonOptions, ct)
-                ?? [];
+            var commits = await response.Content.ReadFromJsonAsync<List<CommitListDto>>(JsonOptions, ct) ?? [];
 
             foreach (var c in commits)
             {
                 // Per-commit call needed for churn stats — the list endpoint omits them.
                 // Personal-scale repo volume keeps this within the rate-limit budget.
-                using var detailResponse = await http.GetAsync(
-                    $"/repos/{repo}/commits/{c.Sha}",
-                    ct
-                );
+                using var detailResponse = await http.GetAsync($"/repos/{repo}/commits/{c.Sha}", ct);
                 CheckRateLimit(detailResponse);
                 detailResponse.EnsureSuccessStatusCode();
                 var detail =
@@ -280,13 +263,7 @@ public class GitHubActivityClient(HttpClient http, ILogger<GitHubActivityClient>
 
     private sealed record WorkflowRunsResponseDto(List<WorkflowRunDto> WorkflowRuns);
 
-    private sealed record WorkflowRunDto(
-        long Id,
-        string? Name,
-        string Status,
-        string? Conclusion,
-        string CreatedAt
-    );
+    private sealed record WorkflowRunDto(long Id, string? Name, string Status, string? Conclusion, string CreatedAt);
 
     private sealed record PullRequestDto(
         int Number,

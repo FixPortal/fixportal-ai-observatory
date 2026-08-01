@@ -11,13 +11,9 @@ namespace AiObservatory.Api.Tests.Services;
 /// </summary>
 public class GitHubBillingDateConverterTests
 {
-    private static readonly JsonSerializerOptions Options = new()
-    {
-        Converters = { new GitHubBillingDateConverter() },
-    };
+    private static readonly JsonSerializerOptions Options = new() { Converters = { new GitHubBillingDateConverter() } };
 
-    private static DateOnly Read(string json) =>
-        JsonSerializer.Deserialize<DateOnly>(json, Options);
+    private static DateOnly Read(string json) => JsonSerializer.Deserialize<DateOnly>(json, Options);
 
     [Fact]
     public void ReadsTheDocumentedDateOnlyShape()
@@ -68,10 +64,7 @@ public class GitHubBillingDateConverterTests
     {
         var act = () => Read(json);
 
-        act.Should()
-            .Throw<JsonException>(
-                "a format change must surface, not quietly become zero recorded spend"
-            );
+        act.Should().Throw<JsonException>("a format change must surface, not quietly become zero recorded spend");
     }
 
     /// <summary>

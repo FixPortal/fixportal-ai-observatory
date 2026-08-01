@@ -14,8 +14,7 @@ using Microsoft.Extensions.DependencyInjection;
 namespace AiObservatory.Api.IntegrationTests;
 
 [Trait("Category", "Integration")]
-public class SpendEntriesEndpointsWafTests(AiObservatoryApiFactory factory)
-    : IClassFixture<AiObservatoryApiFactory>
+public class SpendEntriesEndpointsWafTests(AiObservatoryApiFactory factory) : IClassFixture<AiObservatoryApiFactory>
 {
     /// <summary>Creates a category and a vendor and returns their ids.</summary>
     private static async Task<(Guid CategoryId, Guid VendorId)> SeedCatalogAsync(HttpClient client)
@@ -34,9 +33,7 @@ public class SpendEntriesEndpointsWafTests(AiObservatoryApiFactory factory)
             },
             ct
         );
-        var categoryId = (await cat.Content.ReadFromJsonAsync<JsonElement>(ct))
-            .GetProperty("id")
-            .GetGuid();
+        var categoryId = (await cat.Content.ReadFromJsonAsync<JsonElement>(ct)).GetProperty("id").GetGuid();
 
         var ven = await client.PostAsJsonAsync(
             "/api/spend/vendors",
@@ -48,9 +45,7 @@ public class SpendEntriesEndpointsWafTests(AiObservatoryApiFactory factory)
             },
             ct
         );
-        var vendorId = (await ven.Content.ReadFromJsonAsync<JsonElement>(ct))
-            .GetProperty("id")
-            .GetGuid();
+        var vendorId = (await ven.Content.ReadFromJsonAsync<JsonElement>(ct)).GetProperty("id").GetGuid();
 
         return (categoryId, vendorId);
     }
@@ -90,9 +85,7 @@ public class SpendEntriesEndpointsWafTests(AiObservatoryApiFactory factory)
             new[] { Entry(categoryId, vendorId, $"k-{Guid.NewGuid():N}", amount, currency) },
             ct
         );
-        var result = (await response.Content.ReadFromJsonAsync<JsonElement>(ct))
-            .EnumerateArray()
-            .Single();
+        var result = (await response.Content.ReadFromJsonAsync<JsonElement>(ct)).EnumerateArray().Single();
         return result.GetProperty("id").GetGuid();
     }
 
@@ -153,9 +146,7 @@ public class SpendEntriesEndpointsWafTests(AiObservatoryApiFactory factory)
             .Should()
             .Be("duplicate");
 
-        (await TotalAsync(client, vendorId))
-            .Should()
-            .Be(totalAfterFirst, "a duplicate must not move the total");
+        (await TotalAsync(client, vendorId)).Should().Be(totalAfterFirst, "a duplicate must not move the total");
     }
 
     [Fact]
@@ -166,11 +157,7 @@ public class SpendEntriesEndpointsWafTests(AiObservatoryApiFactory factory)
         var (categoryId, vendorId) = await SeedCatalogAsync(client);
         var existingKey = $"k-{Guid.NewGuid():N}";
 
-        await client.PostAsJsonAsync(
-            "/api/spend/entries",
-            new[] { Entry(categoryId, vendorId, existingKey) },
-            ct
-        );
+        await client.PostAsJsonAsync("/api/spend/entries", new[] { Entry(categoryId, vendorId, existingKey) }, ct);
 
         var mixed = new[]
         {
@@ -193,17 +180,11 @@ public class SpendEntriesEndpointsWafTests(AiObservatoryApiFactory factory)
 
         // The status array alone doesn't prove landing was scoped to the one good row --
         // confirm the table itself: the pre-existing row plus exactly one new one.
-        var entries = await client.GetFromJsonAsync<JsonElement>(
-            $"/api/spend/entries?vendorId={vendorId}",
-            ct
-        );
+        var entries = await client.GetFromJsonAsync<JsonElement>($"/api/spend/entries?vendorId={vendorId}", ct);
         entries
             .EnumerateArray()
             .Should()
-            .HaveCount(
-                2,
-                "only the pre-existing row and the one genuinely new row should have landed"
-            );
+            .HaveCount(2, "only the pre-existing row and the one genuinely new row should have landed");
     }
 
     [Fact]
@@ -228,17 +209,12 @@ public class SpendEntriesEndpointsWafTests(AiObservatoryApiFactory factory)
             },
             ct
         );
-        var result = (await response.Content.ReadFromJsonAsync<JsonElement>(ct))
-            .EnumerateArray()
-            .Single();
+        var result = (await response.Content.ReadFromJsonAsync<JsonElement>(ct)).EnumerateArray().Single();
 
         result.GetProperty("status").GetString().Should().Be("rejected");
         result.GetProperty("reason").GetString().Should().Contain("OccurredOn");
 
-        var entries = await client.GetFromJsonAsync<JsonElement>(
-            $"/api/spend/entries?vendorId={vendorId}",
-            ct
-        );
+        var entries = await client.GetFromJsonAsync<JsonElement>($"/api/spend/entries?vendorId={vendorId}", ct);
         entries.EnumerateArray().Should().BeEmpty();
     }
 
@@ -259,10 +235,7 @@ public class SpendEntriesEndpointsWafTests(AiObservatoryApiFactory factory)
             .GetProperty("status")
             .GetString()
             .Should()
-            .Be(
-                "created",
-                "a person typing the same charge twice is a mistake to show, not silence"
-            );
+            .Be("created", "a person typing the same charge twice is a mistake to show, not silence");
     }
 
     [Fact]
@@ -278,10 +251,7 @@ public class SpendEntriesEndpointsWafTests(AiObservatoryApiFactory factory)
             ct
         );
 
-        var entries = await client.GetFromJsonAsync<JsonElement>(
-            $"/api/spend/entries?vendorId={vendorId}",
-            ct
-        );
+        var entries = await client.GetFromJsonAsync<JsonElement>($"/api/spend/entries?vendorId={vendorId}", ct);
         var entry = entries.EnumerateArray().Single();
 
         entry.GetProperty("fxRate").GetDecimal().Should().Be(1m);
@@ -322,7 +292,7 @@ public class SpendEntriesEndpointsWafTests(AiObservatoryApiFactory factory)
     public async Task AnEntryWhoseFxCannotBeResolvedIsRejectedRatherThanFrozen()
     {
         var handler = new StubHttpMessageHandler(HttpStatusCode.ServiceUnavailable, "");
-        using var stubFactory = WithStubbedFx(factory, handler);
+        await using var stubFactory = WithStubbedFx(factory, handler);
         using var client = AdminClient(stubFactory);
         var ct = TestContext.Current.CancellationToken;
         var (categoryId, vendorId) = await SeedCatalogAsync(client);
@@ -336,9 +306,7 @@ public class SpendEntriesEndpointsWafTests(AiObservatoryApiFactory factory)
         var response = await client.PostAsJsonAsync("/api/spend/entries", batch, ct);
 
         response.StatusCode.Should().Be(HttpStatusCode.OK);
-        var results = (await response.Content.ReadFromJsonAsync<JsonElement>(ct))
-            .EnumerateArray()
-            .ToArray();
+        var results = (await response.Content.ReadFromJsonAsync<JsonElement>(ct)).EnumerateArray().ToArray();
 
         results[0].GetProperty("status").GetString().Should().Be("rejected");
         results[0].GetProperty("reason").GetString().Should().Contain("EUR");
@@ -361,10 +329,8 @@ public class SpendEntriesEndpointsWafTests(AiObservatoryApiFactory factory)
     /// is deleted from Postgres (via a second DbContext scope) at the moment the FX rate is
     /// fetched, so by the time that row's SaveChangesAsync runs the foreign key is dangling.
     /// </summary>
-    private sealed class SideEffectHttpMessageHandler(
-        Func<CancellationToken, Task> sideEffect,
-        string body
-    ) : HttpMessageHandler
+    private sealed class SideEffectHttpMessageHandler(Func<CancellationToken, Task> sideEffect, string body)
+        : HttpMessageHandler
     {
         protected override async Task<HttpResponseMessage> SendAsync(
             HttpRequestMessage request,
@@ -410,13 +376,11 @@ public class SpendEntriesEndpointsWafTests(AiObservatoryApiFactory factory)
             {
                 using var scope = factory.Services.CreateScope();
                 var db = scope.ServiceProvider.GetRequiredService<AiObservatoryDbContext>();
-                await db
-                    .SpendVendors.Where(v => v.Id == vendorToDeleteId)
-                    .ExecuteDeleteAsync(sideEffectCt);
+                await db.SpendVendors.Where(v => v.Id == vendorToDeleteId).ExecuteDeleteAsync(sideEffectCt);
             },
             """{"rates":{"GBP":0.8}}"""
         );
-        using var stubFactory = WithStubbedFx(factory, handler);
+        await using var stubFactory = WithStubbedFx(factory, handler);
         using var client = AdminClient(stubFactory);
 
         var (categoryId, survivingVendorId) = await SeedCatalogAsync(client);
@@ -450,9 +414,7 @@ public class SpendEntriesEndpointsWafTests(AiObservatoryApiFactory factory)
         var response = await client.PostAsJsonAsync("/api/spend/entries", batch, ct);
 
         response.StatusCode.Should().Be(HttpStatusCode.OK);
-        var results = (await response.Content.ReadFromJsonAsync<JsonElement>(ct))
-            .EnumerateArray()
-            .ToArray();
+        var results = (await response.Content.ReadFromJsonAsync<JsonElement>(ct)).EnumerateArray().ToArray();
 
         results[0].GetProperty("status").GetString().Should().Be("created");
         var survivingId = results[0].GetProperty("id").GetGuid();
@@ -466,10 +428,7 @@ public class SpendEntriesEndpointsWafTests(AiObservatoryApiFactory factory)
             $"/api/spend/entries?vendorId={survivingVendorId}",
             ct
         );
-        entries
-            .EnumerateArray()
-            .Should()
-            .ContainSingle(e => e.GetProperty("id").GetGuid() == survivingId);
+        entries.EnumerateArray().Should().ContainSingle(e => e.GetProperty("id").GetGuid() == survivingId);
     }
 
     [Fact]
@@ -480,18 +439,11 @@ public class SpendEntriesEndpointsWafTests(AiObservatoryApiFactory factory)
         var (categoryId, vendorId) = await SeedCatalogAsync(client);
         var id = await CreateEntryAsync(client, categoryId, vendorId);
 
-        var response = await client.PatchAsJsonAsync(
-            $"/api/spend/entries/{id}",
-            new { VendorId = Guid.NewGuid() },
-            ct
-        );
+        var response = await client.PatchAsJsonAsync($"/api/spend/entries/{id}", new { VendorId = Guid.NewGuid() }, ct);
 
         response.StatusCode.Should().Be(HttpStatusCode.BadRequest);
 
-        var entries = await client.GetFromJsonAsync<JsonElement>(
-            $"/api/spend/entries?vendorId={vendorId}",
-            ct
-        );
+        var entries = await client.GetFromJsonAsync<JsonElement>($"/api/spend/entries?vendorId={vendorId}", ct);
         entries
             .EnumerateArray()
             .Should()
@@ -517,10 +469,7 @@ public class SpendEntriesEndpointsWafTests(AiObservatoryApiFactory factory)
 
         response.StatusCode.Should().Be(HttpStatusCode.BadRequest);
 
-        var entries = await client.GetFromJsonAsync<JsonElement>(
-            $"/api/spend/entries?vendorId={vendorId}",
-            ct
-        );
+        var entries = await client.GetFromJsonAsync<JsonElement>($"/api/spend/entries?vendorId={vendorId}", ct);
         entries
             .EnumerateArray()
             .Should()
@@ -538,17 +487,10 @@ public class SpendEntriesEndpointsWafTests(AiObservatoryApiFactory factory)
         var (categoryId, vendorId) = await SeedCatalogAsync(client);
         var id = await CreateEntryAsync(client, categoryId, vendorId);
 
-        var response = await client.PatchAsJsonAsync(
-            $"/api/spend/entries/{id}",
-            new { OccurredOn = "0001-01-01" },
-            ct
-        );
+        var response = await client.PatchAsJsonAsync($"/api/spend/entries/{id}", new { OccurredOn = "0001-01-01" }, ct);
 
         response.StatusCode.Should().Be(HttpStatusCode.BadRequest);
-        var entries = await client.GetFromJsonAsync<JsonElement>(
-            $"/api/spend/entries?vendorId={vendorId}",
-            ct
-        );
+        var entries = await client.GetFromJsonAsync<JsonElement>($"/api/spend/entries?vendorId={vendorId}", ct);
         entries
             .EnumerateArray()
             .Single(e => e.GetProperty("id").GetGuid() == id)
@@ -580,11 +522,7 @@ public class SpendEntriesEndpointsWafTests(AiObservatoryApiFactory factory)
         var (categoryId, vendorId) = await SeedCatalogAsync(client);
         var id = await CreateEntryAsync(client, categoryId, vendorId, amount: 80m, currency: "GBP");
 
-        var response = await client.PatchAsJsonAsync(
-            $"/api/spend/entries/{id}",
-            new { Amount = 100m },
-            ct
-        );
+        var response = await client.PatchAsJsonAsync($"/api/spend/entries/{id}", new { Amount = 100m }, ct);
 
         response.StatusCode.Should().Be(HttpStatusCode.OK);
         var entry = await response.Content.ReadFromJsonAsync<JsonElement>(ct);
@@ -593,17 +531,14 @@ public class SpendEntriesEndpointsWafTests(AiObservatoryApiFactory factory)
             .GetProperty("amountGbp")
             .GetDecimal()
             .Should()
-            .Be(
-                100m,
-                "changing the amount must re-resolve AmountGbp rather than leave the old conversion"
-            );
+            .Be(100m, "changing the amount must re-resolve AmountGbp rather than leave the old conversion");
     }
 
     [Fact]
     public async Task PatchingOccurredOnReResolvesTheConversionForTheNewDate()
     {
         var handler = new StubHttpMessageHandler(HttpStatusCode.OK, """{"rates":{"GBP":0.8}}""");
-        using var stubFactory = WithStubbedFx(factory, handler);
+        await using var stubFactory = WithStubbedFx(factory, handler);
         using var client = AdminClient(stubFactory);
         var ct = TestContext.Current.CancellationToken;
         var (categoryId, vendorId) = await SeedCatalogAsync(client);
@@ -611,11 +546,7 @@ public class SpendEntriesEndpointsWafTests(AiObservatoryApiFactory factory)
         // never prove a fresh lookup happened on the new date.
         var id = await CreateEntryAsync(client, categoryId, vendorId, amount: 80m, currency: "USD");
 
-        var response = await client.PatchAsJsonAsync(
-            $"/api/spend/entries/{id}",
-            new { OccurredOn = "2026-08-01" },
-            ct
-        );
+        var response = await client.PatchAsJsonAsync($"/api/spend/entries/{id}", new { OccurredOn = "2026-08-01" }, ct);
 
         response.StatusCode.Should().Be(HttpStatusCode.OK);
         handler
@@ -647,11 +578,7 @@ public class SpendEntriesEndpointsWafTests(AiObservatoryApiFactory factory)
         var (categoryId, vendorId) = await SeedCatalogAsync(client);
         var id = await CreateEntryAsync(client, categoryId, vendorId, amount: 80m, currency: "GBP");
 
-        var response = await client.PatchAsJsonAsync(
-            $"/api/spend/entries/{id}",
-            new { Description = "Renamed" },
-            ct
-        );
+        var response = await client.PatchAsJsonAsync($"/api/spend/entries/{id}", new { Description = "Renamed" }, ct);
 
         response.StatusCode.Should().Be(HttpStatusCode.OK);
         var entry = await response.Content.ReadFromJsonAsync<JsonElement>(ct);
@@ -661,10 +588,7 @@ public class SpendEntriesEndpointsWafTests(AiObservatoryApiFactory factory)
             .GetProperty("amountGbp")
             .GetDecimal()
             .Should()
-            .Be(
-                80m,
-                "a description-only patch must not re-resolve FX -- that would defeat the freeze"
-            );
+            .Be(80m, "a description-only patch must not re-resolve FX -- that would defeat the freeze");
     }
 
     [Fact]
@@ -711,24 +635,13 @@ public class SpendEntriesEndpointsWafTests(AiObservatoryApiFactory factory)
         var response = await client.DeleteAsync($"/api/spend/entries/{toDelete}", ct);
         response.StatusCode.Should().Be(HttpStatusCode.NoContent);
 
-        var entries = await client.GetFromJsonAsync<JsonElement>(
-            $"/api/spend/entries?vendorId={vendorId}",
-            ct
-        );
-        var remainingIds = entries
-            .EnumerateArray()
-            .Select(e => e.GetProperty("id").GetGuid())
-            .ToArray();
-        remainingIds
-            .Should()
-            .BeEquivalentTo([keptA, keptB], "only the targeted row should be gone");
+        var entries = await client.GetFromJsonAsync<JsonElement>($"/api/spend/entries?vendorId={vendorId}", ct);
+        var remainingIds = entries.EnumerateArray().Select(e => e.GetProperty("id").GetGuid()).ToArray();
+        remainingIds.Should().BeEquivalentTo([keptA, keptB], "only the targeted row should be gone");
 
         (await TotalAsync(client, vendorId))
             .Should()
-            .Be(
-                totalBeforeDelete - 20m,
-                "the total must drop by exactly the deleted row's amount, not more or less"
-            );
+            .Be(totalBeforeDelete - 20m, "the total must drop by exactly the deleted row's amount, not more or less");
     }
 
     /// <summary>
@@ -754,14 +667,10 @@ public class SpendEntriesEndpointsWafTests(AiObservatoryApiFactory factory)
         );
 
         response.StatusCode.Should().Be(HttpStatusCode.OK);
-        var result = (await response.Content.ReadFromJsonAsync<JsonElement>(ct))
-            .EnumerateArray()
-            .Single();
+        var result = (await response.Content.ReadFromJsonAsync<JsonElement>(ct)).EnumerateArray().Single();
         result.GetProperty("status").GetString().Should().Be("created");
 
-        (await TotalAsync(client, vendorId))
-            .Should()
-            .Be(70m, "a refund must net off the charges, not add to them");
+        (await TotalAsync(client, vendorId)).Should().Be(70m, "a refund must net off the charges, not add to them");
     }
 
     [Fact]
@@ -771,7 +680,7 @@ public class SpendEntriesEndpointsWafTests(AiObservatoryApiFactory factory)
         // would assert the conversion without ever exercising it — the rate and the amount
         // would match by construction and a broken conversion would still pass.
         var handler = new StubHttpMessageHandler(HttpStatusCode.OK, """{"rates":{"GBP":0.8}}""");
-        using var stubFactory = WithStubbedFx(factory, handler);
+        await using var stubFactory = WithStubbedFx(factory, handler);
         using var client = AdminClient(stubFactory);
         var ct = TestContext.Current.CancellationToken;
         var (categoryId, vendorId) = await SeedCatalogAsync(client);
@@ -787,10 +696,7 @@ public class SpendEntriesEndpointsWafTests(AiObservatoryApiFactory factory)
             .GetProperty("id")
             .GetGuid();
 
-        var entries = await client.GetFromJsonAsync<JsonElement>(
-            $"/api/spend/entries?vendorId={vendorId}",
-            ct
-        );
+        var entries = await client.GetFromJsonAsync<JsonElement>($"/api/spend/entries?vendorId={vendorId}", ct);
         var row = entries.EnumerateArray().Single(e => e.GetProperty("id").GetGuid() == id);
 
         row.GetProperty("amount").GetDecimal().Should().Be(-30m);
@@ -830,19 +736,14 @@ public class SpendEntriesEndpointsWafTests(AiObservatoryApiFactory factory)
             .GetProperty("id")
             .GetGuid();
 
-        var entries = await client.GetFromJsonAsync<JsonElement>(
-            $"/api/spend/entries?vendorId={vendorId}",
-            ct
-        );
+        var entries = await client.GetFromJsonAsync<JsonElement>($"/api/spend/entries?vendorId={vendorId}", ct);
         var row = entries.EnumerateArray().Single(e => e.GetProperty("id").GetGuid() == id);
 
         var stored = row.GetProperty("amount").GetDecimal();
         var storedGbp = row.GetProperty("amountGbp").GetDecimal();
         (stored * storedGbp)
             .Should()
-            .BePositive(
-                "a non-GBP conversion must preserve the sign, or a refund reads as a charge in every total"
-            );
+            .BePositive("a non-GBP conversion must preserve the sign, or a refund reads as a charge in every total");
     }
 
     /// <summary>
@@ -856,7 +757,7 @@ public class SpendEntriesEndpointsWafTests(AiObservatoryApiFactory factory)
     public async Task PostEntry_WhoseConversionRoundsToZero_IsRejectedWithoutFailingTheBatch()
     {
         var handler = new StubHttpMessageHandler(HttpStatusCode.OK, """{"rates":{"GBP":0.5}}""");
-        using var stubFactory = WithStubbedFx(factory, handler);
+        await using var stubFactory = WithStubbedFx(factory, handler);
         using var client = AdminClient(stubFactory);
         var ct = TestContext.Current.CancellationToken;
         var (categoryId, vendorId) = await SeedCatalogAsync(client);
@@ -871,18 +772,13 @@ public class SpendEntriesEndpointsWafTests(AiObservatoryApiFactory factory)
         var response = await client.PostAsJsonAsync("/api/spend/entries", batch, ct);
 
         response.StatusCode.Should().Be(HttpStatusCode.OK);
-        var results = (await response.Content.ReadFromJsonAsync<JsonElement>(ct))
-            .EnumerateArray()
-            .ToArray();
+        var results = (await response.Content.ReadFromJsonAsync<JsonElement>(ct)).EnumerateArray().ToArray();
         results[0].GetProperty("status").GetString().Should().Be("rejected");
         results[1]
             .GetProperty("status")
             .GetString()
             .Should()
-            .Be(
-                "created",
-                "a row rejected by the constraint must not take the rest of the batch with it"
-            );
+            .Be("created", "a row rejected by the constraint must not take the rest of the batch with it");
     }
 
     [Theory]
@@ -900,9 +796,7 @@ public class SpendEntriesEndpointsWafTests(AiObservatoryApiFactory factory)
             ct
         );
 
-        var result = (await response.Content.ReadFromJsonAsync<JsonElement>(ct))
-            .EnumerateArray()
-            .Single();
+        var result = (await response.Content.ReadFromJsonAsync<JsonElement>(ct)).EnumerateArray().Single();
         result.GetProperty("status").GetString().Should().Be("rejected");
         result.GetProperty("reason").GetString().Should().Contain("zero");
     }
@@ -915,11 +809,7 @@ public class SpendEntriesEndpointsWafTests(AiObservatoryApiFactory factory)
         var (categoryId, vendorId) = await SeedCatalogAsync(client);
         var id = await CreateEntryAsync(client, categoryId, vendorId, 50m);
 
-        var patch = await client.PatchAsJsonAsync(
-            $"/api/spend/entries/{id}",
-            new { Amount = -50m },
-            ct
-        );
+        var patch = await client.PatchAsJsonAsync($"/api/spend/entries/{id}", new { Amount = -50m }, ct);
 
         patch.StatusCode.Should().Be(HttpStatusCode.OK);
         var body = await patch.Content.ReadFromJsonAsync<JsonElement>(ct);
@@ -936,11 +826,7 @@ public class SpendEntriesEndpointsWafTests(AiObservatoryApiFactory factory)
         var (categoryId, vendorId) = await SeedCatalogAsync(client);
         var id = await CreateEntryAsync(client, categoryId, vendorId, 50m);
 
-        var patch = await client.PatchAsJsonAsync(
-            $"/api/spend/entries/{id}",
-            new { Amount = 0m },
-            ct
-        );
+        var patch = await client.PatchAsJsonAsync($"/api/spend/entries/{id}", new { Amount = 0m }, ct);
 
         patch.StatusCode.Should().Be(HttpStatusCode.BadRequest);
     }

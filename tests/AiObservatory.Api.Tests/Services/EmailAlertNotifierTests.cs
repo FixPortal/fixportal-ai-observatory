@@ -40,13 +40,7 @@ public class EmailAlertNotifierTests
         // reports connected after ConnectAsync so the finally-block disconnect runs.
         smtp.IsConnected.Returns(true);
         MimeMessage? sent = null;
-        smtp.When(x =>
-                x.SendAsync(
-                    Arg.Any<MimeMessage>(),
-                    Arg.Any<CancellationToken>(),
-                    Arg.Any<ITransferProgress>()
-                )
-            )
+        smtp.When(x => x.SendAsync(Arg.Any<MimeMessage>(), Arg.Any<CancellationToken>(), Arg.Any<ITransferProgress>()))
             .Do(x => sent = x.Arg<MimeMessage>());
 
         var config = new ConfigurationBuilder()
@@ -66,14 +60,8 @@ public class EmailAlertNotifierTests
         await sut.NotifyAsync(MakePayload(), TestContext.Current.CancellationToken);
 
         await smtp.Received(1)
-            .ConnectAsync(
-                "smtp.example.com",
-                587,
-                SecureSocketOptions.StartTls,
-                Arg.Any<CancellationToken>()
-            );
-        await smtp.Received(1)
-            .AuthenticateAsync("obs@example.com", "secret", Arg.Any<CancellationToken>());
+            .ConnectAsync("smtp.example.com", 587, SecureSocketOptions.StartTls, Arg.Any<CancellationToken>());
+        await smtp.Received(1).AuthenticateAsync("obs@example.com", "secret", Arg.Any<CancellationToken>());
         await smtp.Received(1).DisconnectAsync(true, Arg.Any<CancellationToken>());
 
         sent.Should().NotBeNull();

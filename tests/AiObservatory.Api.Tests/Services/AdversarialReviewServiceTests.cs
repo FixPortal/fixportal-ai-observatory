@@ -11,8 +11,7 @@ namespace AiObservatory.Api.Tests.Services;
 
 public class AdversarialReviewServiceTests
 {
-    private readonly IAdversarialReviewRepository _repo =
-        Substitute.For<IAdversarialReviewRepository>();
+    private readonly IAdversarialReviewRepository _repo = Substitute.For<IAdversarialReviewRepository>();
     private readonly FakeClock _clock = new(Instant.FromUtc(2026, 6, 14, 10, 0));
 
     private AdversarialReviewService CreateSut() => new(_repo, _clock);
@@ -88,8 +87,7 @@ public class AdversarialReviewServiceTests
             .RecordRunAsync(Arg.Any<AdversarialReviewRun>(), Arg.Any<CancellationToken>())
             .Returns((Guid.NewGuid(), Existed: false));
 
-        await CreateSut()
-            .RecordRunAsync(ValidRequest() with { ChunkCount = 21 }, CancellationToken.None);
+        await CreateSut().RecordRunAsync(ValidRequest() with { ChunkCount = 21 }, CancellationToken.None);
 
         await _repo
             .Received(1)
@@ -102,13 +100,10 @@ public class AdversarialReviewServiceTests
     [Fact]
     public async Task RecordRun_rejects_non_positive_chunk_count()
     {
-        var result = await CreateSut()
-            .RecordRunAsync(ValidRequest() with { ChunkCount = 0 }, CancellationToken.None);
+        var result = await CreateSut().RecordRunAsync(ValidRequest() with { ChunkCount = 0 }, CancellationToken.None);
 
         result.Should().BeAssignableTo<IStatusCodeHttpResult>().Which.StatusCode.Should().Be(400);
-        await _repo
-            .DidNotReceive()
-            .RecordRunAsync(Arg.Any<AdversarialReviewRun>(), Arg.Any<CancellationToken>());
+        await _repo.DidNotReceive().RecordRunAsync(Arg.Any<AdversarialReviewRun>(), Arg.Any<CancellationToken>());
     }
 
     [Theory]
@@ -139,9 +134,7 @@ public class AdversarialReviewServiceTests
         await _repo
             .Received(1)
             .RecordRunAsync(
-                Arg.Is<AdversarialReviewRun>(r =>
-                    r != null && r.CostPerAcceptedFinding == expected
-                ),
+                Arg.Is<AdversarialReviewRun>(r => r != null && r.CostPerAcceptedFinding == expected),
                 Arg.Any<CancellationToken>()
             );
     }
@@ -156,9 +149,7 @@ public class AdversarialReviewServiceTests
         var result = await CreateSut().RecordRunAsync(req, CancellationToken.None);
 
         result.Should().BeAssignableTo<IStatusCodeHttpResult>().Which.StatusCode.Should().Be(400);
-        await _repo
-            .DidNotReceive()
-            .RecordRunAsync(Arg.Any<AdversarialReviewRun>(), Arg.Any<CancellationToken>());
+        await _repo.DidNotReceive().RecordRunAsync(Arg.Any<AdversarialReviewRun>(), Arg.Any<CancellationToken>());
     }
 
     [Theory]
@@ -171,9 +162,7 @@ public class AdversarialReviewServiceTests
         var result = await CreateSut().RecordRunAsync(req, CancellationToken.None);
 
         result.Should().BeAssignableTo<IStatusCodeHttpResult>().Which.StatusCode.Should().Be(400);
-        await _repo
-            .DidNotReceive()
-            .RecordRunAsync(Arg.Any<AdversarialReviewRun>(), Arg.Any<CancellationToken>());
+        await _repo.DidNotReceive().RecordRunAsync(Arg.Any<AdversarialReviewRun>(), Arg.Any<CancellationToken>());
     }
 
     [Fact]
@@ -191,9 +180,7 @@ public class AdversarialReviewServiceTests
         var result = await CreateSut().RecordRunAsync(req, CancellationToken.None);
 
         result.Should().BeAssignableTo<IStatusCodeHttpResult>().Which.StatusCode.Should().Be(201);
-        await _repo
-            .Received(1)
-            .RecordRunAsync(Arg.Any<AdversarialReviewRun>(), Arg.Any<CancellationToken>());
+        await _repo.Received(1).RecordRunAsync(Arg.Any<AdversarialReviewRun>(), Arg.Any<CancellationToken>());
     }
 
     [Fact]
@@ -203,9 +190,7 @@ public class AdversarialReviewServiceTests
         var result = await CreateSut().RecordRunAsync(req, CancellationToken.None);
 
         result.Should().BeAssignableTo<IStatusCodeHttpResult>().Which.StatusCode.Should().Be(400);
-        await _repo
-            .DidNotReceive()
-            .RecordRunAsync(Arg.Any<AdversarialReviewRun>(), Arg.Any<CancellationToken>());
+        await _repo.DidNotReceive().RecordRunAsync(Arg.Any<AdversarialReviewRun>(), Arg.Any<CancellationToken>());
     }
 
     [Fact]
@@ -215,8 +200,7 @@ public class AdversarialReviewServiceTests
             .RecordRunAsync(Arg.Any<AdversarialReviewRun>(), Arg.Any<CancellationToken>())
             .Returns((Guid.NewGuid(), Existed: false));
 
-        await CreateSut()
-            .RecordRunAsync(ValidRequest(reviewer: "Anthropic"), CancellationToken.None);
+        await CreateSut().RecordRunAsync(ValidRequest(reviewer: "Anthropic"), CancellationToken.None);
 
         await _repo
             .Received(1)
@@ -238,9 +222,7 @@ public class AdversarialReviewServiceTests
         await _repo
             .Received(1)
             .RecordRunAsync(
-                Arg.Is<AdversarialReviewRun>(r =>
-                    r != null && r.RecordedAt == _clock.GetCurrentInstant()
-                ),
+                Arg.Is<AdversarialReviewRun>(r => r != null && r.RecordedAt == _clock.GetCurrentInstant()),
                 Arg.Any<CancellationToken>()
             );
     }
@@ -277,8 +259,7 @@ public class AdversarialReviewServiceTests
             .RecordRunAsync(Arg.Any<AdversarialReviewRun>(), Arg.Any<CancellationToken>())
             .Returns((Guid.NewGuid(), Existed: false));
 
-        await CreateSut()
-            .RecordRunAsync(ValidRequest(reviewer: "openai", model: model), CancellationToken.None);
+        await CreateSut().RecordRunAsync(ValidRequest(reviewer: "openai", model: model), CancellationToken.None);
 
         await _repo
             .Received(1)
@@ -292,23 +273,13 @@ public class AdversarialReviewServiceTests
     [InlineData(1, 0)]
     [InlineData(0, 1)]
     [InlineData(2, 1)]
-    public async Task RecordRun_judge_with_non_zero_issues_returns_bad_request(
-        int raised,
-        int accepted
-    )
+    public async Task RecordRun_judge_with_non_zero_issues_returns_bad_request(int raised, int accepted)
     {
-        var req = ValidRequest(
-            role: "judge",
-            model: "claude-opus-4-8",
-            issuesRaised: raised,
-            issuesAccepted: accepted
-        );
+        var req = ValidRequest(role: "judge", model: "claude-opus-4-8", issuesRaised: raised, issuesAccepted: accepted);
         var result = await CreateSut().RecordRunAsync(req, CancellationToken.None);
 
         result.Should().BeAssignableTo<IStatusCodeHttpResult>().Which.StatusCode.Should().Be(400);
-        await _repo
-            .DidNotReceive()
-            .RecordRunAsync(Arg.Any<AdversarialReviewRun>(), Arg.Any<CancellationToken>());
+        await _repo.DidNotReceive().RecordRunAsync(Arg.Any<AdversarialReviewRun>(), Arg.Any<CancellationToken>());
     }
 
     [Fact]
@@ -334,9 +305,7 @@ public class AdversarialReviewServiceTests
         await _repo
             .Received(1)
             .RecordRunAsync(
-                Arg.Is<AdversarialReviewRun>(r =>
-                    r != null && r.Role == "judge" && r.Repo == "fixportal-engine"
-                ),
+                Arg.Is<AdversarialReviewRun>(r => r != null && r.Role == "judge" && r.Repo == "fixportal-engine"),
                 Arg.Any<CancellationToken>()
             );
     }
@@ -349,17 +318,12 @@ public class AdversarialReviewServiceTests
             .Returns((Guid.NewGuid(), Existed: false));
 
         await CreateSut()
-            .RecordRunAsync(
-                ValidRequest(summary: "  Verifying adjusted formatting  "),
-                CancellationToken.None
-            );
+            .RecordRunAsync(ValidRequest(summary: "  Verifying adjusted formatting  "), CancellationToken.None);
 
         await _repo
             .Received(1)
             .RecordRunAsync(
-                Arg.Is<AdversarialReviewRun>(r =>
-                    r != null && r.Summary == "Verifying adjusted formatting"
-                ),
+                Arg.Is<AdversarialReviewRun>(r => r != null && r.Summary == "Verifying adjusted formatting"),
                 Arg.Any<CancellationToken>()
             );
     }
@@ -391,15 +355,12 @@ public class AdversarialReviewServiceTests
             .RecordRunAsync(Arg.Any<AdversarialReviewRun>(), Arg.Any<CancellationToken>())
             .Returns((Guid.NewGuid(), Existed: false));
 
-        await CreateSut()
-            .RecordRunAsync(ValidRequest(summary: new string('x', 200)), CancellationToken.None);
+        await CreateSut().RecordRunAsync(ValidRequest(summary: new string('x', 200)), CancellationToken.None);
 
         await _repo
             .Received(1)
             .RecordRunAsync(
-                Arg.Is<AdversarialReviewRun>(r =>
-                    r != null && r.Summary != null && r.Summary.Length == 80
-                ),
+                Arg.Is<AdversarialReviewRun>(r => r != null && r.Summary != null && r.Summary.Length == 80),
                 Arg.Any<CancellationToken>()
             );
     }
@@ -431,11 +392,8 @@ public class AdversarialReviewServiceTests
     [InlineData(null!)]
     public async Task RecordRun_invalid_role_returns_bad_request(string? role)
     {
-        var result = await CreateSut()
-            .RecordRunAsync(ValidRequest(role: role!), CancellationToken.None);
+        var result = await CreateSut().RecordRunAsync(ValidRequest(role: role!), CancellationToken.None);
         result.Should().BeAssignableTo<IStatusCodeHttpResult>().Which.StatusCode.Should().Be(400);
-        await _repo
-            .DidNotReceive()
-            .RecordRunAsync(Arg.Any<AdversarialReviewRun>(), Arg.Any<CancellationToken>());
+        await _repo.DidNotReceive().RecordRunAsync(Arg.Any<AdversarialReviewRun>(), Arg.Any<CancellationToken>());
     }
 }

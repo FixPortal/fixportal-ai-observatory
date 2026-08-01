@@ -235,10 +235,7 @@ public class ApiKeyEndpointFilterTests
         var httpContext = CreateHttpContext(
             method,
             user: new ClaimsPrincipal(
-                new ClaimsIdentity(
-                    [new Claim(ClaimTypes.Name, "chris")],
-                    authenticationType: "Bearer"
-                )
+                new ClaimsIdentity([new Claim(ClaimTypes.Name, "chris")], authenticationType: "Bearer")
             )
         );
         var context = EndpointFilterInvocationContext.Create(httpContext);
@@ -330,17 +327,9 @@ public class ApiKeyEndpointFilterTests
         result.Should().BeOfType<UnauthorizedHttpResult>();
     }
 
-    private static DefaultHttpContext CreateHttpContext(
-        string method,
-        string? key = null,
-        ClaimsPrincipal? user = null
-    )
+    private static DefaultHttpContext CreateHttpContext(string method, string? key = null, ClaimsPrincipal? user = null)
     {
-        var context = new DefaultHttpContext
-        {
-            Request = { Method = method },
-            User = user ?? new ClaimsPrincipal(),
-        };
+        var context = new DefaultHttpContext { Request = { Method = method }, User = user ?? new ClaimsPrincipal() };
         if (key is not null)
         {
             context.Request.Headers["X-Observatory-Key"] = key;

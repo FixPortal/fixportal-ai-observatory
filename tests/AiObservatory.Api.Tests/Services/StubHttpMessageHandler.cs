@@ -10,8 +10,7 @@ namespace AiObservatory.Api.Tests.Services;
 /// FX outage/failure scenarios are deterministic and never call out to the real
 /// frankfurter.dev over the network.
 /// </summary>
-internal sealed class StubHttpMessageHandler(HttpStatusCode status, string body)
-    : HttpMessageHandler
+internal sealed class StubHttpMessageHandler(HttpStatusCode status, string body) : HttpMessageHandler
 {
     public List<string> Requested { get; } = [];
 
@@ -22,10 +21,7 @@ internal sealed class StubHttpMessageHandler(HttpStatusCode status, string body)
     {
         Requested.Add(request.RequestUri!.ToString());
         return Task.FromResult(
-            new HttpResponseMessage(status)
-            {
-                Content = new StringContent(body, Encoding.UTF8, "application/json"),
-            }
+            new HttpResponseMessage(status) { Content = new StringContent(body, Encoding.UTF8, "application/json") }
         );
     }
 }

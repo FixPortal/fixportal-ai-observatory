@@ -118,9 +118,7 @@ public class SubscriptionsEndpointsWafTests(AiObservatoryApiFactory factory)
             TestContext.Current.CancellationToken
         );
         created.EnsureSuccessStatusCode();
-        var sub = await created.Content.ReadFromJsonAsync<SubscriptionResponse>(
-            TestContext.Current.CancellationToken
-        );
+        var sub = await created.Content.ReadFromJsonAsync<SubscriptionResponse>(TestContext.Current.CancellationToken);
 
         var response = await client.PatchAsJsonAsync(
             $"/api/subscriptions/{sub!.Id}/extra-usage",
@@ -141,9 +139,7 @@ public class SubscriptionsEndpointsWafTests(AiObservatoryApiFactory factory)
             TestContext.Current.CancellationToken
         );
         created.EnsureSuccessStatusCode();
-        var sub = await created.Content.ReadFromJsonAsync<SubscriptionResponse>(
-            TestContext.Current.CancellationToken
-        );
+        var sub = await created.Content.ReadFromJsonAsync<SubscriptionResponse>(TestContext.Current.CancellationToken);
 
         var response = await client.PatchAsJsonAsync(
             $"/api/subscriptions/{sub!.Id}/extra-usage",

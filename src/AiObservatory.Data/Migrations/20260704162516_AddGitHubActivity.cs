@@ -17,43 +17,19 @@ namespace AiObservatory.Data.Migrations
                 columns: table => new
                 {
                     Id = table.Column<Guid>(type: "uuid", nullable: false),
-                    Repo = table.Column<string>(
-                        type: "character varying(200)",
-                        maxLength: 200,
-                        nullable: false
-                    ),
-                    Sha = table.Column<string>(
-                        type: "character varying(40)",
-                        maxLength: 40,
-                        nullable: false
-                    ),
-                    Author = table.Column<string>(
-                        type: "character varying(200)",
-                        maxLength: 200,
-                        nullable: false
-                    ),
-                    CommittedAt = table.Column<Instant>(
-                        type: "timestamp with time zone",
-                        nullable: false
-                    ),
+                    Repo = table.Column<string>(type: "character varying(200)", maxLength: 200, nullable: false),
+                    Sha = table.Column<string>(type: "character varying(40)", maxLength: 40, nullable: false),
+                    Author = table.Column<string>(type: "character varying(200)", maxLength: 200, nullable: false),
+                    CommittedAt = table.Column<Instant>(type: "timestamp with time zone", nullable: false),
                     Additions = table.Column<int>(type: "integer", nullable: false),
                     Deletions = table.Column<int>(type: "integer", nullable: false),
-                    IngestedAt = table.Column<Instant>(
-                        type: "timestamp with time zone",
-                        nullable: false
-                    ),
+                    IngestedAt = table.Column<Instant>(type: "timestamp with time zone", nullable: false),
                 },
                 constraints: table =>
                 {
                     table.PrimaryKey("PK_GitHubCommits", x => x.Id);
-                    table.CheckConstraint(
-                        "CK_GitHubCommit_Additions_NonNegative",
-                        "\"Additions\" >= 0"
-                    );
-                    table.CheckConstraint(
-                        "CK_GitHubCommit_Deletions_NonNegative",
-                        "\"Deletions\" >= 0"
-                    );
+                    table.CheckConstraint("CK_GitHubCommit_Additions_NonNegative", "\"Additions\" >= 0");
+                    table.CheckConstraint("CK_GitHubCommit_Deletions_NonNegative", "\"Deletions\" >= 0");
                 }
             );
 
@@ -62,56 +38,22 @@ namespace AiObservatory.Data.Migrations
                 columns: table => new
                 {
                     Id = table.Column<Guid>(type: "uuid", nullable: false),
-                    Repo = table.Column<string>(
-                        type: "character varying(200)",
-                        maxLength: 200,
-                        nullable: false
-                    ),
+                    Repo = table.Column<string>(type: "character varying(200)", maxLength: 200, nullable: false),
                     Number = table.Column<int>(type: "integer", nullable: false),
-                    Title = table.Column<string>(
-                        type: "character varying(500)",
-                        maxLength: 500,
-                        nullable: false
-                    ),
-                    Author = table.Column<string>(
-                        type: "character varying(200)",
-                        maxLength: 200,
-                        nullable: false
-                    ),
-                    State = table.Column<string>(
-                        type: "character varying(20)",
-                        maxLength: 20,
-                        nullable: false
-                    ),
-                    CreatedAt = table.Column<Instant>(
-                        type: "timestamp with time zone",
-                        nullable: false
-                    ),
-                    MergedAt = table.Column<Instant>(
-                        type: "timestamp with time zone",
-                        nullable: true
-                    ),
-                    ClosedAt = table.Column<Instant>(
-                        type: "timestamp with time zone",
-                        nullable: true
-                    ),
-                    FirstReviewAt = table.Column<Instant>(
-                        type: "timestamp with time zone",
-                        nullable: true
-                    ),
+                    Title = table.Column<string>(type: "character varying(500)", maxLength: 500, nullable: false),
+                    Author = table.Column<string>(type: "character varying(200)", maxLength: 200, nullable: false),
+                    State = table.Column<string>(type: "character varying(20)", maxLength: 20, nullable: false),
+                    CreatedAt = table.Column<Instant>(type: "timestamp with time zone", nullable: false),
+                    MergedAt = table.Column<Instant>(type: "timestamp with time zone", nullable: true),
+                    ClosedAt = table.Column<Instant>(type: "timestamp with time zone", nullable: true),
+                    FirstReviewAt = table.Column<Instant>(type: "timestamp with time zone", nullable: true),
                     ReviewCount = table.Column<int>(type: "integer", nullable: false),
-                    IngestedAt = table.Column<Instant>(
-                        type: "timestamp with time zone",
-                        nullable: false
-                    ),
+                    IngestedAt = table.Column<Instant>(type: "timestamp with time zone", nullable: false),
                 },
                 constraints: table =>
                 {
                     table.PrimaryKey("PK_GitHubPullRequests", x => x.Id);
-                    table.CheckConstraint(
-                        "CK_GitHubPullRequest_ReviewCount_NonNegative",
-                        "\"ReviewCount\" >= 0"
-                    );
+                    table.CheckConstraint("CK_GitHubPullRequest_ReviewCount_NonNegative", "\"ReviewCount\" >= 0");
                 }
             );
 
@@ -120,30 +62,16 @@ namespace AiObservatory.Data.Migrations
                 columns: table => new
                 {
                     Id = table.Column<Guid>(type: "uuid", nullable: false),
-                    Repo = table.Column<string>(
-                        type: "character varying(200)",
-                        maxLength: 200,
-                        nullable: false
-                    ),
+                    Repo = table.Column<string>(type: "character varying(200)", maxLength: 200, nullable: false),
                     RunId = table.Column<long>(type: "bigint", nullable: false),
                     WorkflowName = table.Column<string>(
                         type: "character varying(200)",
                         maxLength: 200,
                         nullable: false
                     ),
-                    Status = table.Column<string>(
-                        type: "character varying(20)",
-                        maxLength: 20,
-                        nullable: false
-                    ),
-                    CreatedAt = table.Column<Instant>(
-                        type: "timestamp with time zone",
-                        nullable: false
-                    ),
-                    IngestedAt = table.Column<Instant>(
-                        type: "timestamp with time zone",
-                        nullable: false
-                    ),
+                    Status = table.Column<string>(type: "character varying(20)", maxLength: 20, nullable: false),
+                    CreatedAt = table.Column<Instant>(type: "timestamp with time zone", nullable: false),
+                    IngestedAt = table.Column<Instant>(type: "timestamp with time zone", nullable: false),
                 },
                 constraints: table =>
                 {

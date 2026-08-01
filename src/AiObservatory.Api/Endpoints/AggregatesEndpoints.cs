@@ -129,9 +129,7 @@ public static class AggregatesEndpoints
             || !Enum.IsDefined(parsed)
         )
         {
-            return Results.BadRequest(
-                "provider query parameter is required (anthropic|google|openai|copilot)"
-            );
+            return Results.BadRequest("provider query parameter is required (anthropic|google|openai|copilot)");
         }
 
         var result = await repo.PurgeProviderAsync(parsed, ct);

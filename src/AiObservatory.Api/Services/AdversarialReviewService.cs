@@ -10,9 +10,7 @@ namespace AiObservatory.Api.Services;
 
 public class AdversarialReviewService(IAdversarialReviewRepository repo, IClock clock)
 {
-    private static readonly Dictionary<string, string> ModelAliases = new(
-        StringComparer.OrdinalIgnoreCase
-    )
+    private static readonly Dictionary<string, string> ModelAliases = new(StringComparer.OrdinalIgnoreCase)
     {
         ["sonnet"] = "claude-sonnet-4-6",
         ["claude-sonnet"] = "claude-sonnet-4-6",
@@ -52,9 +50,7 @@ public class AdversarialReviewService(IAdversarialReviewRepository repo, IClock 
         }
         // Don't slice through a surrogate pair (would yield an invalid lone
         // surrogate); back off one unit if the cut would land mid-pair.
-        var cut = char.IsHighSurrogate(trimmed[SummaryMaxLength - 1])
-            ? SummaryMaxLength - 1
-            : SummaryMaxLength;
+        var cut = char.IsHighSurrogate(trimmed[SummaryMaxLength - 1]) ? SummaryMaxLength - 1 : SummaryMaxLength;
         return trimmed[..cut];
     }
 
@@ -129,8 +125,7 @@ public class AdversarialReviewService(IAdversarialReviewRepository repo, IClock 
             return Results.BadRequest("ChunkCount must be positive when supplied");
         }
 
-        decimal? costPerAcceptedFinding =
-            req.IssuesAccepted > 0 ? req.CostUsd / req.IssuesAccepted : null;
+        decimal? costPerAcceptedFinding = req.IssuesAccepted > 0 ? req.CostUsd / req.IssuesAccepted : null;
 
         var reviewer = req.Reviewer.Trim().ToLowerInvariant();
         var run = new AdversarialReviewRun

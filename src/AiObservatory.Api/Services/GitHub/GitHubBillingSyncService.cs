@@ -44,14 +44,15 @@ public class GitHubBillingSyncService(
     /// CodeRabbit, and the one line on the GitHub bill this project most needs visible.
     /// </para>
     /// </summary>
-    private static readonly Dictionary<string, (string VendorKey, string CategoryKey)> ProductMap =
-        new(StringComparer.OrdinalIgnoreCase)
-        {
-            ["actions"] = ("github-actions", "ci"),
-            ["packages"] = ("github-actions", "ci"),
-            ["code_quality"] = ("github", "code-review"),
-            ["ghas"] = ("github", "subscription"),
-        };
+    private static readonly Dictionary<string, (string VendorKey, string CategoryKey)> ProductMap = new(
+        StringComparer.OrdinalIgnoreCase
+    )
+    {
+        ["actions"] = ("github-actions", "ci"),
+        ["packages"] = ("github-actions", "ci"),
+        ["code_quality"] = ("github", "code-review"),
+        ["ghas"] = ("github", "subscription"),
+    };
 
     /// <summary>
     /// Unrecognised products still land, under the GitHub vendor as a subscription. A new
@@ -59,10 +60,7 @@ public class GitHubBillingSyncService(
     /// anyone teaches this map about it — a silently dropped line is exactly the
     /// understatement this service exists to fix.
     /// </summary>
-    private static readonly (string VendorKey, string CategoryKey) Fallback = (
-        "github",
-        "subscription"
-    );
+    private static readonly (string VendorKey, string CategoryKey) Fallback = ("github", "subscription");
 
     public async Task<int> SyncAsync(CancellationToken ct = default)
     {
@@ -97,9 +95,7 @@ public class GitHubBillingSyncService(
         // the entities the update path mutates.
         var keys = lines.ConvertAll(EntryKeyFor);
         var existing = await db
-            .SpendEntries.Where(e =>
-                e.Source == SpendSource.Api && e.EntryKey != null && keys.Contains(e.EntryKey)
-            )
+            .SpendEntries.Where(e => e.Source == SpendSource.Api && e.EntryKey != null && keys.Contains(e.EntryKey))
             .ToDictionaryAsync(e => e.EntryKey!, ct);
 
         var written = 0;
@@ -128,19 +124,8 @@ public class GitHubBillingSyncService(
     /// </summary>
     private static IEnumerable<BillingLine> Aggregate(IEnumerable<GitHubBillingUsageItem> items) =>
         items
-            .GroupBy(i =>
-                (
-                    Month: LocalDate.FromDateOnly(i.Date).With(DateAdjusters.StartOfMonth),
-                    i.Product,
-                    i.Sku
-                )
-            )
-            .Select(g => new BillingLine(
-                g.Key.Month,
-                g.Key.Product,
-                g.Key.Sku,
-                g.Sum(i => i.NetAmount)
-            ))
+            .GroupBy(i => (Month: LocalDate.FromDateOnly(i.Date).With(DateAdjusters.StartOfMonth), i.Product, i.Sku))
+            .Select(g => new BillingLine(g.Key.Month, g.Key.Product, g.Key.Sku, g.Sum(i => i.NetAmount)))
             .Where(l => l.NetAmount != 0m)
             .OrderBy(l => l.Month)
             .ThenBy(l => l.Product, StringComparer.Ordinal);
@@ -154,9 +139,7 @@ public class GitHubBillingSyncService(
         CancellationToken ct
     )
     {
-        var (vendorKey, categoryKey) = ProductMap.TryGetValue(line.Product, out var mapped)
-            ? mapped
-            : Fallback;
+        var (vendorKey, categoryKey) = ProductMap.GetValueOrDefault(line.Product, Fallback);
 
         if (
             !vendors.TryGetValue(vendorKey, out var vendorId)
@@ -298,17 +281,10 @@ public class GitHubBillingSyncService(
     /// the amount is what changes as an open month accrues.
     /// </summary>
     private static string EntryKeyFor(BillingLine line) =>
-        Truncate(
-            $"github:{line.Month.ToString("yyyy-MM", CultureInfo.InvariantCulture)}:{line.Product}:{line.Sku}"
-        );
+        Truncate($"github:{line.Month.ToString("yyyy-MM", CultureInfo.InvariantCulture)}:{line.Product}:{line.Sku}");
 
     /// <summary>Both Description and EntryKey are varchar(200); a long SKU must not fail the write.</summary>
     private static string Truncate(string value) => value.Length <= 200 ? value : value[..200];
 
-    private sealed record BillingLine(
-        LocalDate Month,
-        string Product,
-        string Sku,
-        decimal NetAmount
-    );
+    private sealed record BillingLine(LocalDate Month, string Product, string Sku, decimal NetAmount);
 }

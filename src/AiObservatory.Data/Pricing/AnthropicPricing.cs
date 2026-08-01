@@ -17,7 +17,7 @@ public class AnthropicPricingOptions
     public List<AnthropicPricingEntry> Pricing { get; set; } = [];
     public PricingRates FallbackPricing { get; set; } = new(3.0m, 15.0m, 0.30m, 3.75m, 6.0m);
 
-    public bool HasPositiveCacheWrite1hRates() =>
+    public bool HasPositiveCacheWrite1HRates() =>
         Pricing.TrueForAll(entry => entry.CacheWrite1h > 0) && FallbackPricing.CacheWrite1h > 0;
 }
 
@@ -100,11 +100,8 @@ public static class AnthropicPricingResolver
     /// Rates for <paramref name="model"/> on <paramref name="usageDate"/>, falling back to
     /// <see cref="AnthropicPricingOptions.FallbackPricing"/> when no entry matches.
     /// </summary>
-    public static PricingRates ResolveRates(
-        this AnthropicPricingOptions options,
-        string model,
-        LocalDate usageDate
-    ) => options.Match(model, usageDate)?.ToRates() ?? options.FallbackPricing;
+    public static PricingRates ResolveRates(this AnthropicPricingOptions options, string model, LocalDate usageDate) =>
+        options.Match(model, usageDate)?.ToRates() ?? options.FallbackPricing;
 
     /// <summary>Cost in USD for a token quantity at the given rates (rates are per million).</summary>
     /// <param name="cacheWriteTokens">ALL cache-write tokens, both TTLs.</param>

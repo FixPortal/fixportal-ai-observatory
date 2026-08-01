@@ -1,3 +1,4 @@
+using System.Collections.Concurrent;
 using AiObservatory.Data.Repositories;
 using AiObservatory.Ingest.Services.Anthropic;
 using AiObservatory.Ingest.Services.GitHub;
@@ -112,9 +113,7 @@ public class ProviderPollingWorkerServiceTests
         var worker = CreateWorker();
 
         worker.CyclesCompleted.Should().Be(0);
-        worker
-            .LastCycleCompletedAt.Should()
-            .BeNull("/healthz must not claim a cycle has run before one has");
+        worker.LastCycleCompletedAt.Should().BeNull("/healthz must not claim a cycle has run before one has");
 
         await Task.CompletedTask;
     }
@@ -163,10 +162,7 @@ public class ProviderPollingWorkerServiceTests
 
             worker
                 .LastCycleCompletedAt.Should()
-                .Be(
-                    epoch,
-                    "0 ticks is 1970-01-01T00:00:00Z, a real timestamp — not a null sentinel"
-                );
+                .Be(epoch, "0 ticks is 1970-01-01T00:00:00Z, a real timestamp — not a null sentinel");
         }
         finally
         {
@@ -191,9 +187,7 @@ public class ProviderPollingWorkerServiceTests
             worker.ExecuteTask.Should().NotBeNull();
             worker
                 .ExecuteTask!.IsCompleted.Should()
-                .BeFalse(
-                    "the worker parks on the polling delay between cycles — it has not stopped"
-                );
+                .BeFalse("the worker parks on the polling delay between cycles — it has not stopped");
         }
         finally
         {
@@ -209,9 +203,7 @@ public class ProviderPollingWorkerServiceTests
         anthropic
             .GetUsageAsync(Arg.Any<LocalDate>(), Arg.Any<CancellationToken>())
             .Returns(Task.FromException<IReadOnlyList<AnthropicUsageRecord>>(new("failed")));
-        var openAiCalled = new TaskCompletionSource(
-            TaskCreationOptions.RunContinuationsAsynchronously
-        );
+        var openAiCalled = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         var openAi = Substitute.For<IOpenAiUsageClient>();
         openAi
             .GetDailyUsageAsync(Arg.Any<LocalDate>(), Arg.Any<CancellationToken>())
@@ -263,10 +255,7 @@ public class ProviderPollingWorkerServiceTests
         await worker.StartAsync(ct);
         try
         {
-            await WaitUntilAsync(
-                () => logger.Messages.Any(m => m.Contains("3 consecutive polls")),
-                ct
-            );
+            await WaitUntilAsync(() => logger.Messages.Any(m => m.Contains("3 consecutive polls")), ct);
 
             logger.Messages.Should().Contain(m => m.Contains("provider may be misconfigured"));
         }
@@ -312,13 +301,13 @@ public class ProviderPollingWorkerServiceTests
         var release = new TaskCompletionSource<IReadOnlyList<AnthropicUsageRecord>>(
             TaskCreationOptions.RunContinuationsAsynchronously
         );
-        var calls = 0;
+        var calls = new ConcurrentQueue<byte>();
         var anthropic = Substitute.For<IAnthropicUsageClient>();
         anthropic
             .GetUsageAsync(Arg.Any<LocalDate>(), Arg.Any<CancellationToken>())
             .Returns(_ =>
             {
-                Interlocked.Increment(ref calls);
+                calls.Enqueue(0);
                 entered.TrySetResult();
                 return release.Task;
             });
@@ -332,7 +321,7 @@ public class ProviderPollingWorkerServiceTests
         {
             await entered.Task.WaitAsync(TimeSpan.FromSeconds(30), ct);
 
-            Volatile.Read(ref calls).Should().Be(1);
+            calls.Should().ContainSingle();
             worker.CyclesCompleted.Should().Be(0);
         }
         finally
@@ -350,9 +339,7 @@ public class ProviderPollingWorkerServiceTests
         var repository = Substitute.For<IGitHubActivityRepository>();
         repository
             .GetBackfillStatusAsync(Arg.Any<string>(), Arg.Any<CancellationToken>())
-            .Returns(
-                Task.FromException<GitHubBackfillStatus>(new InvalidOperationException("failed"))
-            );
+            .Returns(Task.FromException<GitHubBackfillStatus>(new InvalidOperationException("failed")));
         var logger = new CapturingLogger();
         var worker = CreateWorker(
             configureServices: services => AddGitHub(services, repoAllowlist, repository),
@@ -363,10 +350,7 @@ public class ProviderPollingWorkerServiceTests
         await worker.StartAsync(ct);
         try
         {
-            await WaitUntilAsync(
-                () => logger.Messages.Any(m => m.Contains("GitHub ingestion failed")),
-                ct
-            );
+            await WaitUntilAsync(() => logger.Messages.Any(m => m.Contains("GitHub ingestion failed")), ct);
 
             worker.ExecuteTask.Should().NotBeNull();
             worker.ExecuteTask!.IsCompleted.Should().BeFalse();
@@ -379,7 +363,7 @@ public class ProviderPollingWorkerServiceTests
 
     private sealed class CapturingLogger : ILogger<ProviderPollingWorkerService>
     {
-        private readonly object _gate = new();
+        private readonly Lock _gate = new();
         private readonly List<string> _messages = [];
 
         public IReadOnlyList<string> Messages

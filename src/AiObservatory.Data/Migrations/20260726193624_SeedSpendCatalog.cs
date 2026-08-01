@@ -15,15 +15,7 @@ namespace AiObservatory.Data.Migrations
         {
             migrationBuilder.InsertData(
                 table: "SpendCategories",
-                columns: new[]
-                {
-                    "Id",
-                    "ArchivedAt",
-                    "ColorVar",
-                    "DisplayName",
-                    "Key",
-                    "SortOrder",
-                },
+                columns: new[] { "Id", "ArchivedAt", "ColorVar", "DisplayName", "Key", "SortOrder" },
                 values: new object[,]
                 {
                     {
@@ -42,14 +34,7 @@ namespace AiObservatory.Data.Migrations
                         "credits",
                         20,
                     },
-                    {
-                        new Guid("11111111-1111-1111-1111-111111111103"),
-                        null,
-                        "--spend-ci",
-                        "CI",
-                        "ci",
-                        30,
-                    },
+                    { new Guid("11111111-1111-1111-1111-111111111103"), null, "--spend-ci", "CI", "ci", 30 },
                     {
                         new Guid("11111111-1111-1111-1111-111111111104"),
                         null,
@@ -63,15 +48,7 @@ namespace AiObservatory.Data.Migrations
 
             migrationBuilder.InsertData(
                 table: "SpendVendors",
-                columns: new[]
-                {
-                    "Id",
-                    "ArchivedAt",
-                    "DefaultCategoryId",
-                    "DisplayName",
-                    "Key",
-                    "Provider",
-                },
+                columns: new[] { "Id", "ArchivedAt", "DefaultCategoryId", "DisplayName", "Key", "Provider" },
                 values: new object[,]
                 {
                     {

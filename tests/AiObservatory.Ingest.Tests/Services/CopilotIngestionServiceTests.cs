@@ -30,12 +30,7 @@ public class CopilotIngestionServiceTests
                 )
             );
 
-        var sut = new CopilotIngestionService(
-            _client,
-            _repo,
-            _clock,
-            NullLogger<CopilotIngestionService>.Instance
-        );
+        var sut = new CopilotIngestionService(_client, _repo, _clock, NullLogger<CopilotIngestionService>.Instance);
         await sut.IngestAsync(date, TestContext.Current.CancellationToken);
 
         await _repo
@@ -55,20 +50,11 @@ public class CopilotIngestionServiceTests
     public async Task IngestAsync_does_nothing_when_client_returns_null()
     {
         var date = new LocalDate(2026, 6, 1);
-        _client
-            .GetDailyUsageAsync(date, Arg.Any<CancellationToken>())
-            .Returns((CopilotUsageRecord?)null);
+        _client.GetDailyUsageAsync(date, Arg.Any<CancellationToken>()).Returns((CopilotUsageRecord?)null);
 
-        var sut = new CopilotIngestionService(
-            _client,
-            _repo,
-            _clock,
-            NullLogger<CopilotIngestionService>.Instance
-        );
+        var sut = new CopilotIngestionService(_client, _repo, _clock, NullLogger<CopilotIngestionService>.Instance);
         await sut.IngestAsync(date, TestContext.Current.CancellationToken);
 
-        await _repo
-            .DidNotReceive()
-            .RecordEventAsync(Arg.Any<UsageEvent>(), Arg.Any<CancellationToken>());
+        await _repo.DidNotReceive().RecordEventAsync(Arg.Any<UsageEvent>(), Arg.Any<CancellationToken>());
     }
 }

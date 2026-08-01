@@ -58,21 +58,18 @@ builder.Services.AddSingleton<IClock>(SystemClock.Instance);
 builder
     .Services.AddOptions<AnthropicPricingOptions>()
     .Bind(builder.Configuration.GetSection(AnthropicPricingOptions.SectionName))
-    .Validate(
-        o => o.Pricing.Count > 0,
-        $"{AnthropicPricingOptions.SectionName}:Pricing must have at least one entry"
-    )
+    .Validate(o => o.Pricing.Count > 0, $"{AnthropicPricingOptions.SectionName}:Pricing must have at least one entry")
     // An unmatched model prices at FallbackPricing, so a zeroed fallback would silently
     // record every unknown model at $0 — the opposite of failing closed.
     .Validate(
-        o => o.FallbackPricing.Input > 0 && o.FallbackPricing.Output > 0,
+        o => o.FallbackPricing is { Input: > 0, Output: > 0 },
         $"{AnthropicPricingOptions.SectionName}:FallbackPricing must have positive Input and Output rates"
     )
     // CacheWrite1h binds to 0 when a row omits it, which would bill one-hour cache writes as
     // free. Since this deployment's cache writes are ~100% one-hour, that failure would be
     // both silent and total — so an incomplete row must stop the app, not start it.
     .Validate(
-        o => o.HasPositiveCacheWrite1hRates(),
+        o => o.HasPositiveCacheWrite1HRates(),
         $"{AnthropicPricingOptions.SectionName}: every Pricing entry and FallbackPricing must set a positive CacheWrite1h"
     )
     .ValidateOnStart();
@@ -91,9 +88,7 @@ builder.Services.AddMemoryCache();
 // Timeout bounded well below the 100s default: a slow Frankfurter must not stall a ledger
 // write for that long, and a large batch pays this per row (see FetchGbpRateAsync's
 // cancellation-vs-timeout handling for why a timeout here does not abort the whole batch).
-builder
-    .Services.AddHttpClient<FxRateProvider>()
-    .ConfigureHttpClient(c => c.Timeout = TimeSpan.FromSeconds(10));
+builder.Services.AddHttpClient<FxRateProvider>().ConfigureHttpClient(c => c.Timeout = TimeSpan.FromSeconds(10));
 
 // GitHub billing — the org bill is not paid from the account the spend CSV exports, so
 // without this arm the ledger silently omits every penny of GitHub spend. No-ops unless
@@ -138,9 +133,7 @@ builder.Services.Configure<ForwardedHeadersOptions>(Program.ConfigureForwardedHe
 
 builder.Services.AddCors(o =>
     o.AddDefaultPolicy(p =>
-        p.WithOrigins(
-                builder.Configuration["SWA_ORIGIN"] ?? "https://fpaiobs-swa.azurestaticapps.net"
-            )
+        p.WithOrigins(builder.Configuration["SWA_ORIGIN"] ?? "https://fpaiobs-swa.azurestaticapps.net")
             .AllowAnyMethod()
             .AllowAnyHeader()
     )
@@ -431,9 +424,7 @@ public partial class Program
             || value.StartsWith("@Microsoft.KeyVault(", StringComparison.OrdinalIgnoreCase)
         )
         {
-            throw new InvalidOperationException(
-                $"{name} must be set to a non-default value outside Development."
-            );
+            throw new InvalidOperationException($"{name} must be set to a non-default value outside Development.");
         }
     }
 
@@ -452,11 +443,7 @@ public partial class Program
         o.KnownIPNetworks.Clear();
         o.KnownProxies.Clear();
         o.KnownIPNetworks.Add(new System.Net.IPNetwork(System.Net.IPAddress.Parse("10.0.0.0"), 8));
-        o.KnownIPNetworks.Add(
-            new System.Net.IPNetwork(System.Net.IPAddress.Parse("172.16.0.0"), 12)
-        );
-        o.KnownIPNetworks.Add(
-            new System.Net.IPNetwork(System.Net.IPAddress.Parse("192.168.0.0"), 16)
-        );
+        o.KnownIPNetworks.Add(new System.Net.IPNetwork(System.Net.IPAddress.Parse("172.16.0.0"), 12));
+        o.KnownIPNetworks.Add(new System.Net.IPNetwork(System.Net.IPAddress.Parse("192.168.0.0"), 16));
     }
 }

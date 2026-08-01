@@ -61,9 +61,7 @@ public class ArchitectureTests
     [Fact]
     public void Model_types_must_be_sealed()
     {
-        FixPortalArchRules
-            .ModelTypesMustBeSealed("AiObservatory.Data.Entities")
-            .Check(Architecture);
+        FixPortalArchRules.ModelTypesMustBeSealed("AiObservatory.Data.Entities").Check(Architecture);
     }
 
     [Fact]
@@ -86,31 +84,15 @@ public class ArchitectureTests
     [Fact]
     public void SpendEntry_must_not_carry_bank_linkage()
     {
-        var forbidden = new[]
-        {
-            "account",
-            "card",
-            "counterparty",
-            "iban",
-            "sortcode",
-            "transactionid",
-        };
+        var forbidden = new[] { "account", "card", "counterparty", "iban", "sortcode", "transactionid" };
 
         var offenders = typeof(SpendEntry)
             .GetProperties()
-            .Where(p =>
-                forbidden.Any(f =>
-                    p.Name.Replace("_", "").Contains(f, StringComparison.OrdinalIgnoreCase)
-                )
-            )
+            .Where(p => forbidden.Any(f => p.Name.Replace("_", "").Contains(f, StringComparison.OrdinalIgnoreCase)))
             .Select(p => p.Name)
             .ToArray();
 
-        offenders
-            .Should()
-            .BeEmpty(
-                "SpendEntry must not tie spend to a bank, card, invoice or counterparty (spec §3)"
-            );
+        offenders.Should().BeEmpty("SpendEntry must not tie spend to a bank, card, invoice or counterparty (spec §3)");
     }
 
     // This project is the one Stryker mutates against, so every test here is re-run against

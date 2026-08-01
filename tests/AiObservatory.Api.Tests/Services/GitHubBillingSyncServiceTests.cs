@@ -36,10 +36,7 @@ public class GitHubBillingSyncServiceTests
     private static readonly Instant Now = Instant.FromUtc(2026, 7, 30, 9, 0);
 
     /// <summary>A context on its own in-memory store, seeded with the catalog the sync expects.</summary>
-    private static AiObservatoryDbContext NewDb(
-        bool seedCatalog = true,
-        params IInterceptor[] interceptors
-    )
+    private static AiObservatoryDbContext NewDb(bool seedCatalog = true, params IInterceptor[] interceptors)
     {
         var options = new DbContextOptionsBuilder<AiObservatoryDbContext>()
             .UseInMemoryDatabase(Guid.NewGuid().ToString())
@@ -116,8 +113,7 @@ public class GitHubBillingSyncServiceTests
             new MemoryCache(new MemoryCacheOptions()),
             NullLogger<FxRateProvider>.Instance
         );
-        fx.GetGbpRateOnAsync("USD", Arg.Any<LocalDate>(), Arg.Any<CancellationToken>())
-            .Returns(rate);
+        fx.GetGbpRateOnAsync("USD", Arg.Any<LocalDate>(), Arg.Any<CancellationToken>()).Returns(rate);
         return fx;
     }
 
@@ -153,10 +149,7 @@ public class GitHubBillingSyncServiceTests
         entry.RecordedAt.Should().Be(Now);
         entry
             .OccurredOn.Should()
-            .Be(
-                new LocalDate(2026, 7, 1),
-                "usage is monthly, so the entry is dated to the start of its month"
-            );
+            .Be(new LocalDate(2026, 7, 1), "usage is monthly, so the entry is dated to the start of its month");
     }
 
     /// <summary>
@@ -242,19 +235,14 @@ public class GitHubBillingSyncServiceTests
         await using var db = NewDb();
         var sut = Create(
             db,
-            ClientReturning(
-                Item("actions", "Actions Linux", 10m),
-                Item("actions", "Actions Windows", 15m)
-            ),
+            ClientReturning(Item("actions", "Actions Linux", 10m), Item("actions", "Actions Windows", 15m)),
             FxAt(1m)
         );
 
         var written = await sut.SyncAsync(TestContext.Current.CancellationToken);
 
         written.Should().Be(2);
-        var amounts = await db
-            .SpendEntries.Select(e => e.Amount)
-            .ToListAsync(TestContext.Current.CancellationToken);
+        var amounts = await db.SpendEntries.Select(e => e.Amount).ToListAsync(TestContext.Current.CancellationToken);
         amounts.Should().BeEquivalentTo([10m, 15m]);
     }
 
@@ -284,9 +272,7 @@ public class GitHubBillingSyncServiceTests
         written.Should().Be(1);
         var entry = await db.SpendEntries.SingleAsync(TestContext.Current.CancellationToken);
         entry.Amount.Should().Be(-20m);
-        entry
-            .AmountGbp.Should()
-            .Be(-10m, "AmountGbp carries the sign so a plain SUM nets credits off charges");
+        entry.AmountGbp.Should().Be(-10m, "AmountGbp carries the sign so a plain SUM nets credits off charges");
     }
 
     [Fact]
@@ -327,10 +313,8 @@ public class GitHubBillingSyncServiceTests
             new MemoryCache(new MemoryCacheOptions()),
             NullLogger<FxRateProvider>.Instance
         );
-        fx.GetGbpRateOnAsync("USD", new LocalDate(2026, 5, 1), Arg.Any<CancellationToken>())
-            .Returns(0.70m);
-        fx.GetGbpRateOnAsync("USD", new LocalDate(2026, 7, 1), Arg.Any<CancellationToken>())
-            .Returns(0.80m);
+        fx.GetGbpRateOnAsync("USD", new LocalDate(2026, 5, 1), Arg.Any<CancellationToken>()).Returns(0.70m);
+        fx.GetGbpRateOnAsync("USD", new LocalDate(2026, 7, 1), Arg.Any<CancellationToken>()).Returns(0.80m);
         var sut = Create(
             db,
             ClientReturning(
@@ -380,11 +364,7 @@ public class GitHubBillingSyncServiceTests
     public async Task SkipsALineThatRoundsToZeroGbp()
     {
         await using var db = NewDb();
-        var sut = Create(
-            db,
-            ClientReturning(Item("actions", "A rounding crumb", 0.00001m)),
-            FxAt(0.8m)
-        );
+        var sut = Create(db, ClientReturning(Item("actions", "A rounding crumb", 0.00001m)), FxAt(0.8m));
 
         var written = await sut.SyncAsync(TestContext.Current.CancellationToken);
 
@@ -411,10 +391,7 @@ public class GitHubBillingSyncServiceTests
         // Remove the vendor 'actions' books against; 'code_quality' books against 'github'
         // and must still land.
         db.SpendVendors.Remove(
-            await db.SpendVendors.SingleAsync(
-                v => v.Id == GithubActionsVendorId,
-                TestContext.Current.CancellationToken
-            )
+            await db.SpendVendors.SingleAsync(v => v.Id == GithubActionsVendorId, TestContext.Current.CancellationToken)
         );
         await db.SaveChangesAsync(TestContext.Current.CancellationToken);
         var sut = Create(
@@ -449,8 +426,7 @@ public class GitHubBillingSyncServiceTests
         var written = await sut.SyncAsync(TestContext.Current.CancellationToken);
 
         written.Should().Be(0);
-        db.SpendEntries.Should()
-            .BeEmpty("skipping beats freezing a wrong rate onto a permanent ledger row");
+        db.SpendEntries.Should().BeEmpty("skipping beats freezing a wrong rate onto a permanent ledger row");
     }
 
     /// <summary>
@@ -464,11 +440,7 @@ public class GitHubBillingSyncServiceTests
         await Create(db, ClientReturning(Item("actions", "Actions Linux", 100m)), FxAt(0.75m))
             .SyncAsync(TestContext.Current.CancellationToken);
 
-        var written = await Create(
-                db,
-                ClientReturning(Item("actions", "Actions Linux", 133.60m)),
-                FxAt(0.80m)
-            )
+        var written = await Create(db, ClientReturning(Item("actions", "Actions Linux", 133.60m)), FxAt(0.80m))
             .SyncAsync(TestContext.Current.CancellationToken);
 
         written.Should().Be(1);
@@ -485,16 +457,10 @@ public class GitHubBillingSyncServiceTests
         await Create(db, ClientReturning(Item("actions", "Actions Linux", 100m)), FxAt(0.75m))
             .SyncAsync(TestContext.Current.CancellationToken);
 
-        var written = await Create(
-                db,
-                ClientReturning(Item("actions", "Actions Linux", 100m)),
-                FxAt(0.75m)
-            )
+        var written = await Create(db, ClientReturning(Item("actions", "Actions Linux", 100m)), FxAt(0.75m))
             .SyncAsync(TestContext.Current.CancellationToken);
 
-        written
-            .Should()
-            .Be(0, "re-running must be free, so an unchanged line is not reported as written");
+        written.Should().Be(0, "re-running must be free, so an unchanged line is not reported as written");
         db.SpendEntries.Should().HaveCount(1);
     }
 
@@ -626,19 +592,11 @@ public class GitHubBillingSyncServiceTests
         written.Should().Be(1);
         var codeQuality = await db
             .SpendEntries.AsNoTracking()
-            .SingleAsync(
-                e => e.Description == "Code Quality AI Credits",
-                TestContext.Current.CancellationToken
-            );
-        codeQuality
-            .Amount.Should()
-            .Be(60m, "the line after the rejected one must still reach the ledger");
+            .SingleAsync(e => e.Description == "Code Quality AI Credits", TestContext.Current.CancellationToken);
+        codeQuality.Amount.Should().Be(60m, "the line after the rejected one must still reach the ledger");
         var actions = await db
             .SpendEntries.AsNoTracking()
-            .SingleAsync(
-                e => e.Description == "Actions Linux",
-                TestContext.Current.CancellationToken
-            );
+            .SingleAsync(e => e.Description == "Actions Linux", TestContext.Current.CancellationToken);
         actions.Amount.Should().Be(10m, "the rejected update must not have been persisted");
     }
 
@@ -663,11 +621,7 @@ public class GitHubBillingSyncServiceTests
     public async Task TruncatesALongSkuSoTheWriteStillSucceeds()
     {
         await using var db = NewDb();
-        var sut = Create(
-            db,
-            ClientReturning(Item("actions", new string('x', 300), 10m)),
-            FxAt(0.8m)
-        );
+        var sut = Create(db, ClientReturning(Item("actions", new string('x', 300), 10m)), FxAt(0.8m));
 
         await sut.SyncAsync(TestContext.Current.CancellationToken);
 
@@ -694,8 +648,7 @@ public class GitHubBillingSyncServiceTests
                 && eventData
                     .Context!.ChangeTracker.Entries<SpendEntry>()
                     .Any(e =>
-                        e.State is EntityState.Added or EntityState.Modified
-                        && e.Entity.Description == skuToReject
+                        e.State is EntityState.Added or EntityState.Modified && e.Entity.Description == skuToReject
                     );
 
             return offending

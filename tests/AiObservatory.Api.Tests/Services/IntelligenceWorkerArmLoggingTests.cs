@@ -20,20 +20,14 @@ namespace AiObservatory.Api.Tests.Services;
 /// </summary>
 public class IntelligenceWorkerArmLoggingTests
 {
-    private static (IntelligenceWorkerService Worker, CapturingLogger Log) Create(
-        bool registerGitHubBilling
-    )
+    private static (IntelligenceWorkerService Worker, CapturingLogger Log) Create(bool registerGitHubBilling)
     {
         var services = new ServiceCollection();
         if (registerGitHubBilling)
         {
             services.AddSingleton(
                 new GitHubBillingSyncService(
-                    new GitHubBillingClient(
-                        new HttpClient(),
-                        "FixPortal",
-                        NullLogger<GitHubBillingClient>.Instance
-                    ),
+                    new GitHubBillingClient(new HttpClient(), "FixPortal", NullLogger<GitHubBillingClient>.Instance),
                     new AiObservatoryDbContext(
                         new DbContextOptionsBuilder<AiObservatoryDbContext>()
                             .UseInMemoryDatabase(Guid.NewGuid().ToString())
@@ -67,10 +61,7 @@ public class IntelligenceWorkerArmLoggingTests
 
         worker.LogEnabledArms();
 
-        log.Messages.Should()
-            .ContainSingle()
-            .Which.Should()
-            .Contain("GitHub billing sync: enabled");
+        log.Messages.Should().ContainSingle().Which.Should().Contain("GitHub billing sync: enabled");
     }
 
     /// <summary>

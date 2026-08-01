@@ -25,11 +25,7 @@ namespace AiObservatory.Api.Services.GitHub;
 /// </summary>
 public sealed class GitHubBillingDateConverter : JsonConverter<DateOnly>
 {
-    public override DateOnly Read(
-        ref Utf8JsonReader reader,
-        Type typeToConvert,
-        JsonSerializerOptions options
-    )
+    public override DateOnly Read(ref Utf8JsonReader reader, Type typeToConvert, JsonSerializerOptions options)
     {
         var raw = reader.GetString() ?? throw new JsonException("GitHub billing date was null");
 
@@ -73,9 +69,6 @@ public sealed class GitHubBillingDateConverter : JsonConverter<DateOnly>
         throw new JsonException($"Unrecognised GitHub billing date format: {raw}");
     }
 
-    public override void Write(
-        Utf8JsonWriter writer,
-        DateOnly value,
-        JsonSerializerOptions options
-    ) => writer.WriteStringValue(value.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture));
+    public override void Write(Utf8JsonWriter writer, DateOnly value, JsonSerializerOptions options) =>
+        writer.WriteStringValue(value.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture));
 }

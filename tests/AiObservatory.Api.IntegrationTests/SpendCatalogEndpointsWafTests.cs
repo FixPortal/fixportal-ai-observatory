@@ -7,8 +7,7 @@ using AwesomeAssertions;
 namespace AiObservatory.Api.IntegrationTests;
 
 [Trait("Category", "Integration")]
-public class SpendCatalogEndpointsWafTests(AiObservatoryApiFactory factory)
-    : IClassFixture<AiObservatoryApiFactory>
+public class SpendCatalogEndpointsWafTests(AiObservatoryApiFactory factory) : IClassFixture<AiObservatoryApiFactory>
 {
     private static object NewCategory(string key) =>
         new
@@ -53,11 +52,7 @@ public class SpendCatalogEndpointsWafTests(AiObservatoryApiFactory factory)
         using var client = factory.CreateAdminClient();
         var key = $"cat-{Guid.NewGuid():N}";
 
-        await client.PostAsJsonAsync(
-            "/api/spend/categories",
-            NewCategory(key),
-            TestContext.Current.CancellationToken
-        );
+        await client.PostAsJsonAsync("/api/spend/categories", NewCategory(key), TestContext.Current.CancellationToken);
         var second = await client.PostAsJsonAsync(
             "/api/spend/categories",
             NewCategory(key),
@@ -104,10 +99,7 @@ public class SpendCatalogEndpointsWafTests(AiObservatoryApiFactory factory)
 
         response
             .StatusCode.Should()
-            .Be(
-                HttpStatusCode.Created,
-                "vendors with no token estimate are the point of a separate vendor axis"
-            );
+            .Be(HttpStatusCode.Created, "vendors with no token estimate are the point of a separate vendor axis");
     }
 
     [Fact]
@@ -121,11 +113,7 @@ public class SpendCatalogEndpointsWafTests(AiObservatoryApiFactory factory)
             NewCategory(key),
             TestContext.Current.CancellationToken
         );
-        var id = (
-            await created.Content.ReadFromJsonAsync<JsonElement>(
-                TestContext.Current.CancellationToken
-            )
-        )
+        var id = (await created.Content.ReadFromJsonAsync<JsonElement>(TestContext.Current.CancellationToken))
             .GetProperty("id")
             .GetGuid();
 
@@ -140,10 +128,7 @@ public class SpendCatalogEndpointsWafTests(AiObservatoryApiFactory factory)
             "/api/spend/categories",
             TestContext.Current.CancellationToken
         );
-        list.EnumerateArray()
-            .Select(c => c.GetProperty("key").GetString())
-            .Should()
-            .NotContain(key);
+        list.EnumerateArray().Select(c => c.GetProperty("key").GetString()).Should().NotContain(key);
 
         var all = await client.GetFromJsonAsync<JsonElement>(
             "/api/spend/categories?includeArchived=true",
@@ -241,11 +226,7 @@ public class SpendCatalogEndpointsWafTests(AiObservatoryApiFactory factory)
             NewCategory(key),
             TestContext.Current.CancellationToken
         );
-        var id = (
-            await created.Content.ReadFromJsonAsync<JsonElement>(
-                TestContext.Current.CancellationToken
-            )
-        )
+        var id = (await created.Content.ReadFromJsonAsync<JsonElement>(TestContext.Current.CancellationToken))
             .GetProperty("id")
             .GetGuid();
 
@@ -278,11 +259,7 @@ public class SpendCatalogEndpointsWafTests(AiObservatoryApiFactory factory)
         using var client = factory.CreateAdminClient();
         var key = $"v-{Guid.NewGuid():N}";
 
-        await client.PostAsJsonAsync(
-            "/api/spend/vendors",
-            NewVendor(key),
-            TestContext.Current.CancellationToken
-        );
+        await client.PostAsJsonAsync("/api/spend/vendors", NewVendor(key), TestContext.Current.CancellationToken);
         var second = await client.PostAsJsonAsync(
             "/api/spend/vendors",
             NewVendor(key),
@@ -303,11 +280,7 @@ public class SpendCatalogEndpointsWafTests(AiObservatoryApiFactory factory)
             NewVendor(key),
             TestContext.Current.CancellationToken
         );
-        var id = (
-            await created.Content.ReadFromJsonAsync<JsonElement>(
-                TestContext.Current.CancellationToken
-            )
-        )
+        var id = (await created.Content.ReadFromJsonAsync<JsonElement>(TestContext.Current.CancellationToken))
             .GetProperty("id")
             .GetGuid();
 
@@ -322,10 +295,7 @@ public class SpendCatalogEndpointsWafTests(AiObservatoryApiFactory factory)
             "/api/spend/vendors",
             TestContext.Current.CancellationToken
         );
-        list.EnumerateArray()
-            .Select(v => v.GetProperty("key").GetString())
-            .Should()
-            .NotContain(key);
+        list.EnumerateArray().Select(v => v.GetProperty("key").GetString()).Should().NotContain(key);
 
         var all = await client.GetFromJsonAsync<JsonElement>(
             "/api/spend/vendors?includeArchived=true",
@@ -348,11 +318,7 @@ public class SpendCatalogEndpointsWafTests(AiObservatoryApiFactory factory)
             NewVendor(key),
             TestContext.Current.CancellationToken
         );
-        var id = (
-            await created.Content.ReadFromJsonAsync<JsonElement>(
-                TestContext.Current.CancellationToken
-            )
-        )
+        var id = (await created.Content.ReadFromJsonAsync<JsonElement>(TestContext.Current.CancellationToken))
             .GetProperty("id")
             .GetGuid();
 
@@ -391,9 +357,7 @@ public class SpendCatalogEndpointsWafTests(AiObservatoryApiFactory factory)
             TestContext.Current.CancellationToken
         );
         var categoryId = (
-            await categoryCreated.Content.ReadFromJsonAsync<JsonElement>(
-                TestContext.Current.CancellationToken
-            )
+            await categoryCreated.Content.ReadFromJsonAsync<JsonElement>(TestContext.Current.CancellationToken)
         )
             .GetProperty("id")
             .GetGuid();
@@ -409,9 +373,7 @@ public class SpendCatalogEndpointsWafTests(AiObservatoryApiFactory factory)
             TestContext.Current.CancellationToken
         );
         var vendorId = (
-            await vendorCreated.Content.ReadFromJsonAsync<JsonElement>(
-                TestContext.Current.CancellationToken
-            )
+            await vendorCreated.Content.ReadFromJsonAsync<JsonElement>(TestContext.Current.CancellationToken)
         )
             .GetProperty("id")
             .GetGuid();
@@ -423,9 +385,7 @@ public class SpendCatalogEndpointsWafTests(AiObservatoryApiFactory factory)
         );
         patch.StatusCode.Should().Be(HttpStatusCode.OK);
 
-        var body = await patch.Content.ReadFromJsonAsync<JsonElement>(
-            TestContext.Current.CancellationToken
-        );
+        var body = await patch.Content.ReadFromJsonAsync<JsonElement>(TestContext.Current.CancellationToken);
         body.GetProperty("displayName").GetString().Should().Be("New Name");
         body.GetProperty("defaultCategoryId").GetGuid().Should().Be(categoryId);
     }
@@ -448,9 +408,7 @@ public class SpendCatalogEndpointsWafTests(AiObservatoryApiFactory factory)
         );
 
         patch.StatusCode.Should().Be(HttpStatusCode.OK);
-        var body = await patch.Content.ReadFromJsonAsync<JsonElement>(
-            TestContext.Current.CancellationToken
-        );
+        var body = await patch.Content.ReadFromJsonAsync<JsonElement>(TestContext.Current.CancellationToken);
         body.GetProperty("defaultCategoryId").ValueKind.Should().Be(JsonValueKind.Null);
     }
 
@@ -468,9 +426,7 @@ public class SpendCatalogEndpointsWafTests(AiObservatoryApiFactory factory)
         );
 
         patch.StatusCode.Should().Be(HttpStatusCode.OK);
-        var body = await patch.Content.ReadFromJsonAsync<JsonElement>(
-            TestContext.Current.CancellationToken
-        );
+        var body = await patch.Content.ReadFromJsonAsync<JsonElement>(TestContext.Current.CancellationToken);
         body.GetProperty("displayName").GetString().Should().Be("Renamed Only");
         body.GetProperty("defaultCategoryId").GetGuid().Should().Be(categoryId);
     }
@@ -569,10 +525,7 @@ public class SpendCatalogEndpointsWafTests(AiObservatoryApiFactory factory)
         {
             provider
                 .ValueKind.Should()
-                .Be(
-                    JsonValueKind.Null,
-                    $"{key} has no metered tokens, so it must not claim a Provider"
-                );
+                .Be(JsonValueKind.Null, $"{key} has no metered tokens, so it must not claim a Provider");
         }
         else
         {
@@ -598,9 +551,7 @@ public class SpendCatalogEndpointsWafTests(AiObservatoryApiFactory factory)
     }
 
     /// <summary>Creates a category and a vendor already pointed at it.</summary>
-    private async Task<(Guid VendorId, Guid CategoryId)> CreateVendorWithDefaultCategoryAsync(
-        HttpClient client
-    )
+    private async Task<(Guid VendorId, Guid CategoryId)> CreateVendorWithDefaultCategoryAsync(HttpClient client)
     {
         var categoryCreated = await client.PostAsJsonAsync(
             "/api/spend/categories",
@@ -608,9 +559,7 @@ public class SpendCatalogEndpointsWafTests(AiObservatoryApiFactory factory)
             TestContext.Current.CancellationToken
         );
         var categoryId = (
-            await categoryCreated.Content.ReadFromJsonAsync<JsonElement>(
-                TestContext.Current.CancellationToken
-            )
+            await categoryCreated.Content.ReadFromJsonAsync<JsonElement>(TestContext.Current.CancellationToken)
         )
             .GetProperty("id")
             .GetGuid();
@@ -627,9 +576,7 @@ public class SpendCatalogEndpointsWafTests(AiObservatoryApiFactory factory)
             TestContext.Current.CancellationToken
         );
         var vendorId = (
-            await vendorCreated.Content.ReadFromJsonAsync<JsonElement>(
-                TestContext.Current.CancellationToken
-            )
+            await vendorCreated.Content.ReadFromJsonAsync<JsonElement>(TestContext.Current.CancellationToken)
         )
             .GetProperty("id")
             .GetGuid();

@@ -17,26 +17,11 @@ namespace AiObservatory.Data.Migrations
                 columns: table => new
                 {
                     Id = table.Column<Guid>(type: "uuid", nullable: false),
-                    Key = table.Column<string>(
-                        type: "character varying(60)",
-                        maxLength: 60,
-                        nullable: false
-                    ),
-                    DisplayName = table.Column<string>(
-                        type: "character varying(100)",
-                        maxLength: 100,
-                        nullable: false
-                    ),
-                    ColorVar = table.Column<string>(
-                        type: "character varying(60)",
-                        maxLength: 60,
-                        nullable: false
-                    ),
+                    Key = table.Column<string>(type: "character varying(60)", maxLength: 60, nullable: false),
+                    DisplayName = table.Column<string>(type: "character varying(100)", maxLength: 100, nullable: false),
+                    ColorVar = table.Column<string>(type: "character varying(60)", maxLength: 60, nullable: false),
                     SortOrder = table.Column<int>(type: "integer", nullable: false),
-                    ArchivedAt = table.Column<Instant>(
-                        type: "timestamp with time zone",
-                        nullable: true
-                    ),
+                    ArchivedAt = table.Column<Instant>(type: "timestamp with time zone", nullable: true),
                 },
                 constraints: table =>
                 {
@@ -49,22 +34,11 @@ namespace AiObservatory.Data.Migrations
                 columns: table => new
                 {
                     Id = table.Column<Guid>(type: "uuid", nullable: false),
-                    Key = table.Column<string>(
-                        type: "character varying(60)",
-                        maxLength: 60,
-                        nullable: false
-                    ),
-                    DisplayName = table.Column<string>(
-                        type: "character varying(100)",
-                        maxLength: 100,
-                        nullable: false
-                    ),
+                    Key = table.Column<string>(type: "character varying(60)", maxLength: 60, nullable: false),
+                    DisplayName = table.Column<string>(type: "character varying(100)", maxLength: 100, nullable: false),
                     Provider = table.Column<string>(type: "text", nullable: true),
                     DefaultCategoryId = table.Column<Guid>(type: "uuid", nullable: true),
-                    ArchivedAt = table.Column<Instant>(
-                        type: "timestamp with time zone",
-                        nullable: true
-                    ),
+                    ArchivedAt = table.Column<Instant>(type: "timestamp with time zone", nullable: true),
                 },
                 constraints: table =>
                 {
@@ -88,37 +62,19 @@ namespace AiObservatory.Data.Migrations
                     VendorId = table.Column<Guid>(type: "uuid", nullable: false),
                     CategoryId = table.Column<Guid>(type: "uuid", nullable: false),
                     Amount = table.Column<decimal>(type: "numeric", nullable: false),
-                    Currency = table.Column<string>(
-                        type: "character varying(3)",
-                        maxLength: 3,
-                        nullable: false
-                    ),
+                    Currency = table.Column<string>(type: "character varying(3)", maxLength: 3, nullable: false),
                     AmountGbp = table.Column<decimal>(type: "numeric", nullable: false),
                     FxRate = table.Column<decimal>(type: "numeric", nullable: false),
-                    Description = table.Column<string>(
-                        type: "character varying(200)",
-                        maxLength: 200,
-                        nullable: true
-                    ),
+                    Description = table.Column<string>(type: "character varying(200)", maxLength: 200, nullable: true),
                     Source = table.Column<string>(type: "text", nullable: false),
-                    EntryKey = table.Column<string>(
-                        type: "character varying(200)",
-                        maxLength: 200,
-                        nullable: true
-                    ),
-                    RecordedAt = table.Column<Instant>(
-                        type: "timestamp with time zone",
-                        nullable: false
-                    ),
+                    EntryKey = table.Column<string>(type: "character varying(200)", maxLength: 200, nullable: true),
+                    RecordedAt = table.Column<Instant>(type: "timestamp with time zone", nullable: false),
                 },
                 constraints: table =>
                 {
                     table.PrimaryKey("PK_SpendEntries", x => x.Id);
                     table.CheckConstraint("CK_SpendEntry_Amount_NonNegative", "\"Amount\" >= 0");
-                    table.CheckConstraint(
-                        "CK_SpendEntry_AmountGbp_NonNegative",
-                        "\"AmountGbp\" >= 0"
-                    );
+                    table.CheckConstraint("CK_SpendEntry_AmountGbp_NonNegative", "\"AmountGbp\" >= 0");
                     table.CheckConstraint("CK_SpendEntry_FxRate_Positive", "\"FxRate\" > 0");
                     table.ForeignKey(
                         name: "FK_SpendEntries_SpendCategories_CategoryId",
@@ -164,11 +120,7 @@ namespace AiObservatory.Data.Migrations
                 filter: "\"EntryKey\" IS NOT NULL"
             );
 
-            migrationBuilder.CreateIndex(
-                name: "IX_SpendEntries_VendorId",
-                table: "SpendEntries",
-                column: "VendorId"
-            );
+            migrationBuilder.CreateIndex(name: "IX_SpendEntries_VendorId", table: "SpendEntries", column: "VendorId");
 
             migrationBuilder.CreateIndex(
                 name: "IX_SpendVendors_DefaultCategoryId",

@@ -152,14 +152,7 @@ public class ActivityEndpointsTests
     [Fact]
     public void TryParseDateRange_WhenBothNull_DefaultsToLast30Days()
     {
-        var result = ActivityEndpoints.TryParseDateRange(
-            null,
-            null,
-            Today,
-            out var start,
-            out var end,
-            out var error
-        );
+        var result = ActivityEndpoints.TryParseDateRange(null, null, Today, out var start, out var end, out var error);
 
         result.Should().BeTrue();
         error.Should().BeNull();
@@ -188,14 +181,7 @@ public class ActivityEndpointsTests
     [Fact]
     public void TryParseDateRange_WhenFromInvalid_ReturnsFalseWithError()
     {
-        var result = ActivityEndpoints.TryParseDateRange(
-            "not-a-date",
-            null,
-            Today,
-            out _,
-            out _,
-            out var error
-        );
+        var result = ActivityEndpoints.TryParseDateRange("not-a-date", null, Today, out _, out _, out var error);
 
         result.Should().BeFalse();
         error.Should().NotBeNull();
@@ -204,14 +190,7 @@ public class ActivityEndpointsTests
     [Fact]
     public void TryParseDateRange_WhenToInvalid_ReturnsFalseWithError()
     {
-        var result = ActivityEndpoints.TryParseDateRange(
-            null,
-            "2026-13-99",
-            Today,
-            out _,
-            out _,
-            out var error
-        );
+        var result = ActivityEndpoints.TryParseDateRange(null, "2026-13-99", Today, out _, out _, out var error);
 
         result.Should().BeFalse();
         error.Should().NotBeNull();

@@ -14,11 +14,7 @@ namespace AiObservatory.Api.Tests.Services;
 public class FxRateProviderTests
 {
     private static FxRateProvider Create(StubHttpMessageHandler handler) =>
-        new(
-            new HttpClient(handler),
-            new MemoryCache(new MemoryCacheOptions()),
-            NullLogger<FxRateProvider>.Instance
-        );
+        new(new HttpClient(handler), new MemoryCache(new MemoryCacheOptions()), NullLogger<FxRateProvider>.Instance);
 
     [Fact]
     public async Task GbpShortCircuitsToOneAndMakesNoRequest()
@@ -33,9 +29,7 @@ public class FxRateProviderTests
         );
 
         rate.Should().Be(1m);
-        handler
-            .Requested.Should()
-            .BeEmpty("GBP needs no conversion, so it must not cost a network call");
+        handler.Requested.Should().BeEmpty("GBP needs no conversion, so it must not cost a network call");
     }
 
     [Fact]
@@ -51,12 +45,7 @@ public class FxRateProviderTests
         );
 
         rate.Should().Be(0.7412m);
-        handler
-            .Requested.Should()
-            .ContainSingle()
-            .Which.Should()
-            .Contain("/v1/2026-03-15")
-            .And.Contain("from=USD");
+        handler.Requested.Should().ContainSingle().Which.Should().Contain("/v1/2026-03-15").And.Contain("from=USD");
     }
 
     [Fact]
@@ -69,9 +58,7 @@ public class FxRateProviderTests
         await sut.GetGbpRateOnAsync("USD", date, TestContext.Current.CancellationToken);
         await sut.GetGbpRateOnAsync("USD", date, TestContext.Current.CancellationToken);
 
-        handler
-            .Requested.Should()
-            .ContainSingle("a historical rate is immutable, so it caches indefinitely");
+        handler.Requested.Should().ContainSingle("a historical rate is immutable, so it caches indefinitely");
     }
 
     [Fact]
@@ -143,10 +130,7 @@ public class FxRateProviderTests
 
         handler
             .Requested.Should()
-            .HaveCount(
-                2,
-                "caching 0.79 would freeze the fallback for every later write of that date"
-            );
+            .HaveCount(2, "caching 0.79 would freeze the fallback for every later write of that date");
     }
 
     /// <summary>
@@ -159,12 +143,7 @@ public class FxRateProviderTests
         var handler = new StubHttpMessageHandler(HttpStatusCode.OK, """{"rates":{"EUR":1.17}}""");
         var sut = Create(handler);
 
-        var act = () =>
-            sut.GetGbpRateOnAsync(
-                "EUR",
-                new LocalDate(2026, 3, 15),
-                TestContext.Current.CancellationToken
-            );
+        var act = () => sut.GetGbpRateOnAsync("EUR", new LocalDate(2026, 3, 15), TestContext.Current.CancellationToken);
 
         await act.Should().ThrowAsync<FxUnavailableException>();
     }
@@ -175,12 +154,7 @@ public class FxRateProviderTests
         var handler = new StubHttpMessageHandler(HttpStatusCode.OK, "{}");
         var sut = Create(handler);
 
-        var act = () =>
-            sut.GetGbpRateOnAsync(
-                "EUR",
-                new LocalDate(2026, 3, 15),
-                TestContext.Current.CancellationToken
-            );
+        var act = () => sut.GetGbpRateOnAsync("EUR", new LocalDate(2026, 3, 15), TestContext.Current.CancellationToken);
 
         await act.Should().ThrowAsync<FxUnavailableException>();
     }
@@ -196,8 +170,9 @@ public class FxRateProviderTests
         var sut = Create(handler);
         using var cts = new CancellationTokenSource();
         await cts.CancelAsync();
+        var cancellationToken = cts.Token;
 
-        var act = () => sut.GetGbpRateOnAsync("USD", new LocalDate(2026, 3, 15), cts.Token);
+        var act = () => sut.GetGbpRateOnAsync("USD", new LocalDate(2026, 3, 15), cancellationToken);
 
         await act.Should().ThrowAsync<OperationCanceledException>();
     }
@@ -211,12 +186,7 @@ public class FxRateProviderTests
         var rate = await sut.GetUsdToGbpAsync(TestContext.Current.CancellationToken);
 
         rate.Should().Be(0.7412m);
-        handler
-            .Requested.Should()
-            .ContainSingle()
-            .Which.Should()
-            .Contain("/v1/latest")
-            .And.Contain("from=USD");
+        handler.Requested.Should().ContainSingle().Which.Should().Contain("/v1/latest").And.Contain("from=USD");
     }
 
     [Fact]
@@ -255,8 +225,6 @@ public class FxRateProviderTests
         await sut.GetUsdToGbpAsync(TestContext.Current.CancellationToken);
         await sut.GetUsdToGbpAsync(TestContext.Current.CancellationToken);
 
-        handler
-            .Requested.Should()
-            .HaveCount(2, "the fallback is not cached, so the next call retries the real rate");
+        handler.Requested.Should().HaveCount(2, "the fallback is not cached, so the next call retries the real rate");
     }
 }

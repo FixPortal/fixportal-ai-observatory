@@ -28,15 +28,9 @@ public class OpenAiUsageClient(
     )
     {
         var startTime = date.AtStartOfDayInZone(DateTimeZone.Utc).ToInstant().ToUnixTimeSeconds();
-        var endTime = date.PlusDays(1)
-            .AtStartOfDayInZone(DateTimeZone.Utc)
-            .ToInstant()
-            .ToUnixTimeSeconds();
+        var endTime = date.PlusDays(1).AtStartOfDayInZone(DateTimeZone.Utc).ToInstant().ToUnixTimeSeconds();
 
-        var options = new JsonSerializerOptions
-        {
-            PropertyNamingPolicy = JsonNamingPolicy.SnakeCaseLower,
-        };
+        var options = new JsonSerializerOptions { PropertyNamingPolicy = JsonNamingPolicy.SnakeCaseLower };
         var allRecords = new List<OpenAiUsageRecord>();
 
         string? nextPage = null;
@@ -91,9 +85,7 @@ public class OpenAiUsageClient(
             }
             if (result.InputTokens is null || result.OutputTokens is null)
             {
-                throw new JsonException(
-                    "OpenAI usage result is missing input_tokens or output_tokens."
-                );
+                throw new JsonException("OpenAI usage result is missing input_tokens or output_tokens.");
             }
 
             records.Add(
@@ -116,22 +108,14 @@ public class OpenAiUsageClient(
         }
     }
 
-    private decimal ComputeCost(
-        string model,
-        LocalDate usageDate,
-        long input,
-        long output,
-        long cachedInput
-    )
+    private decimal ComputeCost(string model, LocalDate usageDate, long input, long output, long cachedInput)
     {
         // Longest matching prefix wins. The OpenAI usage API returns ids like
         // "gpt-4o-mini-2024-07-18"; StartsWith + longest key resolves to the specific
         // variant rather than the base model (see git history for the Contains bug this
         // replaced). Among ties for a given date, a dated entry beats an always-on one.
         var match = pricingOptions
-            .Value.Pricing.Where(e =>
-                model.StartsWith(e.ModelPrefix, StringComparison.OrdinalIgnoreCase)
-            )
+            .Value.Pricing.Where(e => model.StartsWith(e.ModelPrefix, StringComparison.OrdinalIgnoreCase))
             .Where(e =>
                 (e.EffectiveFrom is null || usageDate >= e.EffectiveFrom)
                 && (e.EffectiveTo is null || usageDate <= e.EffectiveTo)
@@ -155,22 +139,12 @@ public class OpenAiUsageClient(
 
         // Cached tokens are billed at the cache read rate; non-cached at the full input rate
         var billableInput = Math.Max(0, input - cachedInput);
-        return billableInput / 1_000_000m * ir
-            + output / 1_000_000m * or
-            + cachedInput / 1_000_000m * cr;
+        return billableInput / 1_000_000m * ir + output / 1_000_000m * or + cachedInput / 1_000_000m * cr;
     }
 
-    private sealed record OpenAiUsageApiResponse(
-        List<OpenAiUsageBucket>? Data,
-        bool? HasMore,
-        string? NextPage
-    );
+    private sealed record OpenAiUsageApiResponse(List<OpenAiUsageBucket>? Data, bool? HasMore, string? NextPage);
 
-    private sealed record OpenAiUsageBucket(
-        long StartTime,
-        long EndTime,
-        List<OpenAiUsageResult>? Results
-    );
+    private sealed record OpenAiUsageBucket(long StartTime, long EndTime, List<OpenAiUsageResult>? Results);
 
     private sealed record OpenAiUsageResult(
         string? Model,
