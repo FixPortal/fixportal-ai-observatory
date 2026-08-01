@@ -1,8 +1,18 @@
 # AI Findings Ledger
 
-Durable record of un-dismissable static-analysis findings (GitHub Code Quality,
-CodeQL, Copilot AI Findings). Substitutes for the missing dismiss UI so the same
-by-design issues do not get re-investigated on each scan.
+GitHub's Copilot **AI Findings** set has no dismiss API or UI. This file
+substitutes for the missing dismiss UI so the same by-design issues do not get
+re-investigated on each scan.
+
+Scope is the AI Findings set only. **Code Quality** findings and **code-scanning
+security alerts** are both dismissable on GitHub, which records the verdict
+durably — do not add rows for those.
+
+Rows first seen before **2026-08-01** are **legacy**: they were recorded under a
+wider scope and include Code Quality, CodeQL and analyzer findings that would not
+be ledgered today. They are kept as the durable record of a verdict already
+reached, not as precedent — do not cite them to justify a new non-AI-Findings
+row.
 
 | Finding | Status | Reason | Rationale | First seen |
 |---|---|---|---|---|
