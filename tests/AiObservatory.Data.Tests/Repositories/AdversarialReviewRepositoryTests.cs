@@ -85,16 +85,10 @@ public class AdversarialReviewRepositoryTests : IAsyncLifetime
     public async Task Four_participants_sharing_one_runId_all_persist()
     {
         var ct = TestContext.Current.CancellationToken;
-        var id1 = await _repo.RecordRunAsync(
-            Run("R1", "anthropic", "reviewer", "claude-sonnet-4-6"),
-            ct
-        );
+        var id1 = await _repo.RecordRunAsync(Run("R1", "anthropic", "reviewer", "claude-sonnet-4-6"), ct);
         var id2 = await _repo.RecordRunAsync(Run("R1", "google", "reviewer", "gemini-2.5-pro"), ct);
         var id3 = await _repo.RecordRunAsync(Run("R1", "openai", "reviewer", "gpt-5.4"), ct);
-        var id4 = await _repo.RecordRunAsync(
-            Run("R1", "anthropic", "judge", "claude-opus-4-8"),
-            ct
-        );
+        var id4 = await _repo.RecordRunAsync(Run("R1", "anthropic", "judge", "claude-opus-4-8"), ct);
 
         id1.Existed.Should().BeFalse();
         id2.Existed.Should().BeFalse();
@@ -108,15 +102,7 @@ public class AdversarialReviewRepositoryTests : IAsyncLifetime
     {
         var ct = TestContext.Current.CancellationToken;
         var first = await _repo.RecordRunAsync(
-            Run(
-                "R2",
-                "anthropic",
-                "reviewer",
-                "claude-sonnet-4-6",
-                costUsd: 0m,
-                raised: 0,
-                accepted: 0
-            ),
+            Run("R2", "anthropic", "reviewer", "claude-sonnet-4-6", costUsd: 0m, raised: 0, accepted: 0),
             ct
         );
         // Backfill the same participant with real numbers and a chunk count.

@@ -21,26 +21,16 @@ namespace AiObservatory.Api.IntegrationTests.Services;
 /// rather than duplicating.
 /// </summary>
 [Trait("Category", "Integration")]
-public class GitHubBillingSyncServiceTests(AiObservatoryApiFactory factory)
-    : IClassFixture<AiObservatoryApiFactory>
+public class GitHubBillingSyncServiceTests(AiObservatoryApiFactory factory) : IClassFixture<AiObservatoryApiFactory>
 {
     private static readonly Instant Now = Instant.FromUtc(2026, 7, 27, 12, 0);
 
     /// <summary>0.75 USD->GBP, so a converted figure is obvious by inspection.</summary>
     private const string FxBody = """{"rates":{"GBP":0.75}}""";
 
-    private static GitHubBillingUsageItem Item(
-        string date,
-        string product,
-        string sku,
-        decimal net
-    ) =>
+    private static GitHubBillingUsageItem Item(string date, string product, string sku, decimal net) =>
         new(
-            DateOnly.ParseExact(
-                date,
-                "yyyy-MM-dd",
-                System.Globalization.CultureInfo.InvariantCulture
-            ),
+            DateOnly.ParseExact(date, "yyyy-MM-dd", System.Globalization.CultureInfo.InvariantCulture),
             product,
             sku,
             net
@@ -81,11 +71,7 @@ public class GitHubBillingSyncServiceTests(AiObservatoryApiFactory factory)
     /// </summary>
     private static string UniqueSku(string prefix) => $"{prefix} {Guid.NewGuid():N}";
 
-    private static async Task<SpendEntry?> FindAsync(
-        AiObservatoryDbContext db,
-        string sku,
-        CancellationToken ct
-    ) =>
+    private static async Task<SpendEntry?> FindAsync(AiObservatoryDbContext db, string sku, CancellationToken ct) =>
         await db
             .SpendEntries.AsNoTracking()
             .FirstOrDefaultAsync(e => e.Source == SpendSource.Api && e.Description == sku, ct);
@@ -129,9 +115,7 @@ public class GitHubBillingSyncServiceTests(AiObservatoryApiFactory factory)
         written.Should().Be(1);
         (await FindAsync(db, free, TestContext.Current.CancellationToken))
             .Should()
-            .BeNull(
-                "a zero net line was never billed, and CK_SpendEntry_Amount_NonZero would reject it anyway"
-            );
+            .BeNull("a zero net line was never billed, and CK_SpendEntry_Amount_NonZero would reject it anyway");
     }
 
     [Fact]
@@ -210,9 +194,6 @@ public class GitHubBillingSyncServiceTests(AiObservatoryApiFactory factory)
         public override Task<IReadOnlyList<GitHubBillingUsageItem>> GetUsageAsync(
             int year,
             CancellationToken ct = default
-        ) =>
-            Task.FromResult<IReadOnlyList<GitHubBillingUsageItem>>(
-                items.Where(i => i.Date.Year == year).ToList()
-            );
+        ) => Task.FromResult<IReadOnlyList<GitHubBillingUsageItem>>(items.Where(i => i.Date.Year == year).ToList());
     }
 }

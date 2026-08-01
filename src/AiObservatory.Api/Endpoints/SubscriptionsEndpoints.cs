@@ -15,8 +15,7 @@ public static class SubscriptionsEndpoints
     public static IEndpointRouteBuilder MapSubscriptionsEndpoints(this IEndpointRouteBuilder app)
     {
         app.MapGet("/subscriptions", GetSubscriptionsAsync);
-        app.MapGet("/subscriptions/{id:guid}", GetSubscriptionByIdAsync)
-            .WithName("GetSubscriptionById");
+        app.MapGet("/subscriptions/{id:guid}", GetSubscriptionByIdAsync).WithName("GetSubscriptionById");
         app.MapPost("/subscriptions", CreateSubscriptionAsync);
         app.MapPut("/subscriptions/{id:guid}", UpdateSubscriptionAsync);
         app.MapPatch("/subscriptions/{id:guid}/extra-usage", UpdateExtraUsageAsync);
@@ -109,16 +108,9 @@ public static class SubscriptionsEndpoints
         return Results.NoContent();
     }
 
-    private static IResult? ValidateSubscription(
-        SubscriptionRequest req,
-        out Provider provider,
-        out string currency
-    )
+    private static IResult? ValidateSubscription(SubscriptionRequest req, out Provider provider, out string currency)
     {
-        if (
-            !Enum.TryParse(req.Provider, ignoreCase: true, out provider)
-            || !Enum.IsDefined(provider)
-        )
+        if (!Enum.TryParse(req.Provider, ignoreCase: true, out provider) || !Enum.IsDefined(provider))
         {
             currency = "";
             return Results.BadRequest($"Unknown provider: {req.Provider}");
@@ -143,17 +135,10 @@ public static class SubscriptionsEndpoints
         }
 
         currency = req.Currency.ToUpperInvariant();
-        return currency is not ("GBP" or "USD")
-            ? Results.BadRequest("Currency must be GBP or USD")
-            : null;
+        return currency is not ("GBP" or "USD") ? Results.BadRequest("Currency must be GBP or USD") : null;
     }
 
-    private static void Apply(
-        SubscriptionRequest req,
-        Provider provider,
-        string currency,
-        Subscription sub
-    )
+    private static void Apply(SubscriptionRequest req, Provider provider, string currency, Subscription sub)
     {
         sub.Provider = provider;
         sub.Name = req.Name;

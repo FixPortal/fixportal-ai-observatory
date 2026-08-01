@@ -62,10 +62,7 @@ public class SpendCatalogValidationTests
         SpendCatalogEndpoints
             .Slug("  " + new string('a', 60) + "  ")
             .Should()
-            .HaveLength(
-                60,
-                "surrounding whitespace is stripped, so it must not count toward the limit"
-            );
+            .HaveLength(60, "surrounding whitespace is stripped, so it must not count toward the limit");
     }
 
     [Theory]

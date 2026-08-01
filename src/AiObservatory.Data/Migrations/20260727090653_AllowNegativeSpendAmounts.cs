@@ -17,15 +17,9 @@ namespace AiObservatory.Data.Migrations
         /// <inheritdoc />
         protected override void Up(MigrationBuilder migrationBuilder)
         {
-            migrationBuilder.DropCheckConstraint(
-                name: "CK_SpendEntry_Amount_NonNegative",
-                table: "SpendEntries"
-            );
+            migrationBuilder.DropCheckConstraint(name: "CK_SpendEntry_Amount_NonNegative", table: "SpendEntries");
 
-            migrationBuilder.DropCheckConstraint(
-                name: "CK_SpendEntry_AmountGbp_NonNegative",
-                table: "SpendEntries"
-            );
+            migrationBuilder.DropCheckConstraint(name: "CK_SpendEntry_AmountGbp_NonNegative", table: "SpendEntries");
 
             migrationBuilder.AddCheckConstraint(
                 name: "CK_SpendEntry_Amount_NonZero",
@@ -46,10 +40,7 @@ namespace AiObservatory.Data.Migrations
         /// <inheritdoc />
         protected override void Down(MigrationBuilder migrationBuilder)
         {
-            migrationBuilder.DropCheckConstraint(
-                name: "CK_SpendEntry_Amount_NonZero",
-                table: "SpendEntries"
-            );
+            migrationBuilder.DropCheckConstraint(name: "CK_SpendEntry_Amount_NonZero", table: "SpendEntries");
 
             migrationBuilder.AddCheckConstraint(
                 name: "CK_SpendEntry_Amount_NonNegative",

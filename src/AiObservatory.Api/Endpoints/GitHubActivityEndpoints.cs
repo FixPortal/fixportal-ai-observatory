@@ -11,12 +11,7 @@ namespace AiObservatory.Api.Endpoints;
 
 public static class GitHubActivityEndpoints
 {
-    private static readonly string[] TerminalFailureStatuses =
-    [
-        "failure",
-        "timed_out",
-        "startup_failure",
-    ];
+    private static readonly string[] TerminalFailureStatuses = ["failure", "timed_out", "startup_failure"];
 
     // Owners lowercased once here, and the column lowercased in SQL below, because this
     // comparison MUST be case-insensitive — unlike ActivityEndpoints' ordinal one.
@@ -57,63 +52,41 @@ public static class GitHubActivityEndpoints
     private static readonly Expression<Func<string, bool>> RepoAllowedTemplate = repo =>
         AllowedRepoOwners.Any(o => repo.ToLower() == o || repo.ToLower().StartsWith(o + "/"));
 
-    private static Expression<Func<T, bool>> IsAllowedRepo<T>(
-        Expression<Func<T, string>> repoSelector
-    )
+    private static Expression<Func<T, bool>> IsAllowedRepo<T>(Expression<Func<T, string>> repoSelector)
     {
-        var body = new ReplaceParameterVisitor(
-            RepoAllowedTemplate.Parameters[0],
-            repoSelector.Body
-        ).Visit(RepoAllowedTemplate.Body)!;
+        var body = new ReplaceParameterVisitor(RepoAllowedTemplate.Parameters[0], repoSelector.Body).Visit(
+            RepoAllowedTemplate.Body
+        )!;
         return Expression.Lambda<Func<T, bool>>(body, repoSelector.Parameters[0]);
     }
 
-    private sealed class ReplaceParameterVisitor(ParameterExpression from, Expression to)
-        : ExpressionVisitor
+    private sealed class ReplaceParameterVisitor(ParameterExpression from, Expression to) : ExpressionVisitor
     {
-        protected override Expression VisitParameter(ParameterExpression node) =>
-            node == from ? to : node;
+        protected override Expression VisitParameter(ParameterExpression node) => node == from ? to : node;
     }
 
     public static void MapGitHubActivityEndpoints(this IEndpointRouteBuilder app)
     {
         app.MapGet(
                 "/github/prs",
-                async (
-                    AiObservatoryDbContext db,
-                    IClock clock,
-                    string? from,
-                    string? to,
-                    CancellationToken ct
-                ) =>
+                async (AiObservatoryDbContext db, IClock clock, string? from, string? to, CancellationToken ct) =>
                 {
                     var today = clock.GetCurrentInstant().InUtc().Date;
                     if (
-                        !ActivityEndpoints.TryParseDateRange(
-                            from,
-                            to,
-                            today,
-                            out var start,
-                            out var end,
-                            out var error
-                        )
+                        !ActivityEndpoints.TryParseDateRange(from, to, today, out var start, out var end, out var error)
                     )
                     {
                         return error!;
                     }
                     var startInstant = start.AtStartOfDayInZone(DateTimeZone.Utc).ToInstant();
-                    var endInstant = end.PlusDays(1)
-                        .AtStartOfDayInZone(DateTimeZone.Utc)
-                        .ToInstant();
+                    var endInstant = end.PlusDays(1).AtStartOfDayInZone(DateTimeZone.Utc).ToInstant();
 
                     var prs = await db
                         .GitHubPullRequests.AsNoTracking()
                         .Where(IsAllowedRepo<GitHubPullRequest>(p => p.Repo))
                         .Where(p =>
                             p.CreatedAt >= startInstant && p.CreatedAt < endInstant
-                            || p.MergedAt != null
-                                && p.MergedAt >= startInstant
-                                && p.MergedAt < endInstant
+                            || p.MergedAt != null && p.MergedAt >= startInstant && p.MergedAt < endInstant
                             || p.FirstReviewAt != null
                                 && p.FirstReviewAt >= startInstant
                                 && p.FirstReviewAt < endInstant
@@ -140,32 +113,17 @@ public static class GitHubActivityEndpoints
 
         app.MapGet(
                 "/github/commits/summary",
-                async (
-                    AiObservatoryDbContext db,
-                    IClock clock,
-                    string? from,
-                    string? to,
-                    CancellationToken ct
-                ) =>
+                async (AiObservatoryDbContext db, IClock clock, string? from, string? to, CancellationToken ct) =>
                 {
                     var today = clock.GetCurrentInstant().InUtc().Date;
                     if (
-                        !ActivityEndpoints.TryParseDateRange(
-                            from,
-                            to,
-                            today,
-                            out var start,
-                            out var end,
-                            out var error
-                        )
+                        !ActivityEndpoints.TryParseDateRange(from, to, today, out var start, out var end, out var error)
                     )
                     {
                         return error!;
                     }
                     var startInstant = start.AtStartOfDayInZone(DateTimeZone.Utc).ToInstant();
-                    var endInstant = end.PlusDays(1)
-                        .AtStartOfDayInZone(DateTimeZone.Utc)
-                        .ToInstant();
+                    var endInstant = end.PlusDays(1).AtStartOfDayInZone(DateTimeZone.Utc).ToInstant();
 
                     // Projecting straight into the GitHubCommitSummaryResponse record inside the
                     // GroupBy/Select (as the equivalent PR/CI queries do into an anonymous type)
@@ -192,12 +150,7 @@ public static class GitHubActivityEndpoints
                         .ToListAsync(ct);
 
                     var byRepo = grouped
-                        .Select(r => new GitHubCommitSummaryResponse(
-                            r.Repo,
-                            r.CommitCount,
-                            r.Additions,
-                            r.Deletions
-                        ))
+                        .Select(r => new GitHubCommitSummaryResponse(r.Repo, r.CommitCount, r.Additions, r.Deletions))
                         .ToList();
 
                     return Results.Ok(byRepo);
@@ -207,32 +160,17 @@ public static class GitHubActivityEndpoints
 
         app.MapGet(
                 "/github/ci",
-                async (
-                    AiObservatoryDbContext db,
-                    IClock clock,
-                    string? from,
-                    string? to,
-                    CancellationToken ct
-                ) =>
+                async (AiObservatoryDbContext db, IClock clock, string? from, string? to, CancellationToken ct) =>
                 {
                     var today = clock.GetCurrentInstant().InUtc().Date;
                     if (
-                        !ActivityEndpoints.TryParseDateRange(
-                            from,
-                            to,
-                            today,
-                            out var start,
-                            out var end,
-                            out var error
-                        )
+                        !ActivityEndpoints.TryParseDateRange(from, to, today, out var start, out var end, out var error)
                     )
                     {
                         return error!;
                     }
                     var startInstant = start.AtStartOfDayInZone(DateTimeZone.Utc).ToInstant();
-                    var endInstant = end.PlusDays(1)
-                        .AtStartOfDayInZone(DateTimeZone.Utc)
-                        .ToInstant();
+                    var endInstant = end.PlusDays(1).AtStartOfDayInZone(DateTimeZone.Utc).ToInstant();
 
                     var grouped = await db
                         .GitHubWorkflowRuns.AsNoTracking()
@@ -244,9 +182,7 @@ public static class GitHubActivityEndpoints
                             g.Key.Repo,
                             g.Key.WorkflowName,
                             Total = g.Count(),
-                            Failed = g.Count(r =>
-                                Enumerable.Contains(TerminalFailureStatuses, r.Status)
-                            ),
+                            Failed = g.Count(r => Enumerable.Contains(TerminalFailureStatuses, r.Status)),
                             Succeeded = g.Count(r => r.Status == "success"),
                         })
                         .OrderByDescending(r => r.Total)
@@ -297,12 +233,7 @@ public sealed record GitHubPrResponse(
     double? TurnaroundHours
 );
 
-public sealed record GitHubCommitSummaryResponse(
-    string Repo,
-    int CommitCount,
-    int Additions,
-    int Deletions
-);
+public sealed record GitHubCommitSummaryResponse(string Repo, int CommitCount, int Additions, int Deletions);
 
 public sealed record GitHubCiResponse(
     string Repo,

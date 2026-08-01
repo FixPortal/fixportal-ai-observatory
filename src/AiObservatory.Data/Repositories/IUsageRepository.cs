@@ -71,21 +71,14 @@ public interface IUsageRepository
     );
 
     Task<IReadOnlyList<BudgetRule>> GetBudgetRulesAsync(CancellationToken ct = default);
-    Task SetBudgetRuleTriggeredAsync(
-        Guid ruleId,
-        Instant triggeredAt,
-        CancellationToken ct = default
-    );
+    Task SetBudgetRuleTriggeredAsync(Guid ruleId, Instant triggeredAt, CancellationToken ct = default);
 
     Task AddInsightAsync(Insight insight, CancellationToken ct = default);
     Task<IReadOnlyList<Insight>> GetUnacknowledgedInsightsAsync(CancellationToken ct = default);
     Task AcknowledgeInsightAsync(Guid insightId, Instant at, CancellationToken ct = default);
     Task<LocalDate?> GetLatestInsightPeriodEndAsync(CancellationToken ct = default);
 
-    Task<IReadOnlyList<Subscription>> GetActiveSubscriptionsAsync(
-        LocalDate today,
-        CancellationToken ct = default
-    );
+    Task<IReadOnlyList<Subscription>> GetActiveSubscriptionsAsync(LocalDate today, CancellationToken ct = default);
 
     /// <summary>
     /// Updates <c>CostUsd</c> on the event identified by <paramref name="provider"/> +

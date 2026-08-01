@@ -4,8 +4,7 @@ using MimeKit;
 
 namespace AiObservatory.Api.Services;
 
-public sealed class EmailAlertNotifier(ISmtpClient smtpClient, IConfiguration config)
-    : IAlertNotifier
+public sealed class EmailAlertNotifier(ISmtpClient smtpClient, IConfiguration config) : IAlertNotifier
 {
     public async Task NotifyAsync(BudgetAlertPayload payload, CancellationToken ct = default)
     {

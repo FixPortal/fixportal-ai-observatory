@@ -16,8 +16,8 @@ public class GoogleIngestionService(
         var records = await client.GetDailySpendAsync(date, ct);
         var groups = records.GroupBy(r => r.Model).ToList();
 
-        foreach (
-            var evt in from g in groups
+        var events =
+            from g in groups
             let model = g.Key
             let cost = g.Sum(x => x.CostUsd)
             let combinedPayload = "[" + string.Join(",", g.Select(x => x.RawJson)) + "]"
@@ -33,8 +33,9 @@ public class GoogleIngestionService(
                 CostUsd = cost,
                 EventKey = eventKey,
                 RawPayload = combinedPayload,
-            }
-        )
+            };
+
+        foreach (var evt in events)
         {
             await repository.RecordEventAsync(evt, ct);
         }

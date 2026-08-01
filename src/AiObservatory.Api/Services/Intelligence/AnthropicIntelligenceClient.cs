@@ -16,23 +16,16 @@ public class AnthropicIntelligenceClient
     /// <summary>True when ANTHROPIC_API_KEY is configured. False = AI features silently disabled.</summary>
     public bool IsConfigured => _client is not null;
 
-    public AnthropicIntelligenceClient(
-        IConfiguration configuration,
-        ILogger<AnthropicIntelligenceClient> logger
-    )
+    public AnthropicIntelligenceClient(IConfiguration configuration, ILogger<AnthropicIntelligenceClient> logger)
     {
         var apiKey = configuration["ANTHROPIC_API_KEY"];
         // Whitespace/empty key means "disabled", same as unset — otherwise an empty-string
         // env var makes IsConfigured true and every worker cycle calls the API and 401s.
-        _client = !string.IsNullOrWhiteSpace(apiKey)
-            ? new AnthropicClient(new APIAuthentication(apiKey))
-            : null;
+        _client = !string.IsNullOrWhiteSpace(apiKey) ? new AnthropicClient(new APIAuthentication(apiKey)) : null;
         _logger = logger;
         if (!IsConfigured)
         {
-            _logger.LogWarning(
-                "ANTHROPIC_API_KEY not set — AI insights and explanations are disabled."
-            );
+            _logger.LogWarning("ANTHROPIC_API_KEY not set — AI insights and explanations are disabled.");
         }
     }
 
@@ -63,10 +56,7 @@ public class AnthropicIntelligenceClient
         {
             Model = AnthropicModels.Claude46Sonnet,
             MaxTokens = 1024,
-            Messages =
-            [
-                new Message { Role = RoleType.User, Content = [new TextContent { Text = prompt }] },
-            ],
+            Messages = [new Message { Role = RoleType.User, Content = [new TextContent { Text = prompt }] }],
         };
 
         var response = await _client.Messages.GetClaudeMessageAsync(parameters, ct);
@@ -75,10 +65,7 @@ public class AnthropicIntelligenceClient
             ?? throw new InvalidOperationException("Explanation response contained no text.");
     }
 
-    public virtual async Task<string> GenerateInsightsJsonAsync(
-        string prompt,
-        CancellationToken ct = default
-    )
+    public virtual async Task<string> GenerateInsightsJsonAsync(string prompt, CancellationToken ct = default)
     {
         if (_client is null)
         {
@@ -111,21 +98,14 @@ public class AnthropicIntelligenceClient
         )!;
 
         var tool = new CommonTool(
-            new CommonFunction(
-                InsightsToolName,
-                "Report AI usage insights as a structured list",
-                insightSchema
-            )
+            new CommonFunction(InsightsToolName, "Report AI usage insights as a structured list", insightSchema)
         );
 
         var parameters = new MessageParameters
         {
             Model = AnthropicModels.Claude46Sonnet,
             MaxTokens = 4096,
-            Messages =
-            [
-                new Message { Role = RoleType.User, Content = [new TextContent { Text = prompt }] },
-            ],
+            Messages = [new Message { Role = RoleType.User, Content = [new TextContent { Text = prompt }] }],
             Tools = [tool],
             ToolChoice = new ToolChoice { Type = ToolChoiceType.Tool, Name = InsightsToolName },
         };
@@ -133,23 +113,14 @@ public class AnthropicIntelligenceClient
         var response = await client.Messages.GetClaudeMessageAsync(parameters, ct);
 
         var toolUse =
-            response
-                .Content.OfType<ToolUseContent>()
-                .FirstOrDefault(t => t.Name == InsightsToolName)
-            ?? throw new InvalidOperationException(
-                "Intelligence response did not contain expected tool use block."
-            );
+            response.Content.OfType<ToolUseContent>().FirstOrDefault(t => t.Name == InsightsToolName)
+            ?? throw new InvalidOperationException("Intelligence response did not contain expected tool use block.");
 
         var insightsArray =
             toolUse.Input?["insights"]?.AsArray()
-            ?? throw new InvalidOperationException(
-                "Intelligence tool use response missing 'insights' array."
-            );
+            ?? throw new InvalidOperationException("Intelligence tool use response missing 'insights' array.");
 
-        _logger.LogInformation(
-            "Intelligence client received {Count} insights from Claude",
-            insightsArray.Count
-        );
+        _logger.LogInformation("Intelligence client received {Count} insights from Claude", insightsArray.Count);
 
         return insightsArray.ToJsonString();
     }

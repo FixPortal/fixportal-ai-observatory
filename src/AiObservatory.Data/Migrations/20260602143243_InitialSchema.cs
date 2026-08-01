@@ -20,10 +20,7 @@ public partial class InitialSchema : Migration
                 Provider = table.Column<string>(type: "text", nullable: true),
                 Period = table.Column<string>(type: "text", nullable: false),
                 ThresholdUsd = table.Column<decimal>(type: "numeric", nullable: false),
-                LastTriggeredAt = table.Column<Instant>(
-                    type: "timestamp with time zone",
-                    nullable: true
-                ),
+                LastTriggeredAt = table.Column<Instant>(type: "timestamp with time zone", nullable: true),
             },
             constraints: table =>
             {
@@ -62,20 +59,14 @@ public partial class InitialSchema : Migration
             columns: table => new
             {
                 Id = table.Column<Guid>(type: "uuid", nullable: false),
-                GeneratedAt = table.Column<Instant>(
-                    type: "timestamp with time zone",
-                    nullable: false
-                ),
+                GeneratedAt = table.Column<Instant>(type: "timestamp with time zone", nullable: false),
                 PeriodStart = table.Column<LocalDate>(type: "date", nullable: false),
                 PeriodEnd = table.Column<LocalDate>(type: "date", nullable: false),
                 InsightType = table.Column<string>(type: "text", nullable: false),
                 Title = table.Column<string>(type: "text", nullable: false),
                 Body = table.Column<string>(type: "text", nullable: false),
                 Data = table.Column<string>(type: "jsonb", nullable: false),
-                AcknowledgedAt = table.Column<Instant>(
-                    type: "timestamp with time zone",
-                    nullable: true
-                ),
+                AcknowledgedAt = table.Column<Instant>(type: "timestamp with time zone", nullable: true),
             },
             constraints: table =>
             {
@@ -108,14 +99,8 @@ public partial class InitialSchema : Migration
             {
                 Id = table.Column<Guid>(type: "uuid", nullable: false),
                 Provider = table.Column<string>(type: "text", nullable: false),
-                OccurredAt = table.Column<Instant>(
-                    type: "timestamp with time zone",
-                    nullable: false
-                ),
-                IngestedAt = table.Column<Instant>(
-                    type: "timestamp with time zone",
-                    nullable: false
-                ),
+                OccurredAt = table.Column<Instant>(type: "timestamp with time zone", nullable: false),
+                IngestedAt = table.Column<Instant>(type: "timestamp with time zone", nullable: false),
                 Model = table.Column<string>(type: "text", nullable: true),
                 InputTokens = table.Column<int>(type: "integer", nullable: false),
                 OutputTokens = table.Column<int>(type: "integer", nullable: false),

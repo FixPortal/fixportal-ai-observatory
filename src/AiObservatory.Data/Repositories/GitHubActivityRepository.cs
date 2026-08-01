@@ -33,11 +33,7 @@ public class GitHubActivityRepository(AiObservatoryDbContext ctx) : IGitHubActiv
             ct
         );
 
-    public Task UpsertCommitAsync(
-        GitHubCommitRecord record,
-        Instant ingestedAt,
-        CancellationToken ct = default
-    ) =>
+    public Task UpsertCommitAsync(GitHubCommitRecord record, Instant ingestedAt, CancellationToken ct = default) =>
         ctx.Database.ExecuteSqlInterpolatedAsync(
             $"""
             INSERT INTO "GitHubCommits"
@@ -76,10 +72,7 @@ public class GitHubActivityRepository(AiObservatoryDbContext ctx) : IGitHubActiv
             ct
         );
 
-    public async Task<GitHubBackfillStatus> GetBackfillStatusAsync(
-        string repo,
-        CancellationToken ct = default
-    ) =>
+    public async Task<GitHubBackfillStatus> GetBackfillStatusAsync(string repo, CancellationToken ct = default) =>
         new(
             await ctx.GitHubPullRequests.AsNoTracking().AnyAsync(p => p.Repo == repo, ct),
             await ctx.GitHubCommits.AsNoTracking().AnyAsync(c => c.Repo == repo, ct),

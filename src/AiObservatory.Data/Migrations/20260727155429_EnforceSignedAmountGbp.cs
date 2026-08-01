@@ -32,10 +32,7 @@ namespace AiObservatory.Data.Migrations
         /// <inheritdoc />
         protected override void Down(MigrationBuilder migrationBuilder)
         {
-            migrationBuilder.DropCheckConstraint(
-                name: "CK_SpendEntry_AmountGbp_SameSign",
-                table: "SpendEntries"
-            );
+            migrationBuilder.DropCheckConstraint(name: "CK_SpendEntry_AmountGbp_SameSign", table: "SpendEntries");
         }
     }
 }

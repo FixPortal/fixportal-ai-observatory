@@ -33,12 +33,7 @@ public class AnthropicIngestionServiceTests
                 ),
             ]);
 
-        var sut = new AnthropicIngestionService(
-            _client,
-            _repo,
-            _clock,
-            NullLogger<AnthropicIngestionService>.Instance
-        );
+        var sut = new AnthropicIngestionService(_client, _repo, _clock, NullLogger<AnthropicIngestionService>.Instance);
         await sut.IngestAsync(date, TestContext.Current.CancellationToken);
 
         await _repo
@@ -63,16 +58,9 @@ public class AnthropicIngestionServiceTests
         var date = new LocalDate(2026, 6, 1);
         _client.GetUsageAsync(date, Arg.Any<CancellationToken>()).Returns([]);
 
-        var sut = new AnthropicIngestionService(
-            _client,
-            _repo,
-            _clock,
-            NullLogger<AnthropicIngestionService>.Instance
-        );
+        var sut = new AnthropicIngestionService(_client, _repo, _clock, NullLogger<AnthropicIngestionService>.Instance);
         await sut.IngestAsync(date, TestContext.Current.CancellationToken);
 
-        await _repo
-            .DidNotReceive()
-            .RecordEventAsync(Arg.Any<UsageEvent>(), Arg.Any<CancellationToken>());
+        await _repo.DidNotReceive().RecordEventAsync(Arg.Any<UsageEvent>(), Arg.Any<CancellationToken>());
     }
 }

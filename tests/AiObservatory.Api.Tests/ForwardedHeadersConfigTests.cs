@@ -48,9 +48,7 @@ public class ForwardedHeadersConfigTests
         request.Headers.Add("X-Forwarded-For", "1.2.3.4"); // attacker-controlled
 
         var response = await client.SendAsync(request, TestContext.Current.CancellationToken);
-        var observedIp = await response.Content.ReadAsStringAsync(
-            TestContext.Current.CancellationToken
-        );
+        var observedIp = await response.Content.ReadAsStringAsync(TestContext.Current.CancellationToken);
 
         // 8.8.8.8 is not in KnownIPNetworks: the spoofed header must be ignored and the
         // real connecting address kept — NOT the attacker-supplied 1.2.3.4.
@@ -67,9 +65,7 @@ public class ForwardedHeadersConfigTests
         request.Headers.Add("X-Forwarded-For", "203.0.113.9"); // real client IP, forwarded by the trusted nginx sidecar
 
         var response = await client.SendAsync(request, TestContext.Current.CancellationToken);
-        var observedIp = await response.Content.ReadAsStringAsync(
-            TestContext.Current.CancellationToken
-        );
+        var observedIp = await response.Content.ReadAsStringAsync(TestContext.Current.CancellationToken);
 
         observedIp.Should().Be("203.0.113.9");
     }
@@ -94,9 +90,7 @@ public class ForwardedHeadersConfigTests
 
                     app.UseForwardedHeaders(Options(Program.ConfigureForwardedHeaders));
 
-                    app.Run(ctx =>
-                        ctx.Response.WriteAsync(ctx.Connection.RemoteIpAddress?.ToString() ?? "")
-                    );
+                    app.Run(ctx => ctx.Response.WriteAsync(ctx.Connection.RemoteIpAddress?.ToString() ?? ""));
                 });
         });
 

@@ -16,8 +16,8 @@ public class OpenAiIngestionService(
         var records = await client.GetDailyUsageAsync(date, ct);
         var groups = records.GroupBy(r => r.Model).ToList();
 
-        foreach (
-            var evt in from g in groups
+        var events =
+            from g in groups
             let model = g.Key
             let inputTokens = g.Sum(x => x.InputTokens)
             let outputTokens = g.Sum(x => x.OutputTokens)
@@ -37,8 +37,9 @@ public class OpenAiIngestionService(
                 CostUsd = cost,
                 EventKey = eventKey,
                 RawPayload = combinedPayload,
-            }
-        )
+            };
+
+        foreach (var evt in events)
         {
             await repository.RecordEventAsync(evt, ct);
         }

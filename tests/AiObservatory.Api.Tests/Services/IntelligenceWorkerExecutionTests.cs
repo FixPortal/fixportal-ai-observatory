@@ -22,20 +22,11 @@ public class IntelligenceWorkerExecutionTests
         repository
             .GetLatestInsightPeriodEndAsync(Arg.Any<CancellationToken>())
             .Returns(Task.FromException<LocalDate?>(new InvalidOperationException("failed")));
-        var budgetCalled = new TaskCompletionSource(
-            TaskCreationOptions.RunContinuationsAsynchronously
-        );
+        var budgetCalled = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         var budget = Budget(repository, clock, () => budgetCalled.TrySetResult());
-        var services = new ServiceCollection()
-            .AddSingleton(repository)
-            .AddSingleton(budget)
-            .BuildServiceProvider();
+        var services = new ServiceCollection().AddSingleton(repository).AddSingleton(budget).BuildServiceProvider();
         var logger = new CapturingLogger();
-        var worker = new IntelligenceWorkerService(
-            services.GetRequiredService<IServiceScopeFactory>(),
-            clock,
-            logger
-        );
+        var worker = new IntelligenceWorkerService(services.GetRequiredService<IServiceScopeFactory>(), clock, logger);
 
         await worker.StartAsync(ct);
         try
@@ -58,9 +49,7 @@ public class IntelligenceWorkerExecutionTests
         var ct = TestContext.Current.CancellationToken;
         var clock = new FakeClock(Instant.FromUtc(2026, 7, 30, 9, 0));
         var repository = Substitute.For<IUsageRepository>();
-        repository
-            .GetLatestInsightPeriodEndAsync(Arg.Any<CancellationToken>())
-            .Returns(new LocalDate(2026, 7, 1));
+        repository.GetLatestInsightPeriodEndAsync(Arg.Any<CancellationToken>()).Returns(new LocalDate(2026, 7, 1));
         var generatedDates = new List<LocalDate>();
         var generator = Substitute.For<IInsightGenerator>();
         generator
@@ -70,9 +59,7 @@ public class IntelligenceWorkerExecutionTests
                 generatedDates.Add(call.Arg<LocalDate>());
                 return 0;
             });
-        var budgetCalled = new TaskCompletionSource(
-            TaskCreationOptions.RunContinuationsAsynchronously
-        );
+        var budgetCalled = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         var budget = Budget(repository, clock, () => budgetCalled.TrySetResult());
         var services = new ServiceCollection()
             .AddSingleton(repository)
@@ -114,15 +101,9 @@ public class IntelligenceWorkerExecutionTests
         var ct = TestContext.Current.CancellationToken;
         var clock = new FakeClock(Instant.FromUtc(2026, 7, 30, 0, 0));
         var repository = Substitute.For<IUsageRepository>();
-        repository
-            .GetLatestInsightPeriodEndAsync(Arg.Any<CancellationToken>())
-            .Returns(new LocalDate(2026, 7, 29));
-        var firstBudgetCall = new TaskCompletionSource(
-            TaskCreationOptions.RunContinuationsAsynchronously
-        );
-        var secondBudgetCall = new TaskCompletionSource(
-            TaskCreationOptions.RunContinuationsAsynchronously
-        );
+        repository.GetLatestInsightPeriodEndAsync(Arg.Any<CancellationToken>()).Returns(new LocalDate(2026, 7, 29));
+        var firstBudgetCall = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var secondBudgetCall = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         var calls = 0;
         var budget = Budget(
             repository,
@@ -139,10 +120,7 @@ public class IntelligenceWorkerExecutionTests
                 }
             }
         );
-        var services = new ServiceCollection()
-            .AddSingleton(repository)
-            .AddSingleton(budget)
-            .BuildServiceProvider();
+        var services = new ServiceCollection().AddSingleton(repository).AddSingleton(budget).BuildServiceProvider();
         var worker = new IntelligenceWorkerService(
             services.GetRequiredService<IServiceScopeFactory>(),
             clock,
@@ -154,10 +132,7 @@ public class IntelligenceWorkerExecutionTests
         {
             await firstBudgetCall.Task.WaitAsync(TimeSpan.FromSeconds(30), ct);
 
-            var completed = await Task.WhenAny(
-                secondBudgetCall.Task,
-                Task.Delay(TimeSpan.FromMilliseconds(100), ct)
-            );
+            var completed = await Task.WhenAny(secondBudgetCall.Task, Task.Delay(TimeSpan.FromMilliseconds(100), ct));
             completed.Should().NotBe(secondBudgetCall.Task);
         }
         finally
@@ -166,11 +141,7 @@ public class IntelligenceWorkerExecutionTests
         }
     }
 
-    private static BudgetAlertService Budget(
-        IUsageRepository repository,
-        IClock clock,
-        Action onCall
-    )
+    private static BudgetAlertService Budget(IUsageRepository repository, IClock clock, Action onCall)
     {
         var budget = Substitute.For<BudgetAlertService>(
             repository,

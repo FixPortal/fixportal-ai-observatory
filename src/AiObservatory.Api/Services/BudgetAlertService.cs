@@ -50,12 +50,7 @@ public class BudgetAlertService(
             _ => (yesterday, yesterday),
         };
 
-    private static bool AlreadyFired(
-        BudgetRule rule,
-        LocalDate today,
-        LocalDate yesterday,
-        LocalDate monthStart
-    )
+    private static bool AlreadyFired(BudgetRule rule, LocalDate today, LocalDate yesterday, LocalDate monthStart)
     {
         if (!rule.LastTriggeredAt.HasValue)
         {
@@ -72,13 +67,7 @@ public class BudgetAlertService(
         };
     }
 
-    private async Task CheckRuleAsync(
-        BudgetRule rule,
-        LocalDate from,
-        LocalDate to,
-        Instant now,
-        CancellationToken ct
-    )
+    private async Task CheckRuleAsync(BudgetRule rule, LocalDate from, LocalDate to, Instant now, CancellationToken ct)
     {
         var aggregates = await repository.GetAggregatesAsync(from, to, ct);
         var relevantAggregates = rule.Provider.HasValue

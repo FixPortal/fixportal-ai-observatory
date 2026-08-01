@@ -22,11 +22,7 @@ public class FxRateProvider(HttpClient http, IMemoryCache cache, ILogger<FxRateP
             return cached;
         }
 
-        var rate = await FetchGbpRateAsync(
-            "https://api.frankfurter.dev/v1/latest?from=USD&to=GBP",
-            "USD->GBP",
-            ct
-        );
+        var rate = await FetchGbpRateAsync("https://api.frankfurter.dev/v1/latest?from=USD&to=GBP", "USD->GBP", ct);
 
         if (rate <= 0m)
         {
@@ -49,11 +45,7 @@ public class FxRateProvider(HttpClient http, IMemoryCache cache, ILogger<FxRateP
     /// fallback because it is the other currency phase-1 entries actually use; every other
     /// currency must fail the write rather than freeze an undetectably wrong rate.
     /// </exception>
-    public virtual async Task<decimal> GetGbpRateOnAsync(
-        string currency,
-        LocalDate on,
-        CancellationToken ct = default
-    )
+    public virtual async Task<decimal> GetGbpRateOnAsync(string currency, LocalDate on, CancellationToken ct = default)
     {
         var code = currency.ToUpperInvariant();
         if (code == "GBP")

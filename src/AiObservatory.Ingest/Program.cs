@@ -39,8 +39,7 @@ var host = Host.CreateDefaultBuilder(args)
                 && !value.StartsWith("@Microsoft.KeyVault(", StringComparison.OrdinalIgnoreCase);
 
             var connectionString =
-                cfg["DB_CONNECTION"]
-                ?? throw new InvalidOperationException("DB_CONNECTION is required");
+                cfg["DB_CONNECTION"] ?? throw new InvalidOperationException("DB_CONNECTION is required");
             services.AddDataLayer(connectionString);
             services.AddSingleton<IClock>(SystemClock.Instance);
 
@@ -69,11 +68,11 @@ var host = Host.CreateDefaultBuilder(args)
                     // An unmatched model prices at FallbackPricing, so a zeroed fallback would
                     // silently record every unknown model at $0 — the opposite of failing closed.
                     .Validate(
-                        o => o.FallbackPricing.Input > 0 && o.FallbackPricing.Output > 0,
+                        o => o.FallbackPricing is { Input: > 0, Output: > 0 },
                         $"{AnthropicPricingOptions.SectionName}:FallbackPricing must have positive Input and Output rates"
                     )
                     .Validate(
-                        o => o.HasPositiveCacheWrite1hRates(),
+                        o => o.HasPositiveCacheWrite1HRates(),
                         $"{AnthropicPricingOptions.SectionName}: every Pricing entry and FallbackPricing must set a positive CacheWrite1h"
                     )
                     .ValidateOnStart();

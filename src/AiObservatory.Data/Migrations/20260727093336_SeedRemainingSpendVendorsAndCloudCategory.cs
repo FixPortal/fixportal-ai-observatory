@@ -21,15 +21,7 @@ namespace AiObservatory.Data.Migrations
         {
             migrationBuilder.InsertData(
                 table: "SpendCategories",
-                columns: new[]
-                {
-                    "Id",
-                    "ArchivedAt",
-                    "ColorVar",
-                    "DisplayName",
-                    "Key",
-                    "SortOrder",
-                },
+                columns: new[] { "Id", "ArchivedAt", "ColorVar", "DisplayName", "Key", "SortOrder" },
                 values: new object[]
                 {
                     new Guid("11111111-1111-1111-1111-111111111105"),
@@ -43,15 +35,7 @@ namespace AiObservatory.Data.Migrations
 
             migrationBuilder.InsertData(
                 table: "SpendVendors",
-                columns: new[]
-                {
-                    "Id",
-                    "ArchivedAt",
-                    "DefaultCategoryId",
-                    "DisplayName",
-                    "Key",
-                    "Provider",
-                },
+                columns: new[] { "Id", "ArchivedAt", "DefaultCategoryId", "DisplayName", "Key", "Provider" },
                 values: new object[,]
                 {
                     {

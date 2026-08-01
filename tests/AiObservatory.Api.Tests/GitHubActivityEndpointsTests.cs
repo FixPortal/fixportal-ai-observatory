@@ -9,10 +9,7 @@ public class GitHubActivityEndpointsTests
     [Fact]
     public void ComputeTurnaroundHours_WhenFirstReviewAtIsNull_ReturnsNull()
     {
-        var result = GitHubActivityEndpoints.ComputeTurnaroundHours(
-            Instant.FromUtc(2026, 7, 1, 9, 0),
-            null
-        );
+        var result = GitHubActivityEndpoints.ComputeTurnaroundHours(Instant.FromUtc(2026, 7, 1, 9, 0), null);
         result.Should().BeNull();
     }
 

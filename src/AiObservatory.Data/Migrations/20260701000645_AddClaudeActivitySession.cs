@@ -17,29 +17,12 @@ namespace AiObservatory.Data.Migrations
                 columns: table => new
                 {
                     Id = table.Column<Guid>(type: "uuid", nullable: false),
-                    SessionId = table.Column<string>(
-                        type: "character varying(200)",
-                        maxLength: 200,
-                        nullable: false
-                    ),
-                    Project = table.Column<string>(
-                        type: "character varying(200)",
-                        maxLength: 200,
-                        nullable: false
-                    ),
-                    StartedAt = table.Column<Instant>(
-                        type: "timestamp with time zone",
-                        nullable: false
-                    ),
-                    LastSeenAt = table.Column<Instant>(
-                        type: "timestamp with time zone",
-                        nullable: false
-                    ),
+                    SessionId = table.Column<string>(type: "character varying(200)", maxLength: 200, nullable: false),
+                    Project = table.Column<string>(type: "character varying(200)", maxLength: 200, nullable: false),
+                    StartedAt = table.Column<Instant>(type: "timestamp with time zone", nullable: false),
+                    LastSeenAt = table.Column<Instant>(type: "timestamp with time zone", nullable: false),
                     ActiveSeconds = table.Column<long>(type: "bigint", nullable: false),
-                    IngestedAt = table.Column<Instant>(
-                        type: "timestamp with time zone",
-                        nullable: false
-                    ),
+                    IngestedAt = table.Column<Instant>(type: "timestamp with time zone", nullable: false),
                 },
                 constraints: table =>
                 {

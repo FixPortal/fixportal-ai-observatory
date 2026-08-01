@@ -52,16 +52,11 @@ public class IngestOptions
     // several. Without that, splitting the literal on ',' would register the GitHub client
     // with garbage repos and 404 hourly forever.
     private static string[] Clean(IEnumerable<string> values) =>
-        [
-            .. values
-                .Select(v => v.Trim())
-                .Where(IsOwnerRepo)
-                .Distinct(StringComparer.OrdinalIgnoreCase),
-        ];
+        [.. values.Select(v => v.Trim()).Where(IsOwnerRepo).Distinct(StringComparer.OrdinalIgnoreCase)];
 
     private static bool IsOwnerRepo(string value)
     {
         var parts = value.Split('/');
-        return parts.Length == 2 && parts[0].Length > 0 && parts[1].Length > 0;
+        return parts is [{ Length: > 0 }, { Length: > 0 }];
     }
 }

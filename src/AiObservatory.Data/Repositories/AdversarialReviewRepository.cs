@@ -12,10 +12,7 @@ public class AdversarialReviewRepository(AiObservatoryDbContext ctx) : IAdversar
     // run emitted with placeholder zeros (or a partial/incremental batch
     // aggregate) be backfilled with real numbers. RecordedAt is deliberately
     // preserved on update so a corrected run keeps its chronological position.
-    public async Task<(Guid Id, bool Existed)> RecordRunAsync(
-        AdversarialReviewRun run,
-        CancellationToken ct = default
-    )
+    public async Task<(Guid Id, bool Existed)> RecordRunAsync(AdversarialReviewRun run, CancellationToken ct = default)
     {
         ArgumentNullException.ThrowIfNull(run);
 
@@ -37,9 +34,7 @@ public class AdversarialReviewRepository(AiObservatoryDbContext ctx) : IAdversar
             await ctx.SaveChangesAsync(ct);
         }
         catch (DbUpdateException ex)
-            when (ex.InnerException
-                    is PostgresException { SqlState: PostgresErrorCodes.UniqueViolation }
-            )
+            when (ex.InnerException is PostgresException { SqlState: PostgresErrorCodes.UniqueViolation })
         {
             // Lost an insert race with a concurrent emit of the same participant;
             // apply our values as an update so last-write-wins still holds.
@@ -47,9 +42,7 @@ public class AdversarialReviewRepository(AiObservatoryDbContext ctx) : IAdversar
             await UpdateMetricsAsync(run, ct);
             var winnerId = await ctx
                 .AdversarialReviewRuns.AsNoTracking()
-                .Where(r =>
-                    r.RunId == run.RunId && r.Reviewer == run.Reviewer && r.Role == run.Role
-                )
+                .Where(r => r.RunId == run.RunId && r.Reviewer == run.Reviewer && r.Role == run.Role)
                 .Select(r => r.Id)
                 .FirstAsync(ct);
             return (winnerId, Existed: true);
@@ -62,9 +55,7 @@ public class AdversarialReviewRepository(AiObservatoryDbContext ctx) : IAdversar
     // not touch Id or RecordedAt (identity + chronological anchor).
     private Task<int> UpdateMetricsAsync(AdversarialReviewRun run, CancellationToken ct) =>
         ctx
-            .AdversarialReviewRuns.Where(r =>
-                r.RunId == run.RunId && r.Reviewer == run.Reviewer && r.Role == run.Role
-            )
+            .AdversarialReviewRuns.Where(r => r.RunId == run.RunId && r.Reviewer == run.Reviewer && r.Role == run.Role)
             .ExecuteUpdateAsync(
                 s =>
                     s.SetProperty(r => r.Model, run.Model)
@@ -94,9 +85,7 @@ public class AdversarialReviewRepository(AiObservatoryDbContext ctx) : IAdversar
         return await query.OrderByDescending(r => r.RecordedAt).ToListAsync(ct);
     }
 
-    public async Task<IReadOnlyList<AdversarialReviewStats>> GetStatsAsync(
-        CancellationToken ct = default
-    )
+    public async Task<IReadOnlyList<AdversarialReviewStats>> GetStatsAsync(CancellationToken ct = default)
     {
         // Materialise then group in memory. This is a small audit table (one row
         // per reviewer per review run), so a server-side GROUP BY buys nothing —
@@ -107,12 +96,7 @@ public class AdversarialReviewRepository(AiObservatoryDbContext ctx) : IAdversar
         // are null, matching the intended semantics.
         var runs = await ctx.AdversarialReviewRuns.AsNoTracking().ToListAsync(ct);
 
-        return runs.GroupBy(r => new
-            {
-                r.Reviewer,
-                r.Model,
-                r.Role,
-            })
+        return runs.GroupBy(r => (r.Reviewer, r.Model, r.Role))
             .Select(g => new AdversarialReviewStats(
                 g.Key.Reviewer,
                 g.Key.Model,

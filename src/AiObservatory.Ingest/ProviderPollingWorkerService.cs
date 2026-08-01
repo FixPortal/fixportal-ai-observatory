@@ -48,9 +48,7 @@ public class ProviderPollingWorkerService(
     /// timestamp beside it is the one from that cycle.
     /// </remarks>
     public Instant? LastCycleCompletedAt =>
-        CyclesCompleted == 0
-            ? null
-            : Instant.FromUnixTimeTicks(Interlocked.Read(ref _lastCycleCompletedTicks));
+        CyclesCompleted == 0 ? null : Instant.FromUnixTimeTicks(Interlocked.Read(ref _lastCycleCompletedTicks));
 
     /// <summary>Poll cycles finished since start. Exposed for /healthz.</summary>
     public int CyclesCompleted => Volatile.Read(ref _cyclesCompleted);
@@ -75,10 +73,7 @@ public class ProviderPollingWorkerService(
                 .Select(offset => yesterday.PlusDays(-(lookbackDays - 1 - offset)))
                 .ToList();
             await RunPollAsync(dates, stoppingToken);
-            Interlocked.Exchange(
-                ref _lastCycleCompletedTicks,
-                clock.GetCurrentInstant().ToUnixTimeTicks()
-            );
+            Interlocked.Exchange(ref _lastCycleCompletedTicks, clock.GetCurrentInstant().ToUnixTimeTicks());
             Interlocked.Increment(ref _cyclesCompleted);
             await Task.Delay(interval, stoppingToken);
         }
@@ -100,42 +95,17 @@ public class ProviderPollingWorkerService(
     }
 
     private static string State<TService>(IServiceProviderIsService services)
-        where TService : class =>
-        services.IsService(typeof(TService)) ? "enabled" : "NOT CONFIGURED";
+        where TService : class => services.IsService(typeof(TService)) ? "enabled" : "NOT CONFIGURED";
 
     private async Task RunPollAsync(IReadOnlyList<LocalDate> dates, CancellationToken ct)
     {
         await using var scope = scopeFactory.CreateAsyncScope();
         var sp = scope.ServiceProvider;
 
-        await TryIngestAsync<AnthropicIngestionService>(
-            sp,
-            "Anthropic",
-            (s, d) => s.IngestAsync(d, ct),
-            dates,
-            ct
-        );
-        await TryIngestAsync<CopilotIngestionService>(
-            sp,
-            "Copilot",
-            (s, d) => s.IngestAsync(d, ct),
-            dates,
-            ct
-        );
-        await TryIngestAsync<GoogleIngestionService>(
-            sp,
-            "Google",
-            (s, d) => s.IngestAsync(d, ct),
-            dates,
-            ct
-        );
-        await TryIngestAsync<OpenAiIngestionService>(
-            sp,
-            "OpenAI",
-            (s, d) => s.IngestAsync(d, ct),
-            dates,
-            ct
-        );
+        await TryIngestAsync<AnthropicIngestionService>(sp, "Anthropic", (s, d) => s.IngestAsync(d, ct), dates, ct);
+        await TryIngestAsync<CopilotIngestionService>(sp, "Copilot", (s, d) => s.IngestAsync(d, ct), dates, ct);
+        await TryIngestAsync<GoogleIngestionService>(sp, "Google", (s, d) => s.IngestAsync(d, ct), dates, ct);
+        await TryIngestAsync<OpenAiIngestionService>(sp, "OpenAI", (s, d) => s.IngestAsync(d, ct), dates, ct);
         // GitHub takes a since-date RANGE per call (unlike the other providers'
         // single-day calls), so it's invoked once per cycle with the earliest
         // lookback date, not once per date in `dates`.

@@ -117,9 +117,7 @@ public class AnthropicPricingResolverTests
 
         var rates = options.ResolveRates("claude-sonnet-5-preview", AfterIntroWindow);
 
-        rates
-            .Input.Should()
-            .Be(3.0m, "the expired longer-prefix entry must be filtered out before ordering");
+        rates.Input.Should().Be(3.0m, "the expired longer-prefix entry must be filtered out before ordering");
     }
 
     [Fact]
@@ -164,13 +162,7 @@ public class AnthropicPricingResolverTests
 
         // One million of each class, so the cost is simply the sum of the four rates.
         // No one-hour portion is supplied, so the whole cache write prices at CacheWrite.
-        var cost = AnthropicPricingResolver.ComputeCost(
-            rates,
-            1_000_000,
-            1_000_000,
-            1_000_000,
-            1_000_000
-        );
+        var cost = AnthropicPricingResolver.ComputeCost(rates, 1_000_000, 1_000_000, 1_000_000, 1_000_000);
 
         cost.Should().Be(36.75m);
     }
@@ -221,8 +213,7 @@ public class AnthropicPricingResolverTests
             cacheWrite1hTokens: 1_500_000
         );
 
-        cost.Should()
-            .Be(15.00m, "the overflow prices as one-hour, and the 5m remainder floors at 0");
+        cost.Should().Be(15.00m, "the overflow prices as one-hour, and the 5m remainder floors at 0");
     }
 
     private static PricingRates OpusRates =>

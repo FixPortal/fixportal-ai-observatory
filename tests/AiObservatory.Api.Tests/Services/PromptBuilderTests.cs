@@ -49,13 +49,7 @@ public class PromptBuilderTests
 
         var sut = new PromptBuilder();
         // USD-native $7.50 total at a 0.80 USD->GBP rate => £6.00.
-        var prompt = sut.Build(
-            aggregates,
-            subscriptions,
-            new LocalDate(2026, 6, 1),
-            new LocalDate(2026, 6, 1),
-            0.80m
-        );
+        var prompt = sut.Build(aggregates, subscriptions, new LocalDate(2026, 6, 1), new LocalDate(2026, 6, 1), 0.80m);
 
         prompt.Should().Contain("£6.00"); // total API spend, converted to GBP
         prompt.Should().NotContain("$"); // never report in dollars
@@ -81,13 +75,7 @@ public class PromptBuilderTests
         };
 
         var sut = new PromptBuilder();
-        var prompt = sut.Build(
-            aggregates,
-            [],
-            new LocalDate(2026, 6, 1),
-            new LocalDate(2026, 6, 1),
-            1m
-        );
+        var prompt = sut.Build(aggregates, [], new LocalDate(2026, 6, 1), new LocalDate(2026, 6, 1), 1m);
 
         prompt.Should().Contain("cache");
     }

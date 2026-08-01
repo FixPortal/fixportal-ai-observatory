@@ -38,10 +38,7 @@ public class GitHubBillingClientTests
         items[0].Sku.Should().Be("Code Quality AI Credits");
         items[0]
             .NetAmount.Should()
-            .Be(
-                12.0141527m,
-                "net is gross minus the discount — gross would double-count the included allowance"
-            );
+            .Be(12.0141527m, "net is gross minus the discount — gross would double-count the included allowance");
         handler
             .Requested.Should()
             .ContainSingle()

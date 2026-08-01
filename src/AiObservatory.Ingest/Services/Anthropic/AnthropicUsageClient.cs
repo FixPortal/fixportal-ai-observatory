@@ -22,20 +22,14 @@ public class AnthropicUsageClient(
     // token is not advancing (e.g. an API change) — bail rather than loop unbounded.
     private const int MaxPages = 100;
 
-    public async Task<IReadOnlyList<AnthropicUsageRecord>> GetUsageAsync(
-        LocalDate date,
-        CancellationToken ct = default
-    )
+    public async Task<IReadOnlyList<AnthropicUsageRecord>> GetUsageAsync(LocalDate date, CancellationToken ct = default)
     {
         var startInstant = date.AtStartOfDayInZone(DateTimeZone.Utc).ToInstant();
         var endInstant = date.PlusDays(1).AtStartOfDayInZone(DateTimeZone.Utc).ToInstant();
         var startStr = startInstant.ToString();
         var endStr = endInstant.ToString();
 
-        var options = new JsonSerializerOptions
-        {
-            PropertyNamingPolicy = JsonNamingPolicy.SnakeCaseLower,
-        };
+        var options = new JsonSerializerOptions { PropertyNamingPolicy = JsonNamingPolicy.SnakeCaseLower };
         var allRecords = new List<AnthropicUsageRecord>();
 
         string? nextPage = null;
@@ -90,9 +84,7 @@ public class AnthropicUsageClient(
         {
             if (result.InputTokens is null || result.OutputTokens is null)
             {
-                throw new JsonException(
-                    "Anthropic usage result is missing input_tokens or output_tokens."
-                );
+                throw new JsonException("Anthropic usage result is missing input_tokens or output_tokens.");
             }
 
             var model = result.Model ?? "unknown";
@@ -166,11 +158,7 @@ public class AnthropicUsageClient(
         return AnthropicPricingResolver.ComputeCost(rates, input, output, cacheRead, cacheWrite);
     }
 
-    private sealed record AnthropicUsageApiResponse(
-        List<AnthropicUsageBucket>? Data,
-        bool? HasMore,
-        string? NextPage
-    );
+    private sealed record AnthropicUsageApiResponse(List<AnthropicUsageBucket>? Data, bool? HasMore, string? NextPage);
 
     private sealed record AnthropicUsageBucket(
         string? StartingAt,

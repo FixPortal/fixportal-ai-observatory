@@ -69,12 +69,7 @@ public static class InsightsEndpoints
 
         app.MapPost(
             "/insights/{id:guid}/explain",
-            async (
-                Guid id,
-                AiObservatoryDbContext db,
-                AnthropicIntelligenceClient client,
-                CancellationToken ct
-            ) =>
+            async (Guid id, AiObservatoryDbContext db, AnthropicIntelligenceClient client, CancellationToken ct) =>
             {
                 var insight = await db
                     .Insights.AsNoTracking()
@@ -91,11 +86,7 @@ public static class InsightsEndpoints
                     return Results.Problem("ANTHROPIC_API_KEY is not configured.", statusCode: 503);
                 }
 
-                var explanation = await client.GenerateExplanationAsync(
-                    insight.Title,
-                    insight.Body,
-                    ct
-                );
+                var explanation = await client.GenerateExplanationAsync(insight.Title, insight.Body, ct);
                 return Results.Ok(new { explanation });
             }
         );

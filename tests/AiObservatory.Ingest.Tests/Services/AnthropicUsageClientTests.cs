@@ -11,19 +11,12 @@ namespace AiObservatory.Ingest.Tests.Services;
 
 public class AnthropicUsageClientTests
 {
-    private static HttpResponseMessage CreateResponse(
-        HttpStatusCode statusCode,
-        string? json = null
-    )
+    private static HttpResponseMessage CreateResponse(HttpStatusCode statusCode, string? json = null)
     {
         var response = new HttpResponseMessage(statusCode);
         if (json is not null)
         {
-            response.Content = new StringContent(
-                json,
-                System.Text.Encoding.UTF8,
-                "application/json"
-            );
+            response.Content = new StringContent(json, System.Text.Encoding.UTF8, "application/json");
         }
 
         return response;
@@ -115,15 +108,8 @@ public class AnthropicUsageClientTests
               "next_page": null
             }
             """;
-        var http = new HttpClient(new StubHandler(json))
-        {
-            BaseAddress = new Uri("https://api.anthropic.com"),
-        };
-        return new AnthropicUsageClient(
-            http,
-            NullLogger<AnthropicUsageClient>.Instance,
-            Options.Create(TestPricing)
-        );
+        var http = new HttpClient(new StubHandler(json)) { BaseAddress = new Uri("https://api.anthropic.com") };
+        return new AnthropicUsageClient(http, NullLogger<AnthropicUsageClient>.Instance, Options.Create(TestPricing));
     }
 
     [Fact]
@@ -163,20 +149,15 @@ public class AnthropicUsageClientTests
     public async Task GetUsageAsync_WhenHasMoreNeverResolves_StopsAtMaxPages()
     {
         using var handler = new NeverResolvingHandler();
-        using var http = new HttpClient(handler, disposeHandler: false)
-        {
-            BaseAddress = new Uri("https://api.anthropic.com"),
-        };
+        using var http = new HttpClient(handler, disposeHandler: false);
+        http.BaseAddress = new Uri("https://api.anthropic.com");
         var sut = new AnthropicUsageClient(
             http,
             NullLogger<AnthropicUsageClient>.Instance,
             Options.Create(TestPricing)
         );
 
-        var records = await sut.GetUsageAsync(
-            new LocalDate(2026, 7, 1),
-            TestContext.Current.CancellationToken
-        );
+        var records = await sut.GetUsageAsync(new LocalDate(2026, 7, 1), TestContext.Current.CancellationToken);
 
         records.Should().BeEmpty();
         handler.RequestCount.Should().Be(100);
@@ -188,18 +169,15 @@ public class AnthropicUsageClientTests
     [InlineData(HttpStatusCode.InternalServerError)]
     public async Task GetUsageAsync_ThrowsWhenTheProviderReturnsAnError(HttpStatusCode statusCode)
     {
-        using var http = new HttpClient(new StatusHandler(statusCode))
-        {
-            BaseAddress = new Uri("https://api.anthropic.com"),
-        };
+        using var http = new HttpClient(new StatusHandler(statusCode));
+        http.BaseAddress = new Uri("https://api.anthropic.com");
         var sut = new AnthropicUsageClient(
             http,
             NullLogger<AnthropicUsageClient>.Instance,
             Options.Create(TestPricing)
         );
 
-        var act = () =>
-            sut.GetUsageAsync(new LocalDate(2026, 7, 1), TestContext.Current.CancellationToken);
+        var act = () => sut.GetUsageAsync(new LocalDate(2026, 7, 1), TestContext.Current.CancellationToken);
 
         await act.Should().ThrowAsync<HttpRequestException>();
     }
@@ -227,18 +205,15 @@ public class AnthropicUsageClientTests
               "next_page": null
             }
             """;
-        using var http = new HttpClient(new StubHandler(json))
-        {
-            BaseAddress = new Uri("https://api.anthropic.com"),
-        };
+        using var http = new HttpClient(new StubHandler(json));
+        http.BaseAddress = new Uri("https://api.anthropic.com");
         var sut = new AnthropicUsageClient(
             http,
             NullLogger<AnthropicUsageClient>.Instance,
             Options.Create(TestPricing)
         );
 
-        var act = () =>
-            sut.GetUsageAsync(new LocalDate(2026, 7, 1), TestContext.Current.CancellationToken);
+        var act = () => sut.GetUsageAsync(new LocalDate(2026, 7, 1), TestContext.Current.CancellationToken);
 
         await act.Should().ThrowAsync<JsonException>();
     }

@@ -64,10 +64,7 @@ public class GitHubActivityEndpointsWafTests(AiObservatoryApiFactory factory)
         var summaries = await response.Content.ReadFromJsonAsync<List<GitHubCommitSummaryRow>>(
             TestContext.Current.CancellationToken
         );
-        var row = summaries
-            .Should()
-            .ContainSingle(s => s.Repo == "FixPortal/waf-commit-summary-test")
-            .Which;
+        var row = summaries.Should().ContainSingle(s => s.Repo == "FixPortal/waf-commit-summary-test").Which;
         row.CommitCount.Should().Be(2);
         row.Additions.Should().Be(15);
         row.Deletions.Should().Be(3);
@@ -166,10 +163,5 @@ public class GitHubActivityEndpointsWafTests(AiObservatoryApiFactory factory)
         summaries.Should().NotContain(s => s.Repo == "someoneelse/not-ours");
     }
 
-    private sealed record GitHubCommitSummaryRow(
-        string Repo,
-        int CommitCount,
-        int Additions,
-        int Deletions
-    );
+    private sealed record GitHubCommitSummaryRow(string Repo, int CommitCount, int Additions, int Deletions);
 }

@@ -69,9 +69,7 @@ public sealed class AiObservatoryApiFactory : WebApplicationFactory<Program>, IA
         // entry point — see CreateHost below, which drives DB_CONNECTION/API-key config via
         // process environment variables instead.
         builder.UseEnvironment(Environment);
-        builder.ConfigureAppConfiguration(config =>
-            config.AddInMemoryCollection(ConfigurationOverrides)
-        );
+        builder.ConfigureAppConfiguration(config => config.AddInMemoryCollection(ConfigurationOverrides));
     }
 
     protected override IHost CreateHost(IHostBuilder builder)
@@ -85,10 +83,7 @@ public sealed class AiObservatoryApiFactory : WebApplicationFactory<Program>, IA
             _dbConnectionOverrideSet ? _dbConnectionOverride : _connectionString
         );
         System.Environment.SetEnvironmentVariable("OBSERVATORY_API_KEY", ApiKeyOverride);
-        System.Environment.SetEnvironmentVariable(
-            "OBSERVATORY_READONLY_API_KEY",
-            ReadOnlyKeyOverride
-        );
+        System.Environment.SetEnvironmentVariable("OBSERVATORY_READONLY_API_KEY", ReadOnlyKeyOverride);
         System.Environment.SetEnvironmentVariable("SWA_ORIGIN", "https://example.test");
         return base.CreateHost(builder);
     }

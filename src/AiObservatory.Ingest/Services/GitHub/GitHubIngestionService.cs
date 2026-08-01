@@ -32,8 +32,7 @@ public class GitHubIngestionService(
             try
             {
                 var status = await repository.GetBackfillStatusAsync(repo, ct);
-                LocalDate SinceDate(bool hasBackfilled) =>
-                    hasBackfilled ? date : date.PlusDays(-BackfillDays);
+                LocalDate SinceDate(bool hasBackfilled) => hasBackfilled ? date : date.PlusDays(-BackfillDays);
                 var prsSince = SinceDate(status.HasPullRequests);
                 var commitsSince = SinceDate(status.HasCommits);
                 var runsSince = SinceDate(status.HasWorkflowRuns);
@@ -66,10 +65,7 @@ public class GitHubIngestionService(
             }
             catch (GitHubRateLimitExceededException ex)
             {
-                logger.LogWarning(
-                    ex,
-                    "GitHub: aborting remaining repos this poll cycle due to rate limit"
-                );
+                logger.LogWarning(ex, "GitHub: aborting remaining repos this poll cycle due to rate limit");
                 return failedRepoCount;
             }
             catch (OperationCanceledException) when (ct.IsCancellationRequested)
@@ -78,11 +74,7 @@ public class GitHubIngestionService(
             }
             catch (Exception ex)
             {
-                logger.LogError(
-                    ex,
-                    "GitHub: failed to ingest {Repo}; skipping for this cycle",
-                    repo
-                );
+                logger.LogError(ex, "GitHub: failed to ingest {Repo}; skipping for this cycle", repo);
                 failedRepoCount++;
             }
         }

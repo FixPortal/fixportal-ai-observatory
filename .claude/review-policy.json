@@ -38,6 +38,8 @@
     "**/*.bicep",
     ".github/workflows/**",
     ".config/dotnet-tools.json",
+    "nuget.config",
+    "Directory.Build.props",
     "src/AiObservatory.Data/Spend/**",
     "src/AiObservatory.Web/src/auth/**"
   ],

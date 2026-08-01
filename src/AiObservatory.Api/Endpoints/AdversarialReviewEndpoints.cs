@@ -7,9 +7,7 @@ public static class AdversarialReviewEndpoints
 {
     // Returning the builder is the standard fluent endpoint-mapping convention.
     // ReSharper disable once UnusedMethodReturnValue.Global
-    public static IEndpointRouteBuilder MapAdversarialReviewEndpoints(
-        this IEndpointRouteBuilder app
-    )
+    public static IEndpointRouteBuilder MapAdversarialReviewEndpoints(this IEndpointRouteBuilder app)
     {
         app.MapPost(
                 "/adversarial-review/runs",

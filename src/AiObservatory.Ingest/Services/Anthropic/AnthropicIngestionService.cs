@@ -16,8 +16,8 @@ public class AnthropicIngestionService(
         var records = await client.GetUsageAsync(date, ct);
         var groups = records.GroupBy(r => new { r.Date, r.Model }).ToList();
 
-        foreach (
-            var evt in from g in groups
+        var events =
+            from g in groups
             let rDate = g.Key.Date
             let model = g.Key.Model
             let input = g.Sum(x => x.InputTokens)
@@ -40,8 +40,9 @@ public class AnthropicIngestionService(
                 CostUsd = cost,
                 EventKey = eventKey,
                 RawPayload = combinedPayload,
-            }
-        )
+            };
+
+        foreach (var evt in events)
         {
             await repository.RecordEventAsync(evt, ct);
         }

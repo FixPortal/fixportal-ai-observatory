@@ -15,10 +15,7 @@ public class UsageRepository(AiObservatoryDbContext ctx) : IUsageRepository
         await ctx.SaveChangesAsync(ct);
     }
 
-    public async Task<RecordEventResult> RecordEventAsync(
-        UsageEvent evt,
-        CancellationToken ct = default
-    )
+    public async Task<RecordEventResult> RecordEventAsync(UsageEvent evt, CancellationToken ct = default)
     {
         ArgumentNullException.ThrowIfNull(evt);
         var providerStr = evt.Provider.ToString();
@@ -46,8 +43,7 @@ public class UsageRepository(AiObservatoryDbContext ctx) : IUsageRepository
         }
         catch (DbUpdateException ex)
             when (evt.EventKey is not null
-                && ex.InnerException
-                    is PostgresException { SqlState: PostgresErrorCodes.UniqueViolation }
+                && ex.InnerException is PostgresException { SqlState: PostgresErrorCodes.UniqueViolation }
             )
         {
             // Lost a concurrent race on the EventKey unique index: another request
@@ -83,20 +79,13 @@ public class UsageRepository(AiObservatoryDbContext ctx) : IUsageRepository
         return new RecordEventResult(evt.Id, IsDuplicate: false);
     }
 
-    public async Task<PurgeResult> PurgeProviderAsync(
-        Provider provider,
-        CancellationToken ct = default
-    )
+    public async Task<PurgeResult> PurgeProviderAsync(Provider provider, CancellationToken ct = default)
     {
         await using var tx = await ctx.Database.BeginTransactionAsync(ct);
         // ExecuteDeleteAsync issues a single bulk DELETE per table (no entity tracking).
         // The EventKey/Provider value converters make the enum comparison translate to SQL.
-        var deletedEvents = await ctx
-            .UsageEvents.Where(e => e.Provider == provider)
-            .ExecuteDeleteAsync(ct);
-        var deletedAggregates = await ctx
-            .DailyAggregates.Where(a => a.Provider == provider)
-            .ExecuteDeleteAsync(ct);
+        var deletedEvents = await ctx.UsageEvents.Where(e => e.Provider == provider).ExecuteDeleteAsync(ct);
+        var deletedAggregates = await ctx.DailyAggregates.Where(a => a.Provider == provider).ExecuteDeleteAsync(ct);
         await tx.CommitAsync(ct);
         return new PurgeResult(deletedEvents, deletedAggregates);
     }
@@ -154,11 +143,7 @@ public class UsageRepository(AiObservatoryDbContext ctx) : IUsageRepository
         return await ctx.BudgetRules.AsNoTracking().ToListAsync(ct);
     }
 
-    public async Task SetBudgetRuleTriggeredAsync(
-        Guid ruleId,
-        Instant triggeredAt,
-        CancellationToken ct = default
-    )
+    public async Task SetBudgetRuleTriggeredAsync(Guid ruleId, Instant triggeredAt, CancellationToken ct = default)
     {
         await ctx
             .BudgetRules.Where(r => r.Id == ruleId)
@@ -172,9 +157,7 @@ public class UsageRepository(AiObservatoryDbContext ctx) : IUsageRepository
         await ctx.SaveChangesAsync(ct);
     }
 
-    public async Task<IReadOnlyList<Insight>> GetUnacknowledgedInsightsAsync(
-        CancellationToken ct = default
-    )
+    public async Task<IReadOnlyList<Insight>> GetUnacknowledgedInsightsAsync(CancellationToken ct = default)
     {
         return await ctx
             .Insights.AsNoTracking()
@@ -183,11 +166,7 @@ public class UsageRepository(AiObservatoryDbContext ctx) : IUsageRepository
             .ToListAsync(ct);
     }
 
-    public async Task AcknowledgeInsightAsync(
-        Guid insightId,
-        Instant at,
-        CancellationToken ct = default
-    )
+    public async Task AcknowledgeInsightAsync(Guid insightId, Instant at, CancellationToken ct = default)
     {
         await ctx
             .Insights.Where(i => i.Id == insightId)
@@ -228,10 +207,7 @@ public class UsageRepository(AiObservatoryDbContext ctx) : IUsageRepository
         // F3: open transaction with RepeatableRead BEFORE reading the snapshot so a concurrent
         // PATCH cannot read the same OldCostUsd, compute the same delta, and double-apply it
         // to DailyAggregates.
-        await using var tx = await ctx.Database.BeginTransactionAsync(
-            IsolationLevel.RepeatableRead,
-            ct
-        );
+        await using var tx = await ctx.Database.BeginTransactionAsync(IsolationLevel.RepeatableRead, ct);
 
         // F1: scope lookup to (Provider, EventKey) to match the unique index contract.
         // AsNoTracking is load-bearing here: the ExecuteUpdateAsync below writes via SQL

@@ -28,14 +28,15 @@ cd src/AiObservatory.Web && npm install && npm run dev
 
 ## Before you open a PR
 
-Run the full local check — CI runs the same and must pass before a merge:
+Format locally, then run the full check. CI verifies formatting with
+`dotnet csharpier check .` and must pass before a merge:
 
 ```powershell
 dotnet tool restore
 ```
 
 ```powershell
-dotnet csharpier check .
+dotnet csharpier format .
 ```
 
 ```powershell

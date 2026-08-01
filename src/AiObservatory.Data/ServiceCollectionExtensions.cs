@@ -8,10 +8,7 @@ public static class ServiceCollectionExtensions
 {
     // Returning the service collection is the standard fluent DI-registration convention.
     // ReSharper disable once UnusedMethodReturnValue.Global
-    public static IServiceCollection AddDataLayer(
-        this IServiceCollection services,
-        string connectionString
-    )
+    public static IServiceCollection AddDataLayer(this IServiceCollection services, string connectionString)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(connectionString);
         services.AddDbContext<AiObservatoryDbContext>(options =>

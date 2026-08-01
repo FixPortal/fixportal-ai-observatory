@@ -24,10 +24,7 @@ public class AggregatesEndpointsWafTests(AiObservatoryApiFactory factory)
     {
         using var client = factory.CreateReadOnlyClient();
 
-        var response = await client.GetAsync(
-            $"/api/aggregates?{param}={value}",
-            TestContext.Current.CancellationToken
-        );
+        var response = await client.GetAsync($"/api/aggregates?{param}={value}", TestContext.Current.CancellationToken);
 
         response.StatusCode.Should().Be(HttpStatusCode.BadRequest);
     }
@@ -76,9 +73,7 @@ public class AggregatesEndpointsWafTests(AiObservatoryApiFactory factory)
         );
         response.EnsureSuccessStatusCode();
 
-        var rows = await response.Content.ReadFromJsonAsync<List<AggregateRow>>(
-            TestContext.Current.CancellationToken
-        );
+        var rows = await response.Content.ReadFromJsonAsync<List<AggregateRow>>(TestContext.Current.CancellationToken);
         rows.Should().ContainSingle();
         // Regression guard: must be strict yyyy-MM-dd, never the server culture's long-date
         // format ("29 May 2019") that broke the frontend's slice/sort and scrambled the axis.
@@ -88,11 +83,10 @@ public class AggregatesEndpointsWafTests(AiObservatoryApiFactory factory)
     [Fact]
     public async Task GetAggregates_WithoutBoundsReturnsTheLatestThirtyCalendarDays()
     {
-        LocalDate today;
         using (var scope = factory.Services.CreateScope())
         {
             var services = scope.ServiceProvider;
-            today = services.GetRequiredService<IClock>().GetCurrentInstant().InUtc().Date;
+            var today = services.GetRequiredService<IClock>().GetCurrentInstant().InUtc().Date;
             var db = services.GetRequiredService<AiObservatoryDbContext>();
             db.DailyAggregates.AddRange(
                 Aggregate(today.PlusDays(-29), "default-window-inside"),
@@ -131,11 +125,7 @@ public class AggregatesEndpointsWafTests(AiObservatoryApiFactory factory)
         rows.Should().ContainSingle().Which.Provider.Should().Be("openai");
     }
 
-    private static DailyAggregate Aggregate(
-        LocalDate date,
-        string model,
-        Provider provider = Provider.Anthropic
-    ) =>
+    private static DailyAggregate Aggregate(LocalDate date, string model, Provider provider = Provider.Anthropic) =>
         new()
         {
             Date = date,

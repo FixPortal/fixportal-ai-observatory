@@ -3,61 +3,30 @@ using Microsoft.EntityFrameworkCore;
 
 namespace AiObservatory.Data;
 
-public class AiObservatoryDbContext(DbContextOptions<AiObservatoryDbContext> options)
-    : DbContext(options)
+public class AiObservatoryDbContext(DbContextOptions<AiObservatoryDbContext> options) : DbContext(options)
 {
     // Seed ids for SpendCategory/SpendVendor (spec §2). Fixed rather than Guid.NewGuid()
     // so HasData produces the same INSERT every time a migration is scaffolded -- a
     // random id here would make every future `dotnet ef migrations add` see a phantom
     // diff and try to delete-and-recreate these rows.
-    private static readonly Guid CodeReviewCategoryId = Guid.Parse(
-        "11111111-1111-1111-1111-111111111101"
-    );
-    private static readonly Guid CreditsCategoryId = Guid.Parse(
-        "11111111-1111-1111-1111-111111111102"
-    );
+    private static readonly Guid CodeReviewCategoryId = Guid.Parse("11111111-1111-1111-1111-111111111101");
+    private static readonly Guid CreditsCategoryId = Guid.Parse("11111111-1111-1111-1111-111111111102");
     private static readonly Guid CiCategoryId = Guid.Parse("11111111-1111-1111-1111-111111111103");
-    private static readonly Guid SubscriptionCategoryId = Guid.Parse(
-        "11111111-1111-1111-1111-111111111104"
-    );
-    private static readonly Guid CloudCategoryId = Guid.Parse(
-        "11111111-1111-1111-1111-111111111105"
-    );
+    private static readonly Guid SubscriptionCategoryId = Guid.Parse("11111111-1111-1111-1111-111111111104");
+    private static readonly Guid CloudCategoryId = Guid.Parse("11111111-1111-1111-1111-111111111105");
 
-    private static readonly Guid AnthropicVendorId = Guid.Parse(
-        "22222222-2222-2222-2222-222222222201"
-    );
-    private static readonly Guid GitHubActionsVendorId = Guid.Parse(
-        "22222222-2222-2222-2222-222222222202"
-    );
-    private static readonly Guid CodeRabbitVendorId = Guid.Parse(
-        "22222222-2222-2222-2222-222222222203"
-    );
+    private static readonly Guid AnthropicVendorId = Guid.Parse("22222222-2222-2222-2222-222222222201");
+    private static readonly Guid GitHubActionsVendorId = Guid.Parse("22222222-2222-2222-2222-222222222202");
+    private static readonly Guid CodeRabbitVendorId = Guid.Parse("22222222-2222-2222-2222-222222222203");
     private static readonly Guid GitarVendorId = Guid.Parse("22222222-2222-2222-2222-222222222204");
-    private static readonly Guid MoonshotVendorId = Guid.Parse(
-        "22222222-2222-2222-2222-222222222205"
-    );
-    private static readonly Guid OpenAiVendorId = Guid.Parse(
-        "22222222-2222-2222-2222-222222222206"
-    );
-    private static readonly Guid GoogleVendorId = Guid.Parse(
-        "22222222-2222-2222-2222-222222222207"
-    );
-    private static readonly Guid MicrosoftVendorId = Guid.Parse(
-        "22222222-2222-2222-2222-222222222208"
-    );
-    private static readonly Guid OpenRouterVendorId = Guid.Parse(
-        "22222222-2222-2222-2222-222222222209"
-    );
-    private static readonly Guid BlacksmithVendorId = Guid.Parse(
-        "22222222-2222-2222-2222-222222222210"
-    );
-    private static readonly Guid CopilotVendorId = Guid.Parse(
-        "22222222-2222-2222-2222-222222222211"
-    );
-    private static readonly Guid GitHubVendorId = Guid.Parse(
-        "22222222-2222-2222-2222-222222222212"
-    );
+    private static readonly Guid MoonshotVendorId = Guid.Parse("22222222-2222-2222-2222-222222222205");
+    private static readonly Guid OpenAiVendorId = Guid.Parse("22222222-2222-2222-2222-222222222206");
+    private static readonly Guid GoogleVendorId = Guid.Parse("22222222-2222-2222-2222-222222222207");
+    private static readonly Guid MicrosoftVendorId = Guid.Parse("22222222-2222-2222-2222-222222222208");
+    private static readonly Guid OpenRouterVendorId = Guid.Parse("22222222-2222-2222-2222-222222222209");
+    private static readonly Guid BlacksmithVendorId = Guid.Parse("22222222-2222-2222-2222-222222222210");
+    private static readonly Guid CopilotVendorId = Guid.Parse("22222222-2222-2222-2222-222222222211");
+    private static readonly Guid GitHubVendorId = Guid.Parse("22222222-2222-2222-2222-222222222212");
 
     public DbSet<UsageEvent> UsageEvents => Set<UsageEvent>();
     public DbSet<DailyAggregate> DailyAggregates => Set<DailyAggregate>();
@@ -83,22 +52,14 @@ public class AiObservatoryDbContext(DbContextOptions<AiObservatoryDbContext> opt
             b.HasIndex(e => new { e.Provider, e.Model }).HasFilter("\"Model\" IS NOT NULL");
             b.Property(e => e.EventKey).HasMaxLength(200);
             // EventKey is a unique idempotency key scoped per provider.
-            b.HasIndex(e => new { e.Provider, e.EventKey })
-                .IsUnique()
-                .HasFilter("\"EventKey\" IS NOT NULL");
+            b.HasIndex(e => new { e.Provider, e.EventKey }).IsUnique().HasFilter("\"EventKey\" IS NOT NULL");
 
             b.HasIndex(e => e.OccurredAt);
 
             b.ToTable(t =>
             {
-                t.HasCheckConstraint(
-                    "CK_UsageEvent_InputTokens_NonNegative",
-                    "\"InputTokens\" >= 0"
-                );
-                t.HasCheckConstraint(
-                    "CK_UsageEvent_OutputTokens_NonNegative",
-                    "\"OutputTokens\" >= 0"
-                );
+                t.HasCheckConstraint("CK_UsageEvent_InputTokens_NonNegative", "\"InputTokens\" >= 0");
+                t.HasCheckConstraint("CK_UsageEvent_OutputTokens_NonNegative", "\"OutputTokens\" >= 0");
                 t.HasCheckConstraint(
                     "CK_UsageEvent_CacheReadTokens_NonNegative",
                     "\"CacheReadTokens\" IS NULL OR \"CacheReadTokens\" >= 0"
@@ -129,31 +90,16 @@ public class AiObservatoryDbContext(DbContextOptions<AiObservatoryDbContext> opt
             b.Property(d => d.Provider).HasConversion<string>();
             b.ToTable(t =>
             {
-                t.HasCheckConstraint(
-                    "CK_DailyAggregate_InputTokens_NonNegative",
-                    "\"InputTokens\" >= 0"
-                );
-                t.HasCheckConstraint(
-                    "CK_DailyAggregate_OutputTokens_NonNegative",
-                    "\"OutputTokens\" >= 0"
-                );
-                t.HasCheckConstraint(
-                    "CK_DailyAggregate_CacheReadTokens_NonNegative",
-                    "\"CacheReadTokens\" >= 0"
-                );
-                t.HasCheckConstraint(
-                    "CK_DailyAggregate_CacheWriteTokens_NonNegative",
-                    "\"CacheWriteTokens\" >= 0"
-                );
+                t.HasCheckConstraint("CK_DailyAggregate_InputTokens_NonNegative", "\"InputTokens\" >= 0");
+                t.HasCheckConstraint("CK_DailyAggregate_OutputTokens_NonNegative", "\"OutputTokens\" >= 0");
+                t.HasCheckConstraint("CK_DailyAggregate_CacheReadTokens_NonNegative", "\"CacheReadTokens\" >= 0");
+                t.HasCheckConstraint("CK_DailyAggregate_CacheWriteTokens_NonNegative", "\"CacheWriteTokens\" >= 0");
                 t.HasCheckConstraint(
                     "CK_DailyAggregate_CacheWrite1hTokens_WithinCacheWrite",
                     "\"CacheWrite1hTokens\" >= 0 AND \"CacheWrite1hTokens\" <= \"CacheWriteTokens\""
                 );
                 t.HasCheckConstraint("CK_DailyAggregate_CostUsd_NonNegative", "\"CostUsd\" >= 0");
-                t.HasCheckConstraint(
-                    "CK_DailyAggregate_RequestCount_NonNegative",
-                    "\"RequestCount\" >= 0"
-                );
+                t.HasCheckConstraint("CK_DailyAggregate_RequestCount_NonNegative", "\"RequestCount\" >= 0");
             });
         });
 
@@ -363,22 +309,14 @@ public class AiObservatoryDbContext(DbContextOptions<AiObservatoryDbContext> opt
             // Idempotency, scoped per source. Filtered so manual rows (EntryKey null) are
             // exempt — PostgreSQL would allow repeated NULLs anyway, but the filter makes
             // the intent explicit and keeps the index small.
-            b.HasIndex(e => new { e.Source, e.EntryKey })
-                .IsUnique()
-                .HasFilter("\"EntryKey\" IS NOT NULL");
+            b.HasIndex(e => new { e.Source, e.EntryKey }).IsUnique().HasFilter("\"EntryKey\" IS NOT NULL");
 
             // Restrict: archiving is the soft delete for a vendor/category still in use, so
             // a hard delete of one with entries must fail loudly rather than cascade rows
             // out of the ledger.
-            b.HasOne<SpendVendor>()
-                .WithMany()
-                .HasForeignKey(e => e.VendorId)
-                .OnDelete(DeleteBehavior.Restrict);
+            b.HasOne<SpendVendor>().WithMany().HasForeignKey(e => e.VendorId).OnDelete(DeleteBehavior.Restrict);
 
-            b.HasOne<SpendCategory>()
-                .WithMany()
-                .HasForeignKey(e => e.CategoryId)
-                .OnDelete(DeleteBehavior.Restrict);
+            b.HasOne<SpendCategory>().WithMany().HasForeignKey(e => e.CategoryId).OnDelete(DeleteBehavior.Restrict);
 
             b.ToTable(t =>
             {
@@ -398,10 +336,7 @@ public class AiObservatoryDbContext(DbContextOptions<AiObservatoryDbContext> opt
                 // 4dp — deliberate. Such a row cannot contribute to a total anyway, and
                 // SaveRowAsync's DbUpdateException catch turns it into a per-row "rejected"
                 // verdict rather than failing the batch.
-                t.HasCheckConstraint(
-                    "CK_SpendEntry_AmountGbp_SameSign",
-                    "\"Amount\" * \"AmountGbp\" > 0"
-                );
+                t.HasCheckConstraint("CK_SpendEntry_AmountGbp_SameSign", "\"Amount\" * \"AmountGbp\" > 0");
                 t.HasCheckConstraint("CK_SpendEntry_FxRate_Positive", "\"FxRate\" > 0");
             });
         });
@@ -430,18 +365,9 @@ public class AiObservatoryDbContext(DbContextOptions<AiObservatoryDbContext> opt
             b.HasIndex(s => s.OccurredAt);
             b.ToTable(t =>
             {
-                t.HasCheckConstraint(
-                    "CK_CavemanSession_OutputTokens_NonNegative",
-                    "\"OutputTokens\" >= 0"
-                );
-                t.HasCheckConstraint(
-                    "CK_CavemanSession_EstSavedTokens_NonNegative",
-                    "\"EstSavedTokens\" >= 0"
-                );
-                t.HasCheckConstraint(
-                    "CK_CavemanSession_EstSavedUsd_NonNegative",
-                    "\"EstSavedUsd\" >= 0"
-                );
+                t.HasCheckConstraint("CK_CavemanSession_OutputTokens_NonNegative", "\"OutputTokens\" >= 0");
+                t.HasCheckConstraint("CK_CavemanSession_EstSavedTokens_NonNegative", "\"EstSavedTokens\" >= 0");
+                t.HasCheckConstraint("CK_CavemanSession_EstSavedUsd_NonNegative", "\"EstSavedUsd\" >= 0");
             });
         });
 
@@ -454,10 +380,7 @@ public class AiObservatoryDbContext(DbContextOptions<AiObservatoryDbContext> opt
             b.HasIndex(s => s.Project);
             b.ToTable(t =>
             {
-                t.HasCheckConstraint(
-                    "CK_ClaudeActivitySession_ActiveSeconds_NonNegative",
-                    "\"ActiveSeconds\" >= 0"
-                );
+                t.HasCheckConstraint("CK_ClaudeActivitySession_ActiveSeconds_NonNegative", "\"ActiveSeconds\" >= 0");
             });
         });
 
@@ -470,10 +393,7 @@ public class AiObservatoryDbContext(DbContextOptions<AiObservatoryDbContext> opt
             b.HasIndex(p => new { p.Repo, p.Number }).IsUnique();
             b.HasIndex(p => p.CreatedAt);
             b.ToTable(t =>
-                t.HasCheckConstraint(
-                    "CK_GitHubPullRequest_ReviewCount_NonNegative",
-                    "\"ReviewCount\" >= 0"
-                )
+                t.HasCheckConstraint("CK_GitHubPullRequest_ReviewCount_NonNegative", "\"ReviewCount\" >= 0")
             );
         });
 
@@ -508,37 +428,21 @@ public class AiObservatoryDbContext(DbContextOptions<AiObservatoryDbContext> opt
             b.Property(r => r.Repo).HasMaxLength(200);
             b.Property(r => r.Summary).HasMaxLength(80);
             b.Property(r => r.RunId).HasMaxLength(200).IsRequired();
-            b.HasIndex(r => new
-                {
-                    r.RunId,
-                    r.Reviewer,
-                    r.Role,
-                })
+            b.HasIndex(
+                    nameof(AdversarialReviewRun.RunId),
+                    nameof(AdversarialReviewRun.Reviewer),
+                    nameof(AdversarialReviewRun.Role)
+                )
                 .IsUnique();
             b.HasIndex(r => new { r.Reviewer, r.Model });
             b.HasIndex(r => r.RecordedAt);
             b.ToTable(t =>
             {
-                t.HasCheckConstraint(
-                    "CK_AdversarialReviewRun_InputTokens_NonNegative",
-                    "\"InputTokens\" >= 0"
-                );
-                t.HasCheckConstraint(
-                    "CK_AdversarialReviewRun_OutputTokens_NonNegative",
-                    "\"OutputTokens\" >= 0"
-                );
-                t.HasCheckConstraint(
-                    "CK_AdversarialReviewRun_CostUsd_NonNegative",
-                    "\"CostUsd\" >= 0"
-                );
-                t.HasCheckConstraint(
-                    "CK_AdversarialReviewRun_IssuesRaised_NonNegative",
-                    "\"IssuesRaised\" >= 0"
-                );
-                t.HasCheckConstraint(
-                    "CK_AdversarialReviewRun_IssuesAccepted_NonNegative",
-                    "\"IssuesAccepted\" >= 0"
-                );
+                t.HasCheckConstraint("CK_AdversarialReviewRun_InputTokens_NonNegative", "\"InputTokens\" >= 0");
+                t.HasCheckConstraint("CK_AdversarialReviewRun_OutputTokens_NonNegative", "\"OutputTokens\" >= 0");
+                t.HasCheckConstraint("CK_AdversarialReviewRun_CostUsd_NonNegative", "\"CostUsd\" >= 0");
+                t.HasCheckConstraint("CK_AdversarialReviewRun_IssuesRaised_NonNegative", "\"IssuesRaised\" >= 0");
+                t.HasCheckConstraint("CK_AdversarialReviewRun_IssuesAccepted_NonNegative", "\"IssuesAccepted\" >= 0");
             });
         });
     }

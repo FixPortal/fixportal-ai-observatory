@@ -20,8 +20,7 @@ public static class SpendCatalogEndpoints
     public static IEndpointRouteBuilder MapSpendCatalogEndpoints(this IEndpointRouteBuilder app)
     {
         app.MapGet("/spend/categories", GetCategoriesAsync);
-        app.MapGet("/spend/categories/{id:guid}", GetCategoryByIdAsync)
-            .WithName("GetSpendCategoryById");
+        app.MapGet("/spend/categories/{id:guid}", GetCategoryByIdAsync).WithName("GetSpendCategoryById");
         app.MapPost("/spend/categories", CreateCategoryAsync);
         app.MapPatch("/spend/categories/{id:guid}", PatchCategoryAsync);
 
@@ -45,20 +44,12 @@ public static class SpendCatalogEndpoints
             q = q.Where(c => c.ArchivedAt == null);
         }
 
-        return Results.Ok(
-            await q.OrderBy(c => c.SortOrder).ThenBy(c => c.DisplayName).ToListAsync(ct)
-        );
+        return Results.Ok(await q.OrderBy(c => c.SortOrder).ThenBy(c => c.DisplayName).ToListAsync(ct));
     }
 
-    private static async Task<IResult> GetCategoryByIdAsync(
-        Guid id,
-        AiObservatoryDbContext db,
-        CancellationToken ct
-    )
+    private static async Task<IResult> GetCategoryByIdAsync(Guid id, AiObservatoryDbContext db, CancellationToken ct)
     {
-        var category = await db
-            .SpendCategories.AsNoTracking()
-            .FirstOrDefaultAsync(c => c.Id == id, ct);
+        var category = await db.SpendCategories.AsNoTracking().FirstOrDefaultAsync(c => c.Id == id, ct);
         return category is not null ? Results.Ok(category) : Results.NotFound();
     }
 
@@ -71,9 +62,7 @@ public static class SpendCatalogEndpoints
         var key = Slug(req.Key);
         if (key is null || ValidateName(req.DisplayName) is not null)
         {
-            return Results.BadRequest(
-                "Key must be a slug of 60 characters or fewer and DisplayName is required"
-            );
+            return Results.BadRequest("Key must be a slug of 60 characters or fewer and DisplayName is required");
         }
 
         if (ValidateColorVar(req.ColorVar) is { } colorError)
@@ -99,9 +88,7 @@ public static class SpendCatalogEndpoints
             await db.SaveChangesAsync(ct);
         }
         catch (DbUpdateException ex)
-            when (ex.InnerException
-                    is PostgresException { SqlState: PostgresErrorCodes.UniqueViolation }
-            )
+            when (ex.InnerException is PostgresException { SqlState: PostgresErrorCodes.UniqueViolation })
         {
             // Two concurrent creates of the same key both pass the AnyAsync pre-check above
             // -- one wins the unique index and this one lands here. Same message as the
@@ -172,11 +159,7 @@ public static class SpendCatalogEndpoints
         return Results.Ok(await q.OrderBy(v => v.DisplayName).ToListAsync(ct));
     }
 
-    private static async Task<IResult> GetVendorByIdAsync(
-        Guid id,
-        AiObservatoryDbContext db,
-        CancellationToken ct
-    )
+    private static async Task<IResult> GetVendorByIdAsync(Guid id, AiObservatoryDbContext db, CancellationToken ct)
     {
         var vendor = await db.SpendVendors.AsNoTracking().FirstOrDefaultAsync(v => v.Id == id, ct);
         return vendor is not null ? Results.Ok(vendor) : Results.NotFound();
@@ -191,9 +174,7 @@ public static class SpendCatalogEndpoints
         var key = Slug(req.Key);
         if (key is null || ValidateName(req.DisplayName) is not null)
         {
-            return Results.BadRequest(
-                "Key must be a slug of 60 characters or fewer and DisplayName is required"
-            );
+            return Results.BadRequest("Key must be a slug of 60 characters or fewer and DisplayName is required");
         }
 
         // Null is legitimate and common: CodeRabbit, Gitar and GitHub Actions have no
@@ -201,10 +182,7 @@ public static class SpendCatalogEndpoints
         Provider? provider = null;
         if (!string.IsNullOrWhiteSpace(req.Provider))
         {
-            if (
-                !Enum.TryParse<Provider>(req.Provider, ignoreCase: true, out var parsed)
-                || !Enum.IsDefined(parsed)
-            )
+            if (!Enum.TryParse<Provider>(req.Provider, ignoreCase: true, out var parsed) || !Enum.IsDefined(parsed))
             {
                 return Results.BadRequest($"Unknown provider: {req.Provider}");
             }
@@ -216,10 +194,7 @@ public static class SpendCatalogEndpoints
             return Results.Conflict($"Vendor key already exists: {key}");
         }
 
-        if (
-            req.DefaultCategoryId is { } categoryId
-            && !await db.SpendCategories.AnyAsync(c => c.Id == categoryId, ct)
-        )
+        if (req.DefaultCategoryId is { } categoryId && !await db.SpendCategories.AnyAsync(c => c.Id == categoryId, ct))
         {
             return Results.BadRequest($"Unknown DefaultCategoryId: {categoryId}");
         }
@@ -237,9 +212,7 @@ public static class SpendCatalogEndpoints
             await db.SaveChangesAsync(ct);
         }
         catch (DbUpdateException ex)
-            when (ex.InnerException
-                    is PostgresException { SqlState: PostgresErrorCodes.UniqueViolation }
-            )
+            when (ex.InnerException is PostgresException { SqlState: PostgresErrorCodes.UniqueViolation })
         {
             // Same race as CreateCategoryAsync above: the pre-check passed for both
             // concurrent callers, the unique index only stops one of them.
@@ -276,11 +249,7 @@ public static class SpendCatalogEndpoints
         // alone. Anything else (including an explicit JSON null) is a deliberate write.
         if (req.DefaultCategoryId.ValueKind is not JsonValueKind.Undefined)
         {
-            var (categoryId, categoryError) = await ResolveDefaultCategoryAsync(
-                req.DefaultCategoryId,
-                db,
-                ct
-            );
+            var (categoryId, categoryError) = await ResolveDefaultCategoryAsync(req.DefaultCategoryId, db, ct);
             if (categoryError is not null)
             {
                 return Results.BadRequest(categoryError);
@@ -314,10 +283,7 @@ public static class SpendCatalogEndpoints
             return (null, null);
         }
 
-        if (
-            element.ValueKind is not JsonValueKind.String
-            || !element.TryGetGuid(out var categoryId)
-        )
+        if (element.ValueKind is not JsonValueKind.String || !element.TryGetGuid(out var categoryId))
         {
             return (null, "DefaultCategoryId must be a GUID string or null");
         }
@@ -353,26 +319,11 @@ public static class SpendCatalogEndpoints
     }
 }
 
-public sealed record SpendCategoryRequest(
-    string Key,
-    string DisplayName,
-    string? ColorVar,
-    int SortOrder
-);
+public sealed record SpendCategoryRequest(string Key, string DisplayName, string? ColorVar, int SortOrder);
 
-public sealed record SpendVendorRequest(
-    string Key,
-    string DisplayName,
-    string? Provider,
-    Guid? DefaultCategoryId
-);
+public sealed record SpendVendorRequest(string Key, string DisplayName, string? Provider, Guid? DefaultCategoryId);
 
-public sealed record SpendCatalogPatchRequest(
-    string? DisplayName,
-    string? ColorVar,
-    int? SortOrder,
-    bool? Archived
-);
+public sealed record SpendCatalogPatchRequest(string? DisplayName, string? ColorVar, int? SortOrder, bool? Archived);
 
 /// <param name="DefaultCategoryId">
 /// Deliberately a <see cref="JsonElement"/> rather than a <c>Guid?</c>: the column is
@@ -383,8 +334,4 @@ public sealed record SpendCatalogPatchRequest(
 /// <see cref="JsonValueKind.Undefined"/> — while an explicit <c>null</c> arrives as
 /// <see cref="JsonValueKind.Null"/>, so the two stay distinguishable.
 /// </param>
-public sealed record SpendVendorPatchRequest(
-    string? DisplayName,
-    JsonElement DefaultCategoryId,
-    bool? Archived
-);
+public sealed record SpendVendorPatchRequest(string? DisplayName, JsonElement DefaultCategoryId, bool? Archived);

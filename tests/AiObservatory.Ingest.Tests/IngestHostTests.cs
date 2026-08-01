@@ -6,7 +6,6 @@ using AwesomeAssertions;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.Extensions.Configuration;
-using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 
 namespace AiObservatory.Ingest.Tests;
@@ -17,15 +16,14 @@ public class IngestHostCollection;
 [Collection("IngestHost")]
 public class IngestHostTests
 {
-    private const string KeyVaultReference =
-        "@Microsoft.KeyVault(VaultName=fpaiobs-kv;SecretName=test)";
+    private const string KeyVaultReference = "@Microsoft.KeyVault(VaultName=fpaiobs-kv;SecretName=test)";
 
     [Fact]
     public async Task StartupFailsWhenTheDatabaseConnectionIsMissing()
     {
         await using var factory = new IngestFactory { DatabaseConnection = null };
 
-        var thrown = Record.Exception(() => factory.Services);
+        var thrown = CaptureServicesException(factory);
 
         thrown.Should().NotBeNull();
         ExceptionChainContains(thrown!, "DB_CONNECTION").Should().BeTrue();
@@ -36,10 +34,7 @@ public class IngestHostTests
     [InlineData("COPILOT_ORG", typeof(CopilotIngestionService))]
     [InlineData("GOOGLE_BILLING_ACCOUNT_ID", typeof(GoogleIngestionService))]
     [InlineData("OPENAI_ADMIN_KEY", typeof(OpenAiIngestionService))]
-    public async Task UnresolvedKeyVaultReferenceDoesNotEnableAProvider(
-        string setting,
-        Type serviceType
-    )
+    public async Task UnresolvedKeyVaultReferenceDoesNotEnableAProvider(string setting, Type serviceType)
     {
         await using var factory = new IngestFactory();
         factory.Settings[setting] = KeyVaultReference;
@@ -52,13 +47,13 @@ public class IngestHostTests
     }
 
     [Fact]
-    public async Task StartupRejectsAnAnthropicRateWithoutCacheWrite1hPricing()
+    public async Task StartupRejectsAnAnthropicRateWithoutCacheWrite1HPricing()
     {
         await using var factory = new IngestFactory();
         factory.Settings["ANTHROPIC_BILLING_KEY"] = "configured-key";
         factory.ConfigurationOverrides["Ingest:Anthropic:Pricing:0:CacheWrite1h"] = "0";
 
-        var thrown = Record.Exception(() => factory.Services);
+        var thrown = CaptureServicesException(factory);
 
         thrown.Should().NotBeNull();
         ExceptionChainContains(thrown!, "CacheWrite1h").Should().BeTrue();
@@ -77,6 +72,9 @@ public class IngestHostTests
         return ex.InnerException is not null && ExceptionChainContains(ex.InnerException, fragment);
     }
 
+    private static Exception? CaptureServicesException(IngestFactory factory) =>
+        Record.Exception(() => factory.Services);
+
     private sealed class IngestFactory : WebApplicationFactory<Program>
     {
         private static readonly string[] SettingNames =
@@ -90,23 +88,18 @@ public class IngestHostTests
             "APPLICATIONINSIGHTS_CONNECTION_STRING",
         ];
 
-        public string? DatabaseConnection { get; set; } = "Host=unused;Database=unused";
+        public string? DatabaseConnection { get; init; } = "Host=unused;Database=unused";
         public Dictionary<string, string?> Settings { get; } = [];
         public Dictionary<string, string?> ConfigurationOverrides { get; } = [];
 
         protected override void ConfigureWebHost(IWebHostBuilder builder)
         {
-            builder.ConfigureAppConfiguration(config =>
-                config.AddInMemoryCollection(ConfigurationOverrides)
-            );
+            builder.ConfigureAppConfiguration(config => config.AddInMemoryCollection(ConfigurationOverrides));
         }
 
         protected override IHost CreateHost(IHostBuilder builder)
         {
-            var originals = SettingNames.ToDictionary(
-                name => name,
-                Environment.GetEnvironmentVariable
-            );
+            var originals = SettingNames.ToDictionary(name => name, Environment.GetEnvironmentVariable);
             try
             {
                 foreach (var name in SettingNames)

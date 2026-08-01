@@ -9,8 +9,7 @@ namespace AiObservatory.Ingest.Tests.Services;
 
 public class GitHubActivityClientTests
 {
-    private sealed class StubHandler(Func<HttpRequestMessage, HttpResponseMessage> respond)
-        : HttpMessageHandler
+    private sealed class StubHandler(Func<HttpRequestMessage, HttpResponseMessage> respond) : HttpMessageHandler
     {
         public List<string> RequestedUrls { get; } = [];
 
@@ -34,10 +33,7 @@ public class GitHubActivityClientTests
         return response;
     }
 
-    private static GitHubActivityClient CreateSut(
-        StubHandler handler,
-        ILogger<GitHubActivityClient>? logger = null
-    ) =>
+    private static GitHubActivityClient CreateSut(StubHandler handler, ILogger<GitHubActivityClient>? logger = null) =>
         new(
             new HttpClient(handler) { BaseAddress = new Uri("https://api.github.com") },
             logger ?? NullLogger<GitHubActivityClient>.Instance
@@ -140,9 +136,7 @@ public class GitHubActivityClientTests
             if (req.RequestUri!.ToString().Contains("/reviews"))
             {
                 // Pending reviews omit submitted_at entirely.
-                return JsonResponse(
-                    """[{"submitted_at":null},{"submitted_at":"2026-07-01T14:00:00Z"}]"""
-                );
+                return JsonResponse("""[{"submitted_at":null},{"submitted_at":"2026-07-01T14:00:00Z"}]""");
             }
             return JsonResponse(
                 """
@@ -311,9 +305,7 @@ public class GitHubActivityClientTests
             {
                 var page = string.Join(
                     ",",
-                    Enumerable
-                        .Range(1, 100)
-                        .Select(_ => """{"submitted_at":"2026-07-01T12:00:00Z"}""")
+                    Enumerable.Range(1, 100).Select(_ => """{"submitted_at":"2026-07-01T12:00:00Z"}""")
                 );
                 return JsonResponse($"[{page}]");
             }
@@ -333,12 +325,8 @@ public class GitHubActivityClientTests
         );
 
         result.Single().ReviewCount.Should().Be(101);
-        handler
-            .RequestedUrls.Should()
-            .Contain(u => u.Contains("/pulls/42/reviews?per_page=100&page=1"));
-        handler
-            .RequestedUrls.Should()
-            .Contain(u => u.Contains("/pulls/42/reviews?per_page=100&page=2"));
+        handler.RequestedUrls.Should().Contain(u => u.Contains("/pulls/42/reviews?per_page=100&page=1"));
+        handler.RequestedUrls.Should().Contain(u => u.Contains("/pulls/42/reviews?per_page=100&page=2"));
     }
 
     [Fact]
@@ -600,15 +588,9 @@ public class GitHubActivityClientTests
         // stopped at the cap rather than requesting an 11th page.
         foreach (var page in Enumerable.Range(1, 10))
         {
-            handler
-                .RequestedUrls.Should()
-                .Contain(u => u.Contains($"page={page}", StringComparison.Ordinal));
+            handler.RequestedUrls.Should().Contain(u => u.Contains($"page={page}", StringComparison.Ordinal));
         }
-        handler
-            .RequestedUrls.Should()
-            .NotContain(u => u.Contains("page=11", StringComparison.Ordinal));
-        logger
-            .Warnings.Should()
-            .ContainSingle(w => w.Contains("result cap", StringComparison.OrdinalIgnoreCase));
+        handler.RequestedUrls.Should().NotContain(u => u.Contains("page=11", StringComparison.Ordinal));
+        logger.Warnings.Should().ContainSingle(w => w.Contains("result cap", StringComparison.OrdinalIgnoreCase));
     }
 }

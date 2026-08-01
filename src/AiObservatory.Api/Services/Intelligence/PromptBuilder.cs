@@ -19,13 +19,10 @@ public class PromptBuilder
         ArgumentNullException.ThrowIfNull(subscriptions);
 
         // Costs are stored USD-native; present them in GBP so the generated narrative is in £.
-        string Gbp(decimal usd) =>
-            "£" + (usd * usdToGbp).ToString("F2", CultureInfo.InvariantCulture);
+        string Gbp(decimal usd) => "£" + (usd * usdToGbp).ToString("F2", CultureInfo.InvariantCulture);
 
         var sb = new StringBuilder();
-        sb.AppendLine(
-            $"Analyse this AI usage data for {periodStart} to {periodEnd} and produce insights."
-        );
+        sb.AppendLine($"Analyse this AI usage data for {periodStart} to {periodEnd} and produce insights.");
         sb.AppendLine();
 
         var totalSpend = aggregates.Sum(a => a.CostUsd);
@@ -64,9 +61,7 @@ public class PromptBuilder
                 m.CacheReadTokens > 0 || m.CacheWriteTokens > 0
                     ? $", Cache: {m.CacheReadTokens} read, {m.CacheWriteTokens} write"
                     : "";
-            sb.AppendLine(
-                $"  {m.Model}: {Gbp(m.Spend)}, {m.Requests} requests, {efficiency}{cacheInfo}"
-            );
+            sb.AppendLine($"  {m.Model}: {Gbp(m.Spend)}, {m.Requests} requests, {efficiency}{cacheInfo}");
         }
 
         if (subscriptions.Any())
@@ -87,21 +82,15 @@ public class PromptBuilder
         {
             var yesterday = aggregates.Where(a => a.Date == periodEnd).Sum(a => a.CostUsd);
             var priorPeriod = aggregates.Where(a => a.Date < periodEnd).Sum(a => a.CostUsd);
-            var avgPerDay =
-                priorPeriod
-                / Math.Max(1, Period.Between(periodStart, periodEnd, PeriodUnits.Days).Days);
-            sb.AppendLine(
-                $"Yesterday spend: {Gbp(yesterday)} vs 30-day average: {Gbp(avgPerDay)}/day"
-            );
+            var avgPerDay = priorPeriod / Math.Max(1, Period.Between(periodStart, periodEnd, PeriodUnits.Days).Days);
+            sb.AppendLine($"Yesterday spend: {Gbp(yesterday)} vs 30-day average: {Gbp(avgPerDay)}/day");
         }
 
         sb.AppendLine();
         sb.AppendLine(
             "All monetary figures above are in GBP (£). Report every monetary value in your insights in GBP using the £ symbol — never US dollars."
         );
-        sb.AppendLine(
-            "Note: Include analysis of cache hit rates where relevant to Anthropic usage."
-        );
+        sb.AppendLine("Note: Include analysis of cache hit rates where relevant to Anthropic usage.");
         sb.AppendLine(
             "Produce 3-5 insights covering: summary, efficiency opportunities, anomalies, and recommendations."
         );

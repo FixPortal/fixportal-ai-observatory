@@ -67,10 +67,7 @@ public class UsageRepositoryTests : IAsyncLifetime
 
         await _repo.AddUsageEventAsync(evt, TestContext.Current.CancellationToken);
 
-        var saved = await _ctx.UsageEvents.FindAsync(
-            [evt.Id],
-            TestContext.Current.CancellationToken
-        );
+        var saved = await _ctx.UsageEvents.FindAsync([evt.Id], TestContext.Current.CancellationToken);
         saved.Should().NotBeNull();
         saved!.InputTokens.Should().Be(1000);
     }
@@ -92,10 +89,7 @@ public class UsageRepositoryTests : IAsyncLifetime
             };
 
         var first = await _repo.RecordEventAsync(NewEvent(), TestContext.Current.CancellationToken);
-        var second = await _repo.RecordEventAsync(
-            NewEvent(),
-            TestContext.Current.CancellationToken
-        );
+        var second = await _repo.RecordEventAsync(NewEvent(), TestContext.Current.CancellationToken);
 
         first.IsDuplicate.Should().BeFalse();
         second.IsDuplicate.Should().BeTrue();
@@ -123,10 +117,7 @@ public class UsageRepositoryTests : IAsyncLifetime
             };
 
         var first = await _repo.RecordEventAsync(NewEvent(), TestContext.Current.CancellationToken);
-        var second = await _repo.RecordEventAsync(
-            NewEvent(),
-            TestContext.Current.CancellationToken
-        );
+        var second = await _repo.RecordEventAsync(NewEvent(), TestContext.Current.CancellationToken);
 
         first.IsDuplicate.Should().BeFalse();
         second.IsDuplicate.Should().BeFalse();
@@ -185,10 +176,7 @@ public class UsageRepositoryTests : IAsyncLifetime
         aggregate.RequestCount.Should().Be(1);
     }
 
-    private static async Task WaitForBlockedInsertsAsync(
-        NpgsqlConnection connection,
-        CancellationToken ct
-    )
+    private static async Task WaitForBlockedInsertsAsync(NpgsqlConnection connection, CancellationToken ct)
     {
         using var timeout = CancellationTokenSource.CreateLinkedTokenSource(ct);
         timeout.CancelAfter(TimeSpan.FromSeconds(30));
@@ -233,12 +221,7 @@ public class UsageRepositoryTests : IAsyncLifetime
 
         // PATCH to the corrected cost.
         var newCost = 12000 * 1.50m / 1_000_000 + 800 * 9.00m / 1_000_000 + 480 * 3.50m / 1_000_000;
-        var result = await _repo.PatchEventCostAsync(
-            Provider.Google,
-            "gemini:sess-abc:gemini-3.5-flash",
-            newCost,
-            ct
-        );
+        var result = await _repo.PatchEventCostAsync(Provider.Google, "gemini:sess-abc:gemini-3.5-flash", newCost, ct);
 
         result.Should().NotBeNull();
         result!.OldCostUsd.Should().Be(0.0024m);
@@ -248,10 +231,7 @@ public class UsageRepositoryTests : IAsyncLifetime
         var saved = await _ctx.UsageEvents.AsNoTracking().FirstAsync(e => e.Id == evt.Id, ct);
         saved.CostUsd.Should().Be(newCost);
 
-        var agg = await _ctx.DailyAggregates.FirstOrDefaultAsync(
-            a => a.Model == "gemini-3.5-flash",
-            ct
-        );
+        var agg = await _ctx.DailyAggregates.FirstOrDefaultAsync(a => a.Model == "gemini-3.5-flash", ct);
         agg.Should().NotBeNull();
         // Aggregate delta = newCost - 0.0024m; check it's updated correctly.
         agg!.CostUsd.Should().BeApproximately(newCost, precision: 0.000001m);
@@ -288,12 +268,7 @@ public class UsageRepositoryTests : IAsyncLifetime
         };
         await _repo.RecordEventAsync(evt, ct);
 
-        var result = await _repo.PatchEventCostAsync(
-            Provider.Google,
-            "gemini:sess-xyz:gemini-2.5-pro",
-            0.0083m,
-            ct
-        );
+        var result = await _repo.PatchEventCostAsync(Provider.Google, "gemini:sess-xyz:gemini-2.5-pro", 0.0083m, ct);
 
         result.Should().NotBeNull();
         result!.OldCostUsd.Should().Be(0.0083m);

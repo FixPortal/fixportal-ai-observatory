@@ -58,9 +58,7 @@ public static class CavemanEndpoints
             await tx.CommitAsync(ct);
         }
         catch (DbUpdateException ex)
-            when (ex.InnerException
-                    is PostgresException { SqlState: PostgresErrorCodes.UniqueViolation }
-            )
+            when (ex.InnerException is PostgresException { SqlState: PostgresErrorCodes.UniqueViolation })
         {
             // Concurrent insert of one of these SessionIds; LWW makes a retry converge.
             await tx.RollbackAsync(ct);
@@ -69,10 +67,7 @@ public static class CavemanEndpoints
         return Results.Ok(new { Upserted = upserted });
     }
 
-    private static string? ValidateSessions(
-        IReadOnlyCollection<CavemanSessionRequest> sessions,
-        Instant now
-    )
+    private static string? ValidateSessions(IReadOnlyCollection<CavemanSessionRequest> sessions, Instant now)
     {
         var seenSessionIds = new HashSet<string>();
         foreach (var session in sessions)
@@ -117,9 +112,7 @@ public static class CavemanEndpoints
                 // Evaluate LWW against the live row so a concurrent newer write cannot
                 // be regressed by this request's preloaded existence snapshot.
                 var updated = await db
-                    .CavemanSessions.Where(x =>
-                        x.SessionId == session.SessionId && x.OccurredAt <= occurredAt
-                    )
+                    .CavemanSessions.Where(x => x.SessionId == session.SessionId && x.OccurredAt <= occurredAt)
                     .ExecuteUpdateAsync(
                         upd =>
                             upd.SetProperty(p => p.OccurredAt, occurredAt)
@@ -156,10 +149,7 @@ public static class CavemanEndpoints
         return upserted;
     }
 
-    private static async Task<IResult> GetCavemanStatsAsync(
-        AiObservatoryDbContext db,
-        CancellationToken ct
-    )
+    private static async Task<IResult> GetCavemanStatsAsync(AiObservatoryDbContext db, CancellationToken ct)
     {
         var stats = await db
             .CavemanSessions.GroupBy(s => true)

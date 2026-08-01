@@ -25,11 +25,7 @@ public class BudgetRulesEndpointsWafTests(AiObservatoryApiFactory factory)
             ThresholdUsd = threshold,
         };
 
-        var response = await client.PostAsJsonAsync(
-            "/api/budget-rules",
-            body,
-            TestContext.Current.CancellationToken
-        );
+        var response = await client.PostAsJsonAsync("/api/budget-rules", body, TestContext.Current.CancellationToken);
 
         response.StatusCode.Should().Be(HttpStatusCode.BadRequest);
     }
@@ -45,11 +41,7 @@ public class BudgetRulesEndpointsWafTests(AiObservatoryApiFactory factory)
             ThresholdUsd = 25m,
         };
 
-        var response = await client.PostAsJsonAsync(
-            "/api/budget-rules",
-            body,
-            TestContext.Current.CancellationToken
-        );
+        var response = await client.PostAsJsonAsync("/api/budget-rules", body, TestContext.Current.CancellationToken);
 
         response.StatusCode.Should().Be(HttpStatusCode.Created);
     }

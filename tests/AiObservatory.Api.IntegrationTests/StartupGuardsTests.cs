@@ -14,16 +14,13 @@ namespace AiObservatory.Api.IntegrationTests;
 /// </summary>
 public class StartupGuardsTests
 {
-    private const string KeyVaultReference =
-        "@Microsoft.KeyVault(VaultName=fpaiobs-kv;SecretName=observatory-api-key)";
+    private const string KeyVaultReference = "@Microsoft.KeyVault(VaultName=fpaiobs-kv;SecretName=observatory-api-key)";
 
     [Theory]
     [InlineData(null)]
     [InlineData("change-me")]
     [InlineData(KeyVaultReference)]
-    public async Task Startup_WhenApiKeyIsUnsetOrPlaceholder_ThrowsOutsideDevelopment(
-        string? apiKey
-    )
+    public async Task Startup_WhenApiKeyIsUnsetOrPlaceholder_ThrowsOutsideDevelopment(string? apiKey)
     {
         await using var factory = new AiObservatoryApiFactory
         {
@@ -31,9 +28,7 @@ public class StartupGuardsTests
             ApiKeyOverride = apiKey,
         };
 
-        // The delegate is invoked before the await-using scope disposes the factory.
-        // ReSharper disable once AccessToDisposedClosure
-        var thrown = Record.Exception(() => factory.Services);
+        var thrown = CaptureServicesException(factory);
 
         thrown.Should().NotBeNull();
         ExceptionChainContains(thrown!, "OBSERVATORY_API_KEY")
@@ -45,9 +40,7 @@ public class StartupGuardsTests
     [InlineData(null)]
     [InlineData("change-me")]
     [InlineData(KeyVaultReference)]
-    public async Task Startup_WhenReadOnlyApiKeyIsUnsetOrPlaceholder_ThrowsOutsideDevelopment(
-        string? apiKey
-    )
+    public async Task Startup_WhenReadOnlyApiKeyIsUnsetOrPlaceholder_ThrowsOutsideDevelopment(string? apiKey)
     {
         await using var factory = new AiObservatoryApiFactory
         {
@@ -55,14 +48,12 @@ public class StartupGuardsTests
             ReadOnlyKeyOverride = apiKey,
         };
 
-        var thrown = Record.Exception(() => factory.Services);
+        var thrown = CaptureServicesException(factory);
 
         thrown.Should().NotBeNull();
         ExceptionChainContains(thrown!, "OBSERVATORY_READONLY_API_KEY")
             .Should()
-            .BeTrue(
-                $"the exception chain should mention OBSERVATORY_READONLY_API_KEY; got: {thrown}"
-            );
+            .BeTrue($"the exception chain should mention OBSERVATORY_READONLY_API_KEY; got: {thrown}");
     }
 
     [Fact]
@@ -76,7 +67,7 @@ public class StartupGuardsTests
             ReadOnlyKeyOverride = sharedKey,
         };
 
-        var thrown = Record.Exception(() => factory.Services);
+        var thrown = CaptureServicesException(factory);
 
         thrown.Should().NotBeNull();
         ExceptionChainContains(thrown!, "must be different")
@@ -94,25 +85,16 @@ public class StartupGuardsTests
             ApiKeyOverride = "change-me",
         };
 
-        // The delegate is invoked before the await-using scope disposes the factory.
-        // ReSharper disable once AccessToDisposedClosure
-        var act = () => factory.Services;
-
-        act.Should().NotThrow();
+        factory.Services.Should().NotBeNull();
     }
 
     [Fact]
     public async Task Startup_WhenDbConnectionUnset_ThrowsRegardlessOfEnvironment()
     {
-        await using var factory = new AiObservatoryApiFactory
-        {
-            Environment = Environments.Development,
-        };
+        await using var factory = new AiObservatoryApiFactory { Environment = Environments.Development };
         factory.SetDbConnection(null);
 
-        // The delegate is invoked before the await-using scope disposes the factory.
-        // ReSharper disable once AccessToDisposedClosure
-        var thrown = Record.Exception(() => factory.Services);
+        var thrown = CaptureServicesException(factory);
 
         thrown.Should().NotBeNull();
         ExceptionChainContains(thrown!, "DB_CONNECTION")
@@ -133,7 +115,7 @@ public class StartupGuardsTests
         await using var factory = new AiObservatoryApiFactory();
         factory.ConfigurationOverrides[key] = value;
 
-        var thrown = Record.Exception(() => factory.Services);
+        var thrown = CaptureServicesException(factory);
 
         thrown.Should().NotBeNull();
         ExceptionChainContains(thrown!, expectedMessage)
@@ -158,22 +140,18 @@ public class StartupGuardsTests
         return ex.InnerException is not null && ExceptionChainContains(ex.InnerException, fragment);
     }
 
+    private static Exception? CaptureServicesException(AiObservatoryApiFactory factory) =>
+        Record.Exception(() => factory.Services);
+
     [Trait("Category", "Integration")]
     [Fact]
     public async Task DevSeedRoute_Returns404InProduction()
     {
-        await using var factory = new AiObservatoryApiFactory
-        {
-            Environment = Environments.Production,
-        };
+        await using var factory = new AiObservatoryApiFactory { Environment = Environments.Production };
         await factory.InitializeAsync();
         using var client = factory.CreateAdminClient();
 
-        var response = await client.PostAsync(
-            "/api/dev/seed",
-            content: null,
-            TestContext.Current.CancellationToken
-        );
+        var response = await client.PostAsync("/api/dev/seed", content: null, TestContext.Current.CancellationToken);
 
         response.StatusCode.Should().Be(HttpStatusCode.NotFound);
     }
@@ -182,18 +160,11 @@ public class StartupGuardsTests
     [Fact]
     public async Task DevSeedRoute_IsReachableInDevelopment()
     {
-        await using var factory = new AiObservatoryApiFactory
-        {
-            Environment = Environments.Development,
-        };
+        await using var factory = new AiObservatoryApiFactory { Environment = Environments.Development };
         await factory.InitializeAsync();
         using var client = factory.CreateAdminClient();
 
-        var response = await client.PostAsync(
-            "/api/dev/seed",
-            content: null,
-            TestContext.Current.CancellationToken
-        );
+        var response = await client.PostAsync("/api/dev/seed", content: null, TestContext.Current.CancellationToken);
 
         response.StatusCode.Should().NotBe(HttpStatusCode.NotFound);
     }

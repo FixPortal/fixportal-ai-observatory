@@ -53,10 +53,7 @@ public static class SpendEntriesEndpoints
         // Loaded once rather than per row: a CSV import is overwhelmingly the same handful
         // of vendors and categories repeated.
         var vendorIds = await db.SpendVendors.AsNoTracking().Select(v => v.Id).ToHashSetAsync(ct);
-        var categoryIds = await db
-            .SpendCategories.AsNoTracking()
-            .Select(c => c.Id)
-            .ToHashSetAsync(ct);
+        var categoryIds = await db.SpendCategories.AsNoTracking().Select(c => c.Id).ToHashSetAsync(ct);
 
         var results = new List<SpendEntryResult>(requests.Length);
         var now = clock.GetCurrentInstant();
@@ -93,9 +90,7 @@ public static class SpendEntriesEndpoints
                 // Frozen here, deliberately. See SpendEntry.AmountGbp.
                 AmountGbp = decimal.Round(req.Amount * rate, 4, MidpointRounding.ToEven),
                 FxRate = rate,
-                Description = string.IsNullOrWhiteSpace(req.Description)
-                    ? null
-                    : req.Description.Trim(),
+                Description = string.IsNullOrWhiteSpace(req.Description) ? null : req.Description.Trim(),
                 Source = source,
                 EntryKey = string.IsNullOrWhiteSpace(req.EntryKey) ? null : req.EntryKey.Trim(),
                 RecordedAt = now,
@@ -128,8 +123,7 @@ public static class SpendEntriesEndpoints
         }
         catch (DbUpdateException ex)
             when (entry.EntryKey is not null
-                && ex.InnerException
-                    is PostgresException { SqlState: PostgresErrorCodes.UniqueViolation }
+                && ex.InnerException is PostgresException { SqlState: PostgresErrorCodes.UniqueViolation }
             )
         {
             // The row already exists for this source and key. Report it rather than
@@ -410,18 +404,12 @@ public static class SpendEntriesEndpoints
         CancellationToken ct
     )
     {
-        if (
-            req.VendorId is { } vendorId
-            && !await db.SpendVendors.AnyAsync(v => v.Id == vendorId, ct)
-        )
+        if (req.VendorId is { } vendorId && !await db.SpendVendors.AnyAsync(v => v.Id == vendorId, ct))
         {
             return $"Unknown VendorId: {vendorId}";
         }
 
-        if (
-            req.CategoryId is { } categoryId
-            && !await db.SpendCategories.AnyAsync(c => c.Id == categoryId, ct)
-        )
+        if (req.CategoryId is { } categoryId && !await db.SpendCategories.AnyAsync(c => c.Id == categoryId, ct))
         {
             return $"Unknown CategoryId: {categoryId}";
         }
@@ -457,11 +445,7 @@ public static class SpendEntriesEndpoints
         return null;
     }
 
-    private static async Task<IResult> DeleteEntryAsync(
-        Guid id,
-        AiObservatoryDbContext db,
-        CancellationToken ct
-    )
+    private static async Task<IResult> DeleteEntryAsync(Guid id, AiObservatoryDbContext db, CancellationToken ct)
     {
         var deleted = await db.SpendEntries.Where(e => e.Id == id).ExecuteDeleteAsync(ct);
         return deleted == 0 ? Results.NotFound() : Results.NoContent();

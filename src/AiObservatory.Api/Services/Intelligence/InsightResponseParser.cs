@@ -6,12 +6,7 @@ namespace AiObservatory.Api.Services.Intelligence;
 
 public class InsightResponseParser
 {
-    public IReadOnlyList<Insight> Parse(
-        string json,
-        LocalDate periodStart,
-        LocalDate periodEnd,
-        Instant generatedAt
-    )
+    public IReadOnlyList<Insight> Parse(string json, LocalDate periodStart, LocalDate periodEnd, Instant generatedAt)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(json);
 

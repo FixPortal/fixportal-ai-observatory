@@ -61,15 +61,11 @@ public class IntelligenceWorkerService(
 
             for (var date = start; date <= yesterday; date = date.PlusDays(1))
             {
-                logger.LogInformation(
-                    "Intelligence worker running analysis catchup for {Date}",
-                    date
-                );
+                logger.LogInformation("Intelligence worker running analysis catchup for {Date}", date);
                 await RunAnalysisAsync(date, stoppingToken);
             }
         }
-        catch (Exception ex)
-            when (ex is not OperationCanceledException || !stoppingToken.IsCancellationRequested)
+        catch (Exception ex) when (ex is not OperationCanceledException || !stoppingToken.IsCancellationRequested)
         {
             logger.LogError(ex, "Intelligence worker catchup failed");
         }
@@ -82,11 +78,7 @@ public class IntelligenceWorkerService(
             await using var scope = scopeFactory.CreateAsyncScope();
             var generator = scope.ServiceProvider.GetRequiredService<IInsightGenerator>();
             var count = await generator.GenerateForDateAsync(analysisDate, ct);
-            logger.LogInformation(
-                "Intelligence worker wrote {Count} insights for {Period}",
-                count,
-                analysisDate
-            );
+            logger.LogInformation("Intelligence worker wrote {Count} insights for {Period}", count, analysisDate);
         }
         catch (OperationCanceledException) when (ct.IsCancellationRequested)
         {
@@ -118,8 +110,7 @@ public class IntelligenceWorkerService(
         try
         {
             using var scope = scopeFactory.CreateScope();
-            gitHubBilling =
-                scope.ServiceProvider.GetService<GitHubBillingSyncService>() is not null;
+            gitHubBilling = scope.ServiceProvider.GetService<GitHubBillingSyncService>() is not null;
         }
         catch (Exception ex)
         {
