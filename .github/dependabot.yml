@@ -42,6 +42,18 @@ updates:
       azure-sdk:
         patterns:
           - "Azure.*"
+    ignore:
+      # Microsoft.OpenApi is pinned only to force the transitive dependency to the
+      # patched 2.x (GHSA-v5pm-xwqc-g5wc) -- it is a security floor, not a version
+      # preference. The 3.x major made IOpenApiMediaType.Example read-only, but the
+      # .NET 10 SDK's Microsoft.AspNetCore.OpenApi XML-comment source generator still
+      # assigns it, so a 3.x bump fails the build with CS0200 in generated code that
+      # no source change here can fix. Stay on 2.x.
+      #
+      # Drop this when the ASP.NET Core OpenApi source generator targets
+      # Microsoft.OpenApi 3.x (a later .NET 10 SDK / ASP.NET Core bump).
+      - dependency-name: "Microsoft.OpenApi"
+        update-types: ["version-update:semver-major"]
 
   - package-ecosystem: github-actions
     directory: /
