@@ -18,26 +18,36 @@ namespace AiObservatory.Api.Tests.Services;
 /// indistinguishable from an arm that ran and found nothing. The startup line is what makes
 /// the two tellable apart — so it is worth a test that fails if it stops naming an arm's state.
 /// </summary>
-public class IntelligenceWorkerArmLoggingTests
+public sealed class IntelligenceWorkerArmLoggingTests : IDisposable
 {
-    private static (IntelligenceWorkerService Worker, CapturingLogger Log) Create(bool registerGitHubBilling)
+    private readonly List<IDisposable> _owned = [];
+
+    public void Dispose()
+    {
+        for (var i = _owned.Count - 1; i >= 0; i--)
+        {
+            _owned[i].Dispose();
+        }
+    }
+
+    private (IntelligenceWorkerService Worker, CapturingLogger Log) Create(bool registerGitHubBilling)
     {
         var services = new ServiceCollection();
         if (registerGitHubBilling)
         {
+            var billingHttp = new HttpClient();
+            var fxHttp = new HttpClient();
+            var fxCache = new MemoryCache(new MemoryCacheOptions());
+            _owned.AddRange([billingHttp, fxHttp, fxCache]);
             services.AddSingleton(
                 new GitHubBillingSyncService(
-                    new GitHubBillingClient(new HttpClient(), "FixPortal", NullLogger<GitHubBillingClient>.Instance),
+                    new GitHubBillingClient(billingHttp, "FixPortal", NullLogger<GitHubBillingClient>.Instance),
                     new AiObservatoryDbContext(
                         new DbContextOptionsBuilder<AiObservatoryDbContext>()
                             .UseInMemoryDatabase(Guid.NewGuid().ToString())
                             .Options
                     ),
-                    new FxRateProvider(
-                        new HttpClient(),
-                        new MemoryCache(new MemoryCacheOptions()),
-                        NullLogger<FxRateProvider>.Instance
-                    ),
+                    new FxRateProvider(fxHttp, fxCache, NullLogger<FxRateProvider>.Instance),
                     new FakeClock(Instant.FromUtc(2026, 7, 30, 9, 0)),
                     NullLogger<GitHubBillingSyncService>.Instance
                 )
@@ -45,6 +55,7 @@ public class IntelligenceWorkerArmLoggingTests
         }
 
         var provider = services.BuildServiceProvider();
+        _owned.Add(provider);
         var log = new CapturingLogger();
         var worker = new IntelligenceWorkerService(
             provider.GetRequiredService<IServiceScopeFactory>(),

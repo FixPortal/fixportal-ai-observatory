@@ -9,8 +9,12 @@ using NodaTime;
 
 namespace AiObservatory.Ingest.Tests.Services;
 
-public class AnthropicUsageClientTests
+public sealed class AnthropicUsageClientTests : IDisposable
 {
+    private readonly List<HttpClient> _httpClients = [];
+
+    public void Dispose() => _httpClients.ForEach(client => client.Dispose());
+
     private static HttpResponseMessage CreateResponse(HttpStatusCode statusCode, string? json = null)
     {
         var response = new HttpResponseMessage(statusCode);
@@ -85,7 +89,7 @@ public class AnthropicUsageClientTests
         FallbackPricing = new PricingRates(3.0m, 15.0m, 0.30m, 3.75m, 6.00m),
     };
 
-    private static AnthropicUsageClient CreateSut(LocalDate bucketDate, string model)
+    private AnthropicUsageClient CreateSut(LocalDate bucketDate, string model)
     {
         var json = $$"""
             {
@@ -109,6 +113,7 @@ public class AnthropicUsageClientTests
             }
             """;
         var http = new HttpClient(new StubHandler(json)) { BaseAddress = new Uri("https://api.anthropic.com") };
+        _httpClients.Add(http);
         return new AnthropicUsageClient(http, NullLogger<AnthropicUsageClient>.Instance, Options.Create(TestPricing));
     }
 

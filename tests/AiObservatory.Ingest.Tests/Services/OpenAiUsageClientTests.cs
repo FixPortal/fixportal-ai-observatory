@@ -8,8 +8,12 @@ using NodaTime;
 
 namespace AiObservatory.Ingest.Tests.Services;
 
-public class OpenAiUsageClientTests
+public sealed class OpenAiUsageClientTests : IDisposable
 {
+    private readonly List<HttpClient> _httpClients = [];
+
+    public void Dispose() => _httpClients.ForEach(client => client.Dispose());
+
     private static HttpResponseMessage CreateResponse(HttpStatusCode statusCode, string? json = null)
     {
         var response = new HttpResponseMessage(statusCode);
@@ -72,7 +76,7 @@ public class OpenAiUsageClientTests
         FallbackPricing = new PricingRates3(2.50m, 10.00m, 1.25m),
     };
 
-    private static OpenAiUsageClient CreateSut(LocalDate bucketDate, string model)
+    private OpenAiUsageClient CreateSut(LocalDate bucketDate, string model)
     {
         var startTime = bucketDate.AtStartOfDayInZone(DateTimeZone.Utc).ToInstant().ToUnixTimeSeconds();
         var endTime = bucketDate.PlusDays(1).AtStartOfDayInZone(DateTimeZone.Utc).ToInstant().ToUnixTimeSeconds();
@@ -98,6 +102,7 @@ public class OpenAiUsageClientTests
             }
             """;
         var http = new HttpClient(new StubHandler(json)) { BaseAddress = new Uri("https://api.openai.com") };
+        _httpClients.Add(http);
         return new OpenAiUsageClient(http, NullLogger<OpenAiUsageClient>.Instance, Options.Create(TestPricing));
     }
 
