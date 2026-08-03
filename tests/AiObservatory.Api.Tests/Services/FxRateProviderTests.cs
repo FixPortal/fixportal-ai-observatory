@@ -11,10 +11,25 @@ namespace AiObservatory.Api.Tests.Services;
 /// The ledger converts once, at write, using the rate on the CHARGE date — not "now".
 /// Converting at render would make a historical charge show a different figure every day.
 /// </summary>
-public class FxRateProviderTests
+public sealed class FxRateProviderTests : IDisposable
 {
-    private static FxRateProvider Create(StubHttpMessageHandler handler) =>
-        new(new HttpClient(handler), new MemoryCache(new MemoryCacheOptions()), NullLogger<FxRateProvider>.Instance);
+    private readonly List<HttpClient> _httpClients = [];
+    private readonly List<MemoryCache> _memoryCaches = [];
+
+    public void Dispose()
+    {
+        _httpClients.ForEach(client => client.Dispose());
+        _memoryCaches.ForEach(cache => cache.Dispose());
+    }
+
+    private FxRateProvider Create(StubHttpMessageHandler handler)
+    {
+        var http = new HttpClient(handler);
+        var cache = new MemoryCache(new MemoryCacheOptions());
+        _httpClients.Add(http);
+        _memoryCaches.Add(cache);
+        return new FxRateProvider(http, cache, NullLogger<FxRateProvider>.Instance);
+    }
 
     [Fact]
     public async Task GbpShortCircuitsToOneAndMakesNoRequest()

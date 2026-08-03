@@ -25,8 +25,11 @@ namespace AiObservatory.Api.Tests.Services;
 /// project's job. What is covered here is the service's own decisions.
 /// </para>
 /// </summary>
-public class GitHubBillingSyncServiceTests
+public sealed class GitHubBillingSyncServiceTests : IDisposable
 {
+    private readonly List<HttpClient> _httpClients = [];
+    private readonly List<MemoryCache> _memoryCaches = [];
+
     private static readonly Guid GithubActionsVendorId = Guid.NewGuid();
     private static readonly Guid GithubVendorId = Guid.NewGuid();
     private static readonly Guid CiCategoryId = Guid.NewGuid();
@@ -34,6 +37,12 @@ public class GitHubBillingSyncServiceTests
     private static readonly Guid SubscriptionCategoryId = Guid.NewGuid();
 
     private static readonly Instant Now = Instant.FromUtc(2026, 7, 30, 9, 0);
+
+    public void Dispose()
+    {
+        _httpClients.ForEach(client => client.Dispose());
+        _memoryCaches.ForEach(cache => cache.Dispose());
+    }
 
     /// <summary>A context on its own in-memory store, seeded with the catalog the sync expects.</summary>
     private static AiObservatoryDbContext NewDb(bool seedCatalog = true, params IInterceptor[] interceptors)
@@ -93,26 +102,24 @@ public class GitHubBillingSyncServiceTests
     /// A billing client returning <paramref name="items"/> for the current year and nothing for
     /// the year before, which is the shape a mid-year run actually sees.
     /// </summary>
-    private static GitHubBillingClient ClientReturning(params GitHubBillingUsageItem[] items)
+    private GitHubBillingClient ClientReturning(params GitHubBillingUsageItem[] items)
     {
-        var client = Substitute.For<GitHubBillingClient>(
-            new HttpClient(),
-            "FixPortal",
-            NullLogger<GitHubBillingClient>.Instance
-        );
+        var http = new HttpClient();
+        _httpClients.Add(http);
+        var client = Substitute.For<GitHubBillingClient>(http, "FixPortal", NullLogger<GitHubBillingClient>.Instance);
         client.GetUsageAsync(2025, Arg.Any<CancellationToken>()).Returns([]);
         client.GetUsageAsync(2026, Arg.Any<CancellationToken>()).Returns(items);
         return client;
     }
 
     /// <summary>An FX provider frozen at <paramref name="rate"/> for every date.</summary>
-    private static FxRateProvider FxAt(decimal rate)
+    private FxRateProvider FxAt(decimal rate)
     {
-        var fx = Substitute.For<FxRateProvider>(
-            new HttpClient(),
-            new MemoryCache(new MemoryCacheOptions()),
-            NullLogger<FxRateProvider>.Instance
-        );
+        var http = new HttpClient();
+        var cache = new MemoryCache(new MemoryCacheOptions());
+        _httpClients.Add(http);
+        _memoryCaches.Add(cache);
+        var fx = Substitute.For<FxRateProvider>(http, cache, NullLogger<FxRateProvider>.Instance);
         fx.GetGbpRateOnAsync("USD", Arg.Any<LocalDate>(), Arg.Any<CancellationToken>()).Returns(rate);
         return fx;
     }
@@ -308,11 +315,9 @@ public class GitHubBillingSyncServiceTests
     public async Task ConvertsAtTheRateForTheChargeMonthNotToday()
     {
         await using var db = NewDb();
-        var fx = Substitute.For<FxRateProvider>(
-            new HttpClient(),
-            new MemoryCache(new MemoryCacheOptions()),
-            NullLogger<FxRateProvider>.Instance
-        );
+        using var http = new HttpClient();
+        using var cache = new MemoryCache(new MemoryCacheOptions());
+        var fx = Substitute.For<FxRateProvider>(http, cache, NullLogger<FxRateProvider>.Instance);
         fx.GetGbpRateOnAsync("USD", new LocalDate(2026, 5, 1), Arg.Any<CancellationToken>()).Returns(0.70m);
         fx.GetGbpRateOnAsync("USD", new LocalDate(2026, 7, 1), Arg.Any<CancellationToken>()).Returns(0.80m);
         var sut = Create(
@@ -414,11 +419,9 @@ public class GitHubBillingSyncServiceTests
     public async Task SkipsALineWhoseRateCannotBeResolved()
     {
         await using var db = NewDb();
-        var fx = Substitute.For<FxRateProvider>(
-            new HttpClient(),
-            new MemoryCache(new MemoryCacheOptions()),
-            NullLogger<FxRateProvider>.Instance
-        );
+        using var http = new HttpClient();
+        using var cache = new MemoryCache(new MemoryCacheOptions());
+        var fx = Substitute.For<FxRateProvider>(http, cache, NullLogger<FxRateProvider>.Instance);
         fx.GetGbpRateOnAsync("USD", Arg.Any<LocalDate>(), Arg.Any<CancellationToken>())
             .ThrowsAsync(new FxUnavailableException("USD", new LocalDate(2026, 7, 1)));
         var sut = Create(db, ClientReturning(Item("actions", "Actions Linux", 10m)), fx);

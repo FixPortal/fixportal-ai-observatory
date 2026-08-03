@@ -7,8 +7,12 @@ using NodaTime;
 
 namespace AiObservatory.Ingest.Tests.Services;
 
-public class GitHubActivityClientTests
+public sealed class GitHubActivityClientTests : IDisposable
 {
+    private readonly List<HttpClient> _httpClients = [];
+
+    public void Dispose() => _httpClients.ForEach(client => client.Dispose());
+
     private sealed class StubHandler(Func<HttpRequestMessage, HttpResponseMessage> respond) : HttpMessageHandler
     {
         public List<string> RequestedUrls { get; } = [];
@@ -33,11 +37,12 @@ public class GitHubActivityClientTests
         return response;
     }
 
-    private static GitHubActivityClient CreateSut(StubHandler handler, ILogger<GitHubActivityClient>? logger = null) =>
-        new(
-            new HttpClient(handler) { BaseAddress = new Uri("https://api.github.com") },
-            logger ?? NullLogger<GitHubActivityClient>.Instance
-        );
+    private GitHubActivityClient CreateSut(StubHandler handler, ILogger<GitHubActivityClient>? logger = null)
+    {
+        var http = new HttpClient(handler) { BaseAddress = new Uri("https://api.github.com") };
+        _httpClients.Add(http);
+        return new GitHubActivityClient(http, logger ?? NullLogger<GitHubActivityClient>.Instance);
+    }
 
     // Captures Warning-level log entries so pagination-cap tests can assert the
     // client actually logged, without wrestling ILogger's generic Log<TState> overload
