@@ -18,6 +18,12 @@
   </ItemGroup>
 
   <ItemGroup>
+    <Content Update="Routing\routing-catalog.json">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </Content>
+  </ItemGroup>
+
+  <ItemGroup>
     <!--
       The unit lane needs the money-path validators (SpendEntriesEndpoints.Validate,
       SpendCatalogEndpoints.Slug/ValidateName/ValidateColorVar, ApiKeyComparer) reachable
