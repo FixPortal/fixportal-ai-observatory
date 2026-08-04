@@ -38,11 +38,19 @@ public sealed class RoutingCatalogTests
         [
             ValidCatalog.Replace("\"catalogRevision\": 1", "\"catalogRevision\": 0", StringComparison.Ordinal),
             ValidCatalog.Replace("\"modelId\": \"gpt-5.6-sol\"", "\"modelId\": \" \"", StringComparison.Ordinal),
-            ValidCatalog.Replace("\"aliases\": [\"openai\", \"codex\"]", "\"aliases\": [\"codex\", \"codex\"]", StringComparison.Ordinal),
+            ValidCatalog.Replace(
+                "\"aliases\": [\"openai\", \"codex\"]",
+                "\"aliases\": [\"codex\", \"codex\"]",
+                StringComparison.Ordinal
+            ),
             ValidCatalog.Replace("\"value\": 0.5", "\"value\": 1.1", StringComparison.Ordinal),
             ValidCatalog.Replace("\"costBasis\": \"unpriced\"", "\"costBasis\": \"mystery\"", StringComparison.Ordinal),
             ValidCatalog.Replace("\"estimatedCostUsd\": null", "\"estimatedCostUsd\": -1", StringComparison.Ordinal),
-            ValidCatalog.Replace("\"effectiveFrom\": \"2026-08-04T00:00:00Z\"", "\"effectiveFrom\": \"2026-08-04T00:00:00Z\", \"unknown\": true", StringComparison.Ordinal),
+            ValidCatalog.Replace(
+                "\"effectiveFrom\": \"2026-08-04T00:00:00Z\"",
+                "\"effectiveFrom\": \"2026-08-04T00:00:00Z\", \"unknown\": true",
+                StringComparison.Ordinal
+            ),
         ];
 
     private const string ValidCatalog = """

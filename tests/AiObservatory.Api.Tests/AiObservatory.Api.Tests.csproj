@@ -47,6 +47,12 @@
   </ItemGroup>
 
   <ItemGroup>
+    <Content Include="Fixtures\*.json">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </Content>
+  </ItemGroup>
+
+  <ItemGroup>
     <ProjectReference Include="..\..\src\AiObservatory.Api\AiObservatory.Api.csproj" />
     <!--
       Aliased. Once AiObservatory.Ingest gained ASP.NET Core (to answer App Service's
