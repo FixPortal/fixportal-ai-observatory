@@ -3,7 +3,7 @@ name: Mutation
 on:
   workflow_dispatch:
   schedule:
-    - cron: '15 2 * * *'
+    - cron: '15 2 * * 5'
 
 concurrency:
   group: mutation-${{ github.ref }}
