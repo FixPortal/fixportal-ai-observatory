@@ -11,6 +11,44 @@ namespace AiObservatory.Api.Tests;
 public sealed class IdeRoutingSnapshotEndpointTests
 {
     [Fact]
+    public void ProducesTheSharedGoldenSnapshot()
+    {
+        var observedAt = NodaTime.Instant.FromUtc(2026, 8, 4, 12, 0);
+        var metric = new RoutingEvidenceMetric(
+            0.5,
+            "operatorBaseline",
+            "routing-catalog:2026-08-04",
+            observedAt,
+            null
+        );
+        var snapshot = new RoutingSnapshot(
+            1,
+            1,
+            "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            observedAt,
+            [
+                new RoutingSnapshotModel(
+                    "gpt-5.6-sol",
+                    "openai",
+                    "gpt-5.6",
+                    ["codex"],
+                    "adapterDefaultDeclared",
+                    "codex",
+                    observedAt,
+                    ["code"],
+                    "unpriced",
+                    null,
+                    new RoutingEvidence(metric, metric, metric, metric, metric)
+                ),
+            ]
+        );
+        var actual = JsonSerializer.Serialize(snapshot, RoutingCatalogService.SerializerOptions);
+        var fixture = File.ReadAllText(Path.Combine(AppContext.BaseDirectory, "Fixtures", "routing-snapshot.v1.json"));
+
+        actual.Should().Be(fixture.TrimEnd());
+    }
+
+    [Fact]
     public async Task ReturnsAWeakEtagThenHonorsAConditionalRequest()
     {
         var path = Path.Combine(AppContext.BaseDirectory, "Routing", "routing-catalog.json");
