@@ -424,7 +424,9 @@ public partial class Program
         }
         if (ApiKeyComparer.FixedTimeEquals(ideKey!, adminKey!) || ApiKeyComparer.FixedTimeEquals(ideKey!, readOnlyKey!))
         {
-            throw new InvalidOperationException("OBSERVATORY_IDE_API_KEY must be different from the existing API keys.");
+            throw new InvalidOperationException(
+                "OBSERVATORY_IDE_API_KEY must be different from the existing API keys."
+            );
         }
     }
 

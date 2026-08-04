@@ -14,13 +14,7 @@ public sealed class IdeRoutingSnapshotEndpointTests
     public void ProducesTheSharedGoldenSnapshot()
     {
         var observedAt = NodaTime.Instant.FromUtc(2026, 8, 4, 12, 0);
-        var metric = new RoutingEvidenceMetric(
-            0.5,
-            "operatorBaseline",
-            "routing-catalog:2026-08-04",
-            observedAt,
-            null
-        );
+        var metric = new RoutingEvidenceMetric(0.5, "operatorBaseline", "routing-catalog:2026-08-04", observedAt, null);
         var snapshot = new RoutingSnapshot(
             1,
             1,
