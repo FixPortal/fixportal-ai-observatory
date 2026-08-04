@@ -28,6 +28,7 @@ public sealed class AiObservatoryApiFactory : WebApplicationFactory<Program>, IA
 {
     public const string AdminKey = "test-admin-key-0123456789";
     public const string ReadOnlyKey = "test-readonly-key-0123456789";
+    public const string IdeKey = "test-ide-key-0123456789";
 
     public string Environment { get; set; } = Environments.Development;
     public string? ApiKeyOverride { get; set; } = AdminKey;
@@ -35,6 +36,7 @@ public sealed class AiObservatoryApiFactory : WebApplicationFactory<Program>, IA
     // Mutable test-fixture seam used by consumers even though the in-repo tests keep the default.
     // ReSharper disable once AutoPropertyCanBeMadeGetOnly.Global
     public string? ReadOnlyKeyOverride { get; set; } = ReadOnlyKey;
+    public string? IdeKeyOverride { get; set; } = IdeKey;
     public Dictionary<string, string?> ConfigurationOverrides { get; } = [];
 
     private string? _dbConnectionOverride;
@@ -84,6 +86,7 @@ public sealed class AiObservatoryApiFactory : WebApplicationFactory<Program>, IA
         );
         System.Environment.SetEnvironmentVariable("OBSERVATORY_API_KEY", ApiKeyOverride);
         System.Environment.SetEnvironmentVariable("OBSERVATORY_READONLY_API_KEY", ReadOnlyKeyOverride);
+        System.Environment.SetEnvironmentVariable("OBSERVATORY_IDE_API_KEY", IdeKeyOverride);
         System.Environment.SetEnvironmentVariable("SWA_ORIGIN", "https://example.test");
         return base.CreateHost(builder);
     }
@@ -108,6 +111,13 @@ public sealed class AiObservatoryApiFactory : WebApplicationFactory<Program>, IA
         // Mirror the server's configured admin key (defaults to AdminKey) rather than the
         // const, so an ApiKeyOverride-driven test doesn't silently send a mismatched key.
         client.DefaultRequestHeaders.Add("X-Observatory-Key", ApiKeyOverride);
+        return client;
+    }
+
+    public HttpClient CreateIdeClient()
+    {
+        var client = CreateClient();
+        client.DefaultRequestHeaders.Add("X-Observatory-IDE-Key", IdeKeyOverride);
         return client;
     }
 
