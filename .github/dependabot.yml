@@ -1,8 +1,17 @@
 version: 2
 
+registries:
+  fixportal-github-packages:
+    type: nuget-feed
+    url: https://nuget.pkg.github.com/FixPortal/index.json
+    username: FixPortal
+    password: ${{secrets.FIXPORTAL_PACKAGES_TOKEN}}
+
 updates:
   - package-ecosystem: nuget
     directory: /
+    registries:
+      - fixportal-github-packages
     schedule:
       interval: weekly
       day: monday
