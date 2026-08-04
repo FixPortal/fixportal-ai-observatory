@@ -53,6 +53,9 @@
          tests use it too). Linked rather than duplicated. -->
     <Compile Include="..\AiObservatory.Api.Tests\Services\StubHttpMessageHandler.cs"
              Link="Services\StubHttpMessageHandler.cs" />
+    <Content Include="..\AiObservatory.Api.Tests\Fixtures\routing.decided.v1.json"
+             Link="Fixtures\routing.decided.v1.json"
+             CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
 
 </Project>

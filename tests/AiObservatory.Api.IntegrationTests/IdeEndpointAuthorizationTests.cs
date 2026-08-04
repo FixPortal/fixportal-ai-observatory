@@ -13,10 +13,7 @@ public sealed class IdeEndpointAuthorizationTests
         await factory.InitializeAsync();
         using var client = factory.CreateIdeClient();
 
-        var snapshot = await client.GetAsync(
-            "/api/ide/v1/routing-snapshot",
-            TestContext.Current.CancellationToken
-        );
+        var snapshot = await client.GetAsync("/api/ide/v1/routing-snapshot", TestContext.Current.CancellationToken);
         var general = await client.GetAsync("/api/aggregates", TestContext.Current.CancellationToken);
 
         snapshot.StatusCode.Should().Be(HttpStatusCode.OK);
@@ -32,10 +29,7 @@ public sealed class IdeEndpointAuthorizationTests
         using var admin = factory.CreateAdminClient();
         using var readOnly = factory.CreateReadOnlyClient();
 
-        var adminResponse = await admin.GetAsync(
-            "/api/ide/v1/routing-snapshot",
-            TestContext.Current.CancellationToken
-        );
+        var adminResponse = await admin.GetAsync("/api/ide/v1/routing-snapshot", TestContext.Current.CancellationToken);
         var readOnlyResponse = await readOnly.GetAsync(
             "/api/ide/v1/routing-snapshot",
             TestContext.Current.CancellationToken

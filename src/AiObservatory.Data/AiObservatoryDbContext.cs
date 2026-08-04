@@ -42,6 +42,7 @@ public class AiObservatoryDbContext(DbContextOptions<AiObservatoryDbContext> opt
     public DbSet<SpendCategory> SpendCategories => Set<SpendCategory>();
     public DbSet<SpendVendor> SpendVendors => Set<SpendVendor>();
     public DbSet<SpendEntry> SpendEntries => Set<SpendEntry>();
+    public DbSet<IdeEvent> IdeEvents => Set<IdeEvent>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -444,6 +445,16 @@ public class AiObservatoryDbContext(DbContextOptions<AiObservatoryDbContext> opt
                 t.HasCheckConstraint("CK_AdversarialReviewRun_IssuesRaised_NonNegative", "\"IssuesRaised\" >= 0");
                 t.HasCheckConstraint("CK_AdversarialReviewRun_IssuesAccepted_NonNegative", "\"IssuesAccepted\" >= 0");
             });
+        });
+
+        modelBuilder.Entity<IdeEvent>(b =>
+        {
+            b.Property(e => e.IdempotencyKey).HasMaxLength(256).IsRequired();
+            b.Property(e => e.EventType).HasMaxLength(128).IsRequired();
+            b.Property(e => e.EnvelopeJson).HasColumnType("jsonb").IsRequired();
+            b.Property(e => e.ContentSha256).HasMaxLength(71).IsRequired();
+            b.HasIndex(e => new { e.PartnerId, e.IdempotencyKey }).IsUnique();
+            b.HasIndex(e => e.OccurredAt);
         });
     }
 }

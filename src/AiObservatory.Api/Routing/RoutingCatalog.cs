@@ -80,7 +80,8 @@ public sealed class RoutingCatalogService
         ArgumentException.ThrowIfNullOrWhiteSpace(path);
         try
         {
-            var catalog = JsonSerializer.Deserialize<RoutingCatalog>(File.ReadAllText(path), JsonOptions)
+            var catalog =
+                JsonSerializer.Deserialize<RoutingCatalog>(File.ReadAllText(path), JsonOptions)
                 ?? throw new InvalidDataException("Routing projection is empty.");
             Validate(catalog);
             return new RoutingCatalogService(catalog);
@@ -97,8 +98,8 @@ public sealed class RoutingCatalogService
 
     public RoutingSnapshot GetSnapshot(Instant now)
     {
-        var models = _catalog.Models
-            .Where(model => model.EffectiveFrom <= now && (model.EffectiveTo is null || now < model.EffectiveTo))
+        var models = _catalog
+            .Models.Where(model => model.EffectiveFrom <= now && (model.EffectiveTo is null || now < model.EffectiveTo))
             .OrderBy(model => model.ModelId, StringComparer.Ordinal)
             .Select(model => new RoutingSnapshotModel(
                 model.ModelId,
@@ -119,7 +120,10 @@ public sealed class RoutingCatalogService
             throw new InvalidDataException($"Routing snapshot exceeds {MaximumModels} models.");
         }
 
-        var content = JsonSerializer.SerializeToUtf8Bytes(new RoutingSnapshotContent(_catalog.CatalogRevision, models), JsonOptions);
+        var content = JsonSerializer.SerializeToUtf8Bytes(
+            new RoutingSnapshotContent(_catalog.CatalogRevision, models),
+            JsonOptions
+        );
         var snapshotId = "sha256:" + Convert.ToHexString(SHA256.HashData(content)).ToLowerInvariant();
         lock (_gate)
         {
@@ -221,7 +225,14 @@ public sealed class RoutingCatalogService
         {
             throw new InvalidDataException("Routing evidence is required.");
         }
-        return [evidence.Quality, evidence.Reliability, evidence.InterventionRate, evidence.ToolFit, evidence.ContextFit];
+        return
+        [
+            evidence.Quality,
+            evidence.Reliability,
+            evidence.InterventionRate,
+            evidence.ToolFit,
+            evidence.ContextFit,
+        ];
     }
 
     private static bool Overlaps(RoutingModelVersion left, RoutingModelVersion right) =>
