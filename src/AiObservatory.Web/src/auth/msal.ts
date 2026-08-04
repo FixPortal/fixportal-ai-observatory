@@ -78,8 +78,10 @@ export const apiKey = import.meta.env.VITE_API_KEY ?? ''
 // this module against the already-stripped URL — still finds the key, instead of dropping
 // the viewer to the Entra sign-in screen they can't pass. Scoped to the tab, cleared on close.
 const VIEWER_KEY_STORAGE = 'observatory:viewer-key'
+export const isEmbedded = new URLSearchParams(window.location.search).get('embed') === 'fixportal-ide'
 
 function readViewerKey(): string {
+  if (isEmbedded) return ''
   const fromUrl = new URLSearchParams(window.location.search).get('key')
   if (fromUrl) {
     try { window.sessionStorage.setItem(VIEWER_KEY_STORAGE, fromUrl) } catch { /* storage blocked */ }
@@ -93,7 +95,7 @@ export const urlApiKey = readViewerKey()
 // Strip the key from the visible URL once captured so it does not linger in the
 // address bar, browser history, or any Referer header. The value is already held
 // in urlApiKey (and sessionStorage) for the session.
-if (urlApiKey && typeof window.history?.replaceState === 'function') {
+if ((urlApiKey || isEmbedded) && typeof window.history?.replaceState === 'function') {
   const stripped = new URL(window.location.href)
   if (stripped.searchParams.has('key')) {
     stripped.searchParams.delete('key')

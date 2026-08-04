@@ -1417,3 +1417,10 @@ body {
   .spend-totals { grid-template-columns: 1fr; }
 }
 .activity-treemap__value { font-size: 0.65rem; opacity: 0.85; }
+/* Native host context is intentionally compact; the dashboard remains the product. */
+.embedded-context {
+  padding: 0.35rem 1rem;
+  border-bottom: 1px solid var(--border, #2c2c2c);
+  color: var(--text-muted, #a0a0a0);
+  font-size: 0.75rem;
+}

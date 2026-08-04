@@ -12,6 +12,7 @@ vi.mock('@azure/msal-react', () => ({
 const msalMock = vi.hoisted(() => ({
   authEnabled: false,
   urlApiKey: '',
+  isEmbedded: false,
   loginRequest: { scopes: [] as string[] },
 }))
 vi.mock('./msal', () => msalMock)
@@ -22,6 +23,7 @@ describe('AuthGate', () => {
   beforeEach(() => {
     msalMock.authEnabled = false
     msalMock.urlApiKey = ''
+    msalMock.isEmbedded = false
     useIsAuthenticated.mockReset().mockReturnValue(false)
     useMsal.mockReset().mockReturnValue({
       instance: { loginRedirect: vi.fn().mockResolvedValue(undefined), getActiveAccount: vi.fn(), setActiveAccount: vi.fn() },
@@ -49,6 +51,17 @@ describe('AuthGate', () => {
     msalMock.authEnabled = true
     msalMock.urlApiKey = ''
     useIsAuthenticated.mockReturnValue(false)
+
+    render(<AuthGate><p>dashboard content</p></AuthGate>)
+
+    expect(screen.queryByText('dashboard content')).not.toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /sign in with microsoft/i })).toBeInTheDocument()
+  })
+
+  test('embedded mode requires Entra even when a viewer key is present', () => {
+    msalMock.authEnabled = true
+    msalMock.urlApiKey = 'viewer-key-123'
+    msalMock.isEmbedded = true
 
     render(<AuthGate><p>dashboard content</p></AuthGate>)
 
