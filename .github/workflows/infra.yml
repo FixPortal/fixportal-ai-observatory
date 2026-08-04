@@ -1,13 +1,9 @@
 name: Infra
 
-# Deploys the Bicep templates (incremental) only when infra changes, decoupled
-# from the code-deploy pipeline (deploy.yml). Makes resource config self-healing
-# — e.g. the API's httpsOnly is re-asserted from source on every infra change.
-on:
-  push:
-    branches: [main]
-    paths: ['infra/**']
-  workflow_dispatch:
+# Infrastructure changes are operator-applied once their external preconditions
+# (such as creating Key Vault secrets) are satisfied. Application deploys verify
+# required references independently before replacing a running ZIP.
+on: workflow_dispatch
 
 concurrency:
   group: infra-deploy

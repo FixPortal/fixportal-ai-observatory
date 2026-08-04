@@ -34,6 +34,7 @@ resource app 'Microsoft.Web/sites@2023-01-01' = {
         { name: 'ANTHROPIC_API_KEY', value: '@Microsoft.KeyVault(VaultName=${kvName};SecretName=anthropic-api-key)' }
         { name: 'OBSERVATORY_API_KEY', value: '@Microsoft.KeyVault(VaultName=${kvName};SecretName=observatory-api-key)' }
         { name: 'OBSERVATORY_READONLY_API_KEY', value: '@Microsoft.KeyVault(VaultName=${kvName};SecretName=observatory-readonly-api-key)' }
+        { name: 'OBSERVATORY_IDE_API_KEY', value: '@Microsoft.KeyVault(VaultName=${kvName};SecretName=observatory-ide-api-key)' }
 
         // GitHub billing sync. The org bill is not paid from the account the spend CSV
         // exports, so this is the only route by which GitHub spend reaches the ledger.
