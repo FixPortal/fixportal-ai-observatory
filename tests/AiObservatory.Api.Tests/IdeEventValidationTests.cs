@@ -49,6 +49,11 @@ public sealed class IdeEventValidationTests
                     StringComparison.Ordinal
                 ),
                 valid.Replace(
+                    "\"selectedModelId\":\"gpt-5.6-sol\"",
+                    "\"selectedModelId\":\"gpt-5.6-sol\",\"selectedModelId\":\"claude-fable-5\"",
+                    StringComparison.Ordinal
+                ),
+                valid.Replace(
                     "\"classification\":0",
                     "\"classification\":0,\"unknown\":true",
                     StringComparison.Ordinal

@@ -178,7 +178,7 @@ public static class IdeEndpoints
         {
             throw new InvalidDataException("IDE event payload must be an object.");
         }
-        var properties = payload.EnumerateObject().ToDictionary(property => property.Name, StringComparer.Ordinal);
+        var properties = IndexPayload(payload);
         var required = eventType switch
         {
             "run.completed" => new[] { "modelId", "adapterId", "durationMilliseconds", "terminalStatus" },
@@ -216,6 +216,18 @@ public static class IdeEndpoints
         )
         {
             throw new InvalidDataException("Operator intervention reason is invalid.");
+        }
+    }
+
+    private static Dictionary<string, JsonProperty> IndexPayload(JsonElement payload)
+    {
+        try
+        {
+            return payload.EnumerateObject().ToDictionary(property => property.Name, StringComparer.Ordinal);
+        }
+        catch (ArgumentException exception)
+        {
+            throw new InvalidDataException("IDE event payload members are invalid.", exception);
         }
     }
 
