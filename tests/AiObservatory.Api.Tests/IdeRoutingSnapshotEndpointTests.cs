@@ -73,6 +73,30 @@ public sealed class IdeRoutingSnapshotEndpointTests
         second.Response.Body.Length.Should().Be(0);
     }
 
+    [Theory]
+    [InlineData("\"unrelated\", {etag}")]
+    [InlineData("*")]
+    public async Task HonorsHttpIfNoneMatchListsAndWildcard(string condition)
+    {
+        var catalog = RoutingCatalogService.Load(
+            Path.Combine(AppContext.BaseDirectory, "Routing", "routing-catalog.json")
+        );
+        var clock = new FakeClock(NodaTime.Instant.FromUtc(2026, 8, 4, 12, 0));
+        var first = NewContext();
+        await IdeEndpoints.GetRoutingSnapshot(first, catalog, clock).ExecuteAsync(first);
+        var conditional = NewContext();
+        conditional.Request.Headers.IfNoneMatch = condition.Replace(
+            "{etag}",
+            first.Response.Headers.ETag.Single(),
+            StringComparison.Ordinal
+        );
+
+        await IdeEndpoints.GetRoutingSnapshot(conditional, catalog, clock).ExecuteAsync(conditional);
+
+        conditional.Response.StatusCode.Should().Be(StatusCodes.Status304NotModified);
+        conditional.Response.Body.Length.Should().Be(0);
+    }
+
     private static DefaultHttpContext NewContext()
     {
         return new DefaultHttpContext
