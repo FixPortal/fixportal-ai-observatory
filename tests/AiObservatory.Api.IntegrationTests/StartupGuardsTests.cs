@@ -75,6 +75,42 @@ public class StartupGuardsTests
             .BeTrue($"the exception chain should reject identical API keys; got: {thrown}");
     }
 
+    [Theory]
+    [InlineData(null)]
+    [InlineData("change-me")]
+    [InlineData(KeyVaultReference)]
+    [InlineData(" padded-key ")]
+    public async Task Startup_WhenIdeKeyIsInvalid_ThrowsOutsideDevelopment(string? ideKey)
+    {
+        await using var factory = new AiObservatoryApiFactory
+        {
+            Environment = Environments.Production,
+            IdeKeyOverride = ideKey,
+        };
+
+        var thrown = CaptureServicesException(factory);
+
+        thrown.Should().NotBeNull();
+        ExceptionChainContains(thrown!, "OBSERVATORY_IDE_API_KEY").Should().BeTrue();
+    }
+
+    [Theory]
+    [InlineData(AiObservatoryApiFactory.AdminKey)]
+    [InlineData(AiObservatoryApiFactory.ReadOnlyKey)]
+    public async Task Startup_WhenIdeKeyDuplicatesAnExistingKey_ThrowsOutsideDevelopment(string ideKey)
+    {
+        await using var factory = new AiObservatoryApiFactory
+        {
+            Environment = Environments.Production,
+            IdeKeyOverride = ideKey,
+        };
+
+        var thrown = CaptureServicesException(factory);
+
+        thrown.Should().NotBeNull();
+        ExceptionChainContains(thrown!, "must be different").Should().BeTrue();
+    }
+
     [Trait("Category", "Integration")]
     [Fact]
     public async Task Startup_WhenApiKeyIsPlaceholder_SucceedsInDevelopment()

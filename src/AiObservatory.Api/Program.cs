@@ -1,6 +1,7 @@
 using System.Threading.RateLimiting;
 using AiObservatory.Api;
 using AiObservatory.Api.Endpoints;
+using AiObservatory.Api.Routing;
 using AiObservatory.Api.Services;
 using AiObservatory.Api.Services.Fx;
 using AiObservatory.Api.Services.GitHub;
@@ -52,6 +53,9 @@ builder.Services.AddDataLayer(dbConnection);
 
 Program.ValidateApiKeys(builder);
 builder.Services.AddSingleton<IClock>(SystemClock.Instance);
+builder.Services.AddSingleton(
+    RoutingCatalogService.Load(Path.Combine(AppContext.BaseDirectory, "Routing", "routing-catalog.json"))
+);
 
 // Bound unconditionally: Anthropic events are priced server-side at ingest, so a missing
 // or empty table is a boot-time failure rather than a silent fallback to wrong rates.
@@ -170,6 +174,8 @@ if (authEnabled)
 }
 
 var api = app.MapGroup("/api").AddEndpointFilter<ApiKeyEndpointFilter>().RequireRateLimiting("api");
+var ide = app.MapGroup("/api/ide/v1").AddEndpointFilter<IdeApiKeyEndpointFilter>().RequireRateLimiting("api");
+ide.MapIdeEndpoints();
 
 if (app.Environment.IsDevelopment())
 {
@@ -405,13 +411,30 @@ public partial class Program
 
         var adminKey = builder.Configuration["OBSERVATORY_API_KEY"];
         var readOnlyKey = builder.Configuration["OBSERVATORY_READONLY_API_KEY"];
+        var ideKey = builder.Configuration["OBSERVATORY_IDE_API_KEY"];
         ValidateApiKey(adminKey, "OBSERVATORY_API_KEY");
         ValidateApiKey(readOnlyKey, "OBSERVATORY_READONLY_API_KEY");
+        ValidateIdeApiKey(ideKey);
 
         if (ApiKeyComparer.FixedTimeEquals(adminKey!, readOnlyKey!))
         {
             throw new InvalidOperationException(
                 "OBSERVATORY_API_KEY and OBSERVATORY_READONLY_API_KEY must be different outside Development."
+            );
+        }
+        if (ApiKeyComparer.FixedTimeEquals(ideKey!, adminKey!) || ApiKeyComparer.FixedTimeEquals(ideKey!, readOnlyKey!))
+        {
+            throw new InvalidOperationException("OBSERVATORY_IDE_API_KEY must be different from the existing API keys.");
+        }
+    }
+
+    private static void ValidateIdeApiKey(string? value)
+    {
+        ValidateApiKey(value, "OBSERVATORY_IDE_API_KEY");
+        if (value != value!.Trim())
+        {
+            throw new InvalidOperationException(
+                "OBSERVATORY_IDE_API_KEY must be set to a non-default, unpadded value outside Development."
             );
         }
     }

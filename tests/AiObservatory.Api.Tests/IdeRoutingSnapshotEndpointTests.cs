@@ -1,0 +1,52 @@
+using System.Text.Json;
+using AiObservatory.Api.Endpoints;
+using AiObservatory.Api.Routing;
+using AwesomeAssertions;
+using Microsoft.AspNetCore.Http;
+using Microsoft.Extensions.DependencyInjection;
+using NodaTime.Testing;
+
+namespace AiObservatory.Api.Tests;
+
+public sealed class IdeRoutingSnapshotEndpointTests
+{
+    [Fact]
+    public async Task ReturnsAWeakEtagThenHonorsAConditionalRequest()
+    {
+        var path = Path.Combine(AppContext.BaseDirectory, "Routing", "routing-catalog.json");
+        var catalog = RoutingCatalogService.Load(path);
+        var clock = new FakeClock(NodaTime.Instant.FromUtc(2026, 8, 4, 12, 0));
+        var first = NewContext();
+
+        var firstResult = IdeEndpoints.GetRoutingSnapshot(first, catalog, clock);
+        await firstResult.ExecuteAsync(first);
+
+        first.Response.StatusCode.Should().Be(StatusCodes.Status200OK);
+        var etag = first.Response.Headers.ETag.Single();
+        etag.Should().StartWith("W/\"sha256:").And.EndWith("\"");
+        first.Response.Body.Position = 0;
+        using var document = await JsonDocument.ParseAsync(
+            first.Response.Body,
+            cancellationToken: TestContext.Current.CancellationToken
+        );
+        document.RootElement.GetProperty("schemaVersion").GetInt32().Should().Be(1);
+        document.RootElement.GetProperty("models").GetArrayLength().Should().Be(3);
+
+        var second = NewContext();
+        second.Request.Headers.IfNoneMatch = etag;
+        var secondResult = IdeEndpoints.GetRoutingSnapshot(second, catalog, clock);
+        await secondResult.ExecuteAsync(second);
+
+        second.Response.StatusCode.Should().Be(StatusCodes.Status304NotModified);
+        second.Response.Body.Length.Should().Be(0);
+    }
+
+    private static DefaultHttpContext NewContext()
+    {
+        return new DefaultHttpContext
+        {
+            RequestServices = new ServiceCollection().AddLogging().BuildServiceProvider(),
+            Response = { Body = new MemoryStream() },
+        };
+    }
+}
