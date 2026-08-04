@@ -6,6 +6,7 @@ using AiObservatory.Api.Routing;
 using AiObservatory.Data;
 using AiObservatory.Data.Entities;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Net.Http.Headers;
 using NodaTime;
 using NodaTime.Serialization.SystemTextJson;
 
@@ -25,9 +26,15 @@ public static class IdeEndpoints
     internal static IResult GetRoutingSnapshot(HttpContext context, RoutingCatalogService catalog, IClock clock)
     {
         var snapshot = catalog.GetSnapshot(clock.GetCurrentInstant());
-        var etag = $"W/\"{snapshot.SnapshotId}\"";
-        context.Response.Headers.ETag = etag;
-        if (context.Request.Headers.IfNoneMatch.Any(value => string.Equals(value, etag, StringComparison.Ordinal)))
+        var etag = new EntityTagHeaderValue($"\"{snapshot.SnapshotId}\"", isWeak: true);
+        context.Response.GetTypedHeaders().ETag = etag;
+        if (
+            context
+                .Request.GetTypedHeaders()
+                .IfNoneMatch?.Any(candidate =>
+                    candidate.Equals(EntityTagHeaderValue.Any) || candidate.Compare(etag, false)
+                ) == true
+        )
         {
             return Results.StatusCode(StatusCodes.Status304NotModified);
         }
