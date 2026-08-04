@@ -55,6 +55,19 @@ describe('readViewerKey / URL strip', () => {
 
     expect(window.location.search).toBe('?other=1')
   })
+
+  test('embedded mode ignores URL and stored viewer keys', async () => {
+    window.sessionStorage.setItem(VIEWER_KEY_STORAGE, 'from-storage')
+    window.history.pushState({}, '', '/?embed=fixportal-ide&key=secret123')
+    const setItem = vi.spyOn(Storage.prototype, 'setItem')
+
+    const mod = await import('./msal')
+
+    expect(mod.isEmbedded).toBe(true)
+    expect(mod.urlApiKey).toBe('')
+    expect(mod.isReadonly).toBe(false)
+    expect(setItem).not.toHaveBeenCalled()
+  })
 })
 
 describe('getAccessToken', () => {
