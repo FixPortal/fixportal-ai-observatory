@@ -1,8 +1,42 @@
 # Scheduled ingest and intelligence jobs
 
-**Status:** approved 2026-08-08
-**Goal:** run both daily background workers as scheduled GitHub Actions jobs instead of
-resident App Service background services, so `fpaiobs-api-plan` can drop from B1 to F1 Free.
+**Status: NOT PROCEEDING — decided 2026-08-08.** Approved on the first draft, then dropped
+once cross-vendor review established what the change actually costs. Retained as a record so
+the option is not re-proposed and re-analysed from scratch.
+
+**Goal (as proposed):** run both daily background workers as scheduled GitHub Actions jobs
+instead of resident App Service background services, so `fpaiobs-api-plan` can drop from B1
+to F1 Free.
+
+## Why this was dropped
+
+The saving is GBP 9.90/30d, about GBP 120/year. Against that, review turned up four costs the
+first draft had not accounted for:
+
+1. **No federated identity exists** (see Prerequisites). Creating an Entra app, granting Key
+   Vault Secrets User and firewall-rule RBAC, is out-of-band Azure administration that must
+   land before a single line of this runs.
+2. **The F1 burst CPU quota**, 3 minutes per 5, is the binding one — not the 60 min/day
+   ceiling the draft analysed. `MigrateAsync()` plus two cache rebuilds all fall on the same
+   cold start, and tripping it suspends the app mid-request.
+3. **A new FX failure mode.** `FxRateProvider`'s no-expiry cache is wiped by every F1 unload,
+   so a cold start during a frankfurter.dev outage fails non-USD ledger writes. The resident
+   process masks this today.
+4. **A tighter operational obligation.** `LookbackDays` is 3 and writes are first-write-wins,
+   so a red run must be acted on within two days. The current resident loop just retries
+   hourly and needs nobody.
+
+Plus a manual firewall cleanup on a live database, because incremental Bicep deploys leave
+the stale `allow-app-N` rules behind.
+
+GBP 120/year does not buy that. The observatory's actual cost problem was Log Analytics
+ingestion, fixed separately in `9a8bce9` and `f1d0f2a`.
+
+**What would change the decision:** a federated identity arriving for another reason, or the
+plan needing to scale up anyway. Neither is true as of 2026-08-08.
+
+The design below is unchanged from the reviewed version and remains sound if the economics
+ever shift.
 
 ## Why
 
