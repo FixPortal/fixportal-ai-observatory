@@ -12,10 +12,38 @@ App Service plan is GBP 9.90/30d. The plan is B1 for exactly one reason: two
 Basic** (Microsoft's App Service limits table: the Always On row is blank for Free and
 Shared). Removing both loops removes the only thing pinning the plan above Free.
 
-The prize is small and stated plainly: about GBP 120/year for roughly a day's work. It was
-approved on the understanding that the secondary benefits carry equal weight — each job
-becomes independently runnable, a failure surfaces as a red workflow instead of silence,
-and two processes stop being paid for to sleep 23 hours a day.
+The prize is small and stated plainly: about GBP 120/year. It was approved on the
+understanding that the secondary benefits carry equal weight — each job becomes
+independently runnable, a failure surfaces as a red workflow instead of silence, and two
+processes stop being paid for to sleep 23 hours a day.
+
+**Revised effort estimate, after review (2026-08-08).** The original "roughly a day's work"
+assumed a GitHub OIDC federated identity already existed. It does not (see Prerequisites).
+Creating and granting one is out-of-band Azure work that must happen before any of this can
+run. Anyone weighing this change should re-check that GBP 120/year against the revised
+scope before starting, not against the original estimate.
+
+## Prerequisites — not yet satisfied
+
+**There is no federated identity in this repository.** All three `azure/login` steps
+(`deploy.yml:47`, `deploy.yml:126`, `infra.yml:28`) authenticate with
+`creds: ${{ secrets.AZURE_CREDENTIALS }}` — legacy service-principal JSON. No workflow
+requests `id-token: write`, and `infra/` declares no federated credential. An earlier draft
+of this spec asserted the workflow could reuse "the existing OIDC identity deploy.yml already
+uses"; that identity does not exist and the claim was wrong.
+
+Two routes, neither free:
+
+1. **Create an Entra app with a federated credential** for this repo, grant it Key Vault
+   Secrets User on `fpaiobs-kv` and firewall-rule management on `fpaiobs-db`, and migrate the
+   new workflow to `id-token: write`. Preferred — no long-lived secret — but it is Azure
+   administration this repo cannot perform on its own.
+2. **Reuse `AZURE_CREDENTIALS`.** Available today, but its scope has not been verified: it
+   may or may not carry Key Vault data-plane access or permission to manage firewall rules.
+   Confirm before assuming, and note it is a long-lived secret in a public repository's
+   secret store.
+
+Whichever is chosen, it is a blocking prerequisite, not an implementation detail.
 
 ## Current state
 
@@ -32,12 +60,31 @@ Observed on 2026-08-08, not assumed:
   pins it regardless of the other app.
 - `fpaiobs-db` firewall is the union of both apps' `possibleOutboundIpAddresses`
   (`infra/main.bicep`). There is no blanket allow-Azure-services rule.
-- CPU headroom against F1's 60 min/day ceiling: `fpaiobs-api` used 12.7-17.8 min/day and
-  `fpaiobs-ingest` 7-12.4 min/day over Aug 1-7, and the API's figure includes the
-  intelligence worker this change removes.
+- `IngestOptions.LookbackDays` defaults to **3** (`IngestOptions.cs:16`). The trailing window
+  is three days wide, not indefinite.
+- `AiObservatory.Api/Program.cs:163` runs `await db.Database.MigrateAsync()` at startup, so
+  every cold start pays it.
+- The API holds two in-memory caches that a cold start wipes: `IMemoryCache` via
+  `AddMemoryCache()` (`Program.cs:89`), used by `FxRateProvider` which caches historical rates
+  with **no expiry** (`FxRateProvider.cs:90` — "a past date's rate cannot change"); and
+  `RoutingCatalog._cached` (`RoutingCatalog.cs:72`).
 
-Neither worker needs to be resident. Both are daily-cadence and both self-heal from a missed
-run — ingest through its trailing lookback window, intelligence through its 7-day catch-up.
+**F1 has two CPU quotas, not one**, and the burst quota is the one that bites:
+
+```
+| CPU time (5 minutes)6 | 3 minutes  | 3 minutes   | Unlimited, pay at standard rates | ...
+| CPU time (day)6       | 60 minutes | 240 minutes | Unlimited, pay at standard rates | ...
+```
+
+Both are enforced **per app**, so the two apps' figures never needed adding together.
+Measured over Aug 1-7: `fpaiobs-api` 12.7-17.8 min/day, `fpaiobs-ingest` 7-12.4 min/day.
+Only the API's figure matters after this change, and it falls further once the intelligence
+worker is removed. The daily ceiling is comfortable; the 3-minutes-per-5-minutes burst
+ceiling is the real constraint, because a cold start runs `MigrateAsync()` and rebuilds both
+caches at once. Tripping it suspends the app mid-request rather than merely slowing it.
+
+Neither worker needs to be resident. Both are daily-cadence. Both tolerate a missed run, but
+only within limits — see Error handling for what "self-heal" does and does not cover.
 
 ## Approach
 
@@ -135,8 +182,21 @@ silent failure the ingest app was rebuilt to eliminate.
 
 Decided: **exit non-zero if any configured arm failed.** Not "all arms failed", which is
 today's GitHub-repo rule and far too weak for a job. A provider outage will red the workflow
-until it clears; that is information, not an incident, because the trailing lookback window
-repairs the gap on the next successful run.
+until it clears, and that is information rather than an incident.
+
+**What self-heal actually covers.** Re-ingesting a date is idempotent, but the repair is
+bounded and an earlier draft of this spec overstated it:
+
+- `LookbackDays` is **3**, so up to two consecutive missed runs are repaired automatically.
+  Three or more consecutive misses leave a permanent gap.
+- Writes are **first-write-wins**, so a provider restating a day already recorded is silently
+  discarded. Re-running does not correct an earlier bad figure.
+- The GitHub arm's backfill never re-triggers once a repo has rows, so a gap there is
+  permanent regardless of the lookback window.
+
+A red run therefore needs acting on within two days, not merely noting. That is a stronger
+obligation than a resident hourly loop imposed, and it is the main operational cost of this
+change.
 
 An arm that is not configured is not a failure. The existing "NOT CONFIGURED" logging stays,
 because an unregistered arm and a registered arm that found nothing are otherwise
@@ -144,30 +204,56 @@ indistinguishable.
 
 ## Security
 
-- Secrets are read from Key Vault at run time through the existing OIDC identity and exported
-  under the names `Program.cs` already reads (`DB_CONNECTION`, `ANTHROPIC_BILLING_KEY`,
-  `GITHUB_TOKEN`, `COPILOT_ORG`, `Ingest__GitHubRepoAllowlist`, `GOOGLE_BILLING_ACCOUNT_ID`).
-  Nothing is duplicated into GitHub secrets. Each is masked with `::add-mask::` on read.
-- The GitHub federated identity needs **Key Vault Secrets User** on `fpaiobs-kv`, and
-  permission to manage firewall rules on `fpaiobs-db`.
+- Secrets are read from Key Vault at run time by whichever identity Prerequisites settles on,
+  and exported under the names `Program.cs` already reads (`DB_CONNECTION`,
+  `ANTHROPIC_BILLING_KEY`, `GITHUB_TOKEN`, `COPILOT_ORG`, `Ingest__GitHubRepoAllowlist`,
+  `GOOGLE_BILLING_ACCOUNT_ID`). Nothing is duplicated into GitHub secrets. Each is masked with
+  `::add-mask::` on read.
+- That identity needs **Key Vault Secrets User** on `fpaiobs-kv` and permission to manage
+  firewall rules on `fpaiobs-db`. Neither is granted today.
 - **This repository is public.** The workflow carries `schedule` and `workflow_dispatch`
   triggers only — never `pull_request` or `pull_request_target`, either of which would expose
   live provider credentials to code from a fork — with `permissions: { id-token: write,
   contents: read }` and nothing else.
-- Net firewall position improves: two App Service outbound ranges currently sit on the
-  allowlist permanently; afterwards a single address is allowed for the couple of minutes a
-  run takes. Rules are pruned at the start of each run as well as deleted at the end, because
-  a cancelled run's cleanup cannot be assumed to have executed.
+- Net firewall position improves **only if the stale rules are cleaned up by hand.** Bicep
+  deploys are incremental, so shrinking the `allowedIps` list does not delete the
+  `allow-app-N` rules already on `fpaiobs-db` — they persist, still allowing the deleted
+  app's ranges. Deleting them is an explicit migration step; without it the allowlist gets
+  strictly worse, not better, because the per-run rule is added on top of ranges that never
+  went away.
+- Per-run rules are pruned at the start of each run as well as deleted at the end, because a
+  cancelled run's cleanup cannot be assumed to have executed.
 
 ## Infrastructure changes
 
 - Delete `fpaiobs-ingest` from `infra/modules/ingest.bicep` and its `main.bicep` wiring,
   including its Key Vault role assignment and its contribution to the Postgres allowlist.
+- **Delete the `deploy-ingest` job from `deploy.yml` (line 102) and the `/healthz` deploy gate
+  that follows it** (lines 134-160). Left in place it deploys to an app that no longer exists
+  and then fails the workflow waiting for a health check that can never pass.
+- **Manually delete the stale `allow-app-N` firewall rules** on `fpaiobs-db` after the Bicep
+  deploy, per the Security note above.
 - `fpaiobs-api-plan`: `B1` -> `F1`; `alwaysOn: true` -> `false` on `fpaiobs-api`.
-- Add the Key Vault role assignment for the GitHub federated identity.
+- Add the Key Vault role assignment for whichever identity Prerequisites settles on.
 
 Accepted consequence: the API cold-starts after 20 minutes idle. Confirmed acceptable — this
 is a single-user dashboard.
+
+## Risks
+
+- **Cold start turns an FX outage into a write failure.** `FxRateProvider` caches historical
+  rates with no expiry, so today the process accumulates them and rarely calls out. Every F1
+  unload wipes that cache, so a cold start during a frankfurter.dev outage makes non-USD
+  spend-ledger writes throw `FxUnavailableException`. Today's resident process largely masks
+  this. Cold start is not purely a latency question.
+- **Burst CPU quota.** As above: `MigrateAsync()` plus two cache rebuilds on every cold start,
+  against a 3-minutes-per-5-minutes ceiling. Worth measuring a real cold start before trusting
+  the daily-average headroom. Note the 7-day intelligence catch-up no longer contributes,
+  because `AddHostedService` is removed — after this change the resident API never runs
+  catch-up at all; it runs only on the GitHub runner.
+- **GitHub disables scheduled workflows after 60 days of repository inactivity.** That is a
+  silent off-switch for the only thing that now writes data. Whatever monitors ingest
+  freshness must alert on staleness rather than assume the schedule is still firing.
 
 ## Testing
 
