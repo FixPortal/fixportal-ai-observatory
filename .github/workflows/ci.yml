@@ -19,6 +19,7 @@ jobs:
   backend:
     name: Backend (.NET)
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     permissions:
       contents: read
       packages: read
@@ -71,7 +72,7 @@ jobs:
         run: dotnet build AiObservatory.slnx --configuration Release --no-restore
 
       - name: Test
-        run: dotnet test AiObservatory.slnx --configuration Release --no-build --logger "trx;LogFilePrefix=test-results" --results-directory ./TestResults
+        run: dotnet test AiObservatory.slnx --configuration Release --no-build --logger "trx;LogFilePrefix=test-results" --results-directory ./TestResults --blame-hang-timeout 30s --blame-hang-dump-type none
         env:
           TEST_DB_CONNECTION: "Host=localhost;Database=aiobs_test;Username=postgres;Password=postgres"
 
@@ -86,6 +87,7 @@ jobs:
   build-web:
     name: Frontend (UI)
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     permissions:
       contents: read
       packages: read
