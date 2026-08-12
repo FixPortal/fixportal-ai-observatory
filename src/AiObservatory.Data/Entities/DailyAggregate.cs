@@ -17,5 +17,6 @@ public sealed class DailyAggregate
     public long CacheWrite1hTokens { get; set; }
 
     public decimal CostUsd { get; set; }
+    public int UnknownCostCount { get; set; }
     public int RequestCount { get; set; }
 }

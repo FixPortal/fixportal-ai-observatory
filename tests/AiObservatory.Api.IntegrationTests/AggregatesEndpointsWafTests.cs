@@ -1,5 +1,6 @@
 using System.Net;
 using System.Net.Http.Json;
+using System.Text.Json;
 using AiObservatory.Data;
 using AiObservatory.Data.Entities;
 using AwesomeAssertions;
@@ -123,6 +124,44 @@ public class AggregatesEndpointsWafTests(AiObservatoryApiFactory factory)
         );
 
         rows.Should().ContainSingle().Which.Provider.Should().Be("openai");
+    }
+
+    [Fact]
+    public async Task Aggregates_ExposeUnknownCostAndPatchToKnownZeroOnce()
+    {
+        using var client = factory.CreateAdminClient();
+        var key = $"waf-unknown-cost-{Guid.NewGuid():N}";
+        var body = new
+        {
+            Provider = "openai",
+            Model = "waf-unknown-cost",
+            InputTokens = 1,
+            OutputTokens = 1,
+            CacheReadTokens = (long?)null,
+            CacheWriteTokens = (long?)null,
+            CacheWrite1hTokens = (long?)null,
+            ThoughtTokens = (long?)null,
+            CostUsd = (decimal?)null,
+            RawPayload = "{}",
+            EventKey = key,
+        };
+        (await client.PostAsJsonAsync("/api/events", body, TestContext.Current.CancellationToken)).StatusCode.Should().Be(HttpStatusCode.Created);
+
+        var before = await client.GetFromJsonAsync<JsonElement>("/api/aggregates", TestContext.Current.CancellationToken);
+        var beforeRow = before.EnumerateArray().Single(e => e.GetProperty("model").GetString() == "waf-unknown-cost");
+        beforeRow.GetProperty("costUsd").GetDecimal().Should().Be(0m);
+        beforeRow.GetProperty("unknownCostCount").GetInt32().Should().Be(1);
+
+        var patch = await client.PatchAsJsonAsync(
+            $"/api/events/{key}/cost?provider=openai",
+            new { CostUsd = 0m },
+            TestContext.Current.CancellationToken
+        );
+        patch.StatusCode.Should().Be(HttpStatusCode.OK);
+
+        var after = await client.GetFromJsonAsync<JsonElement>("/api/aggregates", TestContext.Current.CancellationToken);
+        var afterRow = after.EnumerateArray().Single(e => e.GetProperty("model").GetString() == "waf-unknown-cost");
+        afterRow.GetProperty("unknownCostCount").GetInt32().Should().Be(0);
     }
 
     private static DailyAggregate Aggregate(LocalDate date, string model, Provider provider = Provider.Anthropic) =>

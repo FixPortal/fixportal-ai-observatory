@@ -110,6 +110,7 @@ public static class AggregatesEndpoints
                 // one on every other field, while understating cost by ~60% on this line.
                 a.CacheWrite1hTokens,
                 a.CostUsd,
+                a.UnknownCostCount,
                 a.RequestCount,
             })
             .ToListAsync(ct);

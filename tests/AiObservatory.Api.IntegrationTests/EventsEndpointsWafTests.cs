@@ -331,16 +331,14 @@ public class EventsEndpointsWafTests(AiObservatoryApiFactory factory)
         listed.GetProperty("costUsd").ValueKind.Should().Be(JsonValueKind.Null);
     }
 
-    [Theory]
-    [InlineData(-1, "codex")]
-    [InlineData(0, "runtime-that-is-far-too-long-to-store-without-an-explicit-boundary-validation-because-it-exceeds-two-hundred-characters-xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx")]
-    public async Task PostEvent_WhenTelemetryFieldsAreInvalid_ReturnsBadRequest(long thoughtTokens, string runtime)
+    [Fact]
+    public async Task PostEvent_WhenThoughtTokensAreNegative_ReturnsBadRequest()
     {
         using var client = factory.CreateAdminClient();
         var body = new
         {
             Provider = "openai",
-            Runtime = runtime,
+            Runtime = "codex",
             SessionId = "session-42",
             AgentId = "main",
             Model = "gpt-5.4",
@@ -348,7 +346,7 @@ public class EventsEndpointsWafTests(AiObservatoryApiFactory factory)
             OutputTokens = 1,
             CacheReadTokens = 0,
             CacheWriteTokens = 0,
-            ThoughtTokens = thoughtTokens,
+            ThoughtTokens = -1,
             CostUsd = 0.01m,
             RawPayload = "{}",
         };
@@ -356,5 +354,33 @@ public class EventsEndpointsWafTests(AiObservatoryApiFactory factory)
         var response = await client.PostAsJsonAsync("/api/events", body, TestContext.Current.CancellationToken);
 
         response.StatusCode.Should().Be(HttpStatusCode.BadRequest);
+    }
+
+    [Theory]
+    [InlineData(100, HttpStatusCode.Created)]
+    [InlineData(101, HttpStatusCode.BadRequest)]
+    public async Task PostEvent_EnforcesTheRuntimeStorageBoundary(int runtimeLength, HttpStatusCode expectedStatus)
+    {
+        using var client = factory.CreateAdminClient();
+        var body = new
+        {
+            Provider = "openai",
+            Runtime = new string('r', runtimeLength),
+            SessionId = "session-42",
+            AgentId = "main",
+            Model = "gpt-5.4",
+            InputTokens = 1,
+            OutputTokens = 1,
+            CacheReadTokens = (long?)null,
+            CacheWriteTokens = (long?)null,
+            CacheWrite1hTokens = (long?)null,
+            ThoughtTokens = (long?)null,
+            CostUsd = 0.01m,
+            RawPayload = "{}",
+        };
+
+        var response = await client.PostAsJsonAsync("/api/events", body, TestContext.Current.CancellationToken);
+
+        response.StatusCode.Should().Be(expectedStatus);
     }
 }
