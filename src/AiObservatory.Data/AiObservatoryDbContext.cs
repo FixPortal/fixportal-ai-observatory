@@ -79,7 +79,10 @@ public class AiObservatoryDbContext(DbContextOptions<AiObservatoryDbContext> opt
                     "CK_UsageEvent_CacheWrite1hTokens_WithinCacheWrite",
                     "\"CacheWrite1hTokens\" IS NULL OR (\"CacheWrite1hTokens\" >= 0 AND \"CacheWrite1hTokens\" <= COALESCE(\"CacheWriteTokens\", 0))"
                 );
-                t.HasCheckConstraint("CK_UsageEvent_ThoughtTokens_NonNegative", "\"ThoughtTokens\" IS NULL OR \"ThoughtTokens\" >= 0");
+                t.HasCheckConstraint(
+                    "CK_UsageEvent_ThoughtTokens_NonNegative",
+                    "\"ThoughtTokens\" IS NULL OR \"ThoughtTokens\" >= 0"
+                );
                 t.HasCheckConstraint("CK_UsageEvent_CostUsd_NonNegative", "\"CostUsd\" IS NULL OR \"CostUsd\" >= 0");
             });
         });
