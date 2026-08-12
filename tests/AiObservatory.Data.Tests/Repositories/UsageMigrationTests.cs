@@ -36,23 +36,42 @@ public class UsageMigrationTests : IAsyncLifetime
     }
 
     [Fact]
-    public async Task AddUnknownCostCoverage_BackfillsLegacyNullCostsAndAllowsKnownZeroCorrection()
+    public async Task AddUnknownCostCoverage_BackfillsGroupedLegacyNullCostsAndAllowsKnownZeroCorrection()
     {
         var ct = TestContext.Current.CancellationToken;
         await using (var beforeCoverage = new AiObservatoryDbContext(_options))
         {
             var migrator = beforeCoverage.Database.GetService<IMigrator>();
             await migrator.MigrateAsync("20260812022935_AddUsageEventTelemetryIdentity", ct);
-            await beforeCoverage.Database.ExecuteSqlRawAsync(
-                """
+            const string rawPayload = "{}";
+            await beforeCoverage.Database.ExecuteSqlInterpolatedAsync(
+                $"""
                 INSERT INTO "UsageEvents" ("Id", "Provider", "OccurredAt", "IngestedAt", "Model", "InputTokens", "OutputTokens", "CostUsd", "RawPayload", "EventKey")
-                VALUES ('10000000-0000-0000-0000-000000000001', 'OpenAI', '2026-08-12T00:30:00Z', '2026-08-12T00:30:00Z', NULL, 1, 1, NULL, '{{}}', 'legacy-null-cost')
+                VALUES ('10000000-0000-0000-0000-000000000001', 'OpenAI', '2026-08-12T00:30:00Z', '2026-08-12T00:30:00Z', NULL, 1, 1, NULL, CAST({rawPayload} AS jsonb), 'legacy-null-cost-a')
+                """, ct
+            );
+            await beforeCoverage.Database.ExecuteSqlInterpolatedAsync(
+                $"""
+                INSERT INTO "UsageEvents" ("Id", "Provider", "OccurredAt", "IngestedAt", "Model", "InputTokens", "OutputTokens", "CostUsd", "RawPayload", "EventKey")
+                VALUES ('10000000-0000-0000-0000-000000000002', 'OpenAI', '2026-08-12T23:30:00Z', '2026-08-12T23:30:00Z', NULL, 1, 1, NULL, CAST({rawPayload} AS jsonb), 'legacy-null-cost-b')
+                """, ct
+            );
+            await beforeCoverage.Database.ExecuteSqlInterpolatedAsync(
+                $"""
+                INSERT INTO "UsageEvents" ("Id", "Provider", "OccurredAt", "IngestedAt", "Model", "InputTokens", "OutputTokens", "CostUsd", "RawPayload", "EventKey")
+                VALUES ('10000000-0000-0000-0000-000000000003', 'Google', '2026-08-13T00:30:00Z', '2026-08-13T00:30:00Z', 'control', 1, 1, NULL, CAST({rawPayload} AS jsonb), 'legacy-null-cost-control')
                 """, ct
             );
             await beforeCoverage.Database.ExecuteSqlRawAsync(
                 """
                 INSERT INTO "DailyAggregates" ("Date", "Provider", "Model", "InputTokens", "OutputTokens", "CacheReadTokens", "CacheWriteTokens", "CacheWrite1hTokens", "CostUsd", "RequestCount")
-                VALUES ('2026-08-12', 'OpenAI', 'unknown', 1, 1, 0, 0, 0, 0, 1)
+                VALUES ('2026-08-12', 'OpenAI', 'unknown', 2, 2, 0, 0, 0, 0, 2)
+                """, ct
+            );
+            await beforeCoverage.Database.ExecuteSqlRawAsync(
+                """
+                INSERT INTO "DailyAggregates" ("Date", "Provider", "Model", "InputTokens", "OutputTokens", "CacheReadTokens", "CacheWriteTokens", "CacheWrite1hTokens", "CostUsd", "RequestCount")
+                VALUES ('2026-08-13', 'Google', 'control', 1, 1, 0, 0, 0, 0, 1)
                 """, ct
             );
 
@@ -60,20 +79,26 @@ public class UsageMigrationTests : IAsyncLifetime
         }
 
         await using var afterCoverage = new AiObservatoryDbContext(_options);
-        var aggregate = await afterCoverage.DailyAggregates.SingleAsync(TestContext.Current.CancellationToken);
-        aggregate.UnknownCostCount.Should().Be(1);
+        var aggregates = await afterCoverage.DailyAggregates.ToListAsync(ct);
+        aggregates.Should().ContainSingle(a => a.Provider == Provider.OpenAI && a.Model == "unknown")
+            .Which.UnknownCostCount.Should().Be(2);
+        aggregates.Should().ContainSingle(a => a.Provider == Provider.Google && a.Model == "control")
+            .Which.UnknownCostCount.Should().Be(1);
 
         var repository = new UsageRepository(afterCoverage);
         var patch = await repository.PatchEventCostAsync(
             Provider.OpenAI,
-            "legacy-null-cost",
+            "legacy-null-cost-a",
             0m,
             TestContext.Current.CancellationToken
         );
 
         patch.Should().NotBeNull();
-        aggregate = await afterCoverage.DailyAggregates.AsNoTracking().SingleAsync(TestContext.Current.CancellationToken);
-        aggregate.UnknownCostCount.Should().Be(0);
-        (await afterCoverage.UsageEvents.AsNoTracking().SingleAsync(TestContext.Current.CancellationToken)).CostUsd.Should().Be(0m);
+        aggregates = await afterCoverage.DailyAggregates.AsNoTracking().ToListAsync(ct);
+        aggregates.Should().ContainSingle(a => a.Provider == Provider.OpenAI && a.Model == "unknown")
+            .Which.UnknownCostCount.Should().Be(1);
+        aggregates.Should().ContainSingle(a => a.Provider == Provider.Google && a.Model == "control")
+            .Which.UnknownCostCount.Should().Be(1);
+        (await afterCoverage.UsageEvents.AsNoTracking().SingleAsync(e => e.EventKey == "legacy-null-cost-a", ct)).CostUsd.Should().Be(0m);
     }
 }
