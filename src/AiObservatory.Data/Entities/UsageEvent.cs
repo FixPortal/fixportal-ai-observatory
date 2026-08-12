@@ -23,7 +23,11 @@ public sealed class UsageEvent
     // ReSharper disable once InconsistentNaming
     public long? CacheWrite1hTokens { get; init; }
 
-    public decimal CostUsd { get; init; }
+    public long? ThoughtTokens { get; init; }
+    public decimal? CostUsd { get; init; }
+    public string? Runtime { get; init; }
+    public string? SessionId { get; init; }
+    public string? AgentId { get; init; }
     public string RawPayload { get; init; } = "{}";
 
     /// <summary>

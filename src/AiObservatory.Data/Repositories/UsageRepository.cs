@@ -63,7 +63,7 @@ public class UsageRepository(AiObservatoryDbContext ctx) : IUsageRepository
         await ctx.Database.ExecuteSqlInterpolatedAsync(
             $"""
             INSERT INTO "DailyAggregates" ("Date", "Provider", "Model", "InputTokens", "OutputTokens", "CacheReadTokens", "CacheWriteTokens", "CacheWrite1hTokens", "CostUsd", "RequestCount")
-            VALUES ({date}, {providerStr}, {model}, {evt.InputTokens}, {evt.OutputTokens}, {cacheRead}, {cacheWrite}, {cacheWrite1H}, {evt.CostUsd}, 1)
+            VALUES ({date}, {providerStr}, {model}, {evt.InputTokens}, {evt.OutputTokens}, {cacheRead}, {cacheWrite}, {cacheWrite1H}, {evt.CostUsd ?? 0m}, 1)
             ON CONFLICT ("Date", "Provider", "Model") DO UPDATE SET
                 "InputTokens" = "DailyAggregates"."InputTokens" + EXCLUDED."InputTokens",
                 "OutputTokens" = "DailyAggregates"."OutputTokens" + EXCLUDED."OutputTokens",
@@ -232,13 +232,14 @@ public class UsageRepository(AiObservatoryDbContext ctx) : IUsageRepository
             return null;
         }
 
-        if (snapshot.CostUsd == newCostUsd)
+        var oldCostUsd = snapshot.CostUsd ?? 0m;
+        if (oldCostUsd == newCostUsd)
         {
             await tx.RollbackAsync(ct);
-            return new PatchEventCostResult(snapshot.Id, snapshot.CostUsd, newCostUsd);
+            return new PatchEventCostResult(snapshot.Id, oldCostUsd, newCostUsd);
         }
 
-        var delta = newCostUsd - snapshot.CostUsd;
+        var delta = newCostUsd - oldCostUsd;
         var date = snapshot.OccurredAt.InUtc().Date;
         var model = snapshot.Model ?? "unknown";
         var providerStr = snapshot.Provider.ToString();
@@ -269,7 +270,7 @@ public class UsageRepository(AiObservatoryDbContext ctx) : IUsageRepository
 
         await tx.CommitAsync(ct);
 
-        return new PatchEventCostResult(snapshot.Id, snapshot.CostUsd, newCostUsd);
+        return new PatchEventCostResult(snapshot.Id, oldCostUsd, newCostUsd);
     }
 
     public async Task<IReadOnlyList<EventCostRecord>> GetEventsByProviderAsync(
@@ -301,10 +302,14 @@ public class UsageRepository(AiObservatoryDbContext ctx) : IUsageRepository
             .Select(e => new EventCostRecord(
                 e.Id,
                 e.EventKey,
+                e.Runtime,
+                e.SessionId,
+                e.AgentId,
                 e.Model,
                 e.InputTokens,
                 e.OutputTokens,
                 e.CacheWriteTokens,
+                e.ThoughtTokens,
                 e.CostUsd
             ))
             .ToListAsync(ct);

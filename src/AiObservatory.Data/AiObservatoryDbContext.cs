@@ -52,6 +52,9 @@ public class AiObservatoryDbContext(DbContextOptions<AiObservatoryDbContext> opt
             b.Property(e => e.RawPayload).HasColumnType("jsonb");
             b.HasIndex(e => new { e.Provider, e.Model }).HasFilter("\"Model\" IS NOT NULL");
             b.Property(e => e.EventKey).HasMaxLength(200);
+            b.Property(e => e.Runtime).HasMaxLength(100);
+            b.Property(e => e.SessionId).HasMaxLength(200);
+            b.Property(e => e.AgentId).HasMaxLength(200);
             // EventKey is a unique idempotency key scoped per provider.
             b.HasIndex(e => new { e.Provider, e.EventKey }).IsUnique().HasFilter("\"EventKey\" IS NOT NULL");
 
@@ -76,7 +79,8 @@ public class AiObservatoryDbContext(DbContextOptions<AiObservatoryDbContext> opt
                     "CK_UsageEvent_CacheWrite1hTokens_WithinCacheWrite",
                     "\"CacheWrite1hTokens\" IS NULL OR (\"CacheWrite1hTokens\" >= 0 AND \"CacheWrite1hTokens\" <= COALESCE(\"CacheWriteTokens\", 0))"
                 );
-                t.HasCheckConstraint("CK_UsageEvent_CostUsd_NonNegative", "\"CostUsd\" >= 0");
+                t.HasCheckConstraint("CK_UsageEvent_ThoughtTokens_NonNegative", "\"ThoughtTokens\" IS NULL OR \"ThoughtTokens\" >= 0");
+                t.HasCheckConstraint("CK_UsageEvent_CostUsd_NonNegative", "\"CostUsd\" IS NULL OR \"CostUsd\" >= 0");
             });
         });
 

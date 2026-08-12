@@ -47,6 +47,7 @@ public static class EventsEndpoints
             || req.CacheReadTokens < 0
             || req.CacheWriteTokens < 0
             || req.CacheWrite1hTokens < 0
+            || req.ThoughtTokens < 0
             || req.CostUsd < 0
         )
         {
@@ -76,6 +77,11 @@ public static class EventsEndpoints
         if (eventKey is { Length: > 200 })
         {
             return Results.BadRequest("EventKey must be 200 characters or fewer");
+        }
+
+        if (new[] { req.Runtime, req.SessionId, req.AgentId }.Any(identity => identity is { Length: > 200 }))
+        {
+            return Results.BadRequest("Telemetry identity values must be 200 characters or fewer");
         }
 
         // Backfilled events (e.g. from the local usage sweeper) carry the time the
@@ -139,7 +145,11 @@ public static class EventsEndpoints
             CacheReadTokens = req.CacheReadTokens,
             CacheWriteTokens = req.CacheWriteTokens,
             CacheWrite1hTokens = req.CacheWrite1hTokens,
+            ThoughtTokens = req.ThoughtTokens,
             CostUsd = costUsd,
+            Runtime = req.Runtime,
+            SessionId = req.SessionId,
+            AgentId = req.AgentId,
             RawPayload = rawPayload,
             EventKey = eventKey,
         };
@@ -217,14 +227,18 @@ public record UsageEventRequest(
     long OutputTokens,
     long CacheReadTokens,
     long CacheWriteTokens,
-    decimal CostUsd,
+    decimal? CostUsd,
     string? RawPayload,
     string? EventKey = null,
     DateTimeOffset? OccurredAtUtc = null,
     // Optional and defaulted so producers that predate the TTL split keep working: omitting
     // it prices the whole cache write at the five-minute rate, exactly as before.
     // ReSharper disable once InconsistentNaming
-    long CacheWrite1hTokens = 0
+    long CacheWrite1hTokens = 0,
+    long? ThoughtTokens = null,
+    string? Runtime = null,
+    string? SessionId = null,
+    string? AgentId = null
 );
 
 public sealed record UpdateEventCostRequest(decimal CostUsd);

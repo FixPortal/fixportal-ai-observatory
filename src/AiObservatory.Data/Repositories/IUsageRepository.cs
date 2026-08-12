@@ -30,11 +30,15 @@ public sealed record PatchEventCostResult(Guid EventId, decimal OldCostUsd, deci
 public sealed record EventCostRecord(
     Guid Id,
     string? EventKey,
+    string? Runtime,
+    string? SessionId,
+    string? AgentId,
     string? Model,
     long InputTokens,
     long OutputTokens,
     long? CacheWriteTokens,
-    decimal CostUsd
+    long? ThoughtTokens,
+    decimal? CostUsd
 );
 
 public interface IUsageRepository
