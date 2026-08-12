@@ -145,9 +145,14 @@ public class AggregatesEndpointsWafTests(AiObservatoryApiFactory factory)
             RawPayload = "{}",
             EventKey = key,
         };
-        (await client.PostAsJsonAsync("/api/events", body, TestContext.Current.CancellationToken)).StatusCode.Should().Be(HttpStatusCode.Created);
+        (await client.PostAsJsonAsync("/api/events", body, TestContext.Current.CancellationToken))
+            .StatusCode.Should()
+            .Be(HttpStatusCode.Created);
 
-        var before = await client.GetFromJsonAsync<JsonElement>("/api/aggregates", TestContext.Current.CancellationToken);
+        var before = await client.GetFromJsonAsync<JsonElement>(
+            "/api/aggregates",
+            TestContext.Current.CancellationToken
+        );
         var beforeRow = before.EnumerateArray().Single(e => e.GetProperty("model").GetString() == "waf-unknown-cost");
         beforeRow.GetProperty("costUsd").GetDecimal().Should().Be(0m);
         beforeRow.GetProperty("unknownCostCount").GetInt32().Should().Be(1);
@@ -159,7 +164,10 @@ public class AggregatesEndpointsWafTests(AiObservatoryApiFactory factory)
         );
         patch.StatusCode.Should().Be(HttpStatusCode.OK);
 
-        var after = await client.GetFromJsonAsync<JsonElement>("/api/aggregates", TestContext.Current.CancellationToken);
+        var after = await client.GetFromJsonAsync<JsonElement>(
+            "/api/aggregates",
+            TestContext.Current.CancellationToken
+        );
         var afterRow = after.EnumerateArray().Single(e => e.GetProperty("model").GetString() == "waf-unknown-cost");
         afterRow.GetProperty("unknownCostCount").GetInt32().Should().Be(0);
     }

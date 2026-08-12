@@ -15,7 +15,8 @@ namespace AiObservatory.Data.Migrations
                 table: "DailyAggregates",
                 type: "integer",
                 nullable: false,
-                defaultValue: 0);
+                defaultValue: 0
+            );
 
             migrationBuilder.Sql(
                 """
@@ -40,7 +41,8 @@ namespace AiObservatory.Data.Migrations
             migrationBuilder.AddCheckConstraint(
                 name: "CK_DailyAggregate_UnknownCostCount_NonNegative",
                 table: "DailyAggregates",
-                sql: "\"UnknownCostCount\" >= 0");
+                sql: "\"UnknownCostCount\" >= 0"
+            );
         }
 
         /// <inheritdoc />
@@ -48,11 +50,10 @@ namespace AiObservatory.Data.Migrations
         {
             migrationBuilder.DropCheckConstraint(
                 name: "CK_DailyAggregate_UnknownCostCount_NonNegative",
-                table: "DailyAggregates");
+                table: "DailyAggregates"
+            );
 
-            migrationBuilder.DropColumn(
-                name: "UnknownCostCount",
-                table: "DailyAggregates");
+            migrationBuilder.DropColumn(name: "UnknownCostCount", table: "DailyAggregates");
         }
     }
 }

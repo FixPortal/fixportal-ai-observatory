@@ -221,7 +221,8 @@ public static class EventsEndpoints
         || req.CostUsd < 0;
 
     private static bool HasOversizedIdentity(UsageEventRequest req) =>
-        req.Runtime is { Length: > 100 } || new[] { req.SessionId, req.AgentId }.Any(identity => identity is { Length: > 200 });
+        req.Runtime is { Length: > 100 }
+        || new[] { req.SessionId, req.AgentId }.Any(identity => identity is { Length: > 200 });
 }
 
 public record UsageEventRequest(
