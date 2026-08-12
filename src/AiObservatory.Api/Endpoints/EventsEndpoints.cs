@@ -41,15 +41,7 @@ public static class EventsEndpoints
             return Results.BadRequest($"Unknown provider: {req.Provider}");
         }
 
-        if (
-            req.InputTokens < 0
-            || req.OutputTokens < 0
-            || req.CacheReadTokens < 0
-            || req.CacheWriteTokens < 0
-            || req.CacheWrite1hTokens < 0
-            || req.ThoughtTokens < 0
-            || req.CostUsd < 0
-        )
+        if (HasInvalidTokenCounts(req))
         {
             return Results.BadRequest("Token counts and cost must be non-negative");
         }
@@ -57,7 +49,7 @@ public static class EventsEndpoints
         // CacheWrite1hTokens is a SUBSET of CacheWriteTokens, not a sibling total. Rejecting
         // an over-large one here is what lets the cost calculation derive the five-minute
         // remainder by subtraction; the same rule is enforced again as a check constraint.
-        if (req.CacheWrite1hTokens > req.CacheWriteTokens)
+        if (req.CacheWrite1hTokens is { } cacheWrite1h && req.CacheWriteTokens is { } cacheWrite && cacheWrite1h > cacheWrite)
         {
             return Results.BadRequest("CacheWrite1hTokens must not exceed CacheWriteTokens");
         }
@@ -79,7 +71,7 @@ public static class EventsEndpoints
             return Results.BadRequest("EventKey must be 200 characters or fewer");
         }
 
-        if (new[] { req.Runtime, req.SessionId, req.AgentId }.Any(identity => identity is { Length: > 200 }))
+        if (HasOversizedIdentity(req))
         {
             return Results.BadRequest("Telemetry identity values must be 200 characters or fewer");
         }
@@ -128,9 +120,9 @@ public static class EventsEndpoints
                 match?.ToRates() ?? options.FallbackPricing,
                 req.InputTokens,
                 req.OutputTokens,
-                req.CacheReadTokens,
-                req.CacheWriteTokens,
-                req.CacheWrite1hTokens
+                req.CacheReadTokens ?? 0,
+                req.CacheWriteTokens ?? 0,
+                req.CacheWrite1hTokens ?? 0
             );
         }
 
@@ -218,6 +210,18 @@ public static class EventsEndpoints
     }
 
     internal static string SanitizeLogValue(string value) => value.Replace('\r', ' ').Replace('\n', ' ');
+
+    private static bool HasInvalidTokenCounts(UsageEventRequest req) =>
+        req.InputTokens < 0
+        || req.OutputTokens < 0
+        || req.CacheReadTokens is < 0
+        || req.CacheWriteTokens is < 0
+        || req.CacheWrite1hTokens is < 0
+        || req.ThoughtTokens is < 0
+        || req.CostUsd < 0;
+
+    private static bool HasOversizedIdentity(UsageEventRequest req) =>
+        req.Runtime is { Length: > 100 } || new[] { req.SessionId, req.AgentId }.Any(identity => identity is { Length: > 200 });
 }
 
 public record UsageEventRequest(
@@ -225,8 +229,8 @@ public record UsageEventRequest(
     string? Model,
     long InputTokens,
     long OutputTokens,
-    long CacheReadTokens,
-    long CacheWriteTokens,
+    long? CacheReadTokens,
+    long? CacheWriteTokens,
     decimal? CostUsd,
     string? RawPayload,
     string? EventKey = null,
@@ -234,7 +238,7 @@ public record UsageEventRequest(
     // Optional and defaulted so producers that predate the TTL split keep working: omitting
     // it prices the whole cache write at the five-minute rate, exactly as before.
     // ReSharper disable once InconsistentNaming
-    long CacheWrite1hTokens = 0,
+    long? CacheWrite1hTokens = null,
     long? ThoughtTokens = null,
     string? Runtime = null,
     string? SessionId = null,

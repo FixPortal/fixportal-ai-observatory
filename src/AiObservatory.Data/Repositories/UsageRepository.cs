@@ -60,10 +60,12 @@ public class UsageRepository(AiObservatoryDbContext ctx) : IUsageRepository
         var cacheRead = evt.CacheReadTokens ?? 0L;
         var cacheWrite = evt.CacheWriteTokens ?? 0L;
         var cacheWrite1H = evt.CacheWrite1hTokens ?? 0L;
+        var unknownCostCount = evt.CostUsd is null ? 1 : 0;
+        var knownCostUsd = evt.CostUsd ?? 0m;
         await ctx.Database.ExecuteSqlInterpolatedAsync(
             $"""
-            INSERT INTO "DailyAggregates" ("Date", "Provider", "Model", "InputTokens", "OutputTokens", "CacheReadTokens", "CacheWriteTokens", "CacheWrite1hTokens", "CostUsd", "RequestCount")
-            VALUES ({date}, {providerStr}, {model}, {evt.InputTokens}, {evt.OutputTokens}, {cacheRead}, {cacheWrite}, {cacheWrite1H}, {evt.CostUsd ?? 0m}, 1)
+            INSERT INTO "DailyAggregates" ("Date", "Provider", "Model", "InputTokens", "OutputTokens", "CacheReadTokens", "CacheWriteTokens", "CacheWrite1hTokens", "CostUsd", "UnknownCostCount", "RequestCount")
+            VALUES ({date}, {providerStr}, {model}, {evt.InputTokens}, {evt.OutputTokens}, {cacheRead}, {cacheWrite}, {cacheWrite1H}, {knownCostUsd}, {unknownCostCount}, 1)
             ON CONFLICT ("Date", "Provider", "Model") DO UPDATE SET
                 "InputTokens" = "DailyAggregates"."InputTokens" + EXCLUDED."InputTokens",
                 "OutputTokens" = "DailyAggregates"."OutputTokens" + EXCLUDED."OutputTokens",
@@ -71,6 +73,7 @@ public class UsageRepository(AiObservatoryDbContext ctx) : IUsageRepository
                 "CacheWriteTokens" = "DailyAggregates"."CacheWriteTokens" + EXCLUDED."CacheWriteTokens",
                 "CacheWrite1hTokens" = "DailyAggregates"."CacheWrite1hTokens" + EXCLUDED."CacheWrite1hTokens",
                 "CostUsd" = "DailyAggregates"."CostUsd" + EXCLUDED."CostUsd",
+                "UnknownCostCount" = "DailyAggregates"."UnknownCostCount" + EXCLUDED."UnknownCostCount",
                 "RequestCount" = "DailyAggregates"."RequestCount" + EXCLUDED."RequestCount"
             """,
             ct
@@ -110,8 +113,8 @@ public class UsageRepository(AiObservatoryDbContext ctx) : IUsageRepository
         // the five-minute rate -- the same answer this path gave before the split existed.
         return ctx.Database.ExecuteSqlInterpolatedAsync(
             $"""
-            INSERT INTO "DailyAggregates" ("Date", "Provider", "Model", "InputTokens", "OutputTokens", "CacheReadTokens", "CacheWriteTokens", "CacheWrite1hTokens", "CostUsd", "RequestCount")
-            VALUES ({date}, {providerStr}, {model}, {inputTokens}, {outputTokens}, {cacheReadTokens}, {cacheWriteTokens}, 0, {costUsd}, {requestCount})
+            INSERT INTO "DailyAggregates" ("Date", "Provider", "Model", "InputTokens", "OutputTokens", "CacheReadTokens", "CacheWriteTokens", "CacheWrite1hTokens", "CostUsd", "UnknownCostCount", "RequestCount")
+            VALUES ({date}, {providerStr}, {model}, {inputTokens}, {outputTokens}, {cacheReadTokens}, {cacheWriteTokens}, 0, {costUsd}, 0, {requestCount})
             ON CONFLICT ("Date", "Provider", "Model") DO UPDATE SET
                 "InputTokens" = EXCLUDED."InputTokens",
                 "OutputTokens" = EXCLUDED."OutputTokens",
@@ -119,6 +122,7 @@ public class UsageRepository(AiObservatoryDbContext ctx) : IUsageRepository
                 "CacheWriteTokens" = EXCLUDED."CacheWriteTokens",
                 "CacheWrite1hTokens" = EXCLUDED."CacheWrite1hTokens",
                 "CostUsd" = EXCLUDED."CostUsd",
+                "UnknownCostCount" = EXCLUDED."UnknownCostCount",
                 "RequestCount" = EXCLUDED."RequestCount"
             """,
             ct
@@ -233,7 +237,8 @@ public class UsageRepository(AiObservatoryDbContext ctx) : IUsageRepository
         }
 
         var oldCostUsd = snapshot.CostUsd ?? 0m;
-        if (oldCostUsd == newCostUsd)
+        var wasUnknown = snapshot.CostUsd is null;
+        if (!wasUnknown && oldCostUsd == newCostUsd)
         {
             await tx.RollbackAsync(ct);
             return new PatchEventCostResult(snapshot.Id, oldCostUsd, newCostUsd);
@@ -255,7 +260,8 @@ public class UsageRepository(AiObservatoryDbContext ctx) : IUsageRepository
         var rowsAffected = await ctx.Database.ExecuteSqlInterpolatedAsync(
             $"""
             UPDATE "DailyAggregates"
-            SET "CostUsd" = GREATEST(0, "CostUsd" + {delta})
+            SET "CostUsd" = GREATEST(0, "CostUsd" + {delta}),
+                "UnknownCostCount" = "UnknownCostCount" - {(wasUnknown ? 1 : 0)}
             WHERE "Date" = {date} AND "Provider" = {providerStr} AND "Model" = {model}
             """,
             ct

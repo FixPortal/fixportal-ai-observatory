@@ -104,6 +104,7 @@ public class AiObservatoryDbContext(DbContextOptions<AiObservatoryDbContext> opt
                     "\"CacheWrite1hTokens\" >= 0 AND \"CacheWrite1hTokens\" <= \"CacheWriteTokens\""
                 );
                 t.HasCheckConstraint("CK_DailyAggregate_CostUsd_NonNegative", "\"CostUsd\" >= 0");
+                t.HasCheckConstraint("CK_DailyAggregate_UnknownCostCount_NonNegative", "\"UnknownCostCount\" >= 0");
                 t.HasCheckConstraint("CK_DailyAggregate_RequestCount_NonNegative", "\"RequestCount\" >= 0");
             });
         });
