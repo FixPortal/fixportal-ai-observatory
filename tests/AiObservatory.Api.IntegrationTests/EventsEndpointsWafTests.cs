@@ -279,4 +279,82 @@ public class EventsEndpointsWafTests(AiObservatoryApiFactory factory)
 
         stored.GetProperty("costUsd").GetDecimal().Should().Be(42.5m);
     }
+
+    [Fact]
+    public async Task PostEvent_PersistsTelemetryIdentityThoughtsAndUnknownCost()
+    {
+        using var client = factory.CreateAdminClient();
+        var body = new
+        {
+            Provider = "openai",
+            Runtime = "codex",
+            SessionId = "session-42",
+            AgentId = "main",
+            Model = "gpt-5.4",
+            InputTokens = 100,
+            OutputTokens = 50,
+            CacheReadTokens = 20,
+            CacheWriteTokens = 10,
+            CacheWrite1hTokens = 0,
+            ThoughtTokens = 30,
+            CostUsd = (decimal?)null,
+            RawPayload = "{}",
+            EventKey = "openai:codex:session-42:main:gpt-5.4:100:50:20:10:0:30",
+        };
+
+        var created = await client.PostAsJsonAsync("/api/events", body, TestContext.Current.CancellationToken);
+
+        created.StatusCode.Should().Be(HttpStatusCode.Created);
+        var id = (await created.Content.ReadFromJsonAsync<JsonElement>(TestContext.Current.CancellationToken))
+            .GetProperty("id")
+            .GetGuid();
+        var stored = await client.GetFromJsonAsync<JsonElement>(
+            $"/api/events/{id}",
+            TestContext.Current.CancellationToken
+        );
+
+        stored.GetProperty("runtime").GetString().Should().Be("codex");
+        stored.GetProperty("sessionId").GetString().Should().Be("session-42");
+        stored.GetProperty("agentId").GetString().Should().Be("main");
+        stored.GetProperty("thoughtTokens").GetInt64().Should().Be(30);
+        stored.GetProperty("costUsd").ValueKind.Should().Be(JsonValueKind.Null);
+
+        var events = await client.GetFromJsonAsync<JsonElement>(
+            "/api/events?provider=openai",
+            TestContext.Current.CancellationToken
+        );
+        var listed = events.EnumerateArray().Single(e => e.GetProperty("id").GetGuid() == id);
+        listed.GetProperty("runtime").GetString().Should().Be("codex");
+        listed.GetProperty("sessionId").GetString().Should().Be("session-42");
+        listed.GetProperty("agentId").GetString().Should().Be("main");
+        listed.GetProperty("thoughtTokens").GetInt64().Should().Be(30);
+        listed.GetProperty("costUsd").ValueKind.Should().Be(JsonValueKind.Null);
+    }
+
+    [Theory]
+    [InlineData(-1, "codex")]
+    [InlineData(0, "runtime-that-is-far-too-long-to-store-without-an-explicit-boundary-validation-because-it-exceeds-two-hundred-characters-xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx")]
+    public async Task PostEvent_WhenTelemetryFieldsAreInvalid_ReturnsBadRequest(long thoughtTokens, string runtime)
+    {
+        using var client = factory.CreateAdminClient();
+        var body = new
+        {
+            Provider = "openai",
+            Runtime = runtime,
+            SessionId = "session-42",
+            AgentId = "main",
+            Model = "gpt-5.4",
+            InputTokens = 1,
+            OutputTokens = 1,
+            CacheReadTokens = 0,
+            CacheWriteTokens = 0,
+            ThoughtTokens = thoughtTokens,
+            CostUsd = 0.01m,
+            RawPayload = "{}",
+        };
+
+        var response = await client.PostAsJsonAsync("/api/events", body, TestContext.Current.CancellationToken);
+
+        response.StatusCode.Should().Be(HttpStatusCode.BadRequest);
+    }
 }
