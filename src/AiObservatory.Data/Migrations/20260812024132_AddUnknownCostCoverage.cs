@@ -17,6 +17,26 @@ namespace AiObservatory.Data.Migrations
                 nullable: false,
                 defaultValue: 0);
 
+            migrationBuilder.Sql(
+                """
+                UPDATE "DailyAggregates" AS aggregate
+                SET "UnknownCostCount" = source."UnknownCostCount"
+                FROM (
+                    SELECT
+                        ("OccurredAt" AT TIME ZONE 'UTC')::date AS "Date",
+                        "Provider",
+                        COALESCE("Model", 'unknown') AS "Model",
+                        COUNT(*)::integer AS "UnknownCostCount"
+                    FROM "UsageEvents"
+                    WHERE "CostUsd" IS NULL
+                    GROUP BY ("OccurredAt" AT TIME ZONE 'UTC')::date, "Provider", COALESCE("Model", 'unknown')
+                ) AS source
+                WHERE aggregate."Date" = source."Date"
+                  AND aggregate."Provider" = source."Provider"
+                  AND aggregate."Model" = source."Model"
+                """
+            );
+
             migrationBuilder.AddCheckConstraint(
                 name: "CK_DailyAggregate_UnknownCostCount_NonNegative",
                 table: "DailyAggregates",

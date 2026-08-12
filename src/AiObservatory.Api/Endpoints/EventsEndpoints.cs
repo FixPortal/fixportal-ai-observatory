@@ -49,7 +49,7 @@ public static class EventsEndpoints
         // CacheWrite1hTokens is a SUBSET of CacheWriteTokens, not a sibling total. Rejecting
         // an over-large one here is what lets the cost calculation derive the five-minute
         // remainder by subtraction; the same rule is enforced again as a check constraint.
-        if (req.CacheWrite1hTokens is { } cacheWrite1h && req.CacheWriteTokens is { } cacheWrite && cacheWrite1h > cacheWrite)
+        if (req.CacheWrite1hTokens is { } cacheWrite1h && cacheWrite1h > (req.CacheWriteTokens ?? 0))
         {
             return Results.BadRequest("CacheWrite1hTokens must not exceed CacheWriteTokens");
         }

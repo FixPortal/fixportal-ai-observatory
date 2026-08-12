@@ -383,4 +383,26 @@ public class EventsEndpointsWafTests(AiObservatoryApiFactory factory)
 
         response.StatusCode.Should().Be(expectedStatus);
     }
+
+    [Fact]
+    public async Task PostEvent_RejectsOneHourCacheWriteWithoutATotalCacheWrite()
+    {
+        using var client = factory.CreateAdminClient();
+        var body = new
+        {
+            Provider = "anthropic",
+            Model = "claude-sonnet-5",
+            InputTokens = 1,
+            OutputTokens = 1,
+            CacheReadTokens = (long?)null,
+            CacheWriteTokens = (long?)null,
+            CacheWrite1hTokens = 1L,
+            CostUsd = 0m,
+            RawPayload = "{}",
+        };
+
+        var response = await client.PostAsJsonAsync("/api/events", body, TestContext.Current.CancellationToken);
+
+        response.StatusCode.Should().Be(HttpStatusCode.BadRequest);
+    }
 }
