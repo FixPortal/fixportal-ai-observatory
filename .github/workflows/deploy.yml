@@ -44,7 +44,7 @@ jobs:
         run: dotnet publish src/AiObservatory.Api -c Release -o ./publish/api
         env:
           GITHUB_PACKAGES_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-      - uses: azure/login@f5d393ae46f8fde4be8b75f32e3fc50e654ad0ca # v3
+      - uses: azure/login@d54469830ea7d513b7371e02a077c3ee5cb7b112 # v3
         with:
           creds: ${{ secrets.AZURE_CREDENTIALS }}
       - name: Verify the IDE Key Vault reference is resolved
@@ -57,7 +57,7 @@ jobs:
             echo "::error::OBSERVATORY_IDE_API_KEY Key Vault reference is not Resolved (status: ${reference_status:-missing})."
             exit 1
           fi
-      - uses: azure/webapps-deploy@02a81bead70021f5284939794bcec79c271ab383 # v3
+      - uses: azure/webapps-deploy@b686016b4de8820a23519503685d8d03fbfa03a6 # v3
         with:
           app-name: fpaiobs-api
           package: ./publish/api
@@ -123,10 +123,10 @@ jobs:
         run: dotnet publish src/AiObservatory.Ingest -c Release -o ./publish/ingest
         env:
           GITHUB_PACKAGES_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-      - uses: azure/login@f5d393ae46f8fde4be8b75f32e3fc50e654ad0ca # v3
+      - uses: azure/login@d54469830ea7d513b7371e02a077c3ee5cb7b112 # v3
         with:
           creds: ${{ secrets.AZURE_CREDENTIALS }}
-      - uses: azure/webapps-deploy@02a81bead70021f5284939794bcec79c271ab383 # v3
+      - uses: azure/webapps-deploy@b686016b4de8820a23519503685d8d03fbfa03a6 # v3
         with:
           app-name: fpaiobs-ingest
           package: ./publish/ingest
