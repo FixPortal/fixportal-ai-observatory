@@ -1,6 +1,6 @@
 # Mutation testing
 
-Stryker.NET runs nightly against the API (`.github/workflows/mutation.yml`,
+Stryker.NET runs weekly and on demand against the API (`.github/workflows/mutation.yml`,
 `stryker-config.json`). The score is informational (`break: 0`); execution and report
 failures are real failures.
 
