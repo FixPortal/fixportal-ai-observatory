@@ -573,7 +573,7 @@ start returning `401` until you send it.
 Run unit tests without PostgreSQL:
 
 ```powershell
-dotnet test AiObservatory.slnx --filter "Category!=Integration"
+dotnet test --solution AiObservatory.slnx --filter "Category!=Integration" --ignore-exit-code 8
 ```
 
 Run PostgreSQL integration tests after setting `TEST_DB_CONNECTION` or starting
@@ -588,7 +588,7 @@ while ($true) { docker exec aiobs-test-pg pg_isready -U postgres -d aiobs_test; 
 ```
 
 ```powershell
-dotnet test AiObservatory.slnx --filter "Category=Integration"
+dotnet test --solution AiObservatory.slnx --filter "Category=Integration"
 ```
 
 Run frontend tests and diagnostics:
