@@ -8,11 +8,9 @@
     <PackageVersion Include="FixPortal.CodeStyle.ArchRules" Version="0.1.11" />
     <!-- xUnit v3 -->
     <PackageVersion Include="Microsoft.OpenApi" Version="2.7.5" />
-    <PackageVersion Include="xunit.v3" Version="3.2.2" />
-    <PackageVersion Include="xunit.runner.visualstudio" Version="3.1.5" />
+    <PackageVersion Include="xunit.v3" Version="4.0.0" />
     <PackageVersion Include="TngTech.ArchUnitNET.xUnitV3" Version="0.13.3" />
     <!-- Test infrastructure -->
-    <PackageVersion Include="Microsoft.NET.Test.Sdk" Version="18.8.1" />
     <PackageVersion Include="coverlet.collector" Version="10.0.1" />
     <PackageVersion Include="NSubstitute" Version="6.1.0" />
     <PackageVersion Include="AwesomeAssertions" Version="9.5.0" />

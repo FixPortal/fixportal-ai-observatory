@@ -14,4 +14,4 @@
 // ("42P07: relation already exists", "42704: index does not exist"). It does NOT belong
 // back in the unit project — nothing there builds a host, and serialising that assembly
 // would slow the lane Stryker re-runs on every mutant.
-[assembly: CollectionBehavior(DisableTestParallelization = true)]
+[assembly: Xunit.v3.Parallelization(Mode = Xunit.Sdk.ParallelMode.None)]

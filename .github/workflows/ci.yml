@@ -72,7 +72,7 @@ jobs:
         run: dotnet build AiObservatory.slnx --configuration Release --no-restore
 
       - name: Test
-        run: dotnet test AiObservatory.slnx --configuration Release --no-build --logger "trx;LogFilePrefix=test-results" --results-directory ./TestResults --blame-hang-timeout 30s --blame-hang-dump-type none
+        run: dotnet test --solution AiObservatory.slnx --configuration Release --no-build --report-xunit-trx --results-directory ./TestResults --timeout 5m
         env:
           TEST_DB_CONNECTION: "Host=localhost;Database=aiobs_test;Username=postgres;Password=postgres"
 

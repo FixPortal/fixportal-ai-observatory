@@ -48,7 +48,7 @@ dotnet build AiObservatory.slnx --configuration Release --no-restore
 ```
 
 ```powershell
-dotnet test AiObservatory.slnx --configuration Release --no-build
+dotnet test --solution AiObservatory.slnx --configuration Release --no-build
 ```
 
 ```powershell
