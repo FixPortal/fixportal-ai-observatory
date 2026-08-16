@@ -28,10 +28,6 @@
          Stryker's lane. Constraints and unique indexes are NOT enforced by this provider;
          anything asserting on those belongs in the integration project. -->
     <PackageReference Include="Microsoft.EntityFrameworkCore.InMemory" />
-    <PackageReference Include="coverlet.collector">
-      <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
-      <PrivateAssets>all</PrivateAssets>
-    </PackageReference>
     <PackageReference Include="NodaTime.Testing" />
     <PackageReference Include="NSubstitute" />
     <PackageReference Include="TngTech.ArchUnitNET.xUnitV3" />

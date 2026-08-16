@@ -40,7 +40,6 @@ updates:
           - "Microsoft.NET.Test.Sdk"
           - "NSubstitute*"
           - "AwesomeAssertions*"
-          - "coverlet*"
           - "Stryker*"
       nodatime:
         patterns:
