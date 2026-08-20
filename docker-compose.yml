@@ -25,13 +25,13 @@ services:
       ASPNETCORE_ENVIRONMENT: Development
       ASPNETCORE_URLS: http://+:8080
       DB_CONNECTION: "Host=db;Database=aiobservatory;Username=aiobs;Password=aiobs"
-      OBSERVATORY_API_KEY: change-me
+      OBSERVATORY_API_KEY: ${OBSERVATORY_API_KEY:-change-me}
       # ANTHROPIC_API_KEY: sk-ant-...   # optional — leave unset to skip AI insights
     depends_on:
       db:
         condition: service_healthy
     healthcheck:
-      test: ["CMD-SHELL", "curl -sf -H 'X-Observatory-Key: change-me' http://localhost:8080/api/aggregates || exit 1"]
+      test: ["CMD-SHELL", "curl -sf -H 'X-Observatory-Key: ${OBSERVATORY_API_KEY:-change-me}' http://localhost:8080/api/aggregates || exit 1"]
       interval: 10s
       timeout: 5s
       retries: 12
@@ -42,13 +42,15 @@ services:
     depends_on:
       api:
         condition: service_healthy
-    command: ["curl", "-sf", "-X", "POST", "http://api:8080/api/dev/seed", "-H", "X-Observatory-Key: change-me"]
+    command: ["curl", "-sf", "-X", "POST", "http://api:8080/api/dev/seed", "-H", "X-Observatory-Key: ${OBSERVATORY_API_KEY:-change-me}"]
     restart: "no"
 
   web:
     build:
       context: src/AiObservatory.Web
       dockerfile: Dockerfile
+      args:
+        VITE_API_KEY: ${OBSERVATORY_API_KEY:-change-me}
     # Bound to loopback only, matching db above: the dashboard is a local-only dev
     # surface and its api is served unauthenticated behind a shared change-me key.
     ports:
