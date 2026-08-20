@@ -533,6 +533,12 @@ body {
 
 /* ---- Responsive ---- */
 @media (max-width: 760px) {
+  .app-header {
+    flex-wrap: wrap;
+    padding-inline: var(--space-3);
+  }
+  .app-header__descriptor { display: none; }
+  .fpds-theme-toggle__btn { padding-inline: var(--space-2); }
   .summary-cards { grid-template-columns: repeat(2, 1fr); }
   .main-grid, .bottom-grid { grid-template-columns: 1fr; }
 }
@@ -674,6 +680,7 @@ body {
   padding: 0 var(--space-6);
   background: var(--card-bg);
   border-bottom: 1px solid var(--border);
+  overflow-x: auto;
 }
 
 .page-nav__tab {
