@@ -30,7 +30,7 @@ function EntraGate({ children }: { children: ReactNode }) {
 
   const signingIn = inProgress !== 'none'
   return (
-    <div className="auth-gate">
+    <main className="auth-gate">
       <BrandWordmark height={48} className="auth-gate__wordmark" />
       <span className="auth-gate__descriptor">AI Observatory</span>
       <button
@@ -41,6 +41,6 @@ function EntraGate({ children }: { children: ReactNode }) {
       >
         {signingIn ? 'Signing in…' : 'Sign in with Microsoft'}
       </button>
-    </div>
+    </main>
   )
 }

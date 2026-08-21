@@ -55,6 +55,7 @@ describe('AuthGate', () => {
     render(<AuthGate><p>dashboard content</p></AuthGate>)
 
     expect(screen.queryByText('dashboard content')).not.toBeInTheDocument()
+    expect(screen.getByRole('main')).toBeInTheDocument()
     expect(screen.getByRole('button', { name: /sign in with microsoft/i })).toBeInTheDocument()
   })
 
