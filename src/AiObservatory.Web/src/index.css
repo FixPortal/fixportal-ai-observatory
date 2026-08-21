@@ -450,7 +450,7 @@ body {
   border-radius: var(--r-control);
   color: var(--text-muted);
   cursor: pointer;
-  transition: all var(--transition-fast);
+  transition: background-color var(--transition-fast), border-color var(--transition-fast), color var(--transition-fast);
   user-select: none;
 }
 .filter-chip:hover:not(:disabled) {
@@ -493,7 +493,7 @@ body {
   border-radius: var(--r-control);
   color: var(--text-muted);
   cursor: pointer;
-  transition: all var(--transition-fast);
+  transition: background-color var(--transition-fast), border-color var(--transition-fast), color var(--transition-fast);
 }
 .breakdown-sort__direction:hover {
   color: var(--text);
@@ -739,7 +739,7 @@ body {
   background: transparent;
   color: var(--text-muted);
   cursor: pointer;
-  transition: all var(--transition-fast);
+  transition: background-color var(--transition-fast), border-color var(--transition-fast), color var(--transition-fast);
 }
 .chart-toggle-btn:hover:not(.chart-toggle-btn--active) {
   color: var(--text);
@@ -971,7 +971,7 @@ body {
   border-radius: var(--r-control);
   color: var(--text-muted);
   cursor: pointer;
-  transition: all var(--transition-fast);
+  transition: background-color var(--transition-fast), border-color var(--transition-fast), color var(--transition-fast);
 }
 .sub-list__select:hover:not(:disabled) {
   border-color: var(--border);
