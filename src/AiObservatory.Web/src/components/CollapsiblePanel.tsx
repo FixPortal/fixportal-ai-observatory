@@ -13,11 +13,9 @@ export function CollapsiblePanel({ id, title, summary, children }: CollapsiblePa
   const bodyId = `panel-${id}-body`
 
   function toggle() {
-    setOpen(prev => {
-      const next = !prev
-      safeStorage.set(`panel-${id}-expanded`, String(next))
-      return next
-    })
+    const next = !open
+    safeStorage.set(`panel-${id}-expanded`, String(next))
+    setOpen(next)
   }
 
   return (
