@@ -1,4 +1,4 @@
-import { useState, type ReactNode } from 'react'
+import { useEffect, useState, type ReactNode } from 'react'
 import { safeStorage } from '../lib/safeStorage'
 
 interface CollapsiblePanelProps {
@@ -12,10 +12,12 @@ export function CollapsiblePanel({ id, title, summary, children }: CollapsiblePa
   const [open, setOpen] = useState(() => safeStorage.get(`panel-${id}-expanded`) === 'true')
   const bodyId = `panel-${id}-body`
 
+  useEffect(() => {
+    safeStorage.set(`panel-${id}-expanded`, String(open))
+  }, [id, open])
+
   function toggle() {
-    const next = !open
-    safeStorage.set(`panel-${id}-expanded`, String(next))
-    setOpen(next)
+    setOpen(prev => !prev)
   }
 
   return (

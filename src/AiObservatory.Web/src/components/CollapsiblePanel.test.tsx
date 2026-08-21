@@ -1,5 +1,5 @@
 import { test, beforeEach, expect } from 'vitest'
-import { render, screen, fireEvent } from '@testing-library/react'
+import { act, render, screen, fireEvent } from '@testing-library/react'
 import { CollapsiblePanel } from './CollapsiblePanel'
 
 beforeEach(() => localStorage.clear())
@@ -34,6 +34,23 @@ test('click toggles open state and writes localStorage', () => {
   expect(btn).toHaveAttribute('aria-expanded', 'true')
   expect(localStorage.getItem('panel-test-expanded')).toBe('true')
   fireEvent.click(btn)
+  expect(btn).toHaveAttribute('aria-expanded', 'false')
+  expect(localStorage.getItem('panel-test-expanded')).toBe('false')
+})
+
+test('two toggles batched before render preserve both state transitions', () => {
+  render(
+    <CollapsiblePanel id="test" title="Test panel">
+      <p>body content</p>
+    </CollapsiblePanel>,
+  )
+  const btn = screen.getByRole('button')
+
+  act(() => {
+    btn.click()
+    btn.click()
+  })
+
   expect(btn).toHaveAttribute('aria-expanded', 'false')
   expect(localStorage.getItem('panel-test-expanded')).toBe('false')
 })
