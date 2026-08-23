@@ -7,6 +7,10 @@ stack: .NET 10 · React 19 · PostgreSQL 16
 license: Apache-2.0
 ---
 
+<p align="center">
+  <img src="docs/images/ai-observatory-hero-labs.png" alt="AI Observatory by FixPortal" width="1200">
+</p>
+
 ![Build](https://github.com/FixPortal/fixportal-ai-observatory/actions/workflows/ci.yml/badge.svg)
 ![License](https://img.shields.io/github/license/FixPortal/fixportal-ai-observatory)
 
