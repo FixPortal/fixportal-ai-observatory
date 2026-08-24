@@ -5,6 +5,7 @@ using System.Text.Json;
 using AiObservatory.Api.Services.Fx;
 using AiObservatory.Api.Tests.Services;
 using AiObservatory.Data;
+using AiObservatory.Data.Entities;
 using AwesomeAssertions;
 using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.AspNetCore.TestHost;
@@ -147,6 +148,28 @@ public class SpendEntriesEndpointsWafTests(AiObservatoryApiFactory factory) : IC
             .Be("duplicate");
 
         (await TotalAsync(client, vendorId)).Should().Be(totalAfterFirst, "a duplicate must not move the total");
+    }
+
+    [Fact]
+    public async Task PostEntry_persists_manual_ledger_provenance()
+    {
+        using var client = factory.CreateAdminClient();
+        var ct = TestContext.Current.CancellationToken;
+        var (categoryId, vendorId) = await SeedCatalogAsync(client);
+        var response = await client.PostAsJsonAsync(
+            "/api/spend/entries",
+            new[] { Entry(categoryId, vendorId, $"k-{Guid.NewGuid():N}", source: "Manual") },
+            ct
+        );
+        var id = (await response.Content.ReadFromJsonAsync<JsonElement>(ct)).EnumerateArray().Single().GetProperty("id").GetGuid();
+
+        var rows = await client.GetFromJsonAsync<JsonElement>($"/api/spend/entries?vendorId={vendorId}", ct);
+        var entry = rows.EnumerateArray().Single(row => row.GetProperty("id").GetGuid() == id);
+        entry.GetProperty("sourceId").GetString().Should().Be(UsageSourceIds.ManualLedger);
+        entry.GetProperty("sourceKind").GetString().Should().Be("manual");
+        entry.GetProperty("usageScope").GetString().Should().Be("unknown");
+        entry.GetProperty("costBasis").GetString().Should().Be("billed");
+        entry.GetProperty("observedAt").GetString().Should().Be(entry.GetProperty("recordedAt").GetString());
     }
 
     [Fact]

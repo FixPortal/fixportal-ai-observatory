@@ -196,6 +196,7 @@ public class GitHubBillingSyncService(
         if (!existingByKey.TryGetValue(entryKey, out var existing))
         {
             isNew = true;
+            var observedAt = clock.GetCurrentInstant();
             touched = new SpendEntry
             {
                 OccurredOn = line.Month,
@@ -208,7 +209,12 @@ public class GitHubBillingSyncService(
                 Description = Truncate(line.Sku),
                 Source = SpendSource.Api,
                 EntryKey = entryKey,
-                RecordedAt = clock.GetCurrentInstant(),
+                RecordedAt = observedAt,
+                SourceId = UsageSourceIds.GitHubBillingApi,
+                SourceKind = SourceKind.ProviderApi,
+                UsageScope = UsageScope.Unknown,
+                CostBasis = CostBasis.Billed,
+                ObservedAt = observedAt,
             };
             db.SpendEntries.Add(touched);
         }
@@ -220,6 +226,7 @@ public class GitHubBillingSyncService(
             existing.AmountGbp = amountGbp;
             existing.FxRate = rate;
             existing.RecordedAt = clock.GetCurrentInstant();
+            existing.ObservedAt = existing.RecordedAt;
             touched = existing;
             isNew = false;
         }

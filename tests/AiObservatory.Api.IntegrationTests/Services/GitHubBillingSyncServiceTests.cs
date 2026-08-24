@@ -42,6 +42,11 @@ public class GitHubBillingSyncServiceTests(AiObservatoryApiFactory factory) : IC
     /// </summary>
     private async Task<(int Written, AiObservatoryDbContext Db, IServiceScope Scope)> SyncAsync(
         params GitHubBillingUsageItem[] items
+    ) => await SyncAsync(Now, items);
+
+    private async Task<(int Written, AiObservatoryDbContext Db, IServiceScope Scope)> SyncAsync(
+        Instant now,
+        params GitHubBillingUsageItem[] items
     )
     {
         var scope = factory.Services.CreateScope();
@@ -56,7 +61,7 @@ public class GitHubBillingSyncServiceTests(AiObservatoryApiFactory factory) : IC
             new StubBillingClient(items),
             db,
             new FxRateProvider(fxHttp, fxCache, NullLogger<FxRateProvider>.Instance),
-            new FakeClock(Now),
+            new FakeClock(now),
             NullLogger<GitHubBillingSyncService>.Instance
         );
 
@@ -98,6 +103,11 @@ public class GitHubBillingSyncServiceTests(AiObservatoryApiFactory factory) : IC
         entry.FxRate.Should().Be(0.75m);
         entry.AmountGbp.Should().Be(81.3705m);
         entry.Source.Should().Be(SpendSource.Api);
+        entry.SourceId.Should().Be(UsageSourceIds.GitHubBillingApi);
+        entry.SourceKind.Should().Be(SourceKind.ProviderApi);
+        entry.UsageScope.Should().Be(UsageScope.Unknown);
+        entry.CostBasis.Should().Be(CostBasis.Billed);
+        entry.ObservedAt.Should().Be(Now);
     }
 
     [Fact]
@@ -162,6 +172,23 @@ public class GitHubBillingSyncServiceTests(AiObservatoryApiFactory factory) : IC
             );
         entries[0].Amount.Should().Be(180.44m);
         entries[0].AmountGbp.Should().Be(135.33m);
+    }
+
+    [Fact]
+    public async Task ReRunningWithAChangedAmount_refreshes_observation_time()
+    {
+        var sku = UniqueSku("Actions Linux");
+        var firstObservedAt = Instant.FromUtc(2026, 7, 27, 12, 0);
+        var correctedObservedAt = Instant.FromUtc(2026, 7, 28, 12, 0);
+
+        var first = await SyncAsync(firstObservedAt, Item("2026-07-01", "actions", sku, 133.602m));
+        first.Scope.Dispose();
+
+        var (_, db, scope) = await SyncAsync(correctedObservedAt, Item("2026-07-01", "actions", sku, 180.44m));
+        using var _ = scope;
+
+        var entry = await FindAsync(db, sku, TestContext.Current.CancellationToken);
+        entry!.ObservedAt.Should().Be(correctedObservedAt);
     }
 
     [Fact]

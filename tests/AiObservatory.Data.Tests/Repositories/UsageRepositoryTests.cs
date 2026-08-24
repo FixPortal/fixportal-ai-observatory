@@ -205,6 +205,69 @@ public class UsageRepositoryTests : IAsyncLifetime
         aggregate.RequestCount.Should().Be(1);
     }
 
+    [Fact]
+    public async Task ConcurrentRecordEvent_returns_its_source_scoped_winner_when_a_sibling_source_has_the_same_key()
+    {
+        var ct = TestContext.Current.CancellationToken;
+        const string eventKey = "openai:2026-06-02:gpt-5.4";
+        const string targetSourceId = UsageSourceIds.OpenAiUsageApi;
+        var sibling = new UsageEvent
+        {
+            Provider = Provider.OpenAI,
+            OccurredAt = Instant.FromUtc(2026, 6, 2, 10, 0),
+            IngestedAt = Instant.FromUtc(2026, 6, 2, 10, 1),
+            Model = "gpt-5.4",
+            InputTokens = 100,
+            OutputTokens = 50,
+            CostUsd = 0.01m,
+            EventKey = eventKey,
+            SourceId = UsageSourceIds.OpenAiCostsApi,
+        };
+        await _repo.RecordEventAsync(sibling, ct);
+
+        var options = new DbContextOptionsBuilder<AiObservatoryDbContext>()
+            .UseNpgsql(_connStr, o => o.UseNodaTime())
+            .Options;
+        await using var firstContext = new AiObservatoryDbContext(options);
+        await using var secondContext = new AiObservatoryDbContext(options);
+        var firstRepository = new UsageRepository(firstContext);
+        var secondRepository = new UsageRepository(secondContext);
+
+        static UsageEvent NewTargetEvent() =>
+            new()
+            {
+                Provider = Provider.OpenAI,
+                OccurredAt = Instant.FromUtc(2026, 6, 2, 10, 0),
+                IngestedAt = Instant.FromUtc(2026, 6, 2, 10, 1),
+                Model = "gpt-5.4",
+                InputTokens = 100,
+                OutputTokens = 50,
+                CostUsd = 0.01m,
+                EventKey = eventKey,
+                SourceId = targetSourceId,
+            };
+
+        await using var gateConnection = new NpgsqlConnection(_connStr);
+        await gateConnection.OpenAsync(ct);
+        await using var gateTransaction = await gateConnection.BeginTransactionAsync(ct);
+        await using (var command = gateConnection.CreateCommand())
+        {
+            command.CommandText = """LOCK TABLE "UsageEvents" IN SHARE MODE""";
+            await command.ExecuteNonQueryAsync(ct);
+        }
+
+        var first = firstRepository.RecordEventAsync(NewTargetEvent(), ct);
+        var second = secondRepository.RecordEventAsync(NewTargetEvent(), ct);
+        await WaitForBlockedInsertsAsync(gateConnection, ct);
+        await gateTransaction.CommitAsync(ct);
+
+        var results = await Task.WhenAll(first, second);
+
+        var targetId = results.Single(r => !r.IsDuplicate).EventId;
+        results.Single(r => r.IsDuplicate).EventId.Should().Be(targetId);
+        targetId.Should().NotBe(sibling.Id);
+    }
+
     private static async Task WaitForBlockedInsertsAsync(NpgsqlConnection connection, CancellationToken ct)
     {
         using var timeout = CancellationTokenSource.CreateLinkedTokenSource(ct);
