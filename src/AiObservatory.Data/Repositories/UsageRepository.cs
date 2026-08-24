@@ -9,11 +9,6 @@ namespace AiObservatory.Data.Repositories;
 public class UsageRepository(AiObservatoryDbContext ctx) : IUsageRepository
 {
     private static readonly JsonDocumentOptions RawPayloadJsonOptions = new() { AllowDuplicateProperties = false };
-    private const string CodexTombstonePayload = """{"source":"observatory-sweep","tool":"codex","tombstone":true}""";
-    private const string CopilotTombstonePayload =
-        """{"source":"observatory-sweep","tool":"copilot","tombstone":true}""";
-    private const string ClaudeTombstonePayload = """{"source":"observatory-sweep","tool":"claude","tombstone":true}""";
-    private const string KimiTombstonePayload = """{"source":"observatory-sweep","tool":"kimi","tombstone":true}""";
 
     public async Task<RecordEventResult> RecordEventAsync(UsageEvent evt, CancellationToken ct = default)
     {
@@ -417,10 +412,7 @@ public class UsageRepository(AiObservatoryDbContext ctx) : IUsageRepository
                 e.SourceId == sourceId
                 && e.SourceKind == SourceKind.LocalTelemetry
                 && e.EventKey != null
-                && e.RawPayload != CodexTombstonePayload
-                && e.RawPayload != CopilotTombstonePayload
-                && e.RawPayload != ClaudeTombstonePayload
-                && e.RawPayload != KimiTombstonePayload
+                && !EF.Functions.JsonContains(e.RawPayload, """{"source":"observatory-sweep","tombstone":true}""")
             )
             .OrderBy(e => e.EventKey)
             .Select(e => new LocalSnapshotRecord(
