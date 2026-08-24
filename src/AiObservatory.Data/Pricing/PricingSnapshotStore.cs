@@ -1,4 +1,6 @@
 using System.Diagnostics;
+using System.Security.Cryptography;
+using System.Text;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 using AiObservatory.Data.Entities;
@@ -106,10 +108,13 @@ public sealed class PricingSnapshotStore(AiObservatoryDbContext db)
             return null;
         }
 
-        var snapshot = await db
+        var snapshots = await db
             .PricingSnapshots.AsNoTracking()
-            .SingleOrDefaultAsync(candidate => candidate.SourceId == sourceId && candidate.IsActive, cancellationToken);
-        return snapshot is not null && Covers(snapshot, usageDate) ? snapshot : null;
+            .Where(candidate => candidate.SourceId == sourceId)
+            .OrderByDescending(candidate => candidate.RetrievedAt)
+            .ThenByDescending(candidate => candidate.IsActive)
+            .ToListAsync(cancellationToken);
+        return snapshots.FirstOrDefault(snapshot => Covers(snapshot, usageDate));
     }
 
     private static bool Covers(PricingSnapshot snapshot, LocalDate usageDate) =>
@@ -145,6 +150,7 @@ public sealed class PricingSnapshotStore(AiObservatoryDbContext db)
         if (
             !Uri.TryCreate(candidate.SourceUrl, UriKind.Absolute, out var uri)
             || uri.Scheme != Uri.UriSchemeHttps
+            || candidate.SourceUrl.Length > 2048
             || string.IsNullOrEmpty(candidate.ContentHash)
             || candidate.ContentHash.Length != 64
             || !candidate.ContentHash.All(Uri.IsHexDigit)
@@ -154,6 +160,15 @@ public sealed class PricingSnapshotStore(AiObservatoryDbContext db)
         {
             throw new ArgumentException(
                 "The pricing candidate contains invalid trust-boundary data.",
+                nameof(candidate)
+            );
+        }
+
+        var evidenceHash = Convert.ToHexStringLower(SHA256.HashData(Encoding.UTF8.GetBytes(candidate.RawEvidence)));
+        if (!string.Equals(candidate.ContentHash, evidenceHash, StringComparison.Ordinal))
+        {
+            throw new ArgumentException(
+                "The content hash must be the lowercase SHA-256 of the exact raw evidence.",
                 nameof(candidate)
             );
         }
@@ -213,6 +228,7 @@ public sealed class PricingSnapshotStore(AiObservatoryDbContext db)
     {
         var options = new JsonSerializerOptions(JsonSerializerDefaults.Web)
         {
+            RespectRequiredConstructorParameters = true,
             UnmappedMemberHandling = JsonUnmappedMemberHandling.Disallow,
         };
         return options.ConfigureForNodaTime(DateTimeZoneProviders.Tzdb);

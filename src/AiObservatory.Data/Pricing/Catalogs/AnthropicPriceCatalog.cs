@@ -59,12 +59,11 @@ public sealed record AnthropicPriceCatalog(
         }
     }
 
-    public AnthropicPriceEntry? Resolve(string model, LocalDate? usageDate = null)
+    public AnthropicPriceEntry? Resolve(string model, LocalDate usageDate)
     {
-        var date = usageDate ?? LocalDate.MaxIsoValue;
         return Entries
             .Where(entry =>
-                entry.EffectiveFrom <= date
+                entry.EffectiveFrom <= usageDate
                 && entry
                     .Aliases.Prepend(entry.ModelPrefix)
                     .Any(alias => model.StartsWith(alias, StringComparison.OrdinalIgnoreCase))

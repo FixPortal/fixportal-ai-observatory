@@ -1,5 +1,8 @@
 using System.Data.Common;
+using System.Security.Cryptography;
+using System.Text;
 using System.Text.Json;
+using System.Text.Json.Nodes;
 using AiObservatory.Data.Entities;
 using AiObservatory.Data.Pricing;
 using AiObservatory.Data.Pricing.Catalogs;
@@ -58,7 +61,7 @@ public sealed class PricingSnapshotStoreTests : IAsyncLifetime
     public async Task ActivateRetainsImmutableEvidenceAndChangesOnlyTheActiveSnapshot()
     {
         var ct = TestContext.Current.CancellationToken;
-        var first = Candidate('a', 1m, "# exact first-party Markdown\n\n| model | price |\n");
+        var first = Candidate("# exact first-party Markdown\n\n| model | price |\n", 1m);
 
         (await _store.ActivateAsync(first, ct)).Should().Be(PricingActivationResult.Activated);
         (
@@ -70,36 +73,31 @@ public sealed class PricingSnapshotStoreTests : IAsyncLifetime
         )
             .Should()
             .Be(PricingActivationResult.Unchanged);
-        (await _store.ActivateAsync(Candidate('b', 2m, "second exact document"), ct))
-            .Should()
-            .Be(PricingActivationResult.Activated);
+        var second = Candidate("second exact document", 2m, retrievedAt: RetrievedAt.Plus(Duration.FromMinutes(1)));
+        (await _store.ActivateAsync(second, ct)).Should().Be(PricingActivationResult.Activated);
 
         var snapshots = await _db.PricingSnapshots.AsNoTracking().OrderBy(x => x.RetrievedAt).ToListAsync(ct);
         snapshots.Should().HaveCount(2);
-        snapshots.Single(x => x.IsActive).ContentHash.Should().Be(new string('b', 64));
+        snapshots.Single(x => x.IsActive).ContentHash.Should().Be(second.ContentHash);
         snapshots
             .Single(x => !x.IsActive)
             .Should()
             .BeEquivalentTo(
-                new
-                {
-                    ContentHash = new string('a', 64),
-                    RawEvidence = "# exact first-party Markdown\n\n| model | price |\n",
-                }
+                new { first.ContentHash, RawEvidence = "# exact first-party Markdown\n\n| model | price |\n" }
             );
-        (await _store.GetActiveAsync(PricingSourceIds.OpenAi, ct))!.ContentHash.Should().Be(new string('b', 64));
+        (await _store.GetActiveAsync(PricingSourceIds.OpenAi, ct))!.ContentHash.Should().Be(second.ContentHash);
     }
 
     [Fact]
     public async Task ActivateRollsBackSnapshotAndCallbackWritesWhenCallbackFails()
     {
         var ct = TestContext.Current.CancellationToken;
-        var original = Candidate('a', 1m, "original");
+        var original = Candidate("original", 1m);
         await _store.ActivateAsync(original, ct);
 
         var act = () =>
             _store.ActivateAsync(
-                Candidate('b', 2m, "rejected replacement"),
+                Candidate("rejected replacement", 2m),
                 ct,
                 async (_, callbackCt) =>
                 {
@@ -116,32 +114,36 @@ public sealed class PricingSnapshotStoreTests : IAsyncLifetime
             );
 
         await act.Should().ThrowAsync<InvalidOperationException>().WithMessage("repricing failed");
-        _db.ChangeTracker.Clear();
+        _db.ChangeTracker.Entries().Should().BeEmpty();
         (await _db.PricingSnapshots.AsNoTracking().SingleAsync(ct)).ContentHash.Should().Be(original.ContentHash);
         (await _store.GetActiveAsync(PricingSourceIds.OpenAi, ct))!.ContentHash.Should().Be(original.ContentHash);
         (await _db.SourceSyncStates.AsNoTracking().CountAsync(ct)).Should().Be(0);
+
+        var recovery = Candidate("recovery", 3m, retrievedAt: RetrievedAt.Plus(Duration.FromMinutes(2)));
+        (await _store.ActivateAsync(recovery, ct)).Should().Be(PricingActivationResult.Activated);
+        (await _store.GetActiveAsync(PricingSourceIds.OpenAi, ct))!.ContentHash.Should().Be(recovery.ContentHash);
     }
 
     [Fact]
     public async Task ActivateValidatesTrustInputsBeforeChangingStoredState()
     {
         var ct = TestContext.Current.CancellationToken;
-        await _store.ActivateAsync(Candidate('a', 1m, "original"), ct);
+        var original = Candidate("original", 1m);
+        await _store.ActivateAsync(original, ct);
         var transactions = new TransactionCounter();
         var options = new DbContextOptionsBuilder<AiObservatoryDbContext>()
             .UseNpgsql(_connectionString, builder => builder.UseNodaTime())
             .AddInterceptors(transactions)
             .Options;
         await using var validationDb = new AiObservatoryDbContext(options);
-        var invalid = Candidate('b', 2m, "invalid") with { SourceId = PricingSourceIds.Claude };
+        var invalid = Candidate("invalid", 2m) with { SourceId = PricingSourceIds.Claude };
 
         var act = () => new PricingSnapshotStore(validationDb).ActivateAsync(invalid, ct);
 
         await act.Should().ThrowAsync<ArgumentException>();
         transactions.Started.Should().Be(0);
-        _db.ChangeTracker.Clear();
         var saved = await _db.PricingSnapshots.AsNoTracking().SingleAsync(ct);
-        saved.ContentHash.Should().Be(new string('a', 64));
+        saved.ContentHash.Should().Be(original.ContentHash);
         saved.IsActive.Should().BeTrue();
     }
 
@@ -152,15 +154,14 @@ public sealed class PricingSnapshotStoreTests : IAsyncLifetime
         await using var firstDb = new AiObservatoryDbContext(_options);
         await using var secondDb = new AiObservatoryDbContext(_options);
 
-        var results = await Task.WhenAll(
-            new PricingSnapshotStore(firstDb).ActivateAsync(Candidate('a', 1m, "first"), ct),
-            new PricingSnapshotStore(secondDb).ActivateAsync(Candidate('b', 2m, "second"), ct)
-        );
+        var second = Candidate("second", 2m, retrievedAt: RetrievedAt.Plus(Duration.FromMinutes(1)));
+        var results = await RunContendedActivationsAsync(firstDb, secondDb, Candidate("first", 1m), second, ct);
 
         results.Should().OnlyContain(result => result == PricingActivationResult.Activated);
         var snapshots = await _db.PricingSnapshots.AsNoTracking().ToListAsync(ct);
         snapshots.Should().HaveCount(2);
         snapshots.Count(x => x.IsActive).Should().Be(1);
+        snapshots.Single(x => x.IsActive).ContentHash.Should().Be(second.ContentHash);
     }
 
     [Fact]
@@ -169,12 +170,9 @@ public sealed class PricingSnapshotStoreTests : IAsyncLifetime
         var ct = TestContext.Current.CancellationToken;
         await using var firstDb = new AiObservatoryDbContext(_options);
         await using var secondDb = new AiObservatoryDbContext(_options);
-        var candidate = Candidate('a', 1m, "same evidence");
+        var candidate = Candidate("same evidence", 1m);
 
-        var results = await Task.WhenAll(
-            new PricingSnapshotStore(firstDb).ActivateAsync(candidate, ct),
-            new PricingSnapshotStore(secondDb).ActivateAsync(candidate, ct)
-        );
+        var results = await RunContendedActivationsAsync(firstDb, secondDb, candidate, candidate, ct);
 
         results.Should().ContainSingle(result => result == PricingActivationResult.Activated);
         results.Should().ContainSingle(result => result == PricingActivationResult.Unchanged);
@@ -218,8 +216,17 @@ public sealed class PricingSnapshotStoreTests : IAsyncLifetime
     public async Task GetCatalogForDateUsesTheActiveCatalogAndHonoursFutureEffectiveEntries()
     {
         var ct = TestContext.Current.CancellationToken;
-        await _store.ActivateAsync(Candidate('a', 1m, "first"), ct);
-        await _store.ActivateAsync(Candidate('b', 2m, "second", new LocalDate(2026, 9, 1)), ct);
+        await _store.ActivateAsync(Candidate("first", 1m), ct);
+        await _store.ActivateAsync(
+            Candidate(
+                "second",
+                2m,
+                new LocalDate(2026, 8, 24),
+                new LocalDate(2026, 9, 1),
+                RetrievedAt.Plus(Duration.FromMinutes(1))
+            ),
+            ct
+        );
 
         (await _store.GetCatalogForDateAsync(Provider.OpenAI, new LocalDate(2026, 7, 31), ct)).Should().BeNull();
         var august = await _store.GetCatalogForDateAsync(Provider.OpenAI, new LocalDate(2026, 8, 31), ct);
@@ -231,6 +238,202 @@ public sealed class PricingSnapshotStoreTests : IAsyncLifetime
         catalog.Resolve("gpt-5.4", "standard", "short", "global", new LocalDate(2026, 8, 31))!.Input.Should().Be(1m);
         catalog.Resolve("gpt-5.4", "standard", "short", "global", new LocalDate(2026, 9, 1))!.Input.Should().Be(2m);
         august!.ContentHash.Should().Be(september.ContentHash);
+    }
+
+    [Fact]
+    public async Task GetCatalogForDateFallsBackToTheNewestRetainedSnapshotThatCoversTheUsageDate()
+    {
+        var ct = TestContext.Current.CancellationToken;
+        var oldOnly = Candidate("old-only", 1m, new LocalDate(2026, 8, 1));
+        var newOnly = Candidate(
+            "new-only",
+            2m,
+            new LocalDate(2026, 9, 1),
+            retrievedAt: RetrievedAt.Plus(Duration.FromMinutes(1))
+        );
+        await _store.ActivateAsync(oldOnly, ct);
+        await _store.ActivateAsync(newOnly, ct);
+
+        var august = await _store.GetCatalogForDateAsync(Provider.OpenAI, new LocalDate(2026, 8, 15), ct);
+        var september = await _store.GetCatalogForDateAsync(Provider.OpenAI, new LocalDate(2026, 9, 15), ct);
+
+        august!.ContentHash.Should().Be(oldOnly.ContentHash);
+        september!.ContentHash.Should().Be(newOnly.ContentHash);
+        (await _store.GetActiveAsync(PricingSourceIds.OpenAi, ct))!.ContentHash.Should().Be(newOnly.ContentHash);
+    }
+
+    [Theory]
+    [InlineData("kimi-highSpeed")]
+    [InlineData("google-contextThreshold")]
+    [InlineData("entry-effectiveDateIsProviderDeclared")]
+    [InlineData("catalog-retrievedAt")]
+    public async Task ActivateRejectsMissingRequiredNormalizedFieldsBeforeStartingATransaction(string fieldCase)
+    {
+        var ct = TestContext.Current.CancellationToken;
+        var transactions = new TransactionCounter();
+        await using var validationDb = CreateContext(transactions);
+        var candidate = CandidateMissingRequiredField(fieldCase);
+
+        var act = () => new PricingSnapshotStore(validationDb).ActivateAsync(candidate, ct);
+
+        await act.Should().ThrowAsync<ArgumentException>();
+        transactions.Started.Should().Be(0);
+    }
+
+    [Fact]
+    public async Task ActivateAcceptsExplicitFalseAndZeroRequiredNormalizedDimensions()
+    {
+        var ct = TestContext.Current.CancellationToken;
+        var date = new LocalDate(2026, 8, 24);
+        var kimiSource = "https://platform.kimi.ai/docs/pricing/chat-k3";
+        var googleSource = "https://cloud.google.com/billing/catalog";
+        var kimi = CandidateFor(
+            Provider.Moonshot,
+            PricingSourceIds.Kimi,
+            kimiSource,
+            "explicit false",
+            JsonSerializer.Serialize(
+                new KimiPriceCatalog(
+                    "USD",
+                    kimiSource,
+                    RetrievedAt,
+                    [new("kimi", ["kimi"], date, false, 0.1m, 1m, 2m, false, null)]
+                ),
+                JsonOptions
+            )
+        );
+        var google = CandidateFor(
+            Provider.Google,
+            PricingSourceIds.GoogleCloudCatalog,
+            googleSource,
+            "explicit zero",
+            JsonSerializer.Serialize(
+                new GooglePriceCatalog(
+                    "USD",
+                    googleSource,
+                    RetrievedAt,
+                    [
+                        new(
+                            "Gemini",
+                            "sku",
+                            ["gemini"],
+                            date,
+                            false,
+                            "us",
+                            "text",
+                            "standard",
+                            "none",
+                            0,
+                            "1M tokens",
+                            "ACCOUNT",
+                            1m
+                        ),
+                    ]
+                ),
+                JsonOptions
+            )
+        );
+
+        (await _store.ActivateAsync(kimi, ct)).Should().Be(PricingActivationResult.Activated);
+        (await _store.ActivateAsync(google, ct)).Should().Be(PricingActivationResult.Activated);
+    }
+
+    [Fact]
+    public async Task ActivateRejectsNonCanonicalEvidenceHashBeforeStartingATransaction()
+    {
+        var ct = TestContext.Current.CancellationToken;
+        var transactions = new TransactionCounter();
+        await using var validationDb = CreateContext(transactions);
+        var candidate = Candidate("uppercase hash", 1m);
+        candidate = candidate with { ContentHash = candidate.ContentHash.ToUpperInvariant() };
+
+        var act = () => new PricingSnapshotStore(validationDb).ActivateAsync(candidate, ct);
+
+        await act.Should().ThrowAsync<ArgumentException>();
+        transactions.Started.Should().Be(0);
+    }
+
+    [Fact]
+    public async Task ActivateRejectsAReusedHashWithChangedEvidenceAndCatalogBeforeStartingATransaction()
+    {
+        var ct = TestContext.Current.CancellationToken;
+        var original = Candidate("original evidence", 1m);
+        await _store.ActivateAsync(original, ct);
+        var transactions = new TransactionCounter();
+        await using var validationDb = CreateContext(transactions);
+        var changed = Candidate("changed evidence", 2m) with { ContentHash = original.ContentHash };
+        changed.NormalizedCatalog.Should().NotBe(original.NormalizedCatalog);
+
+        var act = () => new PricingSnapshotStore(validationDb).ActivateAsync(changed, ct);
+
+        await act.Should().ThrowAsync<ArgumentException>();
+        transactions.Started.Should().Be(0);
+    }
+
+    [Fact]
+    public async Task ActivateRejectsAnOversizeSourceUrlBeforeStartingATransaction()
+    {
+        var ct = TestContext.Current.CancellationToken;
+        var transactions = new TransactionCounter();
+        await using var validationDb = CreateContext(transactions);
+        var sourceUrl = "https://example.com/" + new string('a', 2048);
+        var candidate = Candidate("oversize URL", 1m, sourceUrl: sourceUrl);
+
+        var act = () => new PricingSnapshotStore(validationDb).ActivateAsync(candidate, ct);
+
+        await act.Should().ThrowAsync<ArgumentException>();
+        transactions.Started.Should().Be(0);
+    }
+
+    [Fact]
+    public async Task ActivateCallbackCancellationRollsBackAndPropagatesWithACleanTracker()
+    {
+        var original = Candidate("original", 1m);
+        await _store.ActivateAsync(original, TestContext.Current.CancellationToken);
+        using var cancellation = new CancellationTokenSource();
+        var replacement = Candidate("cancelled", 2m, retrievedAt: RetrievedAt.Plus(Duration.FromMinutes(1)));
+
+        var act = () =>
+            _store.ActivateAsync(
+                replacement,
+                cancellation.Token,
+                async (_, callbackToken) =>
+                {
+                    _db.SourceSyncStates.Add(
+                        new SourceSyncState
+                        {
+                            SourceId = "cancelled-callback-side-effect",
+                            ExpectedRefreshIntervalSeconds = 86_400,
+                        }
+                    );
+                    await _db.SaveChangesAsync(callbackToken);
+                    await cancellation.CancelAsync();
+                    callbackToken.ThrowIfCancellationRequested();
+                }
+            );
+
+        var thrown = await act.Should().ThrowAsync<OperationCanceledException>();
+        thrown.Which.CancellationToken.Should().Be(cancellation.Token);
+        _db.ChangeTracker.Entries().Should().BeEmpty();
+        await using var verifier = new AiObservatoryDbContext(_options);
+        var testToken = TestContext.Current.CancellationToken;
+        (await verifier.PricingSnapshots.AsNoTracking().SingleAsync(testToken))
+            .ContentHash.Should()
+            .Be(original.ContentHash);
+        (await verifier.SourceSyncStates.AsNoTracking().CountAsync(testToken)).Should().Be(0);
+    }
+
+    [Fact]
+    public void ResolveCannotSelectAFutureEntryForAnEarlierUsageDate()
+    {
+        var catalog = new OpenAiPriceCatalog(
+            "USD",
+            "https://example.com/pricing",
+            RetrievedAt,
+            [OpenAiEntry(new LocalDate(2026, 9, 1), 2m)]
+        );
+
+        catalog.Resolve("gpt-5.4", "standard", "short", "global", new LocalDate(2026, 8, 31)).Should().BeNull();
     }
 
     [Fact]
@@ -347,33 +550,215 @@ public sealed class PricingSnapshotStoreTests : IAsyncLifetime
             .Throw<InvalidDataException>();
     }
 
-    private static PricingSnapshotCandidate Candidate(char hash, decimal input, string raw, LocalDate? future = null) =>
-        new(
+    private static PricingSnapshotCandidate Candidate(
+        string raw,
+        decimal input,
+        LocalDate? effectiveFrom = null,
+        LocalDate? future = null,
+        Instant? retrievedAt = null,
+        string sourceUrl = "https://developers.openai.com/api/docs/pricing.md"
+    )
+    {
+        var retrieved = retrievedAt ?? RetrievedAt;
+        return CandidateFor(
             Provider.OpenAI,
             PricingSourceIds.OpenAi,
-            RetrievedAt.Plus(Duration.FromMinutes(hash - 'a')),
-            "https://developers.openai.com/api/docs/pricing.md",
-            new string(hash, 64),
+            sourceUrl,
             raw,
-            ValidCatalogJson(input, future)
+            ValidCatalogJson(input, effectiveFrom, future, retrieved, sourceUrl),
+            retrieved
         );
+    }
 
-    private static string ValidCatalogJson(decimal input, LocalDate? future = null)
+    private static string ValidCatalogJson(
+        decimal input,
+        LocalDate? effectiveFrom = null,
+        LocalDate? future = null,
+        Instant? retrievedAt = null,
+        string sourceUrl = "https://developers.openai.com/api/docs/pricing.md"
+    )
     {
-        var entries = new List<OpenAiPriceEntry> { OpenAiEntry(new LocalDate(2026, 8, 24), 1m) };
+        var entries = new List<OpenAiPriceEntry>
+        {
+            OpenAiEntry(effectiveFrom ?? new LocalDate(2026, 8, 24), future is null ? input : 1m),
+        };
         if (future is not null)
         {
             entries.Add(OpenAiEntry(future.Value, input));
         }
-        else
-        {
-            entries[0] = OpenAiEntry(new LocalDate(2026, 8, 24), input);
-        }
 
         return JsonSerializer.Serialize(
-            new OpenAiPriceCatalog("USD", "https://developers.openai.com/api/docs/pricing.md", RetrievedAt, entries),
+            new OpenAiPriceCatalog("USD", sourceUrl, retrievedAt ?? RetrievedAt, entries),
             JsonOptions
         );
+    }
+
+    private static PricingSnapshotCandidate CandidateFor(
+        Provider provider,
+        string sourceId,
+        string sourceUrl,
+        string raw,
+        string normalizedCatalog,
+        Instant? retrievedAt = null
+    ) => new(provider, sourceId, retrievedAt ?? RetrievedAt, sourceUrl, Hash(raw), raw, normalizedCatalog);
+
+    private static string Hash(string raw) => Convert.ToHexStringLower(SHA256.HashData(Encoding.UTF8.GetBytes(raw)));
+
+    private static PricingSnapshotCandidate CandidateMissingRequiredField(string fieldCase)
+    {
+        var date = new LocalDate(2026, 8, 24);
+        return fieldCase switch
+        {
+            "kimi-highSpeed" => WithoutRequiredField(
+                Provider.Moonshot,
+                PricingSourceIds.Kimi,
+                "https://platform.kimi.ai/docs/pricing/chat-k3",
+                "missing Kimi HighSpeed",
+                new KimiPriceCatalog(
+                    "USD",
+                    "https://platform.kimi.ai/docs/pricing/chat-k3",
+                    RetrievedAt,
+                    [new("kimi", ["kimi"], date, false, 0.1m, 1m, 2m, false, null)]
+                ),
+                "highSpeed",
+                true
+            ),
+            "google-contextThreshold" => WithoutRequiredField(
+                Provider.Google,
+                PricingSourceIds.GoogleCloudCatalog,
+                "https://cloud.google.com/billing/catalog",
+                "missing Google ContextThreshold",
+                new GooglePriceCatalog(
+                    "USD",
+                    "https://cloud.google.com/billing/catalog",
+                    RetrievedAt,
+                    [
+                        new(
+                            "Gemini",
+                            "sku",
+                            ["gemini"],
+                            date,
+                            false,
+                            "us",
+                            "text",
+                            "standard",
+                            "none",
+                            0,
+                            "1M tokens",
+                            "ACCOUNT",
+                            1m
+                        ),
+                    ]
+                ),
+                "contextThreshold",
+                true
+            ),
+            "entry-effectiveDateIsProviderDeclared" => WithoutRequiredField(
+                Provider.OpenAI,
+                PricingSourceIds.OpenAi,
+                "https://developers.openai.com/api/docs/pricing.md",
+                "missing effective-date provenance",
+                new OpenAiPriceCatalog(
+                    "USD",
+                    "https://developers.openai.com/api/docs/pricing.md",
+                    RetrievedAt,
+                    [OpenAiEntry(date, 1m)]
+                ),
+                "effectiveDateIsProviderDeclared",
+                true
+            ),
+            "catalog-retrievedAt" => WithoutRequiredField(
+                Provider.OpenAI,
+                PricingSourceIds.OpenAi,
+                "https://developers.openai.com/api/docs/pricing.md",
+                "missing catalog retrieval time",
+                new OpenAiPriceCatalog(
+                    "USD",
+                    "https://developers.openai.com/api/docs/pricing.md",
+                    RetrievedAt,
+                    [OpenAiEntry(date, 1m)]
+                ),
+                "retrievedAt",
+                false
+            ),
+            _ => throw new ArgumentOutOfRangeException(nameof(fieldCase)),
+        };
+    }
+
+    private static PricingSnapshotCandidate WithoutRequiredField<TCatalog>(
+        Provider provider,
+        string sourceId,
+        string sourceUrl,
+        string raw,
+        TCatalog catalog,
+        string property,
+        bool entryProperty
+    )
+    {
+        var root = JsonSerializer.SerializeToNode(catalog, JsonOptions)!.AsObject();
+        var target = entryProperty ? root["entries"]![0]!.AsObject() : root;
+        target.Remove(property).Should().BeTrue();
+        return CandidateFor(provider, sourceId, sourceUrl, raw, root.ToJsonString(JsonOptions));
+    }
+
+    private AiObservatoryDbContext CreateContext(DbTransactionInterceptor interceptor) =>
+        new(
+            new DbContextOptionsBuilder<AiObservatoryDbContext>()
+                .UseNpgsql(_connectionString, builder => builder.UseNodaTime())
+                .AddInterceptors(interceptor)
+                .Options
+        );
+
+    private async Task<PricingActivationResult[]> RunContendedActivationsAsync(
+        AiObservatoryDbContext firstDb,
+        AiObservatoryDbContext secondDb,
+        PricingSnapshotCandidate firstCandidate,
+        PricingSnapshotCandidate secondCandidate,
+        CancellationToken cancellationToken
+    )
+    {
+        var callbackEntered = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
+        var releaseCallback = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
+        var first = new PricingSnapshotStore(firstDb).ActivateAsync(
+            firstCandidate,
+            cancellationToken,
+            async (_, callbackToken) =>
+            {
+                callbackEntered.TrySetResult(true);
+                await releaseCallback.Task.WaitAsync(callbackToken);
+            }
+        );
+        await callbackEntered.Task.WaitAsync(TimeSpan.FromSeconds(30), cancellationToken);
+        var second = new PricingSnapshotStore(secondDb).ActivateAsync(secondCandidate, cancellationToken);
+        try
+        {
+            await WaitForBlockedAdvisoryLockAsync(cancellationToken);
+        }
+        finally
+        {
+            releaseCallback.TrySetResult(true);
+        }
+
+        return await Task.WhenAll(first, second);
+    }
+
+    private async Task WaitForBlockedAdvisoryLockAsync(CancellationToken cancellationToken)
+    {
+        using var timeout = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+        timeout.CancelAfter(TimeSpan.FromSeconds(30));
+        await using var connection = new NpgsqlConnection(_connectionString);
+        await connection.OpenAsync(timeout.Token);
+        while (true)
+        {
+            await using var command = connection.CreateCommand();
+            command.CommandText = "SELECT count(*) FROM pg_locks WHERE locktype = 'advisory' AND NOT granted";
+            if (Convert.ToInt32(await command.ExecuteScalarAsync(timeout.Token)) > 0)
+            {
+                return;
+            }
+
+            await Task.Delay(10, timeout.Token);
+        }
     }
 
     private static OpenAiPriceEntry OpenAiEntry(LocalDate effectiveFrom, decimal input) =>
