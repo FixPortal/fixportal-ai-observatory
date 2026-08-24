@@ -1,3 +1,4 @@
+using System.Text.Json;
 using AiObservatory.Data.Entities;
 using AiObservatory.Data.Repositories;
 using AwesomeAssertions;
@@ -52,27 +53,6 @@ public class UsageRepositoryTests : IAsyncLifetime
     }
 
     [Fact]
-    public async Task AddUsageEvent_persists_record()
-    {
-        var evt = new UsageEvent
-        {
-            Provider = Provider.Anthropic,
-            OccurredAt = Instant.FromUtc(2026, 6, 1, 10, 0),
-            IngestedAt = Instant.FromUtc(2026, 6, 1, 11, 0),
-            Model = "claude-sonnet-4-6",
-            InputTokens = 1000,
-            OutputTokens = 500,
-            CostUsd = 0.005m,
-        };
-
-        await _repo.AddUsageEventAsync(evt, TestContext.Current.CancellationToken);
-
-        var saved = await _ctx.UsageEvents.FindAsync([evt.Id], TestContext.Current.CancellationToken);
-        saved.Should().NotBeNull();
-        saved!.InputTokens.Should().Be(1000);
-    }
-
-    [Fact]
     public async Task RecordEvent_with_same_eventKey_records_and_aggregates_once()
     {
         static UsageEvent NewEvent() =>
@@ -91,6 +71,8 @@ public class UsageRepositoryTests : IAsyncLifetime
         var first = await _repo.RecordEventAsync(NewEvent(), TestContext.Current.CancellationToken);
         var second = await _repo.RecordEventAsync(NewEvent(), TestContext.Current.CancellationToken);
 
+        first.Disposition.Should().Be(RecordEventDisposition.Created);
+        second.Disposition.Should().Be(RecordEventDisposition.Unchanged);
         first.IsDuplicate.Should().BeFalse();
         second.IsDuplicate.Should().BeTrue();
         second.EventId.Should().Be(first.EventId);
@@ -99,6 +81,147 @@ public class UsageRepositoryTests : IAsyncLifetime
         var agg = await _ctx.DailyAggregates.SingleAsync(TestContext.Current.CancellationToken);
         agg.InputTokens.Should().Be(100);
         agg.RequestCount.Should().Be(1);
+    }
+
+    [Theory]
+    [InlineData(nameof(UsageEvent.Provider))]
+    [InlineData(nameof(UsageEvent.OccurredAt))]
+    [InlineData(nameof(UsageEvent.Model))]
+    [InlineData(nameof(UsageEvent.InputTokens))]
+    [InlineData(nameof(UsageEvent.OutputTokens))]
+    [InlineData(nameof(UsageEvent.CacheReadTokens))]
+    [InlineData(nameof(UsageEvent.CacheWriteTokens))]
+    [InlineData(nameof(UsageEvent.CacheWrite1hTokens))]
+    [InlineData(nameof(UsageEvent.ThoughtTokens))]
+    [InlineData(nameof(UsageEvent.CostUsd))]
+    [InlineData(nameof(UsageEvent.CacheSavingsUsd))]
+    [InlineData(nameof(UsageEvent.Runtime))]
+    [InlineData(nameof(UsageEvent.SessionId))]
+    [InlineData(nameof(UsageEvent.AgentId))]
+    [InlineData(nameof(UsageEvent.RawPayload))]
+    [InlineData(nameof(UsageEvent.SourceKind))]
+    [InlineData(nameof(UsageEvent.UsageScope))]
+    [InlineData(nameof(UsageEvent.CostBasis))]
+    public async Task RecordEvent_changed_canonical_field_replaces_snapshot(string changedField)
+    {
+        var ct = TestContext.Current.CancellationToken;
+        var first = NewEvent();
+        var corrected = NewEvent(changedField);
+
+        await _repo.RecordEventAsync(first, ct);
+        var correction = await _repo.RecordEventAsync(corrected, ct);
+        var unchanged = await _repo.RecordEventAsync(NewEvent(changedField), ct);
+
+        correction.Disposition.Should().Be(RecordEventDisposition.Corrected);
+        unchanged.Disposition.Should().Be(RecordEventDisposition.Unchanged);
+        correction.IsDuplicate.Should().BeFalse();
+        unchanged.IsDuplicate.Should().BeTrue();
+        correction.EventId.Should().Be(first.Id);
+        unchanged.EventId.Should().Be(first.Id);
+
+        var saved = await _ctx.UsageEvents.AsNoTracking().SingleAsync(ct);
+        saved
+            .Should()
+            .BeEquivalentTo(
+                corrected,
+                options => options.Excluding(e => e.Id).Excluding(e => e.IngestedAt).Excluding(e => e.RawPayload)
+            );
+        using var savedPayload = JsonDocument.Parse(saved.RawPayload);
+        using var expectedPayload = JsonDocument.Parse(corrected.RawPayload);
+        JsonElement.DeepEquals(savedPayload.RootElement, expectedPayload.RootElement).Should().BeTrue();
+
+        var rows = await _ctx.DailyAggregates.AsNoTracking().ToListAsync(ct);
+        rows.Should().ContainSingle();
+        rows.Sum(x => x.InputTokens).Should().Be(corrected.InputTokens);
+        rows.Sum(x => x.OutputTokens).Should().Be(corrected.OutputTokens);
+        rows.Sum(x => x.CacheReadTokens).Should().Be(corrected.CacheReadTokens ?? 0);
+        rows.Sum(x => x.CacheWriteTokens).Should().Be(corrected.CacheWriteTokens ?? 0);
+        rows.Sum(x => x.CacheWrite1hTokens).Should().Be(corrected.CacheWrite1hTokens ?? 0);
+        rows.Sum(x => x.CostUsd).Should().Be(corrected.CostUsd ?? 0);
+        rows.Sum(x => x.CacheSavingsUsd).Should().Be(corrected.CacheSavingsUsd ?? 0);
+        rows.Sum(x => x.RequestCount).Should().Be(1);
+    }
+
+    [Fact]
+    public async Task RecordEvent_correction_moves_bucket_and_removes_zero_row()
+    {
+        var ct = TestContext.Current.CancellationToken;
+        var first = NewEvent(model: "gpt-5.4", input: 100, cost: 1m);
+        var corrected = NewEvent(model: "gpt-5.5", input: 175, cost: 2m);
+
+        (await _repo.RecordEventAsync(first, ct)).Disposition.Should().Be(RecordEventDisposition.Created);
+        (await _repo.RecordEventAsync(corrected, ct)).Disposition.Should().Be(RecordEventDisposition.Corrected);
+        (await _repo.RecordEventAsync(NewEvent(model: "gpt-5.5", input: 175, cost: 2m), ct))
+            .Disposition.Should()
+            .Be(RecordEventDisposition.Unchanged);
+
+        var rows = await _ctx.DailyAggregates.AsNoTracking().OrderBy(x => x.Model).ToListAsync(ct);
+        rows.Should().NotContain(x => x.Model == "gpt-5.4");
+        rows.Single(x => x.Model == "gpt-5.5").InputTokens.Should().Be(175);
+        rows.Sum(x => x.CostUsd).Should().Be(2m);
+    }
+
+    [Fact]
+    public async Task RecordEvent_correction_updates_unknown_cost_and_cache_savings_counts()
+    {
+        var ct = TestContext.Current.CancellationToken;
+
+        await _repo.RecordEventAsync(NewEvent(cost: null, cacheSavings: null), ct);
+        await _repo.RecordEventAsync(NewEvent(cost: 2m, cacheSavings: 0.5m), ct);
+
+        var known = await _ctx.DailyAggregates.AsNoTracking().SingleAsync(ct);
+        known.CostUsd.Should().Be(2m);
+        known.UnknownCostCount.Should().Be(0);
+        known.CacheSavingsUsd.Should().Be(0.5m);
+        known.UnknownCacheSavingsCount.Should().Be(0);
+
+        await _repo.RecordEventAsync(NewEvent(cost: null, cacheSavings: null), ct);
+
+        var unknown = await _ctx.DailyAggregates.AsNoTracking().SingleAsync(ct);
+        unknown.CostUsd.Should().Be(0m);
+        unknown.UnknownCostCount.Should().Be(1);
+        unknown.CacheSavingsUsd.Should().Be(0m);
+        unknown.UnknownCacheSavingsCount.Should().Be(1);
+    }
+
+    [Fact]
+    public async Task RecordEvent_changed_observation_metadata_is_unchanged()
+    {
+        var ct = TestContext.Current.CancellationToken;
+        var first = NewEvent();
+        var reread = NewEvent(
+            ingestedAt: Instant.FromUtc(2026, 8, 24, 13, 0),
+            observedAt: Instant.FromUtc(2026, 8, 24, 13, 1)
+        );
+
+        await _repo.RecordEventAsync(first, ct);
+        var result = await _repo.RecordEventAsync(reread, ct);
+
+        result.Disposition.Should().Be(RecordEventDisposition.Unchanged);
+        result.IsDuplicate.Should().BeTrue();
+        var saved = await _ctx.UsageEvents.AsNoTracking().SingleAsync(ct);
+        saved.IngestedAt.Should().Be(first.IngestedAt);
+        saved.ObservedAt.Should().Be(first.ObservedAt);
+    }
+
+    [Fact]
+    public async Task RecordEvent_failed_correction_rolls_back_event_and_aggregate()
+    {
+        var ct = TestContext.Current.CancellationToken;
+        var first = NewEvent(input: 100, cost: 1m);
+        await _repo.RecordEventAsync(first, ct);
+
+        var act = () => _repo.RecordEventAsync(NewEvent(input: -1, cost: 2m), ct);
+
+        await act.Should().ThrowAsync<DbUpdateException>();
+        _ctx.ChangeTracker.Clear();
+        var saved = await _ctx.UsageEvents.AsNoTracking().SingleAsync(ct);
+        saved.InputTokens.Should().Be(100);
+        saved.CostUsd.Should().Be(1m);
+        var aggregate = await _ctx.DailyAggregates.AsNoTracking().SingleAsync(ct);
+        aggregate.InputTokens.Should().Be(100);
+        aggregate.CostUsd.Should().Be(1m);
+        aggregate.RequestCount.Should().Be(1);
     }
 
     [Fact]
@@ -121,11 +244,17 @@ public class UsageRepositoryTests : IAsyncLifetime
                 CostBasis = CostBasis.Notional,
             };
 
-        var first = await _repo.RecordEventAsync(NewEvent(UsageSourceIds.CopilotLocal), TestContext.Current.CancellationToken);
-        var second = await _repo.RecordEventAsync(NewEvent(UsageSourceIds.GitHubBillingApi), TestContext.Current.CancellationToken);
+        var first = await _repo.RecordEventAsync(
+            NewEvent(UsageSourceIds.CopilotLocal),
+            TestContext.Current.CancellationToken
+        );
+        var second = await _repo.RecordEventAsync(
+            NewEvent(UsageSourceIds.GitHubBillingApi),
+            TestContext.Current.CancellationToken
+        );
 
-        first.IsDuplicate.Should().BeFalse();
-        second.IsDuplicate.Should().BeFalse();
+        first.Disposition.Should().Be(RecordEventDisposition.Created);
+        second.Disposition.Should().Be(RecordEventDisposition.Created);
         (await _ctx.UsageEvents.CountAsync(TestContext.Current.CancellationToken)).Should().Be(2);
         (await _ctx.DailyAggregates.CountAsync(TestContext.Current.CancellationToken)).Should().Be(2);
     }
@@ -148,8 +277,8 @@ public class UsageRepositoryTests : IAsyncLifetime
         var first = await _repo.RecordEventAsync(NewEvent(), TestContext.Current.CancellationToken);
         var second = await _repo.RecordEventAsync(NewEvent(), TestContext.Current.CancellationToken);
 
-        first.IsDuplicate.Should().BeFalse();
-        second.IsDuplicate.Should().BeFalse();
+        first.Disposition.Should().Be(RecordEventDisposition.Created);
+        second.Disposition.Should().Be(RecordEventDisposition.Created);
         (await _ctx.UsageEvents.CountAsync(TestContext.Current.CancellationToken)).Should().Be(2);
         var agg = await _ctx.DailyAggregates.SingleAsync(TestContext.Current.CancellationToken);
         agg.RequestCount.Should().Be(2);
@@ -185,13 +314,13 @@ public class UsageRepositoryTests : IAsyncLifetime
         await using var gateTransaction = await gateConnection.BeginTransactionAsync(ct);
         await using (var command = gateConnection.CreateCommand())
         {
-            command.CommandText = """LOCK TABLE "UsageEvents" IN SHARE MODE""";
+            command.CommandText = """LOCK TABLE "DailyAggregates" IN SHARE MODE""";
             await command.ExecuteNonQueryAsync(ct);
         }
 
         var first = firstRepository.RecordEventAsync(NewEvent(), ct);
         var second = secondRepository.RecordEventAsync(NewEvent(), ct);
-        await WaitForBlockedInsertsAsync(gateConnection, ct);
+        await WaitForBlockedWritesAsync(gateConnection, "DailyAggregates", ct);
         await gateTransaction.CommitAsync(ct);
 
         var results = await Task.WhenAll(first, second);
@@ -252,13 +381,13 @@ public class UsageRepositoryTests : IAsyncLifetime
         await using var gateTransaction = await gateConnection.BeginTransactionAsync(ct);
         await using (var command = gateConnection.CreateCommand())
         {
-            command.CommandText = """LOCK TABLE "UsageEvents" IN SHARE MODE""";
+            command.CommandText = """LOCK TABLE "DailyAggregates" IN SHARE MODE""";
             await command.ExecuteNonQueryAsync(ct);
         }
 
         var first = firstRepository.RecordEventAsync(NewTargetEvent(), ct);
         var second = secondRepository.RecordEventAsync(NewTargetEvent(), ct);
-        await WaitForBlockedInsertsAsync(gateConnection, ct);
+        await WaitForBlockedWritesAsync(gateConnection, "DailyAggregates", ct);
         await gateTransaction.CommitAsync(ct);
 
         var results = await Task.WhenAll(first, second);
@@ -268,7 +397,11 @@ public class UsageRepositoryTests : IAsyncLifetime
         targetId.Should().NotBe(sibling.Id);
     }
 
-    private static async Task WaitForBlockedInsertsAsync(NpgsqlConnection connection, CancellationToken ct)
+    private static async Task WaitForBlockedWritesAsync(
+        NpgsqlConnection connection,
+        string tableName,
+        CancellationToken ct
+    )
     {
         using var timeout = CancellationTokenSource.CreateLinkedTokenSource(ct);
         timeout.CancelAfter(TimeSpan.FromSeconds(30));
@@ -280,8 +413,9 @@ public class UsageRepositoryTests : IAsyncLifetime
                 SELECT count(*)
                 FROM pg_locks locks
                 JOIN pg_class tables ON tables.oid = locks.relation
-                WHERE tables.relname = 'UsageEvents' AND NOT locks.granted
+                WHERE tables.relname = @tableName AND NOT locks.granted
                 """;
+            command.Parameters.AddWithValue("tableName", tableName);
             if (Convert.ToInt32(await command.ExecuteScalarAsync(timeout.Token)) == 2)
             {
                 return;
@@ -313,7 +447,13 @@ public class UsageRepositoryTests : IAsyncLifetime
 
         // PATCH to the corrected cost.
         var newCost = 12000 * 1.50m / 1_000_000 + 800 * 9.00m / 1_000_000 + 480 * 3.50m / 1_000_000;
-        var result = await _repo.PatchEventCostAsync(Provider.Google, "gemini:sess-abc:gemini-3.5-flash", newCost, ct);
+        var result = await _repo.PatchEventCostAsync(
+            Provider.Google,
+            UsageSourceIds.LegacyApi,
+            "gemini:sess-abc:gemini-3.5-flash",
+            newCost,
+            ct
+        );
 
         result.Should().NotBeNull();
         result!.OldCostUsd.Should().Be(0.0024m);
@@ -334,6 +474,7 @@ public class UsageRepositoryTests : IAsyncLifetime
     {
         var result = await _repo.PatchEventCostAsync(
             Provider.Google,
+            UsageSourceIds.LegacyApi,
             "gemini:nonexistent:model",
             0.01m,
             TestContext.Current.CancellationToken
@@ -360,7 +501,13 @@ public class UsageRepositoryTests : IAsyncLifetime
         };
         await _repo.RecordEventAsync(evt, ct);
 
-        var result = await _repo.PatchEventCostAsync(Provider.Google, "gemini:sess-xyz:gemini-2.5-pro", 0.0083m, ct);
+        var result = await _repo.PatchEventCostAsync(
+            Provider.Google,
+            UsageSourceIds.LegacyApi,
+            "gemini:sess-xyz:gemini-2.5-pro",
+            0.0083m,
+            ct
+        );
 
         result.Should().NotBeNull();
         result!.OldCostUsd.Should().Be(0.0083m);
@@ -372,44 +519,22 @@ public class UsageRepositoryTests : IAsyncLifetime
     }
 
     [Fact]
-    public async Task UpsertDailyAggregate_creates_then_replaces()
+    public async Task PatchEventCost_updates_only_the_exact_source()
     {
-        var date = new LocalDate(2026, 6, 1);
+        var ct = TestContext.Current.CancellationToken;
+        const string eventKey = "shared-cost-key";
+        await _repo.RecordEventAsync(NewEvent(sourceId: UsageSourceIds.OpenAiUsageApi, eventKey: eventKey), ct);
+        await _repo.RecordEventAsync(NewEvent(sourceId: UsageSourceIds.CodexLocal, eventKey: eventKey), ct);
 
-        await _repo.UpsertDailyAggregateAsync(
-            date,
-            Provider.Anthropic,
-            "claude-sonnet-4-6",
-            inputTokens: 1000,
-            outputTokens: 500,
-            cacheReadTokens: 100,
-            cacheWriteTokens: 50,
-            costUsd: 0.005m,
-            ct: TestContext.Current.CancellationToken
-        );
+        var result = await _repo.PatchEventCostAsync(Provider.OpenAI, UsageSourceIds.CodexLocal, eventKey, 3m, ct);
 
-        await _repo.UpsertDailyAggregateAsync(
-            date,
-            Provider.Anthropic,
-            "claude-sonnet-4-6",
-            inputTokens: 2000,
-            outputTokens: 800,
-            cacheReadTokens: 200,
-            cacheWriteTokens: 80,
-            costUsd: 0.009m,
-            ct: TestContext.Current.CancellationToken
-        );
-
-        var agg = await _ctx.DailyAggregates.FirstOrDefaultAsync(
-            a => a.Date == date && a.Model == "claude-sonnet-4-6",
-            TestContext.Current.CancellationToken
-        );
-        agg.Should().NotBeNull();
-        agg!.InputTokens.Should().Be(2000);
-        agg.CacheReadTokens.Should().Be(200);
-        agg.CacheWriteTokens.Should().Be(80);
-        agg.CostUsd.Should().Be(0.009m);
-        agg.RequestCount.Should().Be(1);
+        result.Should().NotBeNull();
+        var events = await _ctx.UsageEvents.AsNoTracking().OrderBy(x => x.SourceId).ToListAsync(ct);
+        events.Single(x => x.SourceId == UsageSourceIds.CodexLocal).CostUsd.Should().Be(3m);
+        events.Single(x => x.SourceId == UsageSourceIds.OpenAiUsageApi).CostUsd.Should().Be(1m);
+        var rows = await _ctx.DailyAggregates.AsNoTracking().ToListAsync(ct);
+        rows.Single(x => x.SourceId == UsageSourceIds.CodexLocal).CostUsd.Should().Be(3m);
+        rows.Single(x => x.SourceId == UsageSourceIds.OpenAiUsageApi).CostUsd.Should().Be(1m);
     }
 
     [Theory]
@@ -488,5 +613,118 @@ public class UsageRepositoryTests : IAsyncLifetime
         var act = () => _ctx.SaveChangesAsync(TestContext.Current.CancellationToken);
 
         await act.Should().ThrowAsync<DbUpdateException>();
+    }
+
+    private static UsageEvent NewEvent(
+        string? changedField = null,
+        string sourceId = UsageSourceIds.OpenAiUsageApi,
+        string? eventKey = "day:model",
+        string model = "gpt-5.4",
+        long input = 100,
+        decimal? cost = 1m,
+        decimal? cacheSavings = 0.25m,
+        Instant? ingestedAt = null,
+        Instant? observedAt = null
+    )
+    {
+        var evt = new UsageEvent
+        {
+            Provider = Provider.OpenAI,
+            OccurredAt = Instant.FromUtc(2026, 8, 24, 12, 0),
+            IngestedAt = ingestedAt ?? Instant.FromUtc(2026, 8, 24, 12, 1),
+            Model = model,
+            InputTokens = input,
+            OutputTokens = 50,
+            CacheReadTokens = 20,
+            CacheWriteTokens = 20,
+            CacheWrite1hTokens = 5,
+            ThoughtTokens = 4,
+            CostUsd = cost,
+            CacheSavingsUsd = cacheSavings,
+            Runtime = "api",
+            SessionId = "session-1",
+            AgentId = "agent-1",
+            RawPayload = "{\"request\":\"stable\"}",
+            SourceId = sourceId,
+            SourceKind = SourceKind.ProviderApi,
+            UsageScope = UsageScope.Api,
+            CostBasis = CostBasis.ProviderEstimated,
+            ObservedAt = observedAt ?? Instant.FromUtc(2026, 8, 24, 12, 2),
+            EventKey = eventKey,
+        };
+
+        ChangeCanonicalField(evt, changedField);
+        return evt;
+    }
+
+    private static void ChangeCanonicalField(UsageEvent evt, string? changedField)
+    {
+        switch (changedField)
+        {
+            case nameof(UsageEvent.Provider):
+                evt.Provider = Provider.Anthropic;
+                break;
+            case nameof(UsageEvent.OccurredAt):
+                evt.OccurredAt = Instant.FromUtc(2026, 8, 25, 12, 0);
+                break;
+            case nameof(UsageEvent.Model):
+                evt.Model = "gpt-5.5";
+                break;
+            case nameof(UsageEvent.InputTokens):
+                evt.InputTokens = 175;
+                break;
+            case nameof(UsageEvent.OutputTokens):
+                evt.OutputTokens = 75;
+                break;
+            case nameof(UsageEvent.CacheReadTokens):
+                evt.CacheReadTokens = 30;
+                break;
+            case nameof(UsageEvent.CacheWriteTokens):
+                evt.CacheWriteTokens = 30;
+                break;
+            case nameof(UsageEvent.CacheWrite1hTokens):
+                evt.CacheWrite1hTokens = 10;
+                break;
+            case nameof(UsageEvent.ThoughtTokens):
+                evt.ThoughtTokens = 6;
+                break;
+            default:
+                ChangeCanonicalEvidence(evt, changedField);
+                break;
+        }
+    }
+
+    private static void ChangeCanonicalEvidence(UsageEvent evt, string? changedField)
+    {
+        switch (changedField)
+        {
+            case nameof(UsageEvent.CostUsd):
+                evt.CostUsd = 2m;
+                break;
+            case nameof(UsageEvent.CacheSavingsUsd):
+                evt.CacheSavingsUsd = 0.5m;
+                break;
+            case nameof(UsageEvent.Runtime):
+                evt.Runtime = "cloud";
+                break;
+            case nameof(UsageEvent.SessionId):
+                evt.SessionId = "session-2";
+                break;
+            case nameof(UsageEvent.AgentId):
+                evt.AgentId = "agent-2";
+                break;
+            case nameof(UsageEvent.RawPayload):
+                evt.RawPayload = "{\"request\":\"corrected\"}";
+                break;
+            case nameof(UsageEvent.SourceKind):
+                evt.SourceKind = SourceKind.LocalTelemetry;
+                break;
+            case nameof(UsageEvent.UsageScope):
+                evt.UsageScope = UsageScope.Subscription;
+                break;
+            case nameof(UsageEvent.CostBasis):
+                evt.CostBasis = CostBasis.Notional;
+                break;
+        }
     }
 }

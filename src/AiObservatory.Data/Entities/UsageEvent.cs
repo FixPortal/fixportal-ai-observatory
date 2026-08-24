@@ -5,14 +5,14 @@ namespace AiObservatory.Data.Entities;
 public sealed class UsageEvent
 {
     public Guid Id { get; init; } = Guid.NewGuid();
-    public Provider Provider { get; init; }
-    public Instant OccurredAt { get; init; }
+    public Provider Provider { get; set; }
+    public Instant OccurredAt { get; set; }
     public Instant IngestedAt { get; init; }
-    public string? Model { get; init; }
-    public long InputTokens { get; init; }
-    public long OutputTokens { get; init; }
-    public long? CacheReadTokens { get; init; }
-    public long? CacheWriteTokens { get; init; }
+    public string? Model { get; set; }
+    public long InputTokens { get; set; }
+    public long OutputTokens { get; set; }
+    public long? CacheReadTokens { get; set; }
+    public long? CacheWriteTokens { get; set; }
 
     /// <summary>
     /// The one-hour-TTL subset of <see cref="CacheWriteTokens"/>; the remainder is
@@ -21,15 +21,15 @@ public sealed class UsageEvent
     /// the producer reported no breakdown, which prices as all-five-minute.
     /// </summary>
     // ReSharper disable once InconsistentNaming
-    public long? CacheWrite1hTokens { get; init; }
+    public long? CacheWrite1hTokens { get; set; }
 
-    public long? ThoughtTokens { get; init; }
-    public decimal? CostUsd { get; init; }
+    public long? ThoughtTokens { get; set; }
+    public decimal? CostUsd { get; set; }
     public decimal? CacheSavingsUsd { get; set; }
-    public string? Runtime { get; init; }
-    public string? SessionId { get; init; }
-    public string? AgentId { get; init; }
-    public string RawPayload { get; init; } = "{}";
+    public string? Runtime { get; set; }
+    public string? SessionId { get; set; }
+    public string? AgentId { get; set; }
+    public string RawPayload { get; set; } = "{}";
     public string SourceId { get; set; } = UsageSourceIds.LegacyApi;
     public SourceKind SourceKind { get; set; } = SourceKind.Legacy;
     public UsageScope UsageScope { get; set; } = UsageScope.Unknown;
@@ -37,8 +37,8 @@ public sealed class UsageEvent
     public Instant ObservedAt { get; set; }
 
     /// <summary>
-    /// Optional client-supplied idempotency key. When present, repeat submissions
-    /// with the same key are ignored rather than recorded (and aggregated) twice.
+    /// Optional source-scoped snapshot key. Repeated identical submissions are no-ops;
+    /// changed submissions replace the stored event and repair its aggregate atomically.
     /// </summary>
     public string? EventKey { get; init; }
 }
