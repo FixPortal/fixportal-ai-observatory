@@ -724,8 +724,62 @@ public class EventsEndpointsWafTests(AiObservatoryApiFactory factory)
                     CacheWrite1hTokens = 0,
                     ThoughtTokens = 0,
                     CostUsd = 0m,
-                    RawPayload = "{\"tombstone\":true}",
+                    RawPayload = "{\"source\":\"observatory-sweep\",\"tool\":\"codex\",\"tombstone\":true}",
                     EventKey = tombstoneKey,
+                    OccurredAtUtc = occurredAt,
+                    Runtime = "codex",
+                    SourceId = UsageSourceIds.CodexLocal,
+                    SourceKind = "localTelemetry",
+                    UsageScope = "subscription",
+                    CostBasis = "notional",
+                },
+                TestContext.Current.CancellationToken
+            )
+        ).StatusCode.Should().Be(HttpStatusCode.Created);
+        var zeroKey = $"codex:zero:{Guid.NewGuid():N}";
+        (
+            await client.PostAsJsonAsync(
+                "/api/events",
+                new
+                {
+                    Provider = "openai",
+                    Model = "gpt-5.4",
+                    InputTokens = 0,
+                    OutputTokens = 0,
+                    CacheReadTokens = 0,
+                    CacheWriteTokens = 0,
+                    CacheWrite1hTokens = 0,
+                    ThoughtTokens = 0,
+                    CostUsd = (decimal?)null,
+                    RawPayload = "{\"source\":\"legitimate-zero\",\"tombstone\":false}",
+                    EventKey = zeroKey,
+                    OccurredAtUtc = occurredAt,
+                    Runtime = "codex",
+                    SourceId = UsageSourceIds.CodexLocal,
+                    SourceKind = "localTelemetry",
+                    UsageScope = "subscription",
+                    CostBasis = "notional",
+                },
+                TestContext.Current.CancellationToken
+            )
+        ).StatusCode.Should().Be(HttpStatusCode.Created);
+        var thoughtOnlyKey = $"codex:thought-only:{Guid.NewGuid():N}";
+        (
+            await client.PostAsJsonAsync(
+                "/api/events",
+                new
+                {
+                    Provider = "openai",
+                    Model = "gpt-5.4",
+                    InputTokens = 0,
+                    OutputTokens = 0,
+                    CacheReadTokens = 0,
+                    CacheWriteTokens = 0,
+                    CacheWrite1hTokens = 0,
+                    ThoughtTokens = 7,
+                    CostUsd = (decimal?)null,
+                    RawPayload = "{\"source\":\"thought-only\"}",
+                    EventKey = thoughtOnlyKey,
                     OccurredAtUtc = occurredAt,
                     Runtime = "codex",
                     SourceId = UsageSourceIds.CodexLocal,
@@ -758,5 +812,7 @@ public class EventsEndpointsWafTests(AiObservatoryApiFactory factory)
             .NotContain(x => x.GetProperty("sourceId").GetString() == UsageSourceIds.KimiLocal);
         inventory.EnumerateArray().Should().NotContain(x => x.GetProperty("eventKey").GetString() == nonLocalKey);
         inventory.EnumerateArray().Should().NotContain(x => x.GetProperty("eventKey").GetString() == tombstoneKey);
+        inventory.EnumerateArray().Should().Contain(x => x.GetProperty("eventKey").GetString() == zeroKey);
+        inventory.EnumerateArray().Should().Contain(x => x.GetProperty("eventKey").GetString() == thoughtOnlyKey);
     }
 }
