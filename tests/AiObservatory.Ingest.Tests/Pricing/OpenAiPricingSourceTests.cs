@@ -52,6 +52,16 @@ public sealed class OpenAiPricingSourceTests
         catalog.Resolve("gpt-5.4", "standard", "short", "global", ObservedOn)!.CacheWrite.Should().BeNull();
     }
 
+    [Fact]
+    public void ParserScopesTheRequiredUnitDeclarationToTheAcceptedPricingSection()
+    {
+        var document = Fixture() + "\n## Other product pricing\n\nPrices per 1M tokens.\n";
+
+        var act = () => OpenAiPricingSource.Parse(document, RetrievedAt);
+
+        act.Should().NotThrow();
+    }
+
     [Theory]
     [InlineData("missing-heading")]
     [InlineData("duplicate-key")]
@@ -61,9 +71,45 @@ public sealed class OpenAiPricingSourceTests
     [InlineData("zero-rate")]
     [InlineData("negative-rate")]
     [InlineData("unknown-column")]
+    [InlineData("missing-unit")]
+    [InlineData("duplicate-unit")]
+    [InlineData("conflicting-unit")]
+    [InlineData("per-1k-unit")]
     public void ParserRejectsMalformedOrAmbiguousCatalogs(string mutation)
     {
         var document = Mutate(Fixture(), mutation);
+
+        var act = () => OpenAiPricingSource.Parse(document, RetrievedAt);
+
+        act.Should().Throw<InvalidDataException>();
+    }
+
+    [Theory]
+    [InlineData("standard", "gpt-5.6-sol")]
+    [InlineData("standard", "gpt-5.4")]
+    [InlineData("batch", "gpt-5.6-sol")]
+    [InlineData("batch", "gpt-5.4")]
+    [InlineData("flex", "gpt-5.6-sol")]
+    [InlineData("flex", "gpt-5.4")]
+    [InlineData("fast", "gpt-5.6-sol")]
+    [InlineData("fast", "gpt-5.4")]
+    public void ParserRejectsRemovalOfAnIndividualRequiredModelRow(string processing, string model)
+    {
+        var document = RemoveModelRow(Fixture(), processing, model);
+
+        var act = () => OpenAiPricingSource.Parse(document, RetrievedAt);
+
+        act.Should().Throw<InvalidDataException>();
+    }
+
+    [Theory]
+    [InlineData("standard", "gpt-5.4", "short")]
+    [InlineData("batch", "gpt-5.4", "long")]
+    [InlineData("flex", "gpt-5.6-sol", "short")]
+    [InlineData("fast", "gpt-5.6-sol", "long")]
+    public void ParserRejectsRemovalOfAnIndividualRequiredContextLane(string processing, string model, string context)
+    {
+        var document = RemoveContextLane(Fixture(), processing, model, context);
 
         var act = () => OpenAiPricingSource.Parse(document, RetrievedAt);
 
@@ -143,8 +189,75 @@ public sealed class OpenAiPricingSourceTests
                 "| Model | Currency | Short context input |",
                 StringComparison.Ordinal
             ),
+            "missing-unit" => document.Replace("Prices per 1M tokens.\n", "", StringComparison.Ordinal),
+            "duplicate-unit" => document.Replace(
+                "Prices per 1M tokens.",
+                "Prices per 1M tokens.\nPrices per 1M tokens.",
+                StringComparison.Ordinal
+            ),
+            "conflicting-unit" => document.Replace(
+                "Prices per 1M tokens.",
+                "Prices per 1M tokens.\nPrices per 1K tokens.",
+                StringComparison.Ordinal
+            ),
+            "per-1k-unit" => document.Replace(
+                "Prices per 1M tokens.",
+                "Prices per 1K tokens.",
+                StringComparison.Ordinal
+            ),
             _ => throw new ArgumentOutOfRangeException(nameof(mutation)),
         };
+
+    private static string RemoveModelRow(string document, string processing, string model) =>
+        MutateTable(
+            document,
+            processing,
+            lines => lines.Where(line => !line.StartsWith($"| {model}", StringComparison.Ordinal)).ToArray()
+        );
+
+    private static string RemoveContextLane(string document, string processing, string model, string context) =>
+        MutateTable(
+            document,
+            processing,
+            lines =>
+                lines
+                    .Select(line =>
+                    {
+                        if (!line.StartsWith($"| {model}", StringComparison.Ordinal))
+                        {
+                            return line;
+                        }
+
+                        var cells = line.Split('|');
+                        var start = context == "short" ? 2 : 6;
+                        for (var index = start; index < start + 4; index++)
+                        {
+                            cells[index] = " - ";
+                        }
+
+                        return string.Join('|', cells);
+                    })
+                    .ToArray()
+        );
+
+    private static string MutateTable(string document, string processing, Func<string[], string[]> mutation)
+    {
+        var heading = $"### {char.ToUpperInvariant(processing[0])}{processing[1..]} pricing data";
+        var start = document.IndexOf(heading, StringComparison.Ordinal);
+        var end = document.IndexOf(
+            "\n\n",
+            document.IndexOf("\n|", start, StringComparison.Ordinal) + 2,
+            StringComparison.Ordinal
+        );
+        if (end < 0)
+        {
+            end = document.Length;
+        }
+
+        var table = document[start..end];
+        var changed = string.Join('\n', mutation(table.Split('\n')));
+        return document[..start] + changed + document[end..];
+    }
 
     private static string Fixture() => ReadFixture("openai-pricing.md");
 
