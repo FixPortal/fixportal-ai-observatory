@@ -33,6 +33,7 @@ public static class EventsEndpoints
     private static async Task<IResult> RecordEventAsync(
         UsageEventRequest req,
         IUsageRepository repo,
+        SourceSyncStateStore sourceSyncStateStore,
         IClock clock,
         IOptions<AnthropicPricingOptions> anthropicPricing,
         ILoggerFactory loggerFactory,
@@ -145,6 +146,16 @@ public static class EventsEndpoints
         };
 
         var result = await repo.RecordEventAsync(evt, ctx.RequestAborted);
+        if (sourceKind == SourceKind.LocalTelemetry)
+        {
+            await sourceSyncStateStore.MarkSuccessAsync(
+                sourceId,
+                Duration.FromDays(1),
+                now,
+                observedAt,
+                ctx.RequestAborted
+            );
+        }
 
         return result.Disposition == RecordEventDisposition.Created
             ? Results.CreatedAtRoute("GetEventById", new { id = result.EventId }, new { Id = result.EventId })

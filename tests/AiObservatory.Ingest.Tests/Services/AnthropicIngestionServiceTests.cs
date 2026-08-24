@@ -1,6 +1,7 @@
 using AiObservatory.Data.Entities;
 using AiObservatory.Data.Repositories;
 using AiObservatory.Ingest.Services.Anthropic;
+using AwesomeAssertions;
 using Microsoft.Extensions.Logging.Abstractions;
 using NodaTime;
 using NodaTime.Testing;
@@ -34,7 +35,7 @@ public class AnthropicIngestionServiceTests
             ]);
 
         var sut = new AnthropicIngestionService(_client, _repo, _clock, NullLogger<AnthropicIngestionService>.Instance);
-        await sut.IngestAsync(date, TestContext.Current.CancellationToken);
+        var result = await sut.IngestAsync(date, date, TestContext.Current.CancellationToken);
 
         await _repo
             .Received(1)
@@ -46,21 +47,30 @@ public class AnthropicIngestionServiceTests
                     && e.InputTokens == 10_000
                     && e.CacheReadTokens == 3_000
                     && e.CacheWriteTokens == 500
+                    && e.SourceId == UsageSourceIds.AnthropicUsageApi
+                    && e.SourceKind == SourceKind.ProviderApi
+                    && e.UsageScope == UsageScope.Api
+                    && e.CostBasis == CostBasis.ListPriceEstimate
+                    && e.ObservedAt == _clock.GetCurrentInstant()
                     && e.EventKey == "anthropic:2026-06-01:claude-sonnet-4-6"
                 ),
                 Arg.Any<CancellationToken>()
             );
+        result.LatestObservationAt.Should().Be(date.AtStartOfDayInZone(DateTimeZone.Utc).ToInstant());
     }
 
     [Fact]
     public async Task IngestAsync_handles_empty_response_gracefully()
     {
         var date = new LocalDate(2026, 6, 1);
-        _client.GetUsageAsync(date, Arg.Any<CancellationToken>()).Returns([]);
+        _client.GetUsageAsync(Arg.Any<LocalDate>(), Arg.Any<CancellationToken>()).Returns([]);
 
         var sut = new AnthropicIngestionService(_client, _repo, _clock, NullLogger<AnthropicIngestionService>.Instance);
-        await sut.IngestAsync(date, TestContext.Current.CancellationToken);
+        var result = await sut.IngestAsync(date, date.PlusDays(1), TestContext.Current.CancellationToken);
 
         await _repo.DidNotReceive().RecordEventAsync(Arg.Any<UsageEvent>(), Arg.Any<CancellationToken>());
+        await _client.Received(1).GetUsageAsync(date, Arg.Any<CancellationToken>());
+        await _client.Received(1).GetUsageAsync(date.PlusDays(1), Arg.Any<CancellationToken>());
+        result.LatestObservationAt.Should().BeNull();
     }
 }

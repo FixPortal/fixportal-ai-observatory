@@ -32,6 +32,7 @@ public static class UsageSourceIds
     public const string LegacySpend = "legacy-spend";
     public const string ManualLedger = "manual-ledger";
     public const string GitHubBillingApi = "github-billing-api";
+    public const string GitHubActivityApi = "github-activity-api";
     public const string OpenAiUsageApi = "openai-usage-api";
     public const string OpenAiCostsApi = "openai-costs-api";
     public const string CodexLocal = "codex-local";

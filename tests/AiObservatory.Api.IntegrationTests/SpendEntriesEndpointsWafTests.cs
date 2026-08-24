@@ -161,7 +161,11 @@ public class SpendEntriesEndpointsWafTests(AiObservatoryApiFactory factory) : IC
             new[] { Entry(categoryId, vendorId, $"k-{Guid.NewGuid():N}", source: "Manual") },
             ct
         );
-        var id = (await response.Content.ReadFromJsonAsync<JsonElement>(ct)).EnumerateArray().Single().GetProperty("id").GetGuid();
+        var id = (await response.Content.ReadFromJsonAsync<JsonElement>(ct))
+            .EnumerateArray()
+            .Single()
+            .GetProperty("id")
+            .GetGuid();
 
         var rows = await client.GetFromJsonAsync<JsonElement>($"/api/spend/entries?vendorId={vendorId}", ct);
         var entry = rows.EnumerateArray().Single(row => row.GetProperty("id").GetGuid() == id);

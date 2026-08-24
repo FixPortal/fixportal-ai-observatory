@@ -1,364 +1,401 @@
 using System.Collections.Concurrent;
+using AiObservatory.Data;
+using AiObservatory.Data.Entities;
 using AiObservatory.Data.Repositories;
-using AiObservatory.Ingest.Services.Anthropic;
-using AiObservatory.Ingest.Services.GitHub;
-using AiObservatory.Ingest.Services.OpenAi;
+using AiObservatory.Ingest.Sources;
 using AwesomeAssertions;
+using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
-using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Options;
 using NodaTime;
 using NodaTime.Testing;
+using Npgsql;
 using NSubstitute;
+using Testcontainers.PostgreSql;
 
 namespace AiObservatory.Ingest.Tests.Services;
 
-/// <summary>
-/// The worker's cycle counters are what <c>/healthz</c> reports, and that endpoint is wired
-/// to App Service's <c>healthCheckPath</c> — so a counter that never moves would put the
-/// deployment straight back into the failure this worker just came out of: running,
-/// reported healthy, doing nothing.
-/// </summary>
-public class ProviderPollingWorkerServiceTests
+[Collection("ProviderPollingWorker")]
+public class ProviderPollingWorkerServiceTests(ProviderPollingDatabase database)
 {
-    /// <summary>
-    /// No provider services registered, so every <c>TryIngestAsync</c> resolves null and
-    /// returns immediately. That is a real supported configuration (an unconfigured worker
-    /// is a documented no-op) and it lets a cycle complete without any network at all.
-    /// </summary>
-    private static ProviderPollingWorkerService CreateWorker(
-        Instant? now = null,
-        Action<IServiceCollection>? configureServices = null,
-        CapturingLogger? logger = null,
-        int pollingIntervalMinutes = 60,
-        string[]? githubRepoAllowlist = null
-    )
-    {
-        var services = new ServiceCollection();
-        configureServices?.Invoke(services);
-        var provider = services.BuildServiceProvider();
-        return new ProviderPollingWorkerService(
-            provider.GetRequiredService<IServiceScopeFactory>(),
-            new FakeClock(now ?? Instant.FromUtc(2026, 7, 28, 9, 0)),
-            logger ?? new CapturingLogger(),
-            // A long interval so the worker completes exactly one cycle then parks on the
-            // delay, rather than spinning while the assertions run.
-            Options.Create(
-                new IngestOptions
-                {
-                    PollingIntervalMinutes = pollingIntervalMinutes,
-                    LookbackDays = 1,
-                    GitHubRepoAllowlist = githubRepoAllowlist ?? [],
-                }
-            )
-        );
-    }
-
-    private static void AddAnthropic(IServiceCollection services, IAnthropicUsageClient client) =>
-        services.AddSingleton(
-            new AnthropicIngestionService(
-                client,
-                Substitute.For<IUsageRepository>(),
-                new FakeClock(Instant.FromUtc(2026, 7, 28, 9, 0)),
-                NullLogger<AnthropicIngestionService>.Instance
-            )
-        );
-
-    private static void AddOpenAi(IServiceCollection services, IOpenAiUsageClient client) =>
-        services.AddSingleton(
-            new OpenAiIngestionService(
-                client,
-                Substitute.For<IUsageRepository>(),
-                new FakeClock(Instant.FromUtc(2026, 7, 28, 9, 0)),
-                NullLogger<OpenAiIngestionService>.Instance
-            )
-        );
-
-    private static void AddGitHub(
-        IServiceCollection services,
-        string[] repoAllowlist,
-        IGitHubActivityRepository repository
-    ) =>
-        services.AddSingleton(
-            new GitHubIngestionService(
-                Substitute.For<IGitHubActivityClient>(),
-                repository,
-                Options.Create(new IngestOptions { GitHubRepoAllowlist = repoAllowlist }),
-                NullLogger<GitHubIngestionService>.Instance,
-                new FakeClock(Instant.FromUtc(2026, 7, 28, 9, 0))
-            )
-        );
-
-    /// <summary>
-    /// Polls for a real completion signal rather than sleeping a guessed duration: a fixed
-    /// delay plus an immediate assert is green locally and flaky on a contended runner.
-    /// The timeout is generous because it only bounds failure, never success.
-    /// </summary>
-    private static async Task WaitUntilAsync(Func<bool> condition, CancellationToken ct)
-    {
-        using var timeout = CancellationTokenSource.CreateLinkedTokenSource(ct);
-        timeout.CancelAfter(TimeSpan.FromSeconds(30));
-
-        while (!condition())
-        {
-            timeout.Token.ThrowIfCancellationRequested();
-            await Task.Delay(10, timeout.Token);
-        }
-    }
-
     [Fact]
     public async Task ReportsNoCompletedCycleBeforeItStarts()
     {
-        var worker = CreateWorker();
+        await using var harness = CreateWorker();
 
-        worker.CyclesCompleted.Should().Be(0);
-        worker.LastCycleCompletedAt.Should().BeNull("/healthz must not claim a cycle has run before one has");
-
-        await Task.CompletedTask;
+        harness.Worker.CyclesCompleted.Should().Be(0);
+        harness.Worker.LastCycleCompletedAt.Should().BeNull();
     }
 
     [Fact]
     public async Task RecordsTheCycleOnceAPollCompletes()
     {
-        var ct = TestContext.Current.CancellationToken;
-        var worker = CreateWorker();
+        var current = Instant.FromUtc(2026, 7, 28, 9, 0);
+        await using var harness = CreateWorker(current);
 
-        await worker.StartAsync(ct);
+        await harness.Worker.StartAsync(TestContext.Current.CancellationToken);
         try
         {
-            await WaitUntilAsync(() => worker.CyclesCompleted > 0, ct);
-
-            worker.CyclesCompleted.Should().BeGreaterThan(0);
-            worker
-                .LastCycleCompletedAt.Should()
-                .Be(
-                    Instant.FromUtc(2026, 7, 28, 9, 0),
-                    "the timestamp comes from the injected clock, not the wall clock"
-                );
+            await WaitUntilAsync(() => harness.Worker.CyclesCompleted > 0);
+            harness.Worker.LastCycleCompletedAt.Should().Be(current);
+            harness.Worker.ExecuteTask.Should().NotBeNull();
+            harness.Worker.ExecuteTask!.IsCompleted.Should().BeFalse();
         }
         finally
         {
-            await worker.StopAsync(CancellationToken.None);
+            await harness.Worker.StopAsync(CancellationToken.None);
         }
     }
 
-    /// <summary>
-    /// Zero ticks is a valid Instant, not an "unset" marker. Completion is therefore keyed
-    /// on the cycle counter — keying it on the timestamp would make a worker whose clock
-    /// reads the epoch run cycles while /healthz insisted none had happened.
-    /// </summary>
     [Fact]
-    public async Task ReportsACycleEvenWhenItCompletesAtTheUnixEpoch()
+    public async Task ReportsACycleAtTheUnixEpoch()
     {
-        var ct = TestContext.Current.CancellationToken;
         var epoch = Instant.FromUnixTimeTicks(0);
-        var worker = CreateWorker(epoch);
+        await using var harness = CreateWorker(epoch);
 
-        await worker.StartAsync(ct);
+        await harness.Worker.StartAsync(TestContext.Current.CancellationToken);
         try
         {
-            await WaitUntilAsync(() => worker.CyclesCompleted > 0, ct);
-
-            worker
-                .LastCycleCompletedAt.Should()
-                .Be(epoch, "0 ticks is 1970-01-01T00:00:00Z, a real timestamp — not a null sentinel");
+            await WaitUntilAsync(() => harness.Worker.CyclesCompleted > 0);
+            harness.Worker.LastCycleCompletedAt.Should().Be(epoch);
         }
         finally
         {
-            await worker.StopAsync(CancellationToken.None);
+            await harness.Worker.StopAsync(CancellationToken.None);
         }
     }
 
     [Fact]
-    public async Task KeepsThePollLoopRunningBetweenCycles()
+    public async Task RunPollAsync_PollsEveryRegisteredSourceAndPersistsLatestObservation()
     {
-        var ct = TestContext.Current.CancellationToken;
-        var worker = CreateWorker();
+        var first = Source("first-source", new SourceIngestionResult(Instant.FromUtc(2026, 8, 23, 23, 0)));
+        var second = Source("second-source", new SourceIngestionResult(null));
+        await using var harness = CreateWorker(
+            sources: [first, second],
+            definitions: [Definition("first-source"), Definition("second-source")]
+        );
 
-        await worker.StartAsync(ct);
-        try
-        {
-            await WaitUntilAsync(() => worker.CyclesCompleted > 0, ct);
+        await harness.Worker.RunPollAsync(
+            new LocalDate(2026, 8, 20),
+            new LocalDate(2026, 8, 23),
+            TestContext.Current.CancellationToken
+        );
 
-            // The condition /healthz actually keys on. A completed ExecuteTask while the
-            // host is still up is the silent death the endpoint exists to surface, so it
-            // must NOT be true merely because a cycle finished and the loop is waiting.
-            worker.ExecuteTask.Should().NotBeNull();
-            worker
-                .ExecuteTask!.IsCompleted.Should()
-                .BeFalse("the worker parks on the polling delay between cycles — it has not stopped");
-        }
-        finally
-        {
-            await worker.StopAsync(CancellationToken.None);
-        }
+        await first
+            .Received(1)
+            .IngestAsync(new LocalDate(2026, 8, 20), new LocalDate(2026, 8, 23), Arg.Any<CancellationToken>());
+        await second
+            .Received(1)
+            .IngestAsync(new LocalDate(2026, 8, 20), new LocalDate(2026, 8, 23), Arg.Any<CancellationToken>());
+        var state = await harness.LoadStateAsync("first-source");
+        state.LatestObservationAt.Should().Be(Instant.FromUtc(2026, 8, 23, 23, 0));
+        state.LastSuccessAt.Should().Be(Instant.FromUtc(2026, 8, 24, 12, 0));
+        state.ConsecutiveFailureCount.Should().Be(0);
     }
 
     [Fact]
-    public async Task AFailedProviderDoesNotStopTheRemainingProvidersOrTheWorker()
+    public async Task RunPollAsync_IsolatesFailuresAndPersistsOnlySanitizedErrorText()
     {
-        var ct = TestContext.Current.CancellationToken;
-        var anthropic = Substitute.For<IAnthropicUsageClient>();
-        anthropic
-            .GetUsageAsync(Arg.Any<LocalDate>(), Arg.Any<CancellationToken>())
-            .Returns(Task.FromException<IReadOnlyList<AnthropicUsageRecord>>(new("failed")));
-        var openAiCalled = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
-        var openAi = Substitute.For<IOpenAiUsageClient>();
-        openAi
-            .GetDailyUsageAsync(Arg.Any<LocalDate>(), Arg.Any<CancellationToken>())
-            .Returns(_ =>
+        var failed = Substitute.For<IUsageSource>();
+        failed.SourceId.Returns("failed-source");
+        failed
+            .IngestAsync(Arg.Any<LocalDate>(), Arg.Any<LocalDate>(), Arg.Any<CancellationToken>())
+            .Returns(
+                Task.FromException<SourceIngestionResult>(
+                    new InvalidOperationException(
+                        "first line\r\nhttps://example.test/report?signature=secret-token next " + new string('x', 600)
+                    )
+                )
+            );
+        var continued = Source("continued-source", new SourceIngestionResult(null));
+        await using var harness = CreateWorker(
+            sources: [failed, continued],
+            definitions: [Definition("failed-source"), Definition("continued-source")]
+        );
+
+        await harness.Worker.RunPollAsync(
+            new LocalDate(2026, 8, 23),
+            new LocalDate(2026, 8, 23),
+            TestContext.Current.CancellationToken
+        );
+
+        await continued
+            .Received(1)
+            .IngestAsync(Arg.Any<LocalDate>(), Arg.Any<LocalDate>(), Arg.Any<CancellationToken>());
+        var state = await harness.LoadStateAsync("failed-source");
+        state.ConsecutiveFailureCount.Should().Be(1);
+        state
+            .LastError.Should()
+            .HaveLength(500)
+            .And.NotContain("secret-token")
+            .And.NotContain("\r")
+            .And.NotContain("\n");
+        state.IsAvailable.Should().BeNull();
+    }
+
+    [Fact]
+    public async Task RunPollAsync_SuccessResetsPersistedFailureState()
+    {
+        var source = Substitute.For<IUsageSource>();
+        source.SourceId.Returns("recovering-source");
+        source
+            .IngestAsync(Arg.Any<LocalDate>(), Arg.Any<LocalDate>(), Arg.Any<CancellationToken>())
+            .Returns(
+                Task.FromException<SourceIngestionResult>(new InvalidOperationException("failed")),
+                Task.FromResult(new SourceIngestionResult(null))
+            );
+        await using var harness = CreateWorker(sources: [source], definitions: [Definition("recovering-source")]);
+
+        await harness.Worker.RunPollAsync(
+            new LocalDate(2026, 8, 23),
+            new LocalDate(2026, 8, 23),
+            TestContext.Current.CancellationToken
+        );
+        await harness.Worker.RunPollAsync(
+            new LocalDate(2026, 8, 23),
+            new LocalDate(2026, 8, 23),
+            TestContext.Current.CancellationToken
+        );
+
+        var state = await harness.LoadStateAsync("recovering-source");
+        state.ConsecutiveFailureCount.Should().Be(0);
+        state.LastError.Should().BeNull();
+        state.IsAvailable.Should().BeTrue();
+    }
+
+    [Fact]
+    public async Task RunPollAsync_UnavailabilitySurvivesAnOrdinaryFailureUntilSuccess()
+    {
+        var source = Substitute.For<IUsageSource>();
+        source.SourceId.Returns("unavailable-source");
+        source
+            .IngestAsync(Arg.Any<LocalDate>(), Arg.Any<LocalDate>(), Arg.Any<CancellationToken>())
+            .Returns(
+                Task.FromException<SourceIngestionResult>(new SourceUnavailableException("not supported")),
+                Task.FromException<SourceIngestionResult>(new InvalidOperationException("failed"))
+            );
+        await using var harness = CreateWorker(sources: [source], definitions: [Definition("unavailable-source")]);
+
+        await harness.Worker.RunPollAsync(
+            new LocalDate(2026, 8, 23),
+            new LocalDate(2026, 8, 23),
+            TestContext.Current.CancellationToken
+        );
+        await harness.Worker.RunPollAsync(
+            new LocalDate(2026, 8, 23),
+            new LocalDate(2026, 8, 23),
+            TestContext.Current.CancellationToken
+        );
+
+        var state = await harness.LoadStateAsync("unavailable-source");
+        state.IsConfigured.Should().BeTrue();
+        state.IsAvailable.Should().BeFalse();
+        state.ConsecutiveFailureCount.Should().Be(2);
+    }
+
+    [Fact]
+    public async Task RunPollAsync_MarksDefinitionWithoutImplementationUnconfigured()
+    {
+        await using var harness = CreateWorker(definitions: [Definition("missing-source", isConfigured: true)]);
+
+        await harness.Worker.RunPollAsync(
+            new LocalDate(2026, 8, 23),
+            new LocalDate(2026, 8, 23),
+            TestContext.Current.CancellationToken
+        );
+
+        var state = await harness.LoadStateAsync("missing-source");
+        state.IsConfigured.Should().BeFalse();
+        state.ConsecutiveFailureCount.Should().Be(0);
+        state.LastAttemptAt.Should().BeNull();
+    }
+
+    [Fact]
+    public async Task RunPollAsync_PropagatesCancellationAndDoesNotPollLaterSources()
+    {
+        using var cts = new CancellationTokenSource();
+        var cancelled = Substitute.For<IUsageSource>();
+        cancelled.SourceId.Returns("cancelled-source");
+        cancelled
+            .IngestAsync(Arg.Any<LocalDate>(), Arg.Any<LocalDate>(), Arg.Any<CancellationToken>())
+            .Returns(call =>
             {
-                openAiCalled.TrySetResult();
-                return Task.FromResult<IReadOnlyList<OpenAiUsageRecord>>([]);
+                cts.Cancel();
+                return Task.FromCanceled<SourceIngestionResult>(call.Arg<CancellationToken>());
             });
+        var later = Source("later-source", new SourceIngestionResult(null));
+        await using var harness = CreateWorker(
+            sources: [cancelled, later],
+            definitions: [Definition("cancelled-source"), Definition("later-source")]
+        );
+
+        var act = () => harness.Worker.RunPollAsync(new LocalDate(2026, 8, 23), new LocalDate(2026, 8, 23), cts.Token);
+
+        await act.Should().ThrowAsync<OperationCanceledException>();
+        await later
+            .DidNotReceive()
+            .IngestAsync(Arg.Any<LocalDate>(), Arg.Any<LocalDate>(), Arg.Any<CancellationToken>());
+    }
+
+    [Fact]
+    public async Task RunPollAsync_EscalatesTheThirdConsecutiveFailure()
+    {
+        var source = Substitute.For<IUsageSource>();
+        source.SourceId.Returns("escalating-source");
+        source
+            .IngestAsync(Arg.Any<LocalDate>(), Arg.Any<LocalDate>(), Arg.Any<CancellationToken>())
+            .Returns(Task.FromException<SourceIngestionResult>(new InvalidOperationException("failed")));
         var logger = new CapturingLogger();
-        var worker = CreateWorker(
-            configureServices: services =>
-            {
-                AddAnthropic(services, anthropic);
-                AddOpenAi(services, openAi);
-            },
+        await using var harness = CreateWorker(
+            sources: [source],
+            definitions: [Definition("escalating-source")],
             logger: logger
         );
 
-        await worker.StartAsync(ct);
-        try
+        for (var attempt = 0; attempt < 3; attempt++)
         {
-            await openAiCalled.Task.WaitAsync(TimeSpan.FromSeconds(30), ct);
+            await harness.Worker.RunPollAsync(
+                new LocalDate(2026, 8, 23),
+                new LocalDate(2026, 8, 23),
+                TestContext.Current.CancellationToken
+            );
+        }
 
-            logger.Messages.Should().Contain(m => m.Contains("Anthropic ingestion failed"));
-            worker.ExecuteTask.Should().NotBeNull();
-            worker.ExecuteTask!.IsCompleted.Should().BeFalse();
-        }
-        finally
-        {
-            await worker.StopAsync(CancellationToken.None);
-        }
+        logger.Messages.Should().Contain(message => message.Contains("3 consecutive polls", StringComparison.Ordinal));
     }
 
     [Fact]
-    public async Task EscalatesAProviderAfterThreeConsecutiveFailures()
+    public async Task DoesNotStartAnotherCycleWhileASourceCallIsStillRunning()
     {
-        var ct = TestContext.Current.CancellationToken;
-        var anthropic = Substitute.For<IAnthropicUsageClient>();
-        anthropic
-            .GetUsageAsync(Arg.Any<LocalDate>(), Arg.Any<CancellationToken>())
-            .Returns(Task.FromException<IReadOnlyList<AnthropicUsageRecord>>(new("failed")));
-        var logger = new CapturingLogger();
-        var worker = CreateWorker(
-            configureServices: services => AddAnthropic(services, anthropic),
-            logger: logger,
-            pollingIntervalMinutes: 0
-        );
-
-        await worker.StartAsync(ct);
-        try
-        {
-            await WaitUntilAsync(() => logger.Messages.Any(m => m.Contains("3 consecutive polls")), ct);
-
-            logger.Messages.Should().Contain(m => m.Contains("provider may be misconfigured"));
-        }
-        finally
-        {
-            await worker.StopAsync(CancellationToken.None);
-        }
-    }
-
-    [Fact]
-    public async Task NamesEveryProviderArmAtStartup()
-    {
-        var ct = TestContext.Current.CancellationToken;
-        var logger = new CapturingLogger();
-        var worker = CreateWorker(logger: logger);
-
-        await worker.StartAsync(ct);
-        try
-        {
-            await WaitUntilAsync(() => worker.CyclesCompleted > 0, ct);
-
-            logger
-                .Messages.Should()
-                .Contain(m =>
-                    m.Contains("Anthropic: NOT CONFIGURED")
-                    && m.Contains("Copilot: NOT CONFIGURED")
-                    && m.Contains("Google: NOT CONFIGURED")
-                    && m.Contains("OpenAI: NOT CONFIGURED")
-                    && m.Contains("GitHub: NOT CONFIGURED")
-                );
-        }
-        finally
-        {
-            await worker.StopAsync(CancellationToken.None);
-        }
-    }
-
-    [Fact]
-    public async Task DoesNotStartAnotherCycleWhileAProviderCallIsStillRunning()
-    {
-        var ct = TestContext.Current.CancellationToken;
         var entered = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
-        var release = new TaskCompletionSource<IReadOnlyList<AnthropicUsageRecord>>(
+        var release = new TaskCompletionSource<SourceIngestionResult>(
             TaskCreationOptions.RunContinuationsAsynchronously
         );
         var calls = new ConcurrentQueue<byte>();
-        var anthropic = Substitute.For<IAnthropicUsageClient>();
-        anthropic
-            .GetUsageAsync(Arg.Any<LocalDate>(), Arg.Any<CancellationToken>())
+        var source = Substitute.For<IUsageSource>();
+        source.SourceId.Returns("blocking-source");
+        source
+            .IngestAsync(Arg.Any<LocalDate>(), Arg.Any<LocalDate>(), Arg.Any<CancellationToken>())
             .Returns(_ =>
             {
                 calls.Enqueue(0);
                 entered.TrySetResult();
                 return release.Task;
             });
-        var worker = CreateWorker(
-            configureServices: services => AddAnthropic(services, anthropic),
+        await using var harness = CreateWorker(
+            sources: [source],
+            definitions: [Definition("blocking-source")],
             pollingIntervalMinutes: 0
         );
 
-        await worker.StartAsync(ct);
+        await harness.Worker.StartAsync(TestContext.Current.CancellationToken);
         try
         {
-            await entered.Task.WaitAsync(TimeSpan.FromSeconds(30), ct);
-
+            await entered.Task.WaitAsync(TimeSpan.FromSeconds(30), TestContext.Current.CancellationToken);
             calls.Should().ContainSingle();
-            worker.CyclesCompleted.Should().Be(0);
+            harness.Worker.CyclesCompleted.Should().Be(0);
         }
         finally
         {
-            release.TrySetResult([]);
-            await worker.StopAsync(CancellationToken.None);
+            release.TrySetResult(new SourceIngestionResult(null));
+            await harness.Worker.StopAsync(CancellationToken.None);
         }
     }
 
     [Fact]
-    public async Task EscalatesGitHubWhenEveryConfiguredRepositoryFails()
+    public async Task StartupLogNamesDefinitionsWithoutKnowingProviderTypes()
     {
-        var ct = TestContext.Current.CancellationToken;
-        string[] repoAllowlist = ["fixportal/one", "fixportal/two"];
-        var repository = Substitute.For<IGitHubActivityRepository>();
-        repository
-            .GetBackfillStatusAsync(Arg.Any<string>(), Arg.Any<CancellationToken>())
-            .Returns(Task.FromException<GitHubBackfillStatus>(new InvalidOperationException("failed")));
         var logger = new CapturingLogger();
-        var worker = CreateWorker(
-            configureServices: services => AddGitHub(services, repoAllowlist, repository),
-            logger: logger,
-            githubRepoAllowlist: repoAllowlist
+        var source = Source("registered-source", new SourceIngestionResult(null));
+        await using var harness = CreateWorker(
+            sources: [source],
+            definitions: [Definition("registered-source"), Definition("missing-source")],
+            logger: logger
         );
 
-        await worker.StartAsync(ct);
+        await harness.Worker.StartAsync(TestContext.Current.CancellationToken);
         try
         {
-            await WaitUntilAsync(() => logger.Messages.Any(m => m.Contains("GitHub ingestion failed")), ct);
-
-            worker.ExecuteTask.Should().NotBeNull();
-            worker.ExecuteTask!.IsCompleted.Should().BeFalse();
+            await WaitUntilAsync(() => harness.Worker.CyclesCompleted > 0);
+            logger
+                .Messages.Should()
+                .Contain(message =>
+                    message.Contains("registered-source: enabled", StringComparison.Ordinal)
+                    && message.Contains("missing-source: NOT CONFIGURED", StringComparison.Ordinal)
+                );
         }
         finally
         {
-            await worker.StopAsync(CancellationToken.None);
+            await harness.Worker.StopAsync(CancellationToken.None);
         }
+    }
+
+    private static IUsageSource Source(string sourceId, SourceIngestionResult result)
+    {
+        var source = Substitute.For<IUsageSource>();
+        source.SourceId.Returns(sourceId);
+        source.IngestAsync(Arg.Any<LocalDate>(), Arg.Any<LocalDate>(), Arg.Any<CancellationToken>()).Returns(result);
+        return source;
+    }
+
+    private static SourceDefinition Definition(string sourceId, bool isConfigured = true) =>
+        new(sourceId, isConfigured, Duration.FromHours(1));
+
+    private WorkerHarness CreateWorker(
+        Instant? current = null,
+        IReadOnlyList<IUsageSource>? sources = null,
+        IReadOnlyList<SourceDefinition>? definitions = null,
+        CapturingLogger? logger = null,
+        int pollingIntervalMinutes = 60
+    )
+    {
+        var services = new ServiceCollection();
+        services.AddDbContext<AiObservatoryDbContext>(options =>
+            options.UseNpgsql(database.ConnectionString, npgsql => npgsql.UseNodaTime())
+        );
+        services.AddScoped<SourceSyncStateStore>();
+        foreach (var source in sources ?? [])
+        {
+            services.AddScoped<IUsageSource>(_ => source);
+        }
+        foreach (var definition in definitions ?? [])
+        {
+            services.AddSingleton(definition);
+        }
+        var provider = services.BuildServiceProvider();
+        var worker = new ProviderPollingWorkerService(
+            provider.GetRequiredService<IServiceScopeFactory>(),
+            new FakeClock(current ?? Instant.FromUtc(2026, 8, 24, 12, 0)),
+            logger ?? new CapturingLogger(),
+            Options.Create(new IngestOptions { LookbackDays = 1, PollingIntervalMinutes = pollingIntervalMinutes })
+        );
+        return new WorkerHarness(provider, worker);
+    }
+
+    private static async Task WaitUntilAsync(Func<bool> condition)
+    {
+        using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(30));
+        while (!condition())
+        {
+            await Task.Delay(10, timeout.Token);
+        }
+    }
+
+    private sealed class WorkerHarness(ServiceProvider services, ProviderPollingWorkerService worker) : IAsyncDisposable
+    {
+        public ProviderPollingWorkerService Worker { get; } = worker;
+
+        public async Task<SourceSyncState> LoadStateAsync(string sourceId)
+        {
+            await using var scope = services.CreateAsyncScope();
+            return await scope
+                .ServiceProvider.GetRequiredService<AiObservatoryDbContext>()
+                .SourceSyncStates.AsNoTracking()
+                .SingleAsync(state => state.SourceId == sourceId, TestContext.Current.CancellationToken);
+        }
+
+        public ValueTask DisposeAsync() => services.DisposeAsync();
     }
 
     private sealed class CapturingLogger : ILogger<ProviderPollingWorkerService>
@@ -401,6 +438,49 @@ public class ProviderPollingWorkerServiceTests
             public static readonly NullScope Instance = new();
 
             public void Dispose() { }
+        }
+    }
+}
+
+[CollectionDefinition("ProviderPollingWorker", DisableParallelization = true)]
+public sealed class ProviderPollingWorkerCollection : ICollectionFixture<ProviderPollingDatabase>;
+
+public sealed class ProviderPollingDatabase : IAsyncLifetime
+{
+    private PostgreSqlContainer? _container;
+
+    public string ConnectionString { get; private set; } = null!;
+
+    public async ValueTask InitializeAsync()
+    {
+        var baseConnection = Environment.GetEnvironmentVariable("TEST_DB_CONNECTION");
+        if (string.IsNullOrWhiteSpace(baseConnection))
+        {
+            _container = new PostgreSqlBuilder("postgres:17").WithDatabase("postgres").Build();
+            await _container.StartAsync();
+            baseConnection = _container.GetConnectionString();
+        }
+        ConnectionString = new NpgsqlConnectionStringBuilder(baseConnection)
+        {
+            Database = $"aiobs_test_worker_{Guid.NewGuid():N}",
+        }.ConnectionString;
+        var options = new DbContextOptionsBuilder<AiObservatoryDbContext>()
+            .UseNpgsql(ConnectionString, npgsql => npgsql.UseNodaTime())
+            .Options;
+        await using var db = new AiObservatoryDbContext(options);
+        await db.Database.MigrateAsync();
+    }
+
+    public async ValueTask DisposeAsync()
+    {
+        var options = new DbContextOptionsBuilder<AiObservatoryDbContext>()
+            .UseNpgsql(ConnectionString, npgsql => npgsql.UseNodaTime())
+            .Options;
+        await using var db = new AiObservatoryDbContext(options);
+        await db.Database.EnsureDeletedAsync();
+        if (_container is not null)
+        {
+            await _container.DisposeAsync();
         }
     }
 }

@@ -43,6 +43,7 @@ public class AiObservatoryDbContext(DbContextOptions<AiObservatoryDbContext> opt
     public DbSet<SpendVendor> SpendVendors => Set<SpendVendor>();
     public DbSet<SpendEntry> SpendEntries => Set<SpendEntry>();
     public DbSet<IdeEvent> IdeEvents => Set<IdeEvent>();
+    public DbSet<SourceSyncState> SourceSyncStates => Set<SourceSyncState>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -480,6 +481,13 @@ public class AiObservatoryDbContext(DbContextOptions<AiObservatoryDbContext> opt
             b.Property(e => e.ContentSha256).HasMaxLength(71).IsRequired();
             b.HasIndex(e => new { e.PartnerId, e.IdempotencyKey }).IsUnique();
             b.HasIndex(e => e.OccurredAt);
+        });
+
+        modelBuilder.Entity<SourceSyncState>(b =>
+        {
+            b.HasKey(s => s.SourceId);
+            b.Property(s => s.SourceId).HasMaxLength(100);
+            b.Property(s => s.LastError).HasMaxLength(500);
         });
     }
 }
