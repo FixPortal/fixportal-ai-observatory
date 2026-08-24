@@ -401,4 +401,36 @@ public class UsageRepository(AiObservatoryDbContext ctx) : IUsageRepository
             ))
             .ToListAsync(ct);
     }
+
+    public async Task<IReadOnlyList<LocalSnapshotRecord>> GetLocalSnapshotsAsync(
+        string sourceId,
+        CancellationToken ct = default
+    ) =>
+        await ctx
+            .UsageEvents.AsNoTracking()
+            .Where(e =>
+                e.SourceId == sourceId
+                && e.SourceKind == SourceKind.LocalTelemetry
+                && e.EventKey != null
+                && (
+                    e.InputTokens > 0
+                    || e.OutputTokens > 0
+                    || (e.CacheReadTokens ?? 0) > 0
+                    || (e.CacheWriteTokens ?? 0) > 0
+                )
+            )
+            .OrderBy(e => e.EventKey)
+            .Select(e => new LocalSnapshotRecord(
+                e.Provider,
+                e.OccurredAt,
+                e.Model,
+                e.CostUsd == null ? null : 0m,
+                e.Runtime,
+                e.SourceId,
+                e.SourceKind,
+                e.UsageScope,
+                e.CostBasis,
+                e.EventKey!
+            ))
+            .ToListAsync(ct);
 }

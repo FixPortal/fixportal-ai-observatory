@@ -646,4 +646,117 @@ public class EventsEndpointsWafTests(AiObservatoryApiFactory factory)
 
         response.StatusCode.Should().Be(HttpStatusCode.BadRequest);
     }
+
+    [Fact]
+    public async Task GetLocalSnapshots_ReturnsOnlyTheExactSourceWithoutRawPayload()
+    {
+        using var client = factory.CreateAdminClient();
+        var key = $"codex:2026-08-24:gpt-5.4:{Guid.NewGuid():N}";
+        var occurredAt = new DateTimeOffset(2026, 8, 24, 12, 0, 0, TimeSpan.Zero);
+
+        static object Snapshot(
+            string sourceId,
+            string eventKey,
+            DateTimeOffset occurredAtUtc,
+            string sourceKind = "localTelemetry"
+        ) =>
+            new
+            {
+                Provider = "openai",
+                Model = "gpt-5.4",
+                InputTokens = 30,
+                OutputTokens = 5,
+                CacheReadTokens = 3,
+                CacheWriteTokens = 2,
+                CacheWrite1hTokens = 1,
+                ThoughtTokens = 4,
+                CostUsd = 0.01m,
+                RawPayload = "{\"private\":\"transcript evidence\"}",
+                EventKey = eventKey,
+                OccurredAtUtc = occurredAtUtc,
+                Runtime = "codex",
+                SourceId = sourceId,
+                SourceKind = sourceKind,
+                UsageScope = "subscription",
+                CostBasis = "notional",
+            };
+
+        (
+            await client.PostAsJsonAsync(
+                "/api/events",
+                Snapshot(UsageSourceIds.CodexLocal, key, occurredAt),
+                TestContext.Current.CancellationToken
+            )
+        )
+            .StatusCode.Should()
+            .Be(HttpStatusCode.Created);
+        (
+            await client.PostAsJsonAsync(
+                "/api/events",
+                Snapshot(UsageSourceIds.KimiLocal, $"kimi:{Guid.NewGuid():N}", occurredAt),
+                TestContext.Current.CancellationToken
+            )
+        )
+            .StatusCode.Should()
+            .Be(HttpStatusCode.Created);
+        var nonLocalKey = $"codex:legacy:{Guid.NewGuid():N}";
+        (
+            await client.PostAsJsonAsync(
+                "/api/events",
+                Snapshot(UsageSourceIds.CodexLocal, nonLocalKey, occurredAt, "legacy"),
+                TestContext.Current.CancellationToken
+            )
+        )
+            .StatusCode.Should()
+            .Be(HttpStatusCode.Created);
+        var tombstoneKey = $"codex:tombstone:{Guid.NewGuid():N}";
+        (
+            await client.PostAsJsonAsync(
+                "/api/events",
+                new
+                {
+                    Provider = "openai",
+                    Model = "gpt-5.4",
+                    InputTokens = 0,
+                    OutputTokens = 0,
+                    CacheReadTokens = 0,
+                    CacheWriteTokens = 0,
+                    CacheWrite1hTokens = 0,
+                    ThoughtTokens = 0,
+                    CostUsd = 0m,
+                    RawPayload = "{\"tombstone\":true}",
+                    EventKey = tombstoneKey,
+                    OccurredAtUtc = occurredAt,
+                    Runtime = "codex",
+                    SourceId = UsageSourceIds.CodexLocal,
+                    SourceKind = "localTelemetry",
+                    UsageScope = "subscription",
+                    CostBasis = "notional",
+                },
+                TestContext.Current.CancellationToken
+            )
+        ).StatusCode.Should().Be(HttpStatusCode.Created);
+
+        var response = await client.GetAsync(
+            $"/api/events/local-snapshots?sourceId={UsageSourceIds.CodexLocal}",
+            TestContext.Current.CancellationToken
+        );
+        var inventory = await response.Content.ReadFromJsonAsync<JsonElement>(TestContext.Current.CancellationToken);
+
+        response.StatusCode.Should().Be(HttpStatusCode.OK);
+        var item = inventory.EnumerateArray().Single(x => x.GetProperty("eventKey").GetString() == key);
+        item.GetProperty("provider").GetString().Should().Be("openai");
+        item.GetProperty("sourceId").GetString().Should().Be(UsageSourceIds.CodexLocal);
+        item.GetProperty("sourceKind").GetString().Should().Be("localTelemetry");
+        item.GetProperty("occurredAtUtc").GetDateTimeOffset().Should().Be(occurredAt);
+        item.GetProperty("costUsd").GetDecimal().Should().Be(0m);
+        item.TryGetProperty("inputTokens", out _).Should().BeFalse();
+        item.TryGetProperty("rawPayload", out _).Should().BeFalse();
+        inventory
+            .EnumerateArray()
+            .Should()
+            .NotContain(x => x.GetProperty("sourceId").GetString() == UsageSourceIds.KimiLocal);
+        inventory.EnumerateArray().Should().NotContain(x => x.GetProperty("eventKey").GetString() == nonLocalKey);
+        inventory.EnumerateArray().Should().NotContain(x => x.GetProperty("eventKey").GetString() == tombstoneKey);
+    }
 }
