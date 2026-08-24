@@ -220,6 +220,23 @@ test('buildDailySnapshots replaces a changed transcript under the same key', () 
   assert.equal(after.inputTokens, 25)
 })
 
+test('buildDailySnapshots keeps thought-only usage active', () => {
+  const [snapshot] = buildDailySnapshots([{
+    tool: 'claude',
+    date: '2026-08-24',
+    model: 'claude-opus-5',
+    occurredAtUtc: '2026-08-24T12:00:00Z',
+    inputTokens: 0,
+    outputTokens: 0,
+    cacheReadTokens: 0,
+    cacheWriteTokens: 0,
+    thoughtTokens: 7,
+  }])
+
+  assert.equal(snapshot.eventKey, 'claude:2026-08-24:claude-opus-5:unknown:unknown:unknown')
+  assert.equal(snapshot.thoughtTokens, 7)
+})
+
 test('buildDailySnapshots keeps Claude grouping dimensions and Kimi cost unknown', () => {
   const claude = parseClaude(JSON.stringify({ type: 'assistant', timestamp: '2026-08-24T12:00:00Z', message: { id: 'msg-dimensions', model: 'claude-opus-5', usage: { input_tokens: 2, output_tokens: 10, cache_creation_input_tokens: 30, thinking_tokens: 4, cache_creation: { ephemeral_5m_input_tokens: 5, ephemeral_1h_input_tokens: 25 }, service_tier: 'standard', speed: 'fast', inference_geo: 'us' } } }))
   const kimi = parseKimi(JSON.stringify({ type: 'usage.record', time: 1787572800000, model: 'kimi-code/kimi-for-coding', usage: { inputOther: 10, output: 2, inputCacheRead: 20, inputCacheCreation: 3 } }))
@@ -306,6 +323,16 @@ test('listJsonl discovers old and current transcripts so age never changes cumul
     const files = await listJsonl(root)
 
     assert.deepEqual(files.map(file => file.path).sort(), [currentPath, oldPath].sort())
+  } finally {
+    await rm(root, { recursive: true, force: true })
+  }
+})
+
+test('listJsonl tolerates only an absent top-level tool directory', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'observatory-sweep-missing-'))
+
+  try {
+    assert.deepEqual(await listJsonl(join(root, 'missing')), [])
   } finally {
     await rm(root, { recursive: true, force: true })
   }
@@ -433,6 +460,27 @@ test('server inventory clears the old Claude dimension key after local state los
   assert.equal(newKey.snapshot.inputTokens, 2)
 })
 
+test('replacement plans active snapshots before tombstones in both lexical key directions', () => {
+  const snapshot = (sourceId, eventKey) => ({
+    provider: 'openai', model: 'gpt-5.4', inputTokens: 1, outputTokens: 0,
+    cacheReadTokens: 0, cacheWriteTokens: 0, thoughtTokens: 0, costUsd: 0,
+    occurredAtUtc: '2026-08-24T12:00:00Z', runtime: 'codex', sourceId,
+    sourceKind: 'localTelemetry', usageScope: 'subscription', costBasis: 'notional', eventKey,
+  })
+
+  for (const [oldKey, newKey] of [['a-old', 'z-new'], ['z-old', 'a-new']]) {
+    const submissions = planSnapshotSubmissions(
+      [snapshot('codex-local', newKey)],
+      [snapshot('codex-local', oldKey)],
+    )
+
+    assert.deepEqual(submissions.map(item => [item.active, item.snapshot.eventKey]), [
+      [true, newKey],
+      [false, oldKey],
+    ])
+  }
+})
+
 test('parseLocalSources defaults to every collector and honors an explicit allowlist', () => {
   assert.deepEqual([...parseLocalSources()].sort(), ['claude', 'codex', 'copilot', 'kimi'])
   assert.deepEqual([...parseLocalSources('codex,kimi')].sort(), ['codex', 'kimi'])
@@ -522,6 +570,145 @@ test('main retries a failed server-inventory tombstone from persisted state and 
       { eventKey: prior.eventKey, sourceId: 'claude-local', inputTokens: 0, outputTokens: 0 },
     ])
   } finally {
+    await new Promise(resolve => server.close(resolve))
+    await rm(root, { recursive: true, force: true })
+  }
+})
+
+test('main withholds a source tombstone after its replacement fails but continues unrelated sources', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'observatory-sweep-replacement-'))
+  const projects = join(root, 'claude', 'projects')
+  const statePath = join(root, 'state', 'sweep.json')
+  await mkdir(projects, { recursive: true })
+  await writeFile(join(projects, 'session.jsonl'), JSON.stringify({
+    type: 'assistant',
+    timestamp: '2026-08-24T12:00:00Z',
+    message: {
+      id: 'msg-replacement',
+      model: 'claude-opus-5',
+      usage: { input_tokens: 2, output_tokens: 10, service_tier: 'standard', speed: 'zzz', inference_geo: 'us' },
+    },
+  }))
+  const oldClaude = {
+    provider: 'anthropic', occurredAtUtc: '2026-08-24T12:00:00Z', model: 'claude-opus-5',
+    costUsd: 0.01, runtime: 'claude', sourceId: 'claude-local', sourceKind: 'localTelemetry',
+    usageScope: 'subscription', costBasis: 'notional',
+    eventKey: 'claude:2026-08-24:claude-opus-5:standard:aaa:us',
+  }
+  const oldKimi = {
+    provider: 'moonshot', occurredAtUtc: '2026-08-24T12:00:00Z', model: 'kimi-code/kimi-for-coding',
+    costUsd: null, runtime: 'kimi', sourceId: 'kimi-local', sourceKind: 'localTelemetry',
+    usageScope: 'subscription', costBasis: 'notional', eventKey: 'kimi:2026-08-24:kimi-code/kimi-for-coding',
+  }
+  const currentKey = 'claude:2026-08-24:claude-opus-5:standard:zzz:us'
+  const posts = []
+  const server = createServer(async (request, response) => {
+    const url = new URL(request.url, 'http://127.0.0.1')
+    if (request.method === 'GET' && url.pathname === '/api/events/local-snapshots') {
+      const sourceId = url.searchParams.get('sourceId')
+      const body = sourceId === 'claude-local' ? [oldClaude] : sourceId === 'kimi-local' ? [oldKimi] : []
+      response.writeHead(200, { 'Content-Type': 'application/json' }).end(JSON.stringify(body))
+      return
+    }
+    if (request.method === 'POST' && url.pathname === '/api/events') {
+      let body = ''
+      for await (const chunk of request) { body += chunk }
+      const parsed = JSON.parse(body)
+      posts.push(parsed)
+      response.writeHead(parsed.eventKey === currentKey ? 500 : 200, { 'Content-Type': 'application/json' }).end('{}')
+      return
+    }
+    response.writeHead(404).end()
+  })
+  await new Promise(resolve => server.listen(0, '127.0.0.1', resolve))
+  const address = server.address()
+  const run = promisify(execFile)
+  const env = {
+    ...process.env,
+    OBSERVATORY_URL: `http://127.0.0.1:${address.port}`,
+    OBSERVATORY_API_KEY: 'test-key',
+    OBSERVATORY_STATE: statePath,
+    OBSERVATORY_LOCAL_SOURCES: 'claude',
+    CODEX_HOME: join(root, 'codex'),
+    COPILOT_HOME: join(root, 'copilot'),
+    CLAUDE_HOME: join(root, 'claude'),
+    KIMI_HOME: join(root, 'kimi'),
+  }
+
+  try {
+    await run(process.execPath, [fileURLToPath(new URL('./observatory-sweep.mjs', import.meta.url))], { env })
+
+    assert.deepEqual(posts.map(body => body.eventKey), [currentKey, oldKimi.eventKey])
+    assert.equal(posts.some(body => body.eventKey === oldClaude.eventKey), false)
+  } finally {
+    await new Promise(resolve => server.close(resolve))
+    await rm(root, { recursive: true, force: true })
+  }
+})
+
+test('main aborts nested discovery failures without replacing cache or posting partial truth', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'observatory-sweep-read-error-'))
+  const statePath = join(root, 'state', 'sweep.json')
+  const originalState = JSON.stringify({
+    parseCacheVersion: 1,
+    files: { codex: { sentinel: { mtimeMs: 1, records: [{ id: 'keep' }] } } },
+  })
+  await mkdir(join(root, 'state'), { recursive: true })
+  const posts = []
+  const server = createServer(async (request, response) => {
+    const url = new URL(request.url, 'http://127.0.0.1')
+    if (request.method === 'GET' && url.pathname === '/api/events/local-snapshots') {
+      response.writeHead(200, { 'Content-Type': 'application/json' }).end('[]')
+      return
+    }
+    if (request.method === 'POST' && url.pathname === '/api/events') {
+      posts.push(url.pathname)
+      response.writeHead(200, { 'Content-Type': 'application/json' }).end('{}')
+      return
+    }
+    response.writeHead(404).end()
+  })
+  await new Promise(resolve => server.listen(0, '127.0.0.1', resolve))
+  const address = server.address()
+  const envKeys = [
+    'OBSERVATORY_URL', 'OBSERVATORY_API_KEY', 'OBSERVATORY_STATE', 'OBSERVATORY_LOCAL_SOURCES',
+    'CODEX_HOME', 'COPILOT_HOME', 'CLAUDE_HOME', 'KIMI_HOME',
+  ]
+  const priorEnv = Object.fromEntries(envKeys.map(key => [key, process.env[key]]))
+  Object.assign(process.env, {
+    OBSERVATORY_URL: `http://127.0.0.1:${address.port}`,
+    OBSERVATORY_API_KEY: 'test-key',
+    OBSERVATORY_STATE: statePath,
+    OBSERVATORY_LOCAL_SOURCES: 'codex',
+    CODEX_HOME: join(root, 'codex'),
+    COPILOT_HOME: join(root, 'copilot'),
+    CLAUDE_HOME: join(root, 'claude'),
+    KIMI_HOME: join(root, 'kimi'),
+  })
+
+  try {
+    const { main } = await import('./observatory-sweep.mjs')
+    for (const code of ['EACCES', 'EIO', 'ENOENT']) {
+      await writeFile(statePath, originalState)
+      const discover = dir => listJsonl(dir, [], {
+        readdir: async path => {
+          if (path === dir) { return [{ name: 'nested', isDirectory: () => true }] }
+          const error = new Error(`synthetic nested ${code}`)
+          error.code = code
+          throw error
+        },
+        stat: async () => ({ mtimeMs: 1 }),
+      })
+
+      await assert.rejects(main({ discover }), error => error.code === code)
+      assert.equal(await readFile(statePath, 'utf8'), originalState)
+    }
+
+    assert.deepEqual(posts, [])
+  } finally {
+    for (const key of envKeys) {
+      if (priorEnv[key] === undefined) { delete process.env[key] } else { process.env[key] = priorEnv[key] }
+    }
     await new Promise(resolve => server.close(resolve))
     await rm(root, { recursive: true, force: true })
   }
