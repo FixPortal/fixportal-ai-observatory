@@ -56,7 +56,7 @@ public class AiObservatoryDbContext(DbContextOptions<AiObservatoryDbContext> opt
             b.Property(e => e.UsageScope).HasConversion<string>();
             b.Property(e => e.CostBasis).HasConversion<string>();
             b.HasIndex(e => new { e.Provider, e.Model }).HasFilter("\"Model\" IS NOT NULL");
-            b.Property(e => e.EventKey).HasMaxLength(200);
+            b.Property(e => e.EventKey).HasMaxLength(256);
             b.Property(e => e.Runtime).HasMaxLength(100);
             b.Property(e => e.SessionId).HasMaxLength(200);
             b.Property(e => e.AgentId).HasMaxLength(200);
