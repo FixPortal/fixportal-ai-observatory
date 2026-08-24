@@ -39,6 +39,7 @@ public sealed record OpenAiPriceCatalog(
                 || string.IsNullOrWhiteSpace(entry.Region)
                 || entry.Input <= 0
                 || entry.CachedInput is <= 0
+                || entry.CacheWrite is <= 0
                 || entry.Output <= 0
             )
             {
@@ -97,5 +98,6 @@ public sealed record OpenAiPriceEntry(
     string Region,
     decimal Input,
     decimal? CachedInput,
-    decimal Output
+    decimal Output,
+    decimal? CacheWrite
 );

@@ -39,4 +39,8 @@
     <ProjectReference Include="..\AiObservatory.Data\AiObservatory.Data.csproj" />
   </ItemGroup>
 
+  <ItemGroup>
+    <InternalsVisibleTo Include="AiObservatory.Ingest.Tests" />
+  </ItemGroup>
+
 </Project>

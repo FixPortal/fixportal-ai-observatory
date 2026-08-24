@@ -445,7 +445,7 @@ public sealed class PricingSnapshotStoreTests : IAsyncLifetime
             "EUR",
             source,
             RetrievedAt,
-            [new("gpt", ["gpt"], date, false, "", "short", "global", 1m, 0.1m, 2m)]
+            [new("gpt", ["gpt"], date, false, "", "short", "global", 1m, 0.1m, 2m, null)]
         );
         var invalidAnthropic = new AnthropicPriceCatalog(
             "USD",
@@ -762,7 +762,7 @@ public sealed class PricingSnapshotStoreTests : IAsyncLifetime
     }
 
     private static OpenAiPriceEntry OpenAiEntry(LocalDate effectiveFrom, decimal input) =>
-        new("gpt-5.4", ["gpt-5.4"], effectiveFrom, false, "standard", "short", "global", input, 0.25m, 10m);
+        new("gpt-5.4", ["gpt-5.4"], effectiveFrom, false, "standard", "short", "global", input, 0.25m, 10m, null);
 
     private static PricingSnapshot Snapshot(char hash, bool active, string normalized) =>
         new()
