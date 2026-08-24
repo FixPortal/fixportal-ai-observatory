@@ -78,13 +78,12 @@ public sealed record GooglePriceCatalog(
         string tier,
         string cacheLane,
         long contextThreshold,
-        LocalDate? usageDate = null
+        LocalDate usageDate
     )
     {
-        var date = usageDate ?? LocalDate.MaxIsoValue;
         return Entries
             .Where(entry =>
-                entry.EffectiveFrom <= date
+                entry.EffectiveFrom <= usageDate
                 && entry
                     .Aliases.Prepend(entry.Service)
                     .Any(alias => string.Equals(alias, service, StringComparison.OrdinalIgnoreCase))

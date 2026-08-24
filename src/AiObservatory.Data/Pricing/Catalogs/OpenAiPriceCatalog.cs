@@ -63,13 +63,12 @@ public sealed record OpenAiPriceCatalog(
         string processing,
         string context,
         string region,
-        LocalDate? usageDate = null
+        LocalDate usageDate
     )
     {
-        var date = usageDate ?? LocalDate.MaxIsoValue;
         return Entries
             .Where(entry =>
-                entry.EffectiveFrom <= date
+                entry.EffectiveFrom <= usageDate
                 && string.Equals(entry.Processing, processing, StringComparison.OrdinalIgnoreCase)
                 && string.Equals(entry.Context, context, StringComparison.OrdinalIgnoreCase)
                 && string.Equals(entry.Region, region, StringComparison.OrdinalIgnoreCase)

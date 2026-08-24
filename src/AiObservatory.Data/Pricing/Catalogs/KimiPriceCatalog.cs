@@ -56,12 +56,11 @@ public sealed record KimiPriceCatalog(
         }
     }
 
-    public KimiPriceEntry? Resolve(string model, bool highSpeed, LocalDate? usageDate = null)
+    public KimiPriceEntry? Resolve(string model, bool highSpeed, LocalDate usageDate)
     {
-        var date = usageDate ?? LocalDate.MaxIsoValue;
         return Entries
             .Where(entry =>
-                entry.EffectiveFrom <= date
+                entry.EffectiveFrom <= usageDate
                 && entry.HighSpeed == highSpeed
                 && entry
                     .Aliases.Prepend(entry.ModelPrefix)
