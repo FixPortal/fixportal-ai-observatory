@@ -7,16 +7,22 @@ public sealed class FirstPartyDocumentFetcher
 {
     private const int MaximumRedirects = 3;
     private const int MaximumResponseBytes = 2 * 1024 * 1024;
-    private static readonly TimeSpan RequestTimeout = TimeSpan.FromSeconds(20);
+    private static readonly TimeSpan ProductionRequestTimeout = TimeSpan.FromSeconds(20);
     private static readonly UTF8Encoding StrictUtf8 = new(false, true);
     private readonly HashSet<string> _allowedHosts;
     private readonly HttpClient _client;
+    private readonly TimeSpan _requestTimeout;
     private readonly Uri _source;
 
     public FirstPartyDocumentFetcher(Uri source, IEnumerable<string> allowedHosts)
         : this(source, allowedHosts, null) { }
 
-    internal FirstPartyDocumentFetcher(Uri source, IEnumerable<string> allowedHosts, HttpMessageHandler? handler)
+    internal FirstPartyDocumentFetcher(
+        Uri source,
+        IEnumerable<string> allowedHosts,
+        HttpMessageHandler? handler,
+        TimeSpan? requestTimeout = null
+    )
     {
         ArgumentNullException.ThrowIfNull(source);
         ArgumentNullException.ThrowIfNull(allowedHosts);
@@ -28,6 +34,12 @@ public sealed class FirstPartyDocumentFetcher
 
         ValidateDestination(source);
         _source = source;
+        _requestTimeout = requestTimeout ?? ProductionRequestTimeout;
+        if (_requestTimeout <= TimeSpan.Zero)
+        {
+            throw new ArgumentOutOfRangeException(nameof(requestTimeout));
+        }
+
         _client = new HttpClient(handler ?? new HttpClientHandler { AllowAutoRedirect = false }, handler is null)
         {
             Timeout = Timeout.InfiniteTimeSpan,
@@ -37,7 +49,7 @@ public sealed class FirstPartyDocumentFetcher
     public async Task<FirstPartyDocument> FetchAsync(CancellationToken cancellationToken)
     {
         using var timeout = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
-        timeout.CancelAfter(RequestTimeout);
+        timeout.CancelAfter(_requestTimeout);
         var current = _source;
         var redirects = 0;
 
@@ -136,6 +148,10 @@ public sealed class FirstPartyDocumentFetcher
         if (
             !destination.IsAbsoluteUri
             || destination.Scheme != Uri.UriSchemeHttps
+            || !destination.IsDefaultPort
+            || destination.UserInfo.Length != 0
+            || destination.Query.Length != 0
+            || destination.Fragment.Length != 0
             || !_allowedHosts.Contains(destination.Host)
         )
         {

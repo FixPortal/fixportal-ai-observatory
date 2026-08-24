@@ -24,6 +24,14 @@ public sealed class ClaudePricingSource : IPricingSource
     private static readonly string[] CacheColumns = ["Cache operation", "Multiplier", "Duration"];
     private static readonly string[] FastColumns = ["Model", "Input", "Output"];
     private static readonly string[] BatchColumns = ["Model", "Batch input", "Batch output"];
+    private static readonly string[] RequiredModels =
+    [
+        "claude-opus-5",
+        "claude-opus-4-8",
+        "claude-opus-4-5",
+        "claude-sonnet-5",
+    ];
+    private static readonly string[] RequiredFastModels = ["claude-opus-5", "claude-opus-4-8"];
     private readonly IClock _clock;
     private readonly FirstPartyDocumentFetcher _fetcher;
     private PricingSnapshotCandidate? _lastCandidate;
@@ -106,6 +114,18 @@ public sealed class ClaudePricingSource : IPricingSource
         ValidateGeography(document);
         ApplyFastRates(entries, TableRows(lines, "### Fast mode pricing", FastColumns));
         ApplyBatchRates(entries, TableRows(lines, "### Batch processing", BatchColumns));
+        if (
+            RequiredModels.Any(model =>
+                !entries.TryGetValue(model, out var entry) || entry.BatchInput is null || entry.BatchOutput is null
+            )
+            || RequiredFastModels.Any(model =>
+                !entries.TryGetValue(model, out var entry) || entry.FastInput is null || entry.FastOutput is null
+            )
+        )
+        {
+            throw new InvalidDataException("Claude pricing is missing required current model coverage.");
+        }
+
         if (
             entries.ContainsKey("claude-sonnet-5")
             && !document.Contains(

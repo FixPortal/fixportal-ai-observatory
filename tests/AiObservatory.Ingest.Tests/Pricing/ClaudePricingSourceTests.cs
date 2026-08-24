@@ -54,6 +54,20 @@ public sealed class ClaudePricingSourceTests
     }
 
     [Theory]
+    [InlineData("Claude Opus 5")]
+    [InlineData("Claude Opus 4.8")]
+    [InlineData("Claude Opus 4.5")]
+    [InlineData("Claude Sonnet 5")]
+    public void ParserRejectsRemovalOfARequiredModelFromBaseAndRelatedTables(string model)
+    {
+        var document = RemoveModelEverywhere(Fixture(), model);
+
+        var act = () => ClaudePricingSource.Parse(document, RetrievedAt);
+
+        act.Should().Throw<InvalidDataException>();
+    }
+
+    [Theory]
     [InlineData("missing-heading")]
     [InlineData("duplicate-key")]
     [InlineData("overlapping-normalized-model")]
@@ -130,6 +144,26 @@ public sealed class ClaudePricingSourceTests
                 StringComparison.Ordinal
             ),
             _ => throw new ArgumentOutOfRangeException(nameof(mutation)),
+        };
+    }
+
+    private static string RemoveModelEverywhere(string document, string model)
+    {
+        var lines = document.Split('\n').Where(line => !line.StartsWith($"| {model} |", StringComparison.Ordinal));
+        var result = string.Join('\n', lines);
+        return model switch
+        {
+            "Claude Opus 5" => result.Replace(
+                "| Claude Opus 5 / Claude Opus 4.8 |",
+                "| Claude Opus 4.8 |",
+                StringComparison.Ordinal
+            ),
+            "Claude Opus 4.8" => result.Replace(
+                "| Claude Opus 5 / Claude Opus 4.8 |",
+                "| Claude Opus 5 |",
+                StringComparison.Ordinal
+            ),
+            _ => result,
         };
     }
 

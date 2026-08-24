@@ -22,6 +22,23 @@ public sealed class FirstPartyDocumentFetcherTests
         act.Should().Throw<ArgumentException>();
     }
 
+    [Theory]
+    [InlineData("https://user@docs.example.test/pricing.md")]
+    [InlineData("https://docs.example.test:444/pricing.md")]
+    [InlineData("https://docs.example.test/pricing.md?version=2")]
+    [InlineData("https://docs.example.test/pricing.md#rates")]
+    public void ConstructorRejectsAuthorityOrResourceComponentsOutsideTheFixedBoundary(string source)
+    {
+        var act = () =>
+            new FirstPartyDocumentFetcher(
+                new Uri(source),
+                ["docs.example.test"],
+                new RecordingHandler((_, _) => Response(HttpStatusCode.OK, "unused"))
+            );
+
+        act.Should().Throw<ArgumentException>();
+    }
+
     [Fact]
     public async Task FetchFollowsOnlyValidatedRedirectsAndReturnsStrictUtf8()
     {
@@ -47,6 +64,23 @@ public sealed class FirstPartyDocumentFetcherTests
     public async Task FetchRejectsARedirectHostBeforeSendingCredentialsOrContentToIt()
     {
         var handler = new RecordingHandler((_, _) => Redirect("https://evil.example/pricing.md"));
+        var fetcher = new FirstPartyDocumentFetcher(Source, ["docs.example.test"], handler);
+
+        var act = () => fetcher.FetchAsync(TestContext.Current.CancellationToken);
+
+        await act.Should().ThrowAsync<InvalidDataException>();
+        handler.Requests.Should().ContainSingle();
+    }
+
+    [Theory]
+    [InlineData("https://user@docs.example.test/current.md")]
+    [InlineData("https://docs.example.test:444/current.md")]
+    [InlineData("https://docs.example.test/current.md?version=2")]
+    [InlineData("https://docs.example.test/current.md#rates")]
+    [InlineData("/current.md?version=2")]
+    public async Task FetchRejectsRedirectsOutsideTheFixedResourceBoundary(string location)
+    {
+        var handler = new RecordingHandler((_, _) => Redirect(location));
         var fetcher = new FirstPartyDocumentFetcher(Source, ["docs.example.test"], handler);
 
         var act = () => fetcher.FetchAsync(TestContext.Current.CancellationToken);
@@ -108,6 +142,22 @@ public sealed class FirstPartyDocumentFetcherTests
     }
 
     [Fact]
+    public async Task FetchAcceptsABodyOfExactlyTwoMebibytes()
+    {
+        var bytes = Enumerable.Repeat((byte)'a', 2 * 1024 * 1024).ToArray();
+        var response = new HttpResponseMessage(HttpStatusCode.OK) { Content = new ByteArrayContent(bytes) };
+        var fetcher = new FirstPartyDocumentFetcher(
+            Source,
+            ["docs.example.test"],
+            new RecordingHandler((_, _) => response)
+        );
+
+        var result = await fetcher.FetchAsync(TestContext.Current.CancellationToken);
+
+        result.Content.Should().HaveLength(2 * 1024 * 1024);
+    }
+
+    [Fact]
     public async Task FetchRejectsInvalidUtf8()
     {
         var response = new HttpResponseMessage(HttpStatusCode.OK) { Content = new ByteArrayContent([0xC3, 0x28]) };
@@ -123,17 +173,26 @@ public sealed class FirstPartyDocumentFetcherTests
     }
 
     [Fact]
-    public async Task FetchPropagatesTimeoutCancellation()
+    public async Task FetchAppliesTheLinkedTimeoutToABlockedHandler()
     {
         var fetcher = new FirstPartyDocumentFetcher(
             Source,
             ["docs.example.test"],
-            new RecordingHandler((_, token) => throw new TaskCanceledException("timed out", null, token))
+            new RecordingHandler(
+                async (_, token) =>
+                {
+                    await Task.Delay(Timeout.InfiniteTimeSpan, token);
+                    return Response(HttpStatusCode.OK, "unreachable");
+                }
+            ),
+            TimeSpan.FromMilliseconds(20)
         );
+        var started = TimeProvider.System.GetTimestamp();
 
         var act = () => fetcher.FetchAsync(TestContext.Current.CancellationToken);
 
         await act.Should().ThrowAsync<OperationCanceledException>();
+        TimeProvider.System.GetElapsedTime(started).Should().BeLessThan(TimeSpan.FromSeconds(1));
     }
 
     [Fact]
@@ -157,9 +216,18 @@ public sealed class FirstPartyDocumentFetcherTests
     private static HttpResponseMessage Response(HttpStatusCode status, string content) =>
         new(status) { Content = new StringContent(content, Encoding.UTF8, "text/markdown") };
 
-    internal sealed class RecordingHandler(Func<HttpRequestMessage, CancellationToken, HttpResponseMessage> response)
-        : HttpMessageHandler
+    internal sealed class RecordingHandler : HttpMessageHandler
     {
+        private readonly Func<HttpRequestMessage, CancellationToken, Task<HttpResponseMessage>> _response;
+
+        public RecordingHandler(Func<HttpRequestMessage, CancellationToken, HttpResponseMessage> response)
+            : this((request, token) => Task.FromResult(response(request, token))) { }
+
+        public RecordingHandler(Func<HttpRequestMessage, CancellationToken, Task<HttpResponseMessage>> response)
+        {
+            _response = response;
+        }
+
         public List<Uri> Requests { get; } = [];
 
         protected override Task<HttpResponseMessage> SendAsync(
@@ -168,7 +236,7 @@ public sealed class FirstPartyDocumentFetcherTests
         )
         {
             Requests.Add(request.RequestUri!);
-            return Task.FromResult(response(request, cancellationToken));
+            return _response(request, cancellationToken);
         }
     }
 }

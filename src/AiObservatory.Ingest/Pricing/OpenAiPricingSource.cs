@@ -24,6 +24,24 @@ public sealed class OpenAiPricingSource : IPricingSource
         "Long context cache writes",
         "Long context output",
     ];
+    private static readonly (string Model, string Processing, string Context)[] RequiredLanes =
+    [
+        ("gpt-5.6-sol", "standard", "short"),
+        ("gpt-5.6-sol", "standard", "long"),
+        ("gpt-5.4", "standard", "short"),
+        ("gpt-5.4", "standard", "long"),
+        ("gpt-5.6-sol", "batch", "short"),
+        ("gpt-5.6-sol", "batch", "long"),
+        ("gpt-5.4", "batch", "short"),
+        ("gpt-5.4", "batch", "long"),
+        ("gpt-5.6-sol", "flex", "short"),
+        ("gpt-5.6-sol", "flex", "long"),
+        ("gpt-5.4", "flex", "short"),
+        ("gpt-5.4", "flex", "long"),
+        ("gpt-5.6-sol", "fast", "short"),
+        ("gpt-5.6-sol", "fast", "long"),
+        ("gpt-5.4", "fast", "short"),
+    ];
     private readonly IClock _clock;
     private readonly FirstPartyDocumentFetcher _fetcher;
     private PricingSnapshotCandidate? _lastCandidate;
@@ -69,6 +87,7 @@ public sealed class OpenAiPricingSource : IPricingSource
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(document);
         var lines = Lines(document);
+        ValidateUnitDeclaration(lines);
         var observedOn = retrievedAt.InUtc().Date;
         var entries = new List<OpenAiPriceEntry>();
         var keys = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
@@ -76,6 +95,15 @@ public sealed class OpenAiPricingSource : IPricingSource
         ParseTable(lines, "### Batch pricing data", "batch", observedOn, entries, keys);
         ParseTable(lines, "### Flex pricing data", "flex", observedOn, entries, keys);
         ParseTable(lines, "### Fast pricing data", "fast", observedOn, entries, keys);
+        if (
+            RequiredLanes.Any(required =>
+                !keys.Contains(string.Join('\u001f', required.Model, required.Processing, required.Context, "global"))
+            )
+        )
+        {
+            throw new InvalidDataException("OpenAI pricing is missing a required current model lane.");
+        }
+
         var catalog = new OpenAiPriceCatalog("USD", SourceUrl, retrievedAt, entries);
         catalog.Validate();
         return catalog;
@@ -212,6 +240,22 @@ public sealed class OpenAiPricingSource : IPricingSource
         return matches.Count == 1
             ? matches[0]
             : throw new InvalidDataException($"OpenAI pricing requires exactly one '{expected}' heading.");
+    }
+
+    private static void ValidateUnitDeclaration(IReadOnlyList<string> lines)
+    {
+        var standardHeading = SingleLine(lines, "### Standard pricing data");
+        var declarations = Enumerable
+            .Range(0, standardHeading)
+            .Select(index => lines[index].Trim())
+            .Where(line => line.StartsWith("Prices per ", StringComparison.Ordinal))
+            .ToList();
+        if (declarations.Count != 1 || declarations[0] != "Prices per 1M tokens.")
+        {
+            throw new InvalidDataException(
+                "OpenAI pricing requires exactly one 'Prices per 1M tokens.' declaration before its tables."
+            );
+        }
     }
 
     private static int NextContentLine(IReadOnlyList<string> lines, int start)
