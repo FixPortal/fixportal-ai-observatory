@@ -94,6 +94,11 @@ public static class SpendEntriesEndpoints
                 Source = source,
                 EntryKey = string.IsNullOrWhiteSpace(req.EntryKey) ? null : req.EntryKey.Trim(),
                 RecordedAt = now,
+                SourceId = UsageSourceIds.ManualLedger,
+                SourceKind = SourceKind.Manual,
+                UsageScope = UsageScope.Unknown,
+                CostBasis = CostBasis.Billed,
+                ObservedAt = now,
             };
 
             db.SpendEntries.Add(entry);

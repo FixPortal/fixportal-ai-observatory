@@ -63,7 +63,7 @@ public class UsageRepository(AiObservatoryDbContext ctx) : IUsageRepository
             ctx.Entry(evt).State = EntityState.Detached;
             var winnerId = await ctx
                 .UsageEvents.AsNoTracking()
-                .Where(e => e.Provider == evt.Provider && e.EventKey == evt.EventKey)
+                .Where(e => e.SourceId == evt.SourceId && e.EventKey == evt.EventKey)
                 .Select(e => e.Id)
                 .FirstAsync(ct);
             return new RecordEventResult(winnerId, IsDuplicate: true);
