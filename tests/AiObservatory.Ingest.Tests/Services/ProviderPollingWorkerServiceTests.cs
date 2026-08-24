@@ -135,6 +135,31 @@ public class ProviderPollingWorkerServiceTests(ProviderPollingDatabase database)
     }
 
     [Fact]
+    public async Task RunPollAsync_WhenOneSourceStateWriteFails_StillPollsLaterSources()
+    {
+        var invalid = Source(new string('x', 101), new SourceIngestionResult(null));
+        var continued = Source("continued-after-state-failure", new SourceIngestionResult(null));
+        await using var harness = CreateWorker(
+            sources: [invalid, continued],
+            definitions: [Definition(invalid.SourceId), Definition(continued.SourceId)]
+        );
+
+        await harness.Worker.RunPollAsync(
+            new LocalDate(2026, 8, 23),
+            new LocalDate(2026, 8, 23),
+            TestContext.Current.CancellationToken
+        );
+
+        await invalid
+            .DidNotReceive()
+            .IngestAsync(Arg.Any<LocalDate>(), Arg.Any<LocalDate>(), Arg.Any<CancellationToken>());
+        await continued
+            .Received(1)
+            .IngestAsync(Arg.Any<LocalDate>(), Arg.Any<LocalDate>(), Arg.Any<CancellationToken>());
+        (await harness.LoadStateAsync(continued.SourceId)).LastSuccessAt.Should().NotBeNull();
+    }
+
+    [Fact]
     public async Task RunPollAsync_SuccessResetsPersistedFailureState()
     {
         var source = Substitute.For<IUsageSource>();

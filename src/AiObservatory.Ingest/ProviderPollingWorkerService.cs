@@ -76,12 +76,23 @@ public class ProviderPollingWorkerService(
             )
         )
         {
-            await stateStore.MarkUnconfiguredAsync(
-                definition.SourceId,
-                definition.ExpectedRefreshInterval,
-                current,
-                cancellationToken
-            );
+            try
+            {
+                await stateStore.MarkUnconfiguredAsync(
+                    definition.SourceId,
+                    definition.ExpectedRefreshInterval,
+                    current,
+                    cancellationToken
+                );
+            }
+            catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+            {
+                throw;
+            }
+            catch (Exception ex)
+            {
+                LogStateWriteFailure(definition.SourceId, ex);
+            }
         }
 
         foreach (
@@ -112,14 +123,14 @@ public class ProviderPollingWorkerService(
         CancellationToken cancellationToken
     )
     {
-        await stateStore.MarkAttemptAsync(
-            source.SourceId,
-            definition.ExpectedRefreshInterval,
-            current,
-            cancellationToken
-        );
         try
         {
+            await stateStore.MarkAttemptAsync(
+                source.SourceId,
+                definition.ExpectedRefreshInterval,
+                current,
+                cancellationToken
+            );
             var result = await source.IngestAsync(from, through, cancellationToken);
             await stateStore.MarkSuccessAsync(
                 source.SourceId,
@@ -136,28 +147,76 @@ public class ProviderPollingWorkerService(
         catch (SourceUnavailableException ex)
         {
             var error = SanitizeError(ex.Message);
-            var count = await stateStore.MarkUnavailableAsync(
+            await PersistFailureAsync(
                 source.SourceId,
-                definition.ExpectedRefreshInterval,
+                definition,
+                stateStore,
                 current,
                 error,
+                isUnavailable: true,
                 cancellationToken
             );
-            LogFailure(source.SourceId, count, error);
         }
         catch (Exception ex)
         {
             var error = SanitizeError(ex.Message);
-            var count = await stateStore.MarkFailureAsync(
+            await PersistFailureAsync(
                 source.SourceId,
-                definition.ExpectedRefreshInterval,
+                definition,
+                stateStore,
                 current,
                 error,
+                isUnavailable: false,
                 cancellationToken
             );
-            LogFailure(source.SourceId, count, error);
         }
     }
+
+    private async Task PersistFailureAsync(
+        string sourceId,
+        SourceDefinition definition,
+        SourceSyncStateStore stateStore,
+        Instant current,
+        string error,
+        bool isUnavailable,
+        CancellationToken cancellationToken
+    )
+    {
+        try
+        {
+            var count = isUnavailable
+                ? await stateStore.MarkUnavailableAsync(
+                    sourceId,
+                    definition.ExpectedRefreshInterval,
+                    current,
+                    error,
+                    cancellationToken
+                )
+                : await stateStore.MarkFailureAsync(
+                    sourceId,
+                    definition.ExpectedRefreshInterval,
+                    current,
+                    error,
+                    cancellationToken
+                );
+            LogFailure(sourceId, count, error);
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+            throw;
+        }
+        catch (Exception ex)
+        {
+            LogStateWriteFailure(sourceId, ex);
+        }
+    }
+
+    private void LogStateWriteFailure(string sourceId, Exception exception) =>
+        logger.LogError(
+            "{SourceId} ingestion state could not be persisted: {Error}",
+            sourceId,
+            SanitizeError(exception.Message)
+        );
 
     private void LogFailure(string sourceId, int count, string error)
     {

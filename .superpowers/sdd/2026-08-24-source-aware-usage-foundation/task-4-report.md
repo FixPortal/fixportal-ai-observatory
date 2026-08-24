@@ -87,3 +87,64 @@ For both files, a comparison after removing all whitespace is byte-for-byte equa
 - EF CLI 10.0.8 reports that it is older than runtime 10.0.11. Migration generation and the pending-model check both succeeded; no tool upgrade was added to this task.
 - `github-activity-api` is an explicit accepted design ruling for activity ingestion and deliberately remains distinct from the existing billing identity.
 - No actionable Task 4 concern remains.
+
+---
+
+## Review remediation addendum — atomic freshness state and GitHub update time
+
+Commit: final remediation SHA reported in the parent handoff because this addendum is part of that commit.
+
+### Findings resolved
+
+- Replaced every `SourceSyncStateStore` read/track/write transition with a PostgreSQL `INSERT ... ON CONFLICT DO UPDATE` statement. Concurrent first writes no longer race on the primary key; attempt/success/latest-observation instants use database-side maxima; failure increments are database-atomic.
+- Preserved the transition rules exactly: unconfigured clears availability, failures, and error while retaining historical timestamps; attempt marks configured without resetting availability/error/failures; success marks available, clears error/failures, and never regresses timestamps; unavailable writes `IsAvailable = false`; ordinary failure retains the previous nullable availability.
+- Passed nullable `Instant?` and `bool?` values directly through `ExecuteSqlInterpolatedAsync`. No untyped `DBNull.Value`, string-built SQL, registry, dependency, or additional abstraction was introduced.
+- Moved `MarkAttemptAsync` inside the worker's per-source exception boundary. A state-write failure is sanitized/logged and cannot suppress later definitions or sources; cancellation still propagates from initial state writes, source calls, success writes, and failure writes.
+- Carried GitHub PR `updated_at` through `GitHubPullRequestRecord` and included it when computing `LatestObservationAt`. An old open PR updated recently now advances source freshness.
+- Reworked the unresolved-Key-Vault host test to assert the actual scoped `IEnumerable<IUsageSource>` and the matching unconfigured `SourceDefinition`, including the GitHub credential gate.
+- Confirmed with `rg` that `GitHubIngestionService.IngestSinceAsync` had no production or test callers after converting its tests to `IUsageSource.IngestAsync`, then removed the bypass method. Rate limits and total configured-repository failure are now exercised only through the production contract.
+
+### TDD evidence
+
+| RED cycle | Expected failure observed | GREEN evidence |
+| --- | --- | --- |
+| Concurrent first success | 16 independent scopes produced PostgreSQL `23505` primary-key conflicts. | Atomic-upsert focused suite passed. |
+| Concurrent failures | 24 independent failures persisted only 12 increments. | Final persisted count is exactly 24. |
+| Monotonic concurrent success | Concurrent first writes collided before greatest timestamps could be retained. | `LastAttemptAt`, `LastSuccessAt`, and `LatestObservationAt` all retain the greatest of 24 writes. |
+| Worker state-write isolation | A 101-character source ID caused `MarkAttemptAsync` to throw `22001` and abort the later source. | Invalid-source state failure is contained; the later source is polled and marked successful. |
+| GitHub client seam | Focused compilation failed because `GitHubPullRequestRecord.UpdatedAt` did not exist. | Client parsing test carries the exact upstream instant. |
+| GitHub freshness | An old open PR created in 2025 and updated in 2026 returned its 2025 creation time as latest observation. | The same test returns the 2026 update instant. |
+
+### Verification
+
+| Command | Result |
+| --- | --- |
+| Focused concurrency/worker/GitHub/host suite | Passed 59/59 against real PostgreSQL where applicable. |
+| Focused `EventsEndpointsWafTests` | Passed 28/28 against real PostgreSQL; pre-existing `xUnit1025` warning only. |
+| `dotnet ef migrations has-pending-model-changes --project src/AiObservatory.Data --startup-project src/AiObservatory.Api` | Passed: no model changes since the generated Task 4 migration. EF CLI/runtime patch-version notice remains. |
+| `dotnet csharpier check .` | Passed, 181 files checked. |
+| `dotnet build AiObservatory.slnx --configuration Release` | Succeeded, 0 errors; one pre-existing `xUnit1025` warning. |
+| `dotnet test --solution AiObservatory.slnx --configuration Release --no-build --timeout 5m` | Passed 623/623. |
+| `node --test clients/observatory-sweep.test.mjs` | Passed 32/32. |
+
+### Files changed by remediation
+
+- `src/AiObservatory.Data/Repositories/IGitHubActivityRepository.cs`
+- `src/AiObservatory.Data/Repositories/SourceSyncStateStore.cs`
+- `src/AiObservatory.Ingest/ProviderPollingWorkerService.cs`
+- `src/AiObservatory.Ingest/Services/GitHub/GitHubActivityClient.cs`
+- `src/AiObservatory.Ingest/Services/GitHub/GitHubIngestionService.cs`
+- `tests/AiObservatory.Data.Tests/Repositories/GitHubActivityRepositoryTests.cs`
+- `tests/AiObservatory.Ingest.Tests/IngestHostTests.cs`
+- `tests/AiObservatory.Ingest.Tests/Services/GitHubActivityClientTests.cs`
+- `tests/AiObservatory.Ingest.Tests/Services/GitHubIngestionServiceTests.cs`
+- `tests/AiObservatory.Ingest.Tests/Services/ProviderPollingWorkerServiceTests.cs`
+- `tests/AiObservatory.Ingest.Tests/Services/SourceSyncStateStoreConcurrencyTests.cs`
+
+### Self-review and concerns
+
+- Real PostgreSQL tests exercise independent `DbContext` scopes simultaneously; no mocked `DbSet`, provider substitution, or in-memory concurrency simulation is involved.
+- State transitions remain one atomic database write each. The post-failure count read exists only to feed the retained three-failure escalation and cannot lose a persisted increment.
+- The generic worker still contains no provider names/types and no GitHub-specific failure decision. All persisted/logged exception text passes through the existing sanitizer.
+- The Task 4 migration, model, stable source identities, source definitions, credential semantics, API Created/Corrected/Unchanged behavior, and injected-NodaTime boundaries are unchanged.
+- Known warnings remain the pre-existing duplicate-`InlineData` `xUnit1025` diagnostic and the EF CLI 10.0.8/runtime 10.0.11 notice. No actionable remediation concern remains.

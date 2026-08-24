@@ -1,4 +1,3 @@
-using AiObservatory.Data.Entities;
 using Microsoft.EntityFrameworkCore;
 using NodaTime;
 
@@ -6,7 +5,7 @@ namespace AiObservatory.Data.Repositories;
 
 public sealed class SourceSyncStateStore(AiObservatoryDbContext db)
 {
-    public async Task MarkUnconfiguredAsync(
+    public Task MarkUnconfiguredAsync(
         string sourceId,
         Duration expectedRefreshInterval,
         Instant current,
@@ -14,28 +13,50 @@ public sealed class SourceSyncStateStore(AiObservatoryDbContext db)
     )
     {
         _ = current;
-        var state = await GetOrCreateAsync(sourceId, expectedRefreshInterval, cancellationToken);
-        state.IsConfigured = false;
-        state.IsAvailable = null;
-        state.ConsecutiveFailureCount = 0;
-        state.LastError = null;
-        await db.SaveChangesAsync(cancellationToken);
+        var expectedSeconds = ExpectedSeconds(expectedRefreshInterval);
+        return db.Database.ExecuteSqlInterpolatedAsync(
+            $"""
+            INSERT INTO "SourceSyncStates"
+                ("SourceId", "IsConfigured", "IsAvailable", "ExpectedRefreshIntervalSeconds",
+                 "LastAttemptAt", "LastSuccessAt", "LatestObservationAt", "ConsecutiveFailureCount", "LastError")
+            VALUES
+                ({sourceId}, FALSE, NULL, {expectedSeconds}, NULL, NULL, NULL, 0, NULL)
+            ON CONFLICT ("SourceId") DO UPDATE SET
+                "IsConfigured" = FALSE,
+                "IsAvailable" = NULL,
+                "ExpectedRefreshIntervalSeconds" = EXCLUDED."ExpectedRefreshIntervalSeconds",
+                "ConsecutiveFailureCount" = 0,
+                "LastError" = NULL
+            """,
+            cancellationToken
+        );
     }
 
-    public async Task MarkAttemptAsync(
+    public Task MarkAttemptAsync(
         string sourceId,
         Duration expectedRefreshInterval,
         Instant current,
         CancellationToken cancellationToken
     )
     {
-        var state = await GetOrCreateAsync(sourceId, expectedRefreshInterval, cancellationToken);
-        state.IsConfigured = true;
-        state.LastAttemptAt = current;
-        await db.SaveChangesAsync(cancellationToken);
+        var expectedSeconds = ExpectedSeconds(expectedRefreshInterval);
+        return db.Database.ExecuteSqlInterpolatedAsync(
+            $"""
+            INSERT INTO "SourceSyncStates"
+                ("SourceId", "IsConfigured", "IsAvailable", "ExpectedRefreshIntervalSeconds",
+                 "LastAttemptAt", "LastSuccessAt", "LatestObservationAt", "ConsecutiveFailureCount", "LastError")
+            VALUES
+                ({sourceId}, TRUE, NULL, {expectedSeconds}, {current}, NULL, NULL, 0, NULL)
+            ON CONFLICT ("SourceId") DO UPDATE SET
+                "IsConfigured" = TRUE,
+                "ExpectedRefreshIntervalSeconds" = EXCLUDED."ExpectedRefreshIntervalSeconds",
+                "LastAttemptAt" = GREATEST("SourceSyncStates"."LastAttemptAt", EXCLUDED."LastAttemptAt")
+            """,
+            cancellationToken
+        );
     }
 
-    public async Task MarkSuccessAsync(
+    public Task MarkSuccessAsync(
         string sourceId,
         Duration expectedRefreshInterval,
         Instant current,
@@ -43,21 +64,29 @@ public sealed class SourceSyncStateStore(AiObservatoryDbContext db)
         CancellationToken cancellationToken
     )
     {
-        var state = await GetOrCreateAsync(sourceId, expectedRefreshInterval, cancellationToken);
-        state.IsConfigured = true;
-        state.IsAvailable = true;
-        state.LastAttemptAt = current;
-        state.LastSuccessAt = current;
-        if (
-            latestObservationAt is { } latest
-            && (state.LatestObservationAt is null || latest > state.LatestObservationAt)
-        )
-        {
-            state.LatestObservationAt = latest;
-        }
-        state.ConsecutiveFailureCount = 0;
-        state.LastError = null;
-        await db.SaveChangesAsync(cancellationToken);
+        var expectedSeconds = ExpectedSeconds(expectedRefreshInterval);
+        return db.Database.ExecuteSqlInterpolatedAsync(
+            $"""
+            INSERT INTO "SourceSyncStates"
+                ("SourceId", "IsConfigured", "IsAvailable", "ExpectedRefreshIntervalSeconds",
+                 "LastAttemptAt", "LastSuccessAt", "LatestObservationAt", "ConsecutiveFailureCount", "LastError")
+            VALUES
+                ({sourceId}, TRUE, TRUE, {expectedSeconds}, {current}, {current}, {latestObservationAt}, 0, NULL)
+            ON CONFLICT ("SourceId") DO UPDATE SET
+                "IsConfigured" = TRUE,
+                "IsAvailable" = TRUE,
+                "ExpectedRefreshIntervalSeconds" = EXCLUDED."ExpectedRefreshIntervalSeconds",
+                "LastAttemptAt" = GREATEST("SourceSyncStates"."LastAttemptAt", EXCLUDED."LastAttemptAt"),
+                "LastSuccessAt" = GREATEST("SourceSyncStates"."LastSuccessAt", EXCLUDED."LastSuccessAt"),
+                "LatestObservationAt" = GREATEST(
+                    "SourceSyncStates"."LatestObservationAt",
+                    EXCLUDED."LatestObservationAt"
+                ),
+                "ConsecutiveFailureCount" = 0,
+                "LastError" = NULL
+            """,
+            cancellationToken
+        );
     }
 
     public Task<int> MarkUnavailableAsync(
@@ -85,32 +114,32 @@ public sealed class SourceSyncStateStore(AiObservatoryDbContext db)
         CancellationToken cancellationToken
     )
     {
-        var state = await GetOrCreateAsync(sourceId, expectedRefreshInterval, cancellationToken);
-        state.IsConfigured = true;
-        state.LastAttemptAt = current;
-        if (isAvailable is not null)
-        {
-            state.IsAvailable = isAvailable;
-        }
-        state.ConsecutiveFailureCount++;
-        state.LastError = error;
-        await db.SaveChangesAsync(cancellationToken);
-        return state.ConsecutiveFailureCount;
+        var expectedSeconds = ExpectedSeconds(expectedRefreshInterval);
+        await db.Database.ExecuteSqlInterpolatedAsync(
+            $"""
+            INSERT INTO "SourceSyncStates"
+                ("SourceId", "IsConfigured", "IsAvailable", "ExpectedRefreshIntervalSeconds",
+                 "LastAttemptAt", "LastSuccessAt", "LatestObservationAt", "ConsecutiveFailureCount", "LastError")
+            VALUES
+                ({sourceId}, TRUE, {isAvailable}, {expectedSeconds}, {current}, NULL, NULL, 1, {error})
+            ON CONFLICT ("SourceId") DO UPDATE SET
+                "IsConfigured" = TRUE,
+                "IsAvailable" = COALESCE(EXCLUDED."IsAvailable", "SourceSyncStates"."IsAvailable"),
+                "ExpectedRefreshIntervalSeconds" = EXCLUDED."ExpectedRefreshIntervalSeconds",
+                "LastAttemptAt" = GREATEST("SourceSyncStates"."LastAttemptAt", EXCLUDED."LastAttemptAt"),
+                "ConsecutiveFailureCount" = "SourceSyncStates"."ConsecutiveFailureCount" + 1,
+                "LastError" = EXCLUDED."LastError"
+            """,
+            cancellationToken
+        );
+
+        return await db
+            .SourceSyncStates.AsNoTracking()
+            .Where(state => state.SourceId == sourceId)
+            .Select(state => state.ConsecutiveFailureCount)
+            .SingleAsync(cancellationToken);
     }
 
-    private async Task<SourceSyncState> GetOrCreateAsync(
-        string sourceId,
-        Duration expectedRefreshInterval,
-        CancellationToken cancellationToken
-    )
-    {
-        var state = await db.SourceSyncStates.SingleOrDefaultAsync(x => x.SourceId == sourceId, cancellationToken);
-        if (state is null)
-        {
-            state = new SourceSyncState { SourceId = sourceId };
-            db.SourceSyncStates.Add(state);
-        }
-        state.ExpectedRefreshIntervalSeconds = checked((long)expectedRefreshInterval.TotalSeconds);
-        return state;
-    }
+    private static long ExpectedSeconds(Duration expectedRefreshInterval) =>
+        checked((long)expectedRefreshInterval.TotalSeconds);
 }

@@ -56,6 +56,7 @@ public class GitHubActivityRepositoryTests : IAsyncLifetime
             "chris",
             state,
             Instant.FromUtc(2026, 7, 1, 9, 0),
+            Instant.FromUtc(2026, 7, 1, 10, 0),
             null,
             null,
             firstReviewAt,

@@ -85,7 +85,7 @@ public sealed class GitHubActivityClientTests : IDisposable
             return JsonResponse(
                 """
                 [{"number":42,"title":"Add feature","user":{"login":"chris"},"state":"open",
-                  "created_at":"2026-07-01T09:00:00Z","updated_at":"2026-07-01T09:00:00Z","merged_at":null,"closed_at":null}]
+                  "created_at":"2026-07-01T09:00:00Z","updated_at":"2026-07-01T10:00:00Z","merged_at":null,"closed_at":null}]
                 """
             );
         });
@@ -101,6 +101,7 @@ public sealed class GitHubActivityClientTests : IDisposable
         pr.Number.Should().Be(42);
         pr.Author.Should().Be("chris");
         pr.State.Should().Be("open");
+        pr.UpdatedAt.Should().Be(Instant.FromUtc(2026, 7, 1, 10, 0));
         pr.ReviewCount.Should().Be(2);
         pr.FirstReviewAt.Should().Be(Instant.FromUtc(2026, 7, 1, 12, 0));
     }

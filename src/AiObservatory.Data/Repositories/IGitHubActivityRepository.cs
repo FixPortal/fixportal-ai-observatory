@@ -9,6 +9,7 @@ public record GitHubPullRequestRecord(
     string Author,
     string State,
     Instant CreatedAt,
+    Instant UpdatedAt,
     Instant? MergedAt,
     Instant? ClosedAt,
     Instant? FirstReviewAt,
