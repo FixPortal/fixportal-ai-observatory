@@ -3,8 +3,7 @@
 //
 // Rebuilds cumulative daily/model snapshots from local Codex, Copilot, Claude,
 // and Kimi telemetry, then POSTs them to `/api/events`. The state file caches
-// parsed files by path + mtime and emitted keys; stable server-side keys make
-// losing it harmless.
+// parsed files by path + mtime; server inventory makes losing it harmless.
 //
 // Zero dependencies: Node 18+ only (global fetch, fs/promises).
 
@@ -39,6 +38,7 @@ const COPILOT_PRICING = {
 }
 const COPILOT_DEFAULT = [2.00, 8.00, 0.50, 0]
 const ALL_LOCAL_SOURCES = ['codex', 'copilot', 'claude', 'kimi']
+const ALL_LOCAL_SOURCE_IDS = ALL_LOCAL_SOURCES.map(source => `${source}-local`)
 
 // --- Pure helpers -----------------------------------------------------------
 
@@ -88,10 +88,10 @@ export function parseCodex(content) {
     if (!row || typeof row !== 'object') { continue }
     const payload = row.payload
     if (row.type === 'turn_context' && payload?.model) { model = payload.model }
-    if (payload?.type === 'token_count' && payload.info?.total_token_usage) {
+    if (payload?.type === 'token_count' && payload.info?.total_token_usage && isoTimestamp(row.timestamp)) {
       total = payload.info.total_token_usage
       reasoning = token(total.reasoning_output_tokens)
-      if (row.timestamp) { endedAt = row.timestamp }
+      endedAt = row.timestamp
     }
   }
   if (!total) { return null }
@@ -117,7 +117,8 @@ export function parseCopilot(content) {
     try { shutdown = JSON.parse(line) } catch { /* keep last parseable */ }
   }
   const metrics = shutdown?.data?.modelMetrics
-  if (!metrics) { return null }
+  const endedAt = isoTimestamp(shutdown?.timestamp)
+  if (!metrics || !endedAt) { return null }
   const perModel = {}
   for (const [model, value] of Object.entries(metrics)) {
     const usage = value?.usage
@@ -131,7 +132,7 @@ export function parseCopilot(content) {
       reasoning: token(usage.reasoningTokens),
     }
   }
-  return { endedAt: shutdown.timestamp ?? null, perModel }
+  return { endedAt, perModel }
 }
 
 /** Parse Claude assistant-message usage for global message.id selection. */
@@ -370,26 +371,19 @@ function zeroSnapshot(snapshot) {
   }
 }
 
-/** Plan current snapshots plus zero corrections for previously emitted keys that vanished. */
-export function planSnapshotSubmissions(snapshots, emitted = {}) {
-  const currentKeys = new Set(snapshots.map(snapshot => snapshot.eventKey))
+/** Plan current snapshots plus zero corrections for server keys that vanished locally. */
+export function planSnapshotSubmissions(snapshots, inventory = []) {
+  const identity = snapshot => `${snapshot.sourceId}\n${snapshot.eventKey}`
+  const currentKeys = new Set(snapshots.map(identity))
   const submissions = snapshots.map(snapshot => ({ snapshot, active: true }))
-  for (const snapshot of Object.values(emitted)) {
-    if (!currentKeys.has(snapshot.eventKey)) {
+  for (const snapshot of Object.values(inventory)) {
+    if (!currentKeys.has(identity(snapshot))) {
       // ponytail: /api/events has correction but no deletion. Zero corrections
       // leave a one-request ceiling per removed key; add deletion only if request counts need exact removal.
       submissions.push({ snapshot: zeroSnapshot(snapshot), active: false })
     }
   }
   return submissions.sort((a, b) => a.snapshot.eventKey.localeCompare(b.snapshot.eventKey))
-}
-
-/** Advance emitted-key state only after the corresponding POST succeeds. */
-export function recordSuccessfulSubmission(emitted, submission) {
-  const next = { ...emitted }
-  if (submission.active) { next[submission.snapshot.eventKey] = submission.snapshot }
-  else { delete next[submission.snapshot.eventKey] }
-  return next
 }
 
 /** Parse changed files only and return a cache containing exactly the active scan. */
@@ -450,6 +444,28 @@ async function postEvent(url, apiKey, body) {
   }
 }
 
+async function fetchSnapshotInventory(url, apiKey) {
+  const inventory = []
+  for (const sourceId of ALL_LOCAL_SOURCE_IDS) {
+    const response = await fetch(
+      `${url}/api/events/local-snapshots?sourceId=${encodeURIComponent(sourceId)}`,
+      {
+        headers: { 'X-Observatory-Key': apiKey },
+        signal: AbortSignal.timeout(10_000),
+      },
+    )
+    if (!response.ok) { throw new Error(`Inventory GET ${response.status} for ${sourceId}`) }
+    const snapshots = await response.json()
+    if (!Array.isArray(snapshots)
+      || snapshots.some(snapshot => !snapshot || typeof snapshot !== 'object'
+        || snapshot.sourceId !== sourceId || typeof snapshot.eventKey !== 'string')) {
+      throw new Error(`Invalid inventory response for ${sourceId}`)
+    }
+    inventory.push(...snapshots)
+  }
+  return inventory
+}
+
 export async function listJsonl(dir, out = []) {
   let entries
   try { entries = await readdir(dir, { withFileTypes: true }) } catch { return out }
@@ -458,22 +474,22 @@ export async function listJsonl(dir, out = []) {
     if (entry.isDirectory()) { await listJsonl(full, out) }
     else if (entry.name.endsWith('.jsonl')) {
       const details = await stat(full)
-      out.push({ path: full, mtimeMs: details.mtimeMs, mtime: details.mtime })
+      out.push({ path: full, mtimeMs: details.mtimeMs })
     }
   }
   return out
 }
 
-async function scanRecords(cfg, state, enabled) {
+export async function scanRecords(cfg, state, enabled) {
   const records = []
   state.files ??= {}
 
   if (enabled.has('codex')) {
     const files = await listJsonl(join(cfg.codexHome, 'sessions'))
-    const result = await updateFileCache(files, state.files.codex, (content, file) => {
+    const result = await updateFileCache(files, state.files.codex, content => {
       const parsed = parseCodex(content)
       if (!parsed) { return [] }
-      const occurredAtUtc = isoTimestamp(parsed.endedAt) ?? file.mtime.toISOString()
+      const occurredAtUtc = parsed.endedAt
       return [{
         tool: 'codex',
         date: occurredAtUtc.slice(0, 10),
@@ -490,10 +506,10 @@ async function scanRecords(cfg, state, enabled) {
   if (enabled.has('copilot')) {
     const files = (await listJsonl(join(cfg.copilotHome, 'session-state')))
       .filter(file => basename(file.path) === 'events.jsonl')
-    const result = await updateFileCache(files, state.files.copilot, (content, file) => {
+    const result = await updateFileCache(files, state.files.copilot, content => {
       const parsed = parseCopilot(content)
       if (!parsed) { return [] }
-      const occurredAtUtc = isoTimestamp(parsed.endedAt) ?? file.mtime.toISOString()
+      const occurredAtUtc = parsed.endedAt
       return Object.entries(parsed.perModel).map(([model, cum]) => ({
         tool: 'copilot',
         date: occurredAtUtc.slice(0, 10),
@@ -538,19 +554,16 @@ async function main() {
   }
   const statePath = process.env.OBSERVATORY_STATE ?? join(homedir(), '.ai-observatory', 'sweep-state.json')
   const state = await loadState(statePath)
+  delete state.emitted
   const enabled = parseLocalSources(process.env.OBSERVATORY_LOCAL_SOURCES)
+  const inventory = await fetchSnapshotInventory(url, apiKey)
   const snapshots = buildDailySnapshots(await scanRecords(cfg, state, enabled))
-  if (!state.emitted || typeof state.emitted !== 'object' || Array.isArray(state.emitted)) {
-    state.emitted = {}
-  }
-  const submissions = planSnapshotSubmissions(snapshots, state.emitted)
+  const submissions = planSnapshotSubmissions(snapshots, inventory)
   await saveState(statePath, state)
 
   let posted = 0
   for (const submission of submissions) {
     if (await postEvent(url, apiKey, { ...submission.snapshot, observedAtUtc: new Date().toISOString() })) {
-      state.emitted = recordSuccessfulSubmission(state.emitted, submission)
-      await saveState(statePath, state)
       posted++
     }
   }

@@ -2,13 +2,17 @@
 //   node --test clients/observatory-sweep.test.mjs
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { mkdtemp, mkdir, rm, utimes, writeFile } from 'node:fs/promises'
+import { execFile } from 'node:child_process'
+import { mkdtemp, mkdir, readFile, rm, utimes, writeFile } from 'node:fs/promises'
+import { createServer } from 'node:http'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
+import { fileURLToPath } from 'node:url'
+import { promisify } from 'node:util'
 import {
   pickRates, costUsd, parseCodex, parseCopilot, parseClaude, parseKimi,
   buildDailySnapshots, updateFileCache, parseLocalSources, listJsonl,
-  planSnapshotSubmissions, recordSuccessfulSubmission,
+  planSnapshotSubmissions, scanRecords,
 } from './observatory-sweep.mjs'
 
 test('pickRates resolves the longest matching prefix, not the first', () => {
@@ -45,7 +49,7 @@ test('parseCodex returns null when no token_count is present', () => {
 })
 
 test('parseCodex defaults the model when no turn_context carries one', () => {
-  const line = JSON.stringify({ type: 'event_msg', payload: { type: 'token_count', info: { total_token_usage: { input_tokens: 10, cached_input_tokens: 0, output_tokens: 5 } } } })
+  const line = JSON.stringify({ timestamp: '2026-08-24T12:00:00Z', type: 'event_msg', payload: { type: 'token_count', info: { total_token_usage: { input_tokens: 10, cached_input_tokens: 0, output_tokens: 5 } } } })
   assert.equal(parseCodex(line).model, 'gpt-5')
 })
 
@@ -53,6 +57,12 @@ test('parseCodex ignores valid JSON values that are not telemetry objects', () =
   const content = ['null', '0', 'true', '"text"', '[]'].join('\n')
 
   assert.equal(parseCodex(content), null)
+})
+
+test('parseCodex rejects token totals without a telemetry timestamp', () => {
+  const line = JSON.stringify({ type: 'event_msg', payload: { type: 'token_count', info: { total_token_usage: { input_tokens: 10, output_tokens: 5 } } } })
+
+  assert.equal(parseCodex(line), null)
 })
 
 test('parseCopilot reads modelMetrics from the shutdown event and splits cache reads', () => {
@@ -73,6 +83,12 @@ test('parseCopilot reads modelMetrics from the shutdown event and splits cache r
 
 test('parseCopilot returns null when the session has not shut down', () => {
   assert.equal(parseCopilot('{"type":"session.start"}\n{"type":"turn"}'), null)
+})
+
+test('parseCopilot rejects shutdown totals without a telemetry timestamp', () => {
+  const shutdown = JSON.stringify({ type: 'session.shutdown', data: { modelMetrics: { 'gpt-5.4': { usage: { inputTokens: 10, outputTokens: 5 } } } } })
+
+  assert.equal(parseCopilot(shutdown), null)
 })
 
 test('parseClaude preserves pricing dimensions before global message deduplication', () => {
@@ -259,12 +275,48 @@ test('listJsonl discovers old and current transcripts so age never changes cumul
   }
 })
 
-test('reconciliation sends a zero correction when the final transcript disappears', () => {
+test('touching and restoring a transcript cannot move usage to another day', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'observatory-sweep-touch-'))
+  const sessions = join(root, 'codex', 'sessions')
+  await mkdir(sessions, { recursive: true })
+  const path = join(sessions, 'rollout.jsonl')
+  await writeFile(path, JSON.stringify({
+    timestamp: '2026-08-24T12:00:00Z',
+    type: 'event_msg',
+    payload: { type: 'token_count', info: { total_token_usage: { input_tokens: 10, output_tokens: 5 } } },
+  }))
+  const cfg = {
+    codexHome: join(root, 'codex'),
+    copilotHome: join(root, 'copilot'),
+    claudeHome: join(root, 'claude'),
+    kimiHome: join(root, 'kimi'),
+  }
+  const state = {}
+
+  try {
+    const before = await scanRecords(cfg, state, new Set(['codex']))
+    await utimes(path, new Date('2030-01-01T00:00:00Z'), new Date('2030-01-01T00:00:00Z'))
+    const touched = await scanRecords(cfg, state, new Set(['codex']))
+    await utimes(path, new Date('2020-01-01T00:00:00Z'), new Date('2020-01-01T00:00:00Z'))
+    const restored = await scanRecords(cfg, state, new Set(['codex']))
+
+    assert.deepEqual([before[0].date, touched[0].date, restored[0].date], [
+      '2026-08-24', '2026-08-24', '2026-08-24',
+    ])
+    assert.deepEqual([before[0].occurredAtUtc, touched[0].occurredAtUtc, restored[0].occurredAtUtc], [
+      '2026-08-24T12:00:00Z', '2026-08-24T12:00:00Z', '2026-08-24T12:00:00Z',
+    ])
+  } finally {
+    await rm(root, { recursive: true, force: true })
+  }
+})
+
+test('server inventory clears a deleted final snapshot after local state loss', () => {
   const prior = buildDailySnapshots([
     { tool: 'codex', date: '2026-08-24', model: 'gpt-5.4', occurredAtUtc: '2026-08-24T12:00:00Z', cum: { input: 30, output: 5, cacheRead: 3, cacheWrite: 0 } },
   ])[0]
 
-  const submissions = planSnapshotSubmissions([], { [prior.eventKey]: prior })
+  const submissions = planSnapshotSubmissions([], [prior])
 
   assert.equal(submissions.length, 1)
   assert.equal(submissions[0].active, false)
@@ -288,19 +340,18 @@ test('reconciliation sends a zero correction when the final transcript disappear
   assert.equal(JSON.parse(submissions[0].snapshot.rawPayload).tombstone, true)
 })
 
-test('successful disable reconciliation allows a source to be re-enabled cleanly', () => {
+test('server inventory clears a disabled source after state loss and allows re-enable', () => {
   const snapshot = buildDailySnapshots([
     { tool: 'kimi', date: '2026-08-24', model: 'kimi-code/kimi-for-coding', occurredAtUtc: '2026-08-24T12:00:00Z', inputTokens: 10, outputTokens: 2, cacheReadTokens: 20, cacheWriteTokens: 3 },
   ])[0]
-  const emitted = { [snapshot.eventKey]: snapshot }
   const disabledSnapshots = parseLocalSources('codex').has('kimi') ? [snapshot] : []
-  const [disabled] = planSnapshotSubmissions(disabledSnapshots, emitted)
+  const [disabled] = planSnapshotSubmissions(disabledSnapshots, [snapshot])
 
-  const afterDisable = recordSuccessfulSubmission(emitted, disabled)
   const reenabledSnapshots = parseLocalSources('kimi').has('kimi') ? [snapshot] : []
-  const [reenabled] = planSnapshotSubmissions(reenabledSnapshots, afterDisable)
+  const [reenabled] = planSnapshotSubmissions(reenabledSnapshots, [])
 
-  assert.deepEqual(afterDisable, {})
+  assert.equal(disabled.active, false)
+  assert.equal(disabled.snapshot.inputTokens, 0)
   assert.equal(reenabled.active, true)
   assert.equal(reenabled.snapshot.eventKey, 'kimi:2026-08-24:kimi-code/kimi-for-coding')
   assert.equal(reenabled.snapshot.inputTokens, 10)
@@ -314,7 +365,7 @@ test('reconciliation corrects a daily snapshot after one transcript is deleted',
   const prior = buildDailySnapshots([record(10), record(20)])[0]
   const current = buildDailySnapshots([record(10)])[0]
 
-  const submissions = planSnapshotSubmissions([current], { [prior.eventKey]: prior })
+  const submissions = planSnapshotSubmissions([current], [prior])
 
   assert.equal(submissions.length, 1)
   assert.equal(submissions[0].active, true)
@@ -322,7 +373,7 @@ test('reconciliation corrects a daily snapshot after one transcript is deleted',
   assert.equal(submissions[0].snapshot.inputTokens, 10)
 })
 
-test('reconciliation clears the old key when a Claude pricing dimension changes', () => {
+test('server inventory clears the old Claude dimension key after local state loss', () => {
   const claude = speed => buildDailySnapshots(parseClaude(JSON.stringify({
     type: 'assistant',
     timestamp: '2026-08-24T12:00:00Z',
@@ -335,7 +386,7 @@ test('reconciliation clears the old key when a Claude pricing dimension changes'
   const prior = claude('standard')
   const current = claude('fast')
 
-  const submissions = planSnapshotSubmissions([current], { [prior.eventKey]: prior })
+  const submissions = planSnapshotSubmissions([current], [prior])
   const oldKey = submissions.find(item => !item.active)
   const newKey = submissions.find(item => item.active)
 
@@ -346,19 +397,96 @@ test('reconciliation clears the old key when a Claude pricing dimension changes'
   assert.equal(newKey.snapshot.inputTokens, 2)
 })
 
-test('losing emitted state only resubmits the current stable snapshot', () => {
-  const snapshot = buildDailySnapshots([
-    { tool: 'copilot', date: '2026-08-24', model: 'gpt-5.4', occurredAtUtc: '2026-08-24T12:00:00Z', cum: { input: 10, output: 2, cacheRead: 20, cacheWrite: 0 } },
-  ])[0]
-
-  const submissions = planSnapshotSubmissions([snapshot], {})
-
-  assert.equal(submissions.length, 1)
-  assert.equal(submissions[0].active, true)
-  assert.equal(submissions[0].snapshot.eventKey, 'copilot:2026-08-24:gpt-5.4')
-})
-
 test('parseLocalSources defaults to every collector and honors an explicit allowlist', () => {
   assert.deepEqual([...parseLocalSources()].sort(), ['claude', 'codex', 'copilot', 'kimi'])
   assert.deepEqual([...parseLocalSources('codex,kimi')].sort(), ['codex', 'kimi'])
+})
+
+test('main retries a failed server-inventory tombstone from persisted state and then succeeds', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'observatory-sweep-main-'))
+  const statePath = join(root, 'state', 'sweep.json')
+  const posts = []
+  const gets = []
+  let inventoryActive = true
+  const prior = {
+    provider: 'anthropic',
+    occurredAtUtc: '2026-08-24T12:00:00Z',
+    model: 'claude-opus-5',
+    inputTokens: 2,
+    outputTokens: 10,
+    cacheReadTokens: 0,
+    cacheWriteTokens: 0,
+    cacheWrite1hTokens: 0,
+    thoughtTokens: 0,
+    costUsd: 0.01,
+    runtime: 'claude',
+    sourceId: 'claude-local',
+    sourceKind: 'localTelemetry',
+    usageScope: 'subscription',
+    costBasis: 'notional',
+    eventKey: 'claude:2026-08-24:claude-opus-5:standard:standard:us',
+  }
+  const server = createServer(async (request, response) => {
+    const url = new URL(request.url, 'http://127.0.0.1')
+    if (request.method === 'GET' && url.pathname === '/api/events/local-snapshots') {
+      const sourceId = url.searchParams.get('sourceId')
+      gets.push({ sourceId, apiKey: request.headers['x-observatory-key'] })
+      const body = inventoryActive && sourceId === 'claude-local' ? [prior] : []
+      response.writeHead(200, { 'Content-Type': 'application/json' }).end(JSON.stringify(body))
+      return
+    }
+    if (request.method === 'POST' && url.pathname === '/api/events') {
+      let body = ''
+      for await (const chunk of request) { body += chunk }
+      posts.push(JSON.parse(body))
+      if (posts.length === 1) {
+        response.writeHead(500).end()
+      } else {
+        inventoryActive = false
+        response.writeHead(200, { 'Content-Type': 'application/json' }).end('{}')
+      }
+      return
+    }
+    response.writeHead(404).end()
+  })
+  await new Promise(resolve => server.listen(0, '127.0.0.1', resolve))
+  const address = server.address()
+  const run = promisify(execFile)
+  const env = {
+    ...process.env,
+    OBSERVATORY_URL: `http://127.0.0.1:${address.port}`,
+    OBSERVATORY_API_KEY: 'test-key',
+    OBSERVATORY_STATE: statePath,
+    OBSERVATORY_LOCAL_SOURCES: 'codex',
+    CODEX_HOME: join(root, 'codex'),
+    COPILOT_HOME: join(root, 'copilot'),
+    CLAUDE_HOME: join(root, 'claude'),
+    KIMI_HOME: join(root, 'kimi'),
+  }
+
+  try {
+    await run(process.execPath, [fileURLToPath(new URL('./observatory-sweep.mjs', import.meta.url))], { env })
+    const persistedAfterFailure = JSON.parse(await readFile(statePath, 'utf8'))
+    await run(process.execPath, [fileURLToPath(new URL('./observatory-sweep.mjs', import.meta.url))], { env })
+
+    assert.deepEqual(persistedAfterFailure.files.codex, {})
+    assert.equal(gets.length, 8)
+    assert.deepEqual([...new Set(gets.map(request => request.sourceId))].sort(), [
+      'claude-local', 'codex-local', 'copilot-local', 'kimi-local',
+    ])
+    assert.equal(gets.every(request => request.apiKey === 'test-key'), true)
+    assert.equal(posts.length, 2)
+    assert.deepEqual(posts.map(body => ({
+      eventKey: body.eventKey,
+      sourceId: body.sourceId,
+      inputTokens: body.inputTokens,
+      outputTokens: body.outputTokens,
+    })), [
+      { eventKey: prior.eventKey, sourceId: 'claude-local', inputTokens: 0, outputTokens: 0 },
+      { eventKey: prior.eventKey, sourceId: 'claude-local', inputTokens: 0, outputTokens: 0 },
+    ])
+  } finally {
+    await new Promise(resolve => server.close(resolve))
+    await rm(root, { recursive: true, force: true })
+  }
 })

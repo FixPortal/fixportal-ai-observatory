@@ -50,6 +50,23 @@ public sealed record EventCostRecord(
     decimal? CostUsd
 );
 
+/// <summary>
+/// Canonical fields needed by a local collector to reconcile its source-scoped snapshots.
+/// Raw evidence is deliberately excluded.
+/// </summary>
+public sealed record LocalSnapshotRecord(
+    Provider Provider,
+    Instant OccurredAtUtc,
+    string? Model,
+    decimal? CostUsd,
+    string? Runtime,
+    string SourceId,
+    SourceKind SourceKind,
+    UsageScope UsageScope,
+    CostBasis CostBasis,
+    string EventKey
+);
+
 public interface IUsageRepository
 {
     Task<RecordEventResult> RecordEventAsync(UsageEvent evt, CancellationToken ct = default);
@@ -105,4 +122,6 @@ public interface IUsageRepository
         int limit = 10_000,
         CancellationToken ct = default
     );
+
+    Task<IReadOnlyList<LocalSnapshotRecord>> GetLocalSnapshotsAsync(string sourceId, CancellationToken ct = default);
 }

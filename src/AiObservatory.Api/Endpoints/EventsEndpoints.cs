@@ -20,6 +20,7 @@ public static class EventsEndpoints
         app.MapGet("/events/{id:guid}", GetEventByIdAsync).WithName("GetEventById");
         app.MapPost("/events", RecordEventAsync);
         app.MapGet("/events", GetEventsAsync);
+        app.MapGet("/events/local-snapshots", GetLocalSnapshotsAsync);
         app.MapPatch("/events/{eventKey}/cost", PatchEventCostAsync);
     }
 
@@ -218,6 +219,26 @@ public static class EventsEndpoints
                     result.NewCostUsd,
                 }
             );
+    }
+
+    private static async Task<IResult> GetLocalSnapshotsAsync(
+        string? sourceId,
+        IUsageRepository repo,
+        CancellationToken ct
+    )
+    {
+        if (string.IsNullOrWhiteSpace(sourceId))
+        {
+            return Results.BadRequest("SourceId is required");
+        }
+
+        var normalizedSourceId = sourceId.Trim().ToLowerInvariant();
+        if (normalizedSourceId.Length > 100)
+        {
+            return Results.BadRequest("SourceId must be 100 characters or fewer");
+        }
+
+        return Results.Ok(await repo.GetLocalSnapshotsAsync(normalizedSourceId, ct));
     }
 
     internal static string SanitizeLogValue(string value) => value.Replace('\r', ' ').Replace('\n', ' ');
