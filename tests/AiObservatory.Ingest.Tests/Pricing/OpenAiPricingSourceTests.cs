@@ -1,0 +1,158 @@
+using System.Net;
+using System.Security.Cryptography;
+using System.Text;
+using AiObservatory.Data.Entities;
+using AiObservatory.Data.Pricing;
+using AiObservatory.Data.Pricing.Catalogs;
+using AiObservatory.Ingest.Pricing;
+using AiObservatory.Ingest.Sources;
+using AwesomeAssertions;
+using NodaTime;
+using NodaTime.Testing;
+
+namespace AiObservatory.Ingest.Tests.Pricing;
+
+public sealed class OpenAiPricingSourceTests
+{
+    private static readonly Instant RetrievedAt = Instant.FromUtc(2026, 8, 24, 12, 0);
+    private static readonly LocalDate ObservedOn = new(2026, 8, 24);
+
+    [Theory]
+    [InlineData("standard", "short", 2.50, 0.25, 15.00)]
+    [InlineData("standard", "long", 5.00, 0.50, 22.50)]
+    [InlineData("batch", "short", 1.25, 0.13, 7.50)]
+    [InlineData("flex", "long", 2.50, 0.25, 11.25)]
+    [InlineData("fast", "short", 5.00, 0.50, 30.00)]
+    public void ParserRetainsObservedLaneDimensions(
+        string processing,
+        string context,
+        double input,
+        double cachedInput,
+        double output
+    )
+    {
+        var catalog = OpenAiPricingSource.Parse(Fixture(), RetrievedAt);
+
+        var entry = catalog.Resolve("gpt-5.4-2026-08-01", processing, context, "global", ObservedOn);
+
+        entry.Should().NotBeNull();
+        entry!.Input.Should().Be((decimal)input);
+        entry.CachedInput.Should().Be((decimal)cachedInput);
+        entry.Output.Should().Be((decimal)output);
+        entry.EffectiveFrom.Should().Be(ObservedOn);
+        entry.EffectiveDateIsProviderDeclared.Should().BeFalse();
+    }
+
+    [Fact]
+    public void ParserPreservesAnObservedCacheWriteRate()
+    {
+        var catalog = OpenAiPricingSource.Parse(Fixture(), RetrievedAt);
+
+        catalog.Resolve("gpt-5.6-sol", "standard", "short", "global", ObservedOn)!.CacheWrite.Should().Be(5m);
+        catalog.Resolve("gpt-5.4", "standard", "short", "global", ObservedOn)!.CacheWrite.Should().BeNull();
+    }
+
+    [Theory]
+    [InlineData("missing-heading")]
+    [InlineData("duplicate-key")]
+    [InlineData("overlapping-normalized-model")]
+    [InlineData("partial-table")]
+    [InlineData("non-usd")]
+    [InlineData("zero-rate")]
+    [InlineData("negative-rate")]
+    [InlineData("unknown-column")]
+    public void ParserRejectsMalformedOrAmbiguousCatalogs(string mutation)
+    {
+        var document = Mutate(Fixture(), mutation);
+
+        var act = () => OpenAiPricingSource.Parse(document, RetrievedAt);
+
+        act.Should().Throw<InvalidDataException>();
+    }
+
+    [Fact]
+    public async Task FetchBuildsAnExactEvidenceCandidateAndReusesItWhenUnchanged()
+    {
+        var raw = Fixture();
+        var handler = new FirstPartyDocumentFetcherTests.RecordingHandler(
+            (_, _) => new HttpResponseMessage(HttpStatusCode.OK) { Content = new StringContent(raw) }
+        );
+        var source = new OpenAiPricingSource(new FakeClock(RetrievedAt), handler);
+
+        var first = await source.FetchAsync(TestContext.Current.CancellationToken);
+        var second = await source.FetchAsync(TestContext.Current.CancellationToken);
+
+        first.Should().BeSameAs(second);
+        first!.Provider.Should().Be(Provider.OpenAI);
+        first.SourceId.Should().Be(PricingSourceIds.OpenAi);
+        first.SourceUrl.Should().Be("https://developers.openai.com/api/docs/pricing.md");
+        first.RawEvidence.Should().Be(raw);
+        first.ContentHash.Should().Be(Hash(raw));
+        var catalog = PricingCatalogJson.Deserialize<OpenAiPriceCatalog>(first.NormalizedCatalog);
+        ((Action)catalog.Validate).Should().NotThrow();
+    }
+
+    [Fact]
+    public void BundledCatalogUsesTheValidatedObservedFixture()
+    {
+        var catalog = PricingCatalogJson.Deserialize<OpenAiPriceCatalog>(Bundle("openai.json"));
+
+        ((Action)catalog.Validate).Should().NotThrow();
+        catalog
+            .Should()
+            .BeEquivalentTo(OpenAiPricingSource.Parse(Fixture(), RetrievedAt), options => options.WithStrictOrdering());
+        catalog.SourceUrl.Should().Be("https://developers.openai.com/api/docs/pricing.md");
+        catalog.RetrievedAt.Should().Be(RetrievedAt);
+        catalog.Resolve("gpt-5.4", "standard", "short", "global", ObservedOn)!.Input.Should().Be(2.50m);
+    }
+
+    private static string Mutate(string document, string mutation) =>
+        mutation switch
+        {
+            "missing-heading" => document.Replace(
+                "### Batch pricing data",
+                "### Batch rates",
+                StringComparison.Ordinal
+            ),
+            "duplicate-key" => document.Replace(
+                "| gpt-5.4 (<272K context length) | $2.50 | $0.25 | - | $15.00 | $5.00 | $0.50 | - | $22.50 |",
+                "| gpt-5.4 (<272K context length) | $2.50 | $0.25 | - | $15.00 | $5.00 | $0.50 | - | $22.50 |\n| gpt-5.4 (<272K context length) | $2.50 | $0.25 | - | $15.00 | $5.00 | $0.50 | - | $22.50 |",
+                StringComparison.Ordinal
+            ),
+            "overlapping-normalized-model" => document.Replace(
+                "| gpt-5.4 (<272K context length) | $2.50 | $0.25 | - | $15.00 | $5.00 | $0.50 | - | $22.50 |",
+                "| gpt-5.4 (<272K context length) | $2.50 | $0.25 | - | $15.00 | $5.00 | $0.50 | - | $22.50 |\n| gpt-5.4 | $2.50 | $0.25 | - | $15.00 | $5.00 | $0.50 | - | $22.50 |",
+                StringComparison.Ordinal
+            ),
+            "partial-table" => document
+                .Replace(
+                    "| gpt-5.6-sol | $2.00 | $0.20 | $2.50 | $10.00 | $4.00 | $0.40 | $5.00 | $15.00 |",
+                    "",
+                    StringComparison.Ordinal
+                )
+                .Replace(
+                    "| gpt-5.4 (<272K context length) | $1.25 | $0.13 | - | $7.50 | $2.50 | $0.25 | - | $11.25 |",
+                    "",
+                    StringComparison.Ordinal
+                ),
+            "non-usd" => document.Replace("$2.50", "€2.50", StringComparison.Ordinal),
+            "zero-rate" => document.Replace("$15.00", "$0.00", StringComparison.Ordinal),
+            "negative-rate" => document.Replace("$15.00", "$-15.00", StringComparison.Ordinal),
+            "unknown-column" => document.Replace(
+                "| Model | Short context input |",
+                "| Model | Currency | Short context input |",
+                StringComparison.Ordinal
+            ),
+            _ => throw new ArgumentOutOfRangeException(nameof(mutation)),
+        };
+
+    private static string Fixture() => ReadFixture("openai-pricing.md");
+
+    private static string ReadFixture(string name) =>
+        File.ReadAllText(Path.Combine(AppContext.BaseDirectory, "Pricing", "Fixtures", name));
+
+    private static string Bundle(string name) =>
+        File.ReadAllText(Path.Combine(AppContext.BaseDirectory, "Pricing", "Bundled", name));
+
+    private static string Hash(string raw) => Convert.ToHexStringLower(SHA256.HashData(Encoding.UTF8.GetBytes(raw)));
+}
