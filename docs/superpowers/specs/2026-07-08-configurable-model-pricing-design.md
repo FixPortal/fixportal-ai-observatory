@@ -1,5 +1,11 @@
 # Configurable model pricing for Anthropic/OpenAI ingest
 
+**Status: SUPERSEDED on 2026-08-24 by
+[`2026-08-24-source-aware-observability-design.md`](2026-08-24-source-aware-observability-design.md).**
+The replacement preserves this design's effective-dated intent but removes unsafe fallback
+pricing, adds first-party daily renewal, and models the pricing dimensions providers now
+publish.
+
 ## Problem
 
 `AnthropicUsageClient` and `OpenAiUsageClient` hardcode per-1M-token pricing
