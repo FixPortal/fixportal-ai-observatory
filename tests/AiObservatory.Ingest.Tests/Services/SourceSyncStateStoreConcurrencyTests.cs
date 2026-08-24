@@ -17,10 +17,12 @@ public sealed class SourceSyncStateStoreConcurrencyTests(ProviderPollingDatabase
         await using var services = CreateServices();
         var sourceId = $"first-success-{Guid.NewGuid():N}";
         var start = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var entered = 0;
         var writes = Enumerable
             .Range(0, 16)
             .Select(async attempt =>
             {
+                Interlocked.Increment(ref entered);
                 await start.Task;
                 await using var scope = services.CreateAsyncScope();
                 await scope
@@ -32,8 +34,10 @@ public sealed class SourceSyncStateStoreConcurrencyTests(ProviderPollingDatabase
                         Instant.FromUtc(2026, 8, 23, 12, attempt),
                         TestContext.Current.CancellationToken
                     );
-            });
+            })
+            .ToArray();
 
+        entered.Should().Be(16);
         start.SetResult();
         await Task.WhenAll(writes);
 
@@ -48,10 +52,12 @@ public sealed class SourceSyncStateStoreConcurrencyTests(ProviderPollingDatabase
         await using var services = CreateServices();
         var sourceId = $"monotonic-success-{Guid.NewGuid():N}";
         var start = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var entered = 0;
         var writes = Enumerable
             .Range(0, 24)
             .Select(async attempt =>
             {
+                Interlocked.Increment(ref entered);
                 await start.Task;
                 await using var scope = services.CreateAsyncScope();
                 await scope
@@ -63,8 +69,10 @@ public sealed class SourceSyncStateStoreConcurrencyTests(ProviderPollingDatabase
                         Instant.FromUtc(2026, 8, 23, 12, attempt),
                         TestContext.Current.CancellationToken
                     );
-            });
+            })
+            .ToArray();
 
+        entered.Should().Be(24);
         start.SetResult();
         await Task.WhenAll(writes);
 
@@ -80,10 +88,12 @@ public sealed class SourceSyncStateStoreConcurrencyTests(ProviderPollingDatabase
         await using var services = CreateServices();
         var sourceId = $"concurrent-failure-{Guid.NewGuid():N}";
         var start = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var entered = 0;
         var writes = Enumerable
             .Range(0, 24)
             .Select(async attempt =>
             {
+                Interlocked.Increment(ref entered);
                 await start.Task;
                 await using var scope = services.CreateAsyncScope();
                 await scope
@@ -95,8 +105,10 @@ public sealed class SourceSyncStateStoreConcurrencyTests(ProviderPollingDatabase
                         $"failure {attempt}",
                         TestContext.Current.CancellationToken
                     );
-            });
+            })
+            .ToArray();
 
+        entered.Should().Be(24);
         start.SetResult();
         await Task.WhenAll(writes);
 
