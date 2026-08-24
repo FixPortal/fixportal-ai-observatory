@@ -304,7 +304,7 @@ export function buildDailySnapshots(records) {
   }
 
   return [...groups.values()]
-    .filter(group => group.input + group.output + group.cacheRead + group.cacheWrite > 0)
+    .filter(group => group.input + group.output + group.cacheRead + group.cacheWrite + group.thought > 0)
     .sort((a, b) => a.eventKey.localeCompare(b.eventKey))
     .map(group => {
       const totals = {
@@ -384,7 +384,11 @@ export function planSnapshotSubmissions(snapshots, inventory = []) {
       submissions.push({ snapshot: zeroSnapshot(snapshot), active: false })
     }
   }
-  return submissions.sort((a, b) => a.snapshot.eventKey.localeCompare(b.snapshot.eventKey))
+  return submissions.sort((a, b) => {
+    if (a.active !== b.active) { return a.active ? -1 : 1 }
+    return a.snapshot.sourceId.localeCompare(b.snapshot.sourceId)
+      || a.snapshot.eventKey.localeCompare(b.snapshot.eventKey)
+  })
 }
 
 /** Parse changed files only and return a cache containing exactly the active scan. */
@@ -467,21 +471,25 @@ async function fetchSnapshotInventory(url, apiKey) {
   return inventory
 }
 
-export async function listJsonl(dir, out = []) {
+export async function listJsonl(dir, out = [], io = { readdir, stat }, topLevel = true) {
   let entries
-  try { entries = await readdir(dir, { withFileTypes: true }) } catch { return out }
+  try { entries = await io.readdir(dir, { withFileTypes: true }) }
+  catch (error) {
+    if (topLevel && error?.code === 'ENOENT') { return out }
+    throw error
+  }
   for (const entry of entries) {
     const full = join(dir, entry.name)
-    if (entry.isDirectory()) { await listJsonl(full, out) }
+    if (entry.isDirectory()) { await listJsonl(full, out, io, false) }
     else if (entry.name.endsWith('.jsonl')) {
-      const details = await stat(full)
+      const details = await io.stat(full)
       out.push({ path: full, mtimeMs: details.mtimeMs })
     }
   }
   return out
 }
 
-export async function scanRecords(cfg, state, enabled) {
+export async function scanRecords(cfg, state, enabled, discover = listJsonl) {
   const records = []
   if (state.parseCacheVersion !== PARSE_CACHE_VERSION) {
     state.files = {}
@@ -490,7 +498,7 @@ export async function scanRecords(cfg, state, enabled) {
   state.files ??= {}
 
   if (enabled.has('codex')) {
-    const files = await listJsonl(join(cfg.codexHome, 'sessions'))
+    const files = await discover(join(cfg.codexHome, 'sessions'))
     const result = await updateFileCache(files, state.files.codex, content => {
       const parsed = parseCodex(content)
       if (!parsed) { return [] }
@@ -509,7 +517,7 @@ export async function scanRecords(cfg, state, enabled) {
   }
 
   if (enabled.has('copilot')) {
-    const files = (await listJsonl(join(cfg.copilotHome, 'session-state')))
+    const files = (await discover(join(cfg.copilotHome, 'session-state')))
       .filter(file => basename(file.path) === 'events.jsonl')
     const result = await updateFileCache(files, state.files.copilot, content => {
       const parsed = parseCopilot(content)
@@ -529,14 +537,14 @@ export async function scanRecords(cfg, state, enabled) {
   }
 
   if (enabled.has('claude')) {
-    const files = await listJsonl(join(cfg.claudeHome, 'projects'))
+    const files = await discover(join(cfg.claudeHome, 'projects'))
     const result = await updateFileCache(files, state.files.claude, content => parseClaude(content))
     state.files.claude = result.cache
     records.push(...result.records)
   }
 
   if (enabled.has('kimi')) {
-    const files = (await listJsonl(join(cfg.kimiHome, 'sessions')))
+    const files = (await discover(join(cfg.kimiHome, 'sessions')))
       .filter(file => basename(file.path) === 'wire.jsonl')
     const result = await updateFileCache(files, state.files.kimi, content => parseKimi(content))
     state.files.kimi = result.cache
@@ -546,7 +554,7 @@ export async function scanRecords(cfg, state, enabled) {
   return records
 }
 
-async function main() {
+export async function main({ discover = listJsonl } = {}) {
   const url = (process.env.OBSERVATORY_URL ?? 'http://localhost:5039').replace(/\/$/, '')
   const apiKey = process.env.OBSERVATORY_API_KEY
   if (!apiKey) { console.error('OBSERVATORY_API_KEY not set; nothing to do.'); process.exit(0) }
@@ -562,12 +570,28 @@ async function main() {
   delete state.emitted
   const enabled = parseLocalSources(process.env.OBSERVATORY_LOCAL_SOURCES)
   const inventory = await fetchSnapshotInventory(url, apiKey)
-  const snapshots = buildDailySnapshots(await scanRecords(cfg, state, enabled))
+  const snapshots = buildDailySnapshots(await scanRecords(cfg, state, enabled, discover))
   const submissions = planSnapshotSubmissions(snapshots, inventory)
   await saveState(statePath, state)
 
   let posted = 0
-  for (const submission of submissions) {
+  const activeSucceeded = new Map()
+  for (const submission of submissions.filter(item => item.active)) {
+    const succeeded = await postEvent(
+      url,
+      apiKey,
+      { ...submission.snapshot, observedAtUtc: new Date().toISOString() },
+    )
+    activeSucceeded.set(
+      submission.snapshot.sourceId,
+      (activeSucceeded.get(submission.snapshot.sourceId) ?? true) && succeeded,
+    )
+    if (succeeded) {
+      posted++
+    }
+  }
+  for (const submission of submissions.filter(item => !item.active)) {
+    if (activeSucceeded.get(submission.snapshot.sourceId) === false) { continue }
     if (await postEvent(url, apiKey, { ...submission.snapshot, observedAtUtc: new Date().toISOString() })) {
       posted++
     }
