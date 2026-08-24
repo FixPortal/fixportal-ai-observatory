@@ -22,7 +22,7 @@ public class GitHubIngestionServiceTests
     private static readonly GitHubBackfillStatus FullyBackfilled = new(true, true, true);
 
     [Fact]
-    public async Task IngestSinceAsync_WhenRepoHasNoPriorData_UsesThirtyDayBackfillWindow()
+    public async Task IngestAsync_WhenRepoHasNoPriorData_UsesThirtyDayBackfillWindow()
     {
         var client = Substitute.For<IGitHubActivityClient>();
         var repo = Substitute.For<IGitHubActivityRepository>();
@@ -44,7 +44,7 @@ public class GitHubIngestionServiceTests
         );
 
         var pollDate = new LocalDate(2026, 7, 1);
-        await sut.IngestSinceAsync(pollDate, TestContext.Current.CancellationToken);
+        await sut.IngestAsync(pollDate, pollDate, TestContext.Current.CancellationToken);
 
         await client
             .Received(1)
@@ -52,7 +52,7 @@ public class GitHubIngestionServiceTests
     }
 
     [Fact]
-    public async Task IngestSinceAsync_WhenRepoAlreadyHasData_UsesGivenDateNotBackfill()
+    public async Task IngestAsync_WhenRepoAlreadyHasData_UsesGivenDateNotBackfill()
     {
         var client = Substitute.For<IGitHubActivityClient>();
         var repo = Substitute.For<IGitHubActivityRepository>();
@@ -74,13 +74,13 @@ public class GitHubIngestionServiceTests
         );
 
         var pollDate = new LocalDate(2026, 7, 1);
-        await sut.IngestSinceAsync(pollDate, TestContext.Current.CancellationToken);
+        await sut.IngestAsync(pollDate, pollDate, TestContext.Current.CancellationToken);
 
         await client.Received(1).GetPullRequestsAsync("fix-portal/example", pollDate, Arg.Any<CancellationToken>());
     }
 
     [Fact]
-    public async Task IngestSinceAsync_WhenOnlyPullRequestsBackfilled_CommitsAndRunsStillGetThirtyDayWindow()
+    public async Task IngestAsync_WhenOnlyPullRequestsBackfilled_CommitsAndRunsStillGetThirtyDayWindow()
     {
         // Regression case for the bug this fix closes: a repo whose PRs backfilled
         // on an earlier cycle (e.g. before a crash/rate-limit abort) must still get
@@ -107,7 +107,7 @@ public class GitHubIngestionServiceTests
         );
 
         var pollDate = new LocalDate(2026, 7, 1);
-        await sut.IngestSinceAsync(pollDate, TestContext.Current.CancellationToken);
+        await sut.IngestAsync(pollDate, pollDate, TestContext.Current.CancellationToken);
 
         await client.Received(1).GetPullRequestsAsync("fix-portal/example", pollDate, Arg.Any<CancellationToken>());
         await client
@@ -119,7 +119,7 @@ public class GitHubIngestionServiceTests
     }
 
     [Fact]
-    public async Task IngestSinceAsync_PersistsEveryFetchedRecordViaRepository()
+    public async Task IngestAsync_PersistsAnOldOpenPrAndUsesItsRecentUpdateAsLatestObservation()
     {
         var client = Substitute.For<IGitHubActivityClient>();
         var repo = Substitute.For<IGitHubActivityRepository>();
@@ -130,7 +130,8 @@ public class GitHubIngestionServiceTests
             "t",
             "chris",
             "open",
-            Instant.FromUtc(2026, 7, 1, 9, 0),
+            Instant.FromUtc(2025, 7, 1, 9, 0),
+            Instant.FromUtc(2026, 7, 1, 10, 0),
             null,
             null,
             null,
@@ -156,11 +157,11 @@ public class GitHubIngestionServiceTests
         );
 
         await repo.Received(1).UpsertPullRequestAsync(pr, FixedNow, Arg.Any<CancellationToken>());
-        result.LatestObservationAt.Should().Be(Instant.FromUtc(2026, 7, 1, 9, 0));
+        result.LatestObservationAt.Should().Be(Instant.FromUtc(2026, 7, 1, 10, 0));
     }
 
     [Fact]
-    public async Task IngestSinceAsync_WhenOneRepoThrows403_SkipsItAndContinuesWithNextRepo()
+    public async Task IngestAsync_WhenOneRepoThrows403_SkipsItAndContinuesWithNextRepo()
     {
         var client = Substitute.For<IGitHubActivityClient>();
         var repo = Substitute.For<IGitHubActivityRepository>();
@@ -180,16 +181,16 @@ public class GitHubIngestionServiceTests
             Clock
         );
 
-        var failedCount = await sut.IngestSinceAsync(new LocalDate(2026, 7, 1), TestContext.Current.CancellationToken);
+        var pollDate = new LocalDate(2026, 7, 1);
+        await sut.IngestAsync(pollDate, pollDate, TestContext.Current.CancellationToken);
 
         await client
             .Received(1)
             .GetPullRequestsAsync("fix-portal/ok", Arg.Any<LocalDate>(), Arg.Any<CancellationToken>());
-        failedCount.Should().Be(1);
     }
 
     [Fact]
-    public async Task IngestSinceAsync_WhenOneRepoTimesOut_SkipsItAndContinuesWithNextRepo()
+    public async Task IngestAsync_WhenOneRepoTimesOut_SkipsItAndContinuesWithNextRepo()
     {
         var client = Substitute.For<IGitHubActivityClient>();
         var repo = Substitute.For<IGitHubActivityRepository>();
@@ -211,16 +212,16 @@ public class GitHubIngestionServiceTests
             Clock
         );
 
-        var failedCount = await sut.IngestSinceAsync(new LocalDate(2026, 7, 1), TestContext.Current.CancellationToken);
+        var pollDate = new LocalDate(2026, 7, 1);
+        await sut.IngestAsync(pollDate, pollDate, TestContext.Current.CancellationToken);
 
         await client
             .Received(1)
             .GetPullRequestsAsync("fix-portal/ok", Arg.Any<LocalDate>(), Arg.Any<CancellationToken>());
-        failedCount.Should().Be(1);
     }
 
     [Fact]
-    public async Task IngestSinceAsync_WhenCancellationTokenIsCancelled_RethrowsCancellation()
+    public async Task IngestAsync_WhenCancellationTokenIsCancelled_RethrowsCancellation()
     {
         using var cts = new CancellationTokenSource();
         await cts.CancelAsync();
@@ -239,13 +240,13 @@ public class GitHubIngestionServiceTests
 
         // The delegate is awaited before the owning using scope disposes the token source.
         // ReSharper disable once AccessToDisposedClosure
-        var act = () => sut.IngestSinceAsync(new LocalDate(2026, 7, 1), cts.Token);
+        var act = () => sut.IngestAsync(new LocalDate(2026, 7, 1), new LocalDate(2026, 7, 1), cts.Token);
 
         await act.Should().ThrowAsync<OperationCanceledException>();
     }
 
     [Fact]
-    public async Task IngestSinceAsync_WhenRateLimitExceeded_AbortsRemainingReposWithoutThrowing()
+    public async Task IngestAsync_WhenRateLimitExceeded_AbortsRemainingReposAndReportsUnavailable()
     {
         var client = Substitute.For<IGitHubActivityClient>();
         var repo = Substitute.For<IGitHubActivityRepository>();
@@ -266,16 +267,18 @@ public class GitHubIngestionServiceTests
             Clock
         );
 
-        var failedCount = await sut.IngestSinceAsync(new LocalDate(2026, 7, 1), TestContext.Current.CancellationToken);
+        var pollDate = new LocalDate(2026, 7, 1);
+        var act = () => sut.IngestAsync(pollDate, pollDate, TestContext.Current.CancellationToken);
+
+        await act.Should().ThrowAsync<SourceUnavailableException>();
 
         await client
             .DidNotReceive()
             .GetPullRequestsAsync("fix-portal/second", Arg.Any<LocalDate>(), Arg.Any<CancellationToken>());
-        failedCount.Should().Be(0);
     }
 
     [Fact]
-    public async Task IngestSinceAsync_WhenRepoAlreadyFailedThenRateLimitHit_ReturnsPriorFailureCount()
+    public async Task IngestAsync_WhenRepoAlreadyFailedThenRateLimitHit_ReportsUnavailableAndStops()
     {
         var client = Substitute.For<IGitHubActivityClient>();
         var repo = Substitute.For<IGitHubActivityRepository>();
@@ -299,12 +302,14 @@ public class GitHubIngestionServiceTests
             Clock
         );
 
-        var failedCount = await sut.IngestSinceAsync(new LocalDate(2026, 7, 1), TestContext.Current.CancellationToken);
+        var pollDate = new LocalDate(2026, 7, 1);
+        var act = () => sut.IngestAsync(pollDate, pollDate, TestContext.Current.CancellationToken);
+
+        await act.Should().ThrowAsync<SourceUnavailableException>();
 
         await client
             .DidNotReceive()
             .GetPullRequestsAsync("fix-portal/never-reached", Arg.Any<LocalDate>(), Arg.Any<CancellationToken>());
-        failedCount.Should().Be(1);
     }
 
     [Fact]

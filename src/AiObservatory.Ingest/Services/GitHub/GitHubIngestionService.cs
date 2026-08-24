@@ -39,9 +39,6 @@ public class GitHubIngestionService(
         return new SourceIngestionResult(result.LatestObservationAt);
     }
 
-    public async Task<int> IngestSinceAsync(LocalDate date, CancellationToken cancellationToken = default) =>
-        (await IngestCoreAsync(date, cancellationToken)).FailedRepoCount;
-
 #pragma warning disable S3776 // One linear per-repository orchestration flow keeps failure policy visible.
     private async Task<GitHubIngestionResult> IngestCoreAsync(LocalDate date, CancellationToken cancellationToken)
     {
@@ -59,7 +56,7 @@ public class GitHubIngestionService(
                 foreach (var pr in prs)
                 {
                     await repository.UpsertPullRequestAsync(pr, now, cancellationToken);
-                    latest = Latest(latest, pr.CreatedAt, pr.MergedAt, pr.ClosedAt, pr.FirstReviewAt);
+                    latest = Latest(latest, pr.CreatedAt, pr.UpdatedAt, pr.MergedAt, pr.ClosedAt, pr.FirstReviewAt);
                 }
 
                 var commits = await client.GetCommitsAsync(repo, SinceDate(status.HasCommits), cancellationToken);

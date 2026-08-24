@@ -77,6 +77,7 @@ public class GitHubActivityClient(HttpClient http, ILogger<GitHubActivityClient>
     )
     {
         var createdAt = InstantPattern.ExtendedIso.Parse(pullRequest.CreatedAt).Value;
+        var updatedAt = InstantPattern.ExtendedIso.Parse(pullRequest.UpdatedAt).Value;
         var (reviewCount, firstReviewAt) = await GetReviewSummaryAsync(repo, pullRequest.Number, ct);
         Instant? mergedAt = pullRequest.MergedAt is null
             ? null
@@ -91,6 +92,7 @@ public class GitHubActivityClient(HttpClient http, ILogger<GitHubActivityClient>
             Truncate(pullRequest.User.Login, 200),
             Truncate(state, 20),
             createdAt,
+            updatedAt,
             mergedAt,
             pullRequest.ClosedAt is null ? null : InstantPattern.ExtendedIso.Parse(pullRequest.ClosedAt).Value,
             firstReviewAt,

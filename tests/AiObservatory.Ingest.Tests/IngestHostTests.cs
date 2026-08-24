@@ -34,11 +34,12 @@ public class IngestHostTests
     }
 
     [Theory]
-    [InlineData("ANTHROPIC_BILLING_KEY", typeof(AnthropicIngestionService))]
-    [InlineData("COPILOT_ORG", typeof(CopilotIngestionService))]
-    [InlineData("GOOGLE_BILLING_ACCOUNT_ID", typeof(GoogleIngestionService))]
-    [InlineData("OPENAI_ADMIN_KEY", typeof(OpenAiIngestionService))]
-    public async Task UnresolvedKeyVaultReferenceDoesNotEnableAProvider(string setting, Type serviceType)
+    [InlineData("ANTHROPIC_BILLING_KEY", UsageSourceIds.AnthropicUsageApi)]
+    [InlineData("COPILOT_ORG", UsageSourceIds.CopilotOrgReport)]
+    [InlineData("GOOGLE_BILLING_ACCOUNT_ID", UsageSourceIds.GoogleCloudBillingExport)]
+    [InlineData("OPENAI_ADMIN_KEY", UsageSourceIds.OpenAiUsageApi)]
+    [InlineData("GITHUB_TOKEN", UsageSourceIds.GitHubActivityApi)]
+    public async Task UnresolvedKeyVaultReferenceDoesNotEnableAProvider(string setting, string sourceId)
     {
         await using var factory = new IngestFactory();
         factory.Settings[setting] = KeyVaultReference;
@@ -46,8 +47,19 @@ public class IngestHostTests
         {
             factory.Settings["GITHUB_TOKEN"] = "configured-token";
         }
+        if (setting == "GITHUB_TOKEN")
+        {
+            factory.ConfigurationOverrides["Ingest:GitHubRepoAllowlist:0"] = "fix-portal/example";
+        }
 
-        factory.Services.GetService(serviceType).Should().BeNull();
+        using var scope = factory.Services.CreateScope();
+        scope.ServiceProvider.GetServices<IUsageSource>().Should().NotContain(source => source.SourceId == sourceId);
+        scope
+            .ServiceProvider.GetServices<SourceDefinition>()
+            .Should()
+            .ContainSingle(definition => definition.SourceId == sourceId)
+            .Which.IsConfigured.Should()
+            .BeFalse();
     }
 
     [Fact]
