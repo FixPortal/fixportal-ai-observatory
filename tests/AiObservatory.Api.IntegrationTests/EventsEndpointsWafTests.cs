@@ -145,6 +145,154 @@ public class EventsEndpointsWafTests(AiObservatoryApiFactory factory)
     }
 
     [Fact]
+    public async Task PostEvents_without_provenance_keep_same_key_distinct_per_provider_and_idempotent()
+    {
+        using var client = factory.CreateAdminClient();
+        var key = $"waf-legacy-cross-provider-{Guid.NewGuid():N}";
+        var occurredAtUtc = new DateTimeOffset(2026, 8, 1, 12, 0, 0, TimeSpan.Zero);
+        object Body(string provider) =>
+            new
+            {
+                Provider = provider,
+                Model = "shared-model",
+                InputTokens = 1,
+                OutputTokens = 1,
+                CostUsd = 1m,
+                RawPayload = "{}",
+                EventKey = key,
+                OccurredAtUtc = occurredAtUtc,
+            };
+
+        var openAiCreated = await client.PostAsJsonAsync(
+            "/api/events",
+            Body("openai"),
+            TestContext.Current.CancellationToken
+        );
+        var googleCreated = await client.PostAsJsonAsync(
+            "/api/events",
+            Body("google"),
+            TestContext.Current.CancellationToken
+        );
+        var openAiRepeat = await client.PostAsJsonAsync(
+            "/api/events",
+            Body("openai"),
+            TestContext.Current.CancellationToken
+        );
+        var googleRepeat = await client.PostAsJsonAsync(
+            "/api/events",
+            Body("google"),
+            TestContext.Current.CancellationToken
+        );
+
+        openAiCreated.StatusCode.Should().Be(HttpStatusCode.Created);
+        googleCreated.StatusCode.Should().Be(HttpStatusCode.Created);
+        openAiRepeat.StatusCode.Should().Be(HttpStatusCode.OK);
+        googleRepeat.StatusCode.Should().Be(HttpStatusCode.OK);
+        (await openAiRepeat.Content.ReadFromJsonAsync<JsonElement>(TestContext.Current.CancellationToken))
+            .GetProperty("duplicate")
+            .GetBoolean()
+            .Should()
+            .BeTrue();
+        (await googleRepeat.Content.ReadFromJsonAsync<JsonElement>(TestContext.Current.CancellationToken))
+            .GetProperty("duplicate")
+            .GetBoolean()
+            .Should()
+            .BeTrue();
+    }
+
+    [Fact]
+    public async Task PatchEventCost_without_provenance_updates_only_its_provider_legacy_row()
+    {
+        using var client = factory.CreateAdminClient();
+        var key = $"waf-legacy-patch-{Guid.NewGuid():N}";
+        async Task<Guid> Post(string provider, decimal cost)
+        {
+            var response = await client.PostAsJsonAsync(
+                "/api/events",
+                new
+                {
+                    Provider = provider,
+                    Model = "shared-model",
+                    InputTokens = 1,
+                    OutputTokens = 1,
+                    CostUsd = cost,
+                    RawPayload = "{}",
+                    EventKey = key,
+                },
+                TestContext.Current.CancellationToken
+            );
+            response.StatusCode.Should().Be(HttpStatusCode.Created);
+            return (await response.Content.ReadFromJsonAsync<JsonElement>(TestContext.Current.CancellationToken))
+                .GetProperty("id")
+                .GetGuid();
+        }
+
+        var openAiId = await Post("openai", 1m);
+        var googleId = await Post("google", 2m);
+
+        (
+            await client.PatchAsJsonAsync(
+                $"/api/events/{key}/cost?provider=openai",
+                new { CostUsd = 3m },
+                TestContext.Current.CancellationToken
+            )
+        )
+            .StatusCode.Should()
+            .Be(HttpStatusCode.OK);
+        (
+            await client.PatchAsJsonAsync(
+                $"/api/events/{key}/cost?provider=google",
+                new { CostUsd = 4m },
+                TestContext.Current.CancellationToken
+            )
+        )
+            .StatusCode.Should()
+            .Be(HttpStatusCode.OK);
+
+        (await client.GetFromJsonAsync<JsonElement>($"/api/events/{openAiId}", TestContext.Current.CancellationToken))
+            .GetProperty("costUsd")
+            .GetDecimal()
+            .Should()
+            .Be(3m);
+        (await client.GetFromJsonAsync<JsonElement>($"/api/events/{googleId}", TestContext.Current.CancellationToken))
+            .GetProperty("costUsd")
+            .GetDecimal()
+            .Should()
+            .Be(4m);
+    }
+
+    [Fact]
+    public async Task PostEvent_with_maximum_legacy_key_preserves_the_provider_namespace()
+    {
+        using var client = factory.CreateAdminClient();
+        var key = new string('x', 200);
+        var response = await client.PostAsJsonAsync(
+            "/api/events",
+            new
+            {
+                Provider = "anthropic",
+                Model = "claude-sonnet-4-6",
+                InputTokens = 1,
+                OutputTokens = 1,
+                CostUsd = 1m,
+                RawPayload = "{}",
+                EventKey = key,
+            },
+            TestContext.Current.CancellationToken
+        );
+
+        response.StatusCode.Should().Be(HttpStatusCode.Created);
+        var id = (await response.Content.ReadFromJsonAsync<JsonElement>(TestContext.Current.CancellationToken))
+            .GetProperty("id")
+            .GetGuid();
+        (await client.GetFromJsonAsync<JsonElement>($"/api/events/{id}", TestContext.Current.CancellationToken))
+            .GetProperty("eventKey")
+            .GetString()
+            .Should()
+            .Be($"Anthropic:{key}");
+    }
+
+    [Fact]
     public async Task PostEvent_WhenProvenanceIsOmitted_PersistsExactLegacyDefaults()
     {
         using var client = factory.CreateAdminClient();

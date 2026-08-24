@@ -18,6 +18,13 @@ public class UsageRepository(AiObservatoryDbContext ctx) : IUsageRepository
         {
             evt.ObservedAt = evt.IngestedAt;
         }
+
+        var canonicalEventKey = CanonicalizeLegacyEventKey(evt.Provider, evt.SourceId, evt.EventKey);
+        if (canonicalEventKey != evt.EventKey)
+        {
+            evt = CopyWithEventKey(evt, canonicalEventKey);
+        }
+
         for (var attempt = 0; attempt < 2; attempt++)
         {
             await using var tx = await ctx.Database.BeginTransactionAsync(ct);
@@ -157,6 +164,45 @@ public class UsageRepository(AiObservatoryDbContext ctx) : IUsageRepository
 
         return existing;
     }
+
+    private static string? CanonicalizeLegacyEventKey(Provider provider, string sourceId, string? eventKey)
+    {
+        if (eventKey is null || !string.Equals(sourceId, UsageSourceIds.LegacyApi, StringComparison.OrdinalIgnoreCase))
+        {
+            return eventKey;
+        }
+
+        var prefix = $"{provider}:";
+        return eventKey.StartsWith(prefix, StringComparison.OrdinalIgnoreCase) ? eventKey : $"{prefix}{eventKey}";
+    }
+
+    private static UsageEvent CopyWithEventKey(UsageEvent source, string? eventKey) =>
+        new()
+        {
+            Id = source.Id,
+            Provider = source.Provider,
+            OccurredAt = source.OccurredAt,
+            IngestedAt = source.IngestedAt,
+            Model = source.Model,
+            InputTokens = source.InputTokens,
+            OutputTokens = source.OutputTokens,
+            CacheReadTokens = source.CacheReadTokens,
+            CacheWriteTokens = source.CacheWriteTokens,
+            CacheWrite1hTokens = source.CacheWrite1hTokens,
+            ThoughtTokens = source.ThoughtTokens,
+            CostUsd = source.CostUsd,
+            CacheSavingsUsd = source.CacheSavingsUsd,
+            Runtime = source.Runtime,
+            SessionId = source.SessionId,
+            AgentId = source.AgentId,
+            RawPayload = source.RawPayload,
+            SourceId = source.SourceId,
+            SourceKind = source.SourceKind,
+            UsageScope = source.UsageScope,
+            CostBasis = source.CostBasis,
+            ObservedAt = source.ObservedAt,
+            EventKey = eventKey,
+        };
 
     private static bool CanonicalEquals(UsageEvent left, UsageEvent right) =>
         left.Provider == right.Provider
@@ -302,6 +348,7 @@ public class UsageRepository(AiObservatoryDbContext ctx) : IUsageRepository
         CancellationToken ct = default
     )
     {
+        eventKey = CanonicalizeLegacyEventKey(provider, sourceId, eventKey)!;
         await using var tx = await ctx.Database.BeginTransactionAsync(ct);
         try
         {

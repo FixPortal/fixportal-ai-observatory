@@ -926,8 +926,8 @@ namespace AiObservatory.Data.Migrations
                         .HasColumnType("numeric");
 
                     b.Property<string>("EventKey")
-                        .HasMaxLength(200)
-                        .HasColumnType("character varying(200)");
+                        .HasMaxLength(256)
+                        .HasColumnType("character varying(256)");
 
                     b.Property<Instant>("IngestedAt")
                         .HasColumnType("timestamp with time zone");

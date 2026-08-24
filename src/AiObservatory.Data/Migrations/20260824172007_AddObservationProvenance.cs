@@ -157,6 +157,18 @@ namespace AiObservatory.Data.Migrations
                 defaultValue: 0
             );
 
+            migrationBuilder.AlterColumn<string>(
+                name: "EventKey",
+                table: "UsageEvents",
+                type: "character varying(256)",
+                maxLength: 256,
+                nullable: true,
+                oldClrType: typeof(string),
+                oldType: "character varying(200)",
+                oldMaxLength: 200,
+                oldNullable: true
+            );
+
             migrationBuilder.Sql(
                 """
                 UPDATE "UsageEvents"
@@ -175,6 +187,16 @@ namespace AiObservatory.Data.Migrations
                 """
                 UPDATE "DailyAggregates"
                 SET "UnknownCacheSavingsCount" = "RequestCount"
+                """
+            );
+
+            migrationBuilder.Sql(
+                """
+                UPDATE "UsageEvents"
+                SET "EventKey" = "Provider" || ':' || "EventKey"
+                WHERE "SourceId" = 'legacy-api'
+                    AND "EventKey" IS NOT NULL
+                    AND "EventKey" NOT ILIKE "Provider" || ':%'
                 """
             );
 
@@ -203,6 +225,27 @@ namespace AiObservatory.Data.Migrations
             migrationBuilder.DropIndex(name: "IX_UsageEvents_SourceId_EventKey", table: "UsageEvents");
 
             migrationBuilder.DropPrimaryKey(name: "PK_DailyAggregates", table: "DailyAggregates");
+
+            migrationBuilder.Sql(
+                """
+                UPDATE "UsageEvents"
+                SET "EventKey" = substring("EventKey" FROM char_length("Provider") + 2)
+                WHERE "SourceId" = 'legacy-api'
+                    AND "EventKey" ILIKE "Provider" || ':%'
+                """
+            );
+
+            migrationBuilder.AlterColumn<string>(
+                name: "EventKey",
+                table: "UsageEvents",
+                type: "character varying(200)",
+                maxLength: 200,
+                nullable: true,
+                oldClrType: typeof(string),
+                oldType: "character varying(256)",
+                oldMaxLength: 256,
+                oldNullable: true
+            );
 
             migrationBuilder.DropColumn(name: "CacheSavingsUsd", table: "UsageEvents");
 
