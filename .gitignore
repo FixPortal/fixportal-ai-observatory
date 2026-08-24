@@ -407,6 +407,7 @@ FodyWeavers.xsd
 .claude/*
 !.claude/review-policy.json
 .superpowers/
+.worktrees/
 
 #### Project additions ####
 
