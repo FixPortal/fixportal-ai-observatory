@@ -57,4 +57,10 @@ public sealed class SpendEntry
     public string? EntryKey { get; set; }
 
     public Instant RecordedAt { get; set; }
+    public string RawPayload { get; set; } = "{}";
+    public string SourceId { get; set; } = UsageSourceIds.LegacySpend;
+    public SourceKind SourceKind { get; set; } = SourceKind.Legacy;
+    public UsageScope UsageScope { get; set; } = UsageScope.Unknown;
+    public CostBasis CostBasis { get; set; } = CostBasis.Unknown;
+    public Instant ObservedAt { get; set; }
 }

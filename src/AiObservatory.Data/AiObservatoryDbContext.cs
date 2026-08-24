@@ -50,13 +50,17 @@ public class AiObservatoryDbContext(DbContextOptions<AiObservatoryDbContext> opt
         {
             b.Property(e => e.Provider).HasConversion<string>();
             b.Property(e => e.RawPayload).HasColumnType("jsonb");
+            b.Property(e => e.SourceId).HasMaxLength(100);
+            b.Property(e => e.SourceKind).HasConversion<string>();
+            b.Property(e => e.UsageScope).HasConversion<string>();
+            b.Property(e => e.CostBasis).HasConversion<string>();
             b.HasIndex(e => new { e.Provider, e.Model }).HasFilter("\"Model\" IS NOT NULL");
             b.Property(e => e.EventKey).HasMaxLength(200);
             b.Property(e => e.Runtime).HasMaxLength(100);
             b.Property(e => e.SessionId).HasMaxLength(200);
             b.Property(e => e.AgentId).HasMaxLength(200);
-            // EventKey is a unique idempotency key scoped per provider.
-            b.HasIndex(e => new { e.Provider, e.EventKey }).IsUnique().HasFilter("\"EventKey\" IS NOT NULL");
+            // EventKey is a unique idempotency key scoped per source.
+            b.HasIndex(e => new { e.SourceId, e.EventKey }).IsUnique().HasFilter("\"EventKey\" IS NOT NULL");
 
             b.HasIndex(e => e.OccurredAt);
 
@@ -94,8 +98,16 @@ public class AiObservatoryDbContext(DbContextOptions<AiObservatoryDbContext> opt
                 d.Date,
                 d.Provider,
                 d.Model,
+                d.SourceId,
+                d.SourceKind,
+                d.UsageScope,
+                d.CostBasis,
             });
             b.Property(d => d.Provider).HasConversion<string>();
+            b.Property(d => d.SourceId).HasMaxLength(100);
+            b.Property(d => d.SourceKind).HasConversion<string>();
+            b.Property(d => d.UsageScope).HasConversion<string>();
+            b.Property(d => d.CostBasis).HasConversion<string>();
             b.ToTable(t =>
             {
                 t.HasCheckConstraint("CK_DailyAggregate_InputTokens_NonNegative", "\"InputTokens\" >= 0");
@@ -311,6 +323,11 @@ public class AiObservatoryDbContext(DbContextOptions<AiObservatoryDbContext> opt
             b.Property(e => e.Description).HasMaxLength(200);
             b.Property(e => e.EntryKey).HasMaxLength(200);
             b.Property(e => e.Source).HasConversion<string>();
+            b.Property(e => e.RawPayload).HasColumnType("jsonb");
+            b.Property(e => e.SourceId).HasMaxLength(100);
+            b.Property(e => e.SourceKind).HasConversion<string>();
+            b.Property(e => e.UsageScope).HasConversion<string>();
+            b.Property(e => e.CostBasis).HasConversion<string>();
             b.HasIndex(e => e.OccurredOn);
             b.HasIndex(e => e.VendorId);
             b.HasIndex(e => e.CategoryId);

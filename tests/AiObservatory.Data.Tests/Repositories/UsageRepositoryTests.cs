@@ -102,6 +102,35 @@ public class UsageRepositoryTests : IAsyncLifetime
     }
 
     [Fact]
+    public async Task RecordEvent_with_same_eventKey_and_different_sourceIds_records_both()
+    {
+        static UsageEvent NewEvent(string sourceId) =>
+            new()
+            {
+                Provider = Provider.Copilot,
+                OccurredAt = Instant.FromUtc(2026, 6, 2, 10, 0),
+                IngestedAt = Instant.FromUtc(2026, 6, 2, 10, 0),
+                Model = "gpt-5.4",
+                InputTokens = 100,
+                OutputTokens = 50,
+                CostUsd = 0.01m,
+                EventKey = "shared-session-key",
+                SourceId = sourceId,
+                SourceKind = SourceKind.LocalTelemetry,
+                UsageScope = UsageScope.Subscription,
+                CostBasis = CostBasis.Notional,
+            };
+
+        var first = await _repo.RecordEventAsync(NewEvent(UsageSourceIds.CopilotLocal), TestContext.Current.CancellationToken);
+        var second = await _repo.RecordEventAsync(NewEvent(UsageSourceIds.GitHubBillingApi), TestContext.Current.CancellationToken);
+
+        first.IsDuplicate.Should().BeFalse();
+        second.IsDuplicate.Should().BeFalse();
+        (await _ctx.UsageEvents.CountAsync(TestContext.Current.CancellationToken)).Should().Be(2);
+        (await _ctx.DailyAggregates.CountAsync(TestContext.Current.CancellationToken)).Should().Be(2);
+    }
+
+    [Fact]
     public async Task RecordEvent_without_eventKey_records_every_submission()
     {
         static UsageEvent NewEvent() =>

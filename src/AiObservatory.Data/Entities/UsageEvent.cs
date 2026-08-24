@@ -25,10 +25,16 @@ public sealed class UsageEvent
 
     public long? ThoughtTokens { get; init; }
     public decimal? CostUsd { get; init; }
+    public decimal? CacheSavingsUsd { get; set; }
     public string? Runtime { get; init; }
     public string? SessionId { get; init; }
     public string? AgentId { get; init; }
     public string RawPayload { get; init; } = "{}";
+    public string SourceId { get; set; } = UsageSourceIds.LegacyApi;
+    public SourceKind SourceKind { get; set; } = SourceKind.Legacy;
+    public UsageScope UsageScope { get; set; } = UsageScope.Unknown;
+    public CostBasis CostBasis { get; set; } = CostBasis.Unknown;
+    public Instant ObservedAt { get; set; }
 
     /// <summary>
     /// Optional client-supplied idempotency key. When present, repeat submissions
