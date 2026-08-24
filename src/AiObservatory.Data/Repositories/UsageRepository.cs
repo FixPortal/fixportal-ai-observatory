@@ -1,4 +1,4 @@
-using System.Data;
+using System.Text.Json;
 using AiObservatory.Data.Entities;
 using Microsoft.EntityFrameworkCore;
 using NodaTime;
@@ -8,17 +8,6 @@ namespace AiObservatory.Data.Repositories;
 
 public class UsageRepository(AiObservatoryDbContext ctx) : IUsageRepository
 {
-    public async Task AddUsageEventAsync(UsageEvent evt, CancellationToken ct = default)
-    {
-        ArgumentNullException.ThrowIfNull(evt);
-        if (evt.ObservedAt == default)
-        {
-            evt.ObservedAt = evt.IngestedAt;
-        }
-        ctx.UsageEvents.Add(evt);
-        await ctx.SaveChangesAsync(ct);
-    }
-
     public async Task<RecordEventResult> RecordEventAsync(UsageEvent evt, CancellationToken ct = default)
     {
         ArgumentNullException.ThrowIfNull(evt);
@@ -26,75 +15,189 @@ public class UsageRepository(AiObservatoryDbContext ctx) : IUsageRepository
         {
             evt.ObservedAt = evt.IngestedAt;
         }
-        var providerStr = evt.Provider.ToString();
-        var model = evt.Model ?? "unknown";
-        var date = evt.OccurredAt.InUtc().Date;
-        var sourceKind = evt.SourceKind.ToString();
-        var usageScope = evt.UsageScope.ToString();
-        var costBasis = evt.CostBasis.ToString();
-
-        if (evt.EventKey is not null)
+        for (var attempt = 0; attempt < 2; attempt++)
         {
-            var existingId = await ctx
-                .UsageEvents.AsNoTracking()
-                .Where(e => e.SourceId == evt.SourceId && e.EventKey == evt.EventKey)
-                .Select(e => (Guid?)e.Id)
-                .FirstOrDefaultAsync(ct);
-            if (existingId is not null)
+            await using var tx = await ctx.Database.BeginTransactionAsync(ct);
+            try
             {
-                return new RecordEventResult(existingId.Value, IsDuplicate: true);
+                var existing = evt.EventKey is null
+                    ? null
+                    : await FindEventForUpdateAsync(evt.SourceId, evt.EventKey, ct);
+                var result = await ApplyLockedSnapshotAsync(existing, evt, ct);
+                if (result.Disposition == RecordEventDisposition.Unchanged)
+                {
+                    await tx.RollbackAsync(ct);
+                    return result;
+                }
+
+                await ctx.SaveChangesAsync(ct);
+                await tx.CommitAsync(ct);
+                return result;
+            }
+            catch (DbUpdateException ex)
+                when (attempt == 0
+                    && evt.EventKey is not null
+                    && ex.InnerException is PostgresException { SqlState: PostgresErrorCodes.UniqueViolation }
+                )
+            {
+                await tx.RollbackAsync(ct);
+                ctx.ChangeTracker.Clear();
+            }
+            catch
+            {
+                await tx.RollbackAsync(ct);
+                ctx.ChangeTracker.Clear();
+                throw;
             }
         }
 
-        await using var tx = await ctx.Database.BeginTransactionAsync(ct);
-        ctx.UsageEvents.Add(evt);
-        try
+        throw new InvalidOperationException("Concurrent usage-event insert retry did not resolve the source key.");
+    }
+
+    private async Task<RecordEventResult> ApplyLockedSnapshotAsync(
+        UsageEvent? existing,
+        UsageEvent evt,
+        CancellationToken ct
+    )
+    {
+        if (existing is null)
         {
-            await ctx.SaveChangesAsync(ct);
+            ctx.UsageEvents.Add(evt);
+            await ApplyAggregateDeltaAsync(evt, +1, ct);
+            return new RecordEventResult(evt.Id, RecordEventDisposition.Created);
         }
-        catch (DbUpdateException ex)
-            when (evt.EventKey is not null
-                && ex.InnerException is PostgresException { SqlState: PostgresErrorCodes.UniqueViolation }
-            )
+
+        if (CanonicalEquals(existing, evt))
         {
-            // Lost a concurrent race on the EventKey unique index: another request
-            // recorded (and aggregated) this event between the pre-check and the insert.
-            await tx.RollbackAsync(ct);
-            ctx.Entry(evt).State = EntityState.Detached;
-            var winnerId = await ctx
-                .UsageEvents.AsNoTracking()
-                .Where(e => e.SourceId == evt.SourceId && e.EventKey == evt.EventKey)
-                .Select(e => e.Id)
-                .FirstAsync(ct);
-            return new RecordEventResult(winnerId, IsDuplicate: true);
+            return new RecordEventResult(existing.Id, RecordEventDisposition.Unchanged);
         }
-        var cacheRead = evt.CacheReadTokens ?? 0L;
-        var cacheWrite = evt.CacheWriteTokens ?? 0L;
-        var cacheWrite1H = evt.CacheWrite1hTokens ?? 0L;
-        var unknownCostCount = evt.CostUsd is null ? 1 : 0;
-        var knownCostUsd = evt.CostUsd ?? 0m;
-        var unknownCacheSavingsCount = evt.CacheSavingsUsd is null ? 1 : 0;
-        var cacheSavingsUsd = evt.CacheSavingsUsd ?? 0m;
+
+        await ApplyAggregateDeltaAsync(existing, -1, ct);
+        CopyCanonicalValues(existing, evt);
+        await ApplyAggregateDeltaAsync(existing, +1, ct);
+        return new RecordEventResult(existing.Id, RecordEventDisposition.Corrected);
+    }
+
+    private async Task ApplyAggregateDeltaAsync(UsageEvent evt, int sign, CancellationToken ct)
+    {
+        var date = evt.OccurredAt.InUtc().Date;
+        var provider = evt.Provider.ToString();
+        var model = evt.Model ?? "unknown";
+        var sourceKind = evt.SourceKind.ToString();
+        var usageScope = evt.UsageScope.ToString();
+        var costBasis = evt.CostBasis.ToString();
+        var inputDelta = checked(evt.InputTokens * sign);
+        var outputDelta = checked(evt.OutputTokens * sign);
+        var cacheReadDelta = checked((evt.CacheReadTokens ?? 0L) * sign);
+        var cacheWriteDelta = checked((evt.CacheWriteTokens ?? 0L) * sign);
+        var cacheWrite1hDelta = checked((evt.CacheWrite1hTokens ?? 0L) * sign);
+        var costDelta = (evt.CostUsd ?? 0m) * sign;
+        var unknownCostDelta = (evt.CostUsd is null ? 1 : 0) * sign;
+        var cacheSavingsDelta = (evt.CacheSavingsUsd ?? 0m) * sign;
+        var unknownCacheSavingsDelta = (evt.CacheSavingsUsd is null ? 1 : 0) * sign;
+        var requestDelta = sign;
+        var insertInput = Math.Max(0, inputDelta);
+        var insertOutput = Math.Max(0, outputDelta);
+        var insertCacheRead = Math.Max(0, cacheReadDelta);
+        var insertCacheWrite = Math.Max(0, cacheWriteDelta);
+        var insertCacheWrite1h = Math.Max(0, cacheWrite1hDelta);
+        var insertCost = Math.Max(0, costDelta);
+        var insertUnknownCost = Math.Max(0, unknownCostDelta);
+        var insertCacheSavings = Math.Max(0, cacheSavingsDelta);
+        var insertUnknownCacheSavings = Math.Max(0, unknownCacheSavingsDelta);
+        var insertRequest = Math.Max(0, requestDelta);
+
         await ctx.Database.ExecuteSqlInterpolatedAsync(
             $"""
             INSERT INTO "DailyAggregates" ("Date", "Provider", "Model", "SourceId", "SourceKind", "UsageScope", "CostBasis", "InputTokens", "OutputTokens", "CacheReadTokens", "CacheWriteTokens", "CacheWrite1hTokens", "CostUsd", "UnknownCostCount", "CacheSavingsUsd", "UnknownCacheSavingsCount", "RequestCount")
-            VALUES ({date}, {providerStr}, {model}, {evt.SourceId}, {sourceKind}, {usageScope}, {costBasis}, {evt.InputTokens}, {evt.OutputTokens}, {cacheRead}, {cacheWrite}, {cacheWrite1H}, {knownCostUsd}, {unknownCostCount}, {cacheSavingsUsd}, {unknownCacheSavingsCount}, 1)
+            VALUES ({date}, {provider}, {model}, {evt.SourceId}, {sourceKind}, {usageScope}, {costBasis}, {insertInput}, {insertOutput}, {insertCacheRead}, {insertCacheWrite}, {insertCacheWrite1h}, {insertCost}, {insertUnknownCost}, {insertCacheSavings}, {insertUnknownCacheSavings}, {insertRequest})
             ON CONFLICT ("Date", "Provider", "Model", "SourceId", "SourceKind", "UsageScope", "CostBasis") DO UPDATE SET
-                "InputTokens" = "DailyAggregates"."InputTokens" + EXCLUDED."InputTokens",
-                "OutputTokens" = "DailyAggregates"."OutputTokens" + EXCLUDED."OutputTokens",
-                "CacheReadTokens" = "DailyAggregates"."CacheReadTokens" + EXCLUDED."CacheReadTokens",
-                "CacheWriteTokens" = "DailyAggregates"."CacheWriteTokens" + EXCLUDED."CacheWriteTokens",
-                "CacheWrite1hTokens" = "DailyAggregates"."CacheWrite1hTokens" + EXCLUDED."CacheWrite1hTokens",
-                "CostUsd" = "DailyAggregates"."CostUsd" + EXCLUDED."CostUsd",
-                "UnknownCostCount" = "DailyAggregates"."UnknownCostCount" + EXCLUDED."UnknownCostCount",
-                "CacheSavingsUsd" = "DailyAggregates"."CacheSavingsUsd" + EXCLUDED."CacheSavingsUsd",
-                "UnknownCacheSavingsCount" = "DailyAggregates"."UnknownCacheSavingsCount" + EXCLUDED."UnknownCacheSavingsCount",
-                "RequestCount" = "DailyAggregates"."RequestCount" + EXCLUDED."RequestCount"
+                "InputTokens" = "DailyAggregates"."InputTokens" + {inputDelta},
+                "OutputTokens" = "DailyAggregates"."OutputTokens" + {outputDelta},
+                "CacheReadTokens" = "DailyAggregates"."CacheReadTokens" + {cacheReadDelta},
+                "CacheWriteTokens" = "DailyAggregates"."CacheWriteTokens" + {cacheWriteDelta},
+                "CacheWrite1hTokens" = "DailyAggregates"."CacheWrite1hTokens" + {cacheWrite1hDelta},
+                "CostUsd" = "DailyAggregates"."CostUsd" + {costDelta},
+                "UnknownCostCount" = "DailyAggregates"."UnknownCostCount" + {unknownCostDelta},
+                "CacheSavingsUsd" = "DailyAggregates"."CacheSavingsUsd" + {cacheSavingsDelta},
+                "UnknownCacheSavingsCount" = "DailyAggregates"."UnknownCacheSavingsCount" + {unknownCacheSavingsDelta},
+                "RequestCount" = "DailyAggregates"."RequestCount" + {requestDelta}
             """,
             ct
         );
-        await tx.CommitAsync(ct);
-        return new RecordEventResult(evt.Id, IsDuplicate: false);
+
+        await ctx
+            .DailyAggregates.Where(a =>
+                a.Date == date
+                && a.Provider == evt.Provider
+                && a.Model == model
+                && a.SourceId == evt.SourceId
+                && a.SourceKind == evt.SourceKind
+                && a.UsageScope == evt.UsageScope
+                && a.CostBasis == evt.CostBasis
+                && a.RequestCount == 0
+            )
+            .ExecuteDeleteAsync(ct);
+    }
+
+    private Task<UsageEvent?> FindEventForUpdateAsync(string sourceId, string eventKey, CancellationToken ct) =>
+        ctx
+            .UsageEvents.FromSqlInterpolated(
+                $"""SELECT * FROM "UsageEvents" WHERE "SourceId" = {sourceId} AND "EventKey" = {eventKey} FOR UPDATE"""
+            )
+            .SingleOrDefaultAsync(ct);
+
+    private static bool CanonicalEquals(UsageEvent left, UsageEvent right) =>
+        left.Provider == right.Provider
+        && left.OccurredAt == right.OccurredAt
+        && left.Model == right.Model
+        && left.InputTokens == right.InputTokens
+        && left.OutputTokens == right.OutputTokens
+        && left.CacheReadTokens == right.CacheReadTokens
+        && left.CacheWriteTokens == right.CacheWriteTokens
+        && left.CacheWrite1hTokens == right.CacheWrite1hTokens
+        && left.ThoughtTokens == right.ThoughtTokens
+        && left.CostUsd == right.CostUsd
+        && left.CacheSavingsUsd == right.CacheSavingsUsd
+        && left.Runtime == right.Runtime
+        && left.SessionId == right.SessionId
+        && left.AgentId == right.AgentId
+        && JsonEquals(left.RawPayload, right.RawPayload)
+        && left.SourceId == right.SourceId
+        && left.SourceKind == right.SourceKind
+        && left.UsageScope == right.UsageScope
+        && left.CostBasis == right.CostBasis
+        && left.EventKey == right.EventKey;
+
+    private static bool JsonEquals(string left, string right)
+    {
+        using var leftJson = JsonDocument.Parse(left);
+        using var rightJson = JsonDocument.Parse(right);
+        return JsonElement.DeepEquals(leftJson.RootElement, rightJson.RootElement);
+    }
+
+    private static void CopyCanonicalValues(UsageEvent target, UsageEvent source)
+    {
+        target.Provider = source.Provider;
+        target.OccurredAt = source.OccurredAt;
+        target.Model = source.Model;
+        target.InputTokens = source.InputTokens;
+        target.OutputTokens = source.OutputTokens;
+        target.CacheReadTokens = source.CacheReadTokens;
+        target.CacheWriteTokens = source.CacheWriteTokens;
+        target.CacheWrite1hTokens = source.CacheWrite1hTokens;
+        target.ThoughtTokens = source.ThoughtTokens;
+        target.CostUsd = source.CostUsd;
+        target.CacheSavingsUsd = source.CacheSavingsUsd;
+        target.Runtime = source.Runtime;
+        target.SessionId = source.SessionId;
+        target.AgentId = source.AgentId;
+        target.RawPayload = source.RawPayload;
+        target.SourceId = source.SourceId;
+        target.SourceKind = source.SourceKind;
+        target.UsageScope = source.UsageScope;
+        target.CostBasis = source.CostBasis;
+        target.ObservedAt = source.ObservedAt;
     }
 
     public async Task<PurgeResult> PurgeProviderAsync(Provider provider, CancellationToken ct = default)
@@ -106,48 +209,6 @@ public class UsageRepository(AiObservatoryDbContext ctx) : IUsageRepository
         var deletedAggregates = await ctx.DailyAggregates.Where(a => a.Provider == provider).ExecuteDeleteAsync(ct);
         await tx.CommitAsync(ct);
         return new PurgeResult(deletedEvents, deletedAggregates);
-    }
-
-    public Task UpsertDailyAggregateAsync(
-        LocalDate date,
-        Provider provider,
-        string model,
-        long inputTokens,
-        long outputTokens,
-        long cacheReadTokens,
-        long cacheWriteTokens,
-        decimal costUsd,
-        int requestCount = 1,
-        CancellationToken ct = default
-    )
-    {
-        var providerStr = provider.ToString();
-        const string sourceId = UsageSourceIds.LegacyApi;
-        const string sourceKind = nameof(SourceKind.Legacy);
-        const string usageScope = nameof(UsageScope.Unknown);
-        const string costBasis = nameof(CostBasis.Unknown);
-        // CacheWrite1hTokens is written as a literal 0, not a parameter: the only caller is
-        // the polled-API ingest arm, and Anthropic's usage report does not break cache writes
-        // down by TTL. 0 means "no one-hour portion reported", which prices the whole write at
-        // the five-minute rate -- the same answer this path gave before the split existed.
-        return ctx.Database.ExecuteSqlInterpolatedAsync(
-            $"""
-            INSERT INTO "DailyAggregates" ("Date", "Provider", "Model", "SourceId", "SourceKind", "UsageScope", "CostBasis", "InputTokens", "OutputTokens", "CacheReadTokens", "CacheWriteTokens", "CacheWrite1hTokens", "CostUsd", "UnknownCostCount", "CacheSavingsUsd", "UnknownCacheSavingsCount", "RequestCount")
-            VALUES ({date}, {providerStr}, {model}, {sourceId}, {sourceKind}, {usageScope}, {costBasis}, {inputTokens}, {outputTokens}, {cacheReadTokens}, {cacheWriteTokens}, 0, {costUsd}, 0, 0, {requestCount}, {requestCount})
-            ON CONFLICT ("Date", "Provider", "Model", "SourceId", "SourceKind", "UsageScope", "CostBasis") DO UPDATE SET
-                "InputTokens" = EXCLUDED."InputTokens",
-                "OutputTokens" = EXCLUDED."OutputTokens",
-                "CacheReadTokens" = EXCLUDED."CacheReadTokens",
-                "CacheWriteTokens" = EXCLUDED."CacheWriteTokens",
-                "CacheWrite1hTokens" = EXCLUDED."CacheWrite1hTokens",
-                "CostUsd" = EXCLUDED."CostUsd",
-                "UnknownCostCount" = EXCLUDED."UnknownCostCount",
-                "CacheSavingsUsd" = EXCLUDED."CacheSavingsUsd",
-                "UnknownCacheSavingsCount" = EXCLUDED."UnknownCacheSavingsCount",
-                "RequestCount" = EXCLUDED."RequestCount"
-            """,
-            ct
-        );
     }
 
     public async Task<IReadOnlyList<DailyAggregate>> GetAggregatesAsync(
@@ -224,90 +285,74 @@ public class UsageRepository(AiObservatoryDbContext ctx) : IUsageRepository
 
     public async Task<PatchEventCostResult?> PatchEventCostAsync(
         Provider provider,
+        string sourceId,
         string eventKey,
         decimal newCostUsd,
         CancellationToken ct = default
     )
     {
-        // F3: open transaction with RepeatableRead BEFORE reading the snapshot so a concurrent
-        // PATCH cannot read the same OldCostUsd, compute the same delta, and double-apply it
-        // to DailyAggregates.
-        await using var tx = await ctx.Database.BeginTransactionAsync(IsolationLevel.RepeatableRead, ct);
-
-        // F1: scope lookup to (Provider, EventKey) to match the unique index contract.
-        // AsNoTracking is load-bearing here: the ExecuteUpdateAsync below writes via SQL
-        // and bypasses the change tracker, so the snapshot must not be served from a
-        // stale identity-map entry. Do not remove it.
-        var snapshot = await ctx
-            .UsageEvents.AsNoTracking()
-            .Where(e => e.Provider == provider && e.EventKey == eventKey)
-            .Select(e => new
+        await using var tx = await ctx.Database.BeginTransactionAsync(ct);
+        try
+        {
+            var providerValue = provider.ToString();
+            var existing = await ctx
+                .UsageEvents.FromSqlInterpolated(
+                    $"""SELECT * FROM "UsageEvents" WHERE "Provider" = {providerValue} AND "SourceId" = {sourceId} AND "EventKey" = {eventKey} FOR UPDATE"""
+                )
+                .SingleOrDefaultAsync(ct);
+            if (existing is null)
             {
-                e.Id,
-                e.Provider,
-                e.Model,
-                e.OccurredAt,
-                e.SourceId,
-                e.SourceKind,
-                e.UsageScope,
-                e.CostBasis,
-                e.CostUsd,
-            })
-            .FirstOrDefaultAsync(ct);
+                await tx.RollbackAsync(ct);
+                return null;
+            }
 
-        if (snapshot is null)
+            var oldCostUsd = existing.CostUsd ?? 0m;
+            var replacement = CopyWithCost(existing, newCostUsd);
+            var result = await ApplyLockedSnapshotAsync(existing, replacement, ct);
+            if (result.Disposition == RecordEventDisposition.Unchanged)
+            {
+                await tx.RollbackAsync(ct);
+                return new PatchEventCostResult(existing.Id, oldCostUsd, newCostUsd);
+            }
+
+            await ctx.SaveChangesAsync(ct);
+            await tx.CommitAsync(ct);
+            return new PatchEventCostResult(existing.Id, oldCostUsd, newCostUsd);
+        }
+        catch
         {
             await tx.RollbackAsync(ct);
-            return null;
+            ctx.ChangeTracker.Clear();
+            throw;
         }
-
-        var oldCostUsd = snapshot.CostUsd ?? 0m;
-        var wasUnknown = snapshot.CostUsd is null;
-        if (!wasUnknown && oldCostUsd == newCostUsd)
-        {
-            await tx.RollbackAsync(ct);
-            return new PatchEventCostResult(snapshot.Id, oldCostUsd, newCostUsd);
-        }
-
-        var delta = newCostUsd - oldCostUsd;
-        var date = snapshot.OccurredAt.InUtc().Date;
-        var model = snapshot.Model ?? "unknown";
-        var providerStr = snapshot.Provider.ToString();
-        var sourceKind = snapshot.SourceKind.ToString();
-        var usageScope = snapshot.UsageScope.ToString();
-        var costBasis = snapshot.CostBasis.ToString();
-
-        await ctx
-            .UsageEvents.Where(e => e.Id == snapshot.Id)
-            .ExecuteUpdateAsync(s => s.SetProperty(e => e.CostUsd, newCostUsd), ct);
-
-        // Adjust the pre-aggregated daily row by the same delta; floor at 0 to guard
-        // against rounding producing a tiny negative.
-        // F-G1: capture row count and abort if no aggregate row was updated — prevents
-        // UsageEvents and DailyAggregates drifting apart silently.
-        var rowsAffected = await ctx.Database.ExecuteSqlInterpolatedAsync(
-            $"""
-            UPDATE "DailyAggregates"
-            SET "CostUsd" = GREATEST(0, "CostUsd" + {delta}),
-                "UnknownCostCount" = "UnknownCostCount" - {(wasUnknown ? 1 : 0)}
-            WHERE "Date" = {date} AND "Provider" = {providerStr} AND "Model" = {model}
-              AND "SourceId" = {snapshot.SourceId} AND "SourceKind" = {sourceKind}
-              AND "UsageScope" = {usageScope} AND "CostBasis" = {costBasis}
-            """,
-            ct
-        );
-
-        if (rowsAffected != 1)
-        {
-            throw new InvalidOperationException(
-                $"DailyAggregates update matched {rowsAffected} rows for {providerStr}/{model}/{date}; expected 1."
-            );
-        }
-
-        await tx.CommitAsync(ct);
-
-        return new PatchEventCostResult(snapshot.Id, oldCostUsd, newCostUsd);
     }
+
+    private static UsageEvent CopyWithCost(UsageEvent source, decimal costUsd) =>
+        new()
+        {
+            Provider = source.Provider,
+            OccurredAt = source.OccurredAt,
+            IngestedAt = source.IngestedAt,
+            Model = source.Model,
+            InputTokens = source.InputTokens,
+            OutputTokens = source.OutputTokens,
+            CacheReadTokens = source.CacheReadTokens,
+            CacheWriteTokens = source.CacheWriteTokens,
+            CacheWrite1hTokens = source.CacheWrite1hTokens,
+            ThoughtTokens = source.ThoughtTokens,
+            CostUsd = costUsd,
+            CacheSavingsUsd = source.CacheSavingsUsd,
+            Runtime = source.Runtime,
+            SessionId = source.SessionId,
+            AgentId = source.AgentId,
+            RawPayload = source.RawPayload,
+            SourceId = source.SourceId,
+            SourceKind = source.SourceKind,
+            UsageScope = source.UsageScope,
+            CostBasis = source.CostBasis,
+            ObservedAt = source.ObservedAt,
+            EventKey = source.EventKey,
+        };
 
     public async Task<IReadOnlyList<EventCostRecord>> GetEventsByProviderAsync(
         Provider provider,

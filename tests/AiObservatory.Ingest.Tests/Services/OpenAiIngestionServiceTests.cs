@@ -34,7 +34,7 @@ public class OpenAiIngestionServiceTests
             {
                 var evt = call.Arg<UsageEvent>()!;
                 recorded.Add(evt);
-                return new RecordEventResult(evt.Id, IsDuplicate: false);
+                return new RecordEventResult(evt.Id, RecordEventDisposition.Created);
             });
         var sut = new OpenAiIngestionService(
             client,

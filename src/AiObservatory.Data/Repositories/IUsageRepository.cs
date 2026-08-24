@@ -7,10 +7,19 @@ namespace AiObservatory.Data.Repositories;
 // ReSharper disable NotAccessedPositionalProperty.Global
 
 /// <summary>
-/// Outcome of <see cref="IUsageRepository.RecordEventAsync"/>: the id of the stored
-/// event, or of the previously stored event when the submission was a duplicate.
+/// Outcome of <see cref="IUsageRepository.RecordEventAsync"/>.
 /// </summary>
-public sealed record RecordEventResult(Guid EventId, bool IsDuplicate);
+public enum RecordEventDisposition
+{
+    Created,
+    Unchanged,
+    Corrected,
+}
+
+public sealed record RecordEventResult(Guid EventId, RecordEventDisposition Disposition)
+{
+    public bool IsDuplicate => Disposition == RecordEventDisposition.Unchanged;
+}
 
 /// <summary>
 /// Outcome of <see cref="IUsageRepository.PurgeProviderAsync"/>: how many raw events
@@ -43,8 +52,6 @@ public sealed record EventCostRecord(
 
 public interface IUsageRepository
 {
-    Task AddUsageEventAsync(UsageEvent evt, CancellationToken ct = default);
-
     Task<RecordEventResult> RecordEventAsync(UsageEvent evt, CancellationToken ct = default);
 
     /// <summary>
@@ -54,19 +61,6 @@ public interface IUsageRepository
     /// clean backfill. Both deletes run in one transaction.
     /// </summary>
     Task<PurgeResult> PurgeProviderAsync(Provider provider, CancellationToken ct = default);
-
-    Task UpsertDailyAggregateAsync(
-        LocalDate date,
-        Provider provider,
-        string model,
-        long inputTokens,
-        long outputTokens,
-        long cacheReadTokens,
-        long cacheWriteTokens,
-        decimal costUsd,
-        int requestCount = 1,
-        CancellationToken ct = default
-    );
 
     Task<IReadOnlyList<DailyAggregate>> GetAggregatesAsync(
         LocalDate from,
@@ -86,11 +80,12 @@ public interface IUsageRepository
 
     /// <summary>
     /// Updates <c>CostUsd</c> on the event identified by <paramref name="provider"/> +
-    /// <paramref name="eventKey"/> and adjusts the corresponding DailyAggregate by the same
-    /// delta, atomically. Returns null when no event with that key exists.
+    /// <paramref name="sourceId"/> + <paramref name="eventKey"/> and adjusts its
+    /// DailyAggregate atomically. Returns null when no event with that identity exists.
     /// </summary>
     Task<PatchEventCostResult?> PatchEventCostAsync(
         Provider provider,
+        string sourceId,
         string eventKey,
         decimal newCostUsd,
         CancellationToken ct = default

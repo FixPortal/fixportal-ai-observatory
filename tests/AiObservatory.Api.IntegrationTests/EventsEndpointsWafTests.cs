@@ -108,7 +108,7 @@ public class EventsEndpointsWafTests(AiObservatoryApiFactory factory)
     {
         using var client = factory.CreateAdminClient();
         var key = $"waf-test-dup-{Guid.NewGuid():N}";
-        var body = NewEventBody(eventKey: key);
+        var body = NewEventBody(eventKey: key, occurredAtUtc: new DateTimeOffset(2026, 8, 1, 12, 0, 0, TimeSpan.Zero));
 
         var first = await client.PostAsJsonAsync("/api/events", body, TestContext.Current.CancellationToken);
         first.StatusCode.Should().Be(HttpStatusCode.Created);

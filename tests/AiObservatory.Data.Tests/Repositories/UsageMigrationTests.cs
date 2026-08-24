@@ -86,17 +86,18 @@ public class UsageMigrationTests : IAsyncLifetime
 
         await using var afterCoverage = new AiObservatoryDbContext(_options);
         var aggregates = await afterCoverage.DailyAggregates.ToListAsync(ct);
-        var usage = await afterCoverage.UsageEvents.AsNoTracking().SingleAsync(e => e.EventKey == "legacy-null-cost-a", ct);
+        var usage = await afterCoverage
+            .UsageEvents.AsNoTracking()
+            .SingleAsync(e => e.EventKey == "legacy-null-cost-a", ct);
         usage.SourceId.Should().Be(UsageSourceIds.LegacyApi);
         usage.SourceKind.Should().Be(SourceKind.Legacy);
         usage.UsageScope.Should().Be(UsageScope.Unknown);
         usage.CostBasis.Should().Be(CostBasis.Unknown);
         usage.ObservedAt.Should().Be(usage.IngestedAt);
 
-        var aggregate = await afterCoverage.DailyAggregates.AsNoTracking().SingleAsync(
-            a => a.Provider == Provider.OpenAI && a.Model == "unknown",
-            ct
-        );
+        var aggregate = await afterCoverage
+            .DailyAggregates.AsNoTracking()
+            .SingleAsync(a => a.Provider == Provider.OpenAI && a.Model == "unknown", ct);
         aggregate.SourceId.Should().Be(UsageSourceIds.LegacyApi);
         aggregate.SourceKind.Should().Be(SourceKind.Legacy);
         aggregate.UsageScope.Should().Be(UsageScope.Unknown);
@@ -116,6 +117,7 @@ public class UsageMigrationTests : IAsyncLifetime
         var repository = new UsageRepository(afterCoverage);
         var patch = await repository.PatchEventCostAsync(
             Provider.OpenAI,
+            UsageSourceIds.LegacyApi,
             "legacy-null-cost-a",
             0m,
             TestContext.Current.CancellationToken
