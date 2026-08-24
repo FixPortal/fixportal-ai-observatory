@@ -24,6 +24,17 @@ public class IngestOptions
     // see ResolveGitHubRepoAllowlist below and infra/modules/ingest.bicep.
     public string[] GitHubRepoAllowlist { get; set; } = [];
 
+    public string? GoogleCloudCatalogApiKey { get; set; }
+    public string? GoogleCloudCatalogServiceId { get; set; }
+
+    public static void BindGoogleCloudCatalog(IConfiguration cfg, IngestOptions options)
+    {
+        ArgumentNullException.ThrowIfNull(cfg);
+        ArgumentNullException.ThrowIfNull(options);
+        options.GoogleCloudCatalogApiKey = cfg["GOOGLE_CLOUD_CATALOG_API_KEY"];
+        options.GoogleCloudCatalogServiceId = cfg["GOOGLE_CLOUD_CATALOG_SERVICE_ID"];
+    }
+
     // Binds the allowlist from either shape: a JSON/indexed-env array
     // (Ingest:GitHubRepoAllowlist:0, :1, ...) for local development, or a single
     // comma/semicolon/newline-delimited string for the deployed Key Vault secret.

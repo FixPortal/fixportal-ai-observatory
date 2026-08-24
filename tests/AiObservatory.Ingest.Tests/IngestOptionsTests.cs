@@ -78,4 +78,19 @@ public class IngestOptionsTests
             .Should()
             .Equal("FixPortal/one", "FixPortal/two");
     }
+
+    [Fact]
+    public void BindGoogleCloudCatalogReadsTheDeploymentEnvironmentKeys()
+    {
+        var cfg = Config(
+            ("GOOGLE_CLOUD_CATALOG_API_KEY", "catalog-key"),
+            ("GOOGLE_CLOUD_CATALOG_SERVICE_ID", "service-id")
+        );
+        var options = new IngestOptions();
+
+        IngestOptions.BindGoogleCloudCatalog(cfg, options);
+
+        options.GoogleCloudCatalogApiKey.Should().Be("catalog-key");
+        options.GoogleCloudCatalogServiceId.Should().Be("service-id");
+    }
 }

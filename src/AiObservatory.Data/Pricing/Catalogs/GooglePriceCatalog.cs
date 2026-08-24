@@ -1,3 +1,4 @@
+using System.Text.Json.Serialization;
 using NodaTime;
 
 namespace AiObservatory.Data.Pricing.Catalogs;
@@ -31,6 +32,8 @@ public sealed record GooglePriceCatalog(
             if (
                 string.IsNullOrWhiteSpace(entry.Service)
                 || string.IsNullOrWhiteSpace(entry.SkuId)
+                || string.IsNullOrWhiteSpace(entry.SkuName)
+                || string.IsNullOrWhiteSpace(entry.Description)
                 || entry.Aliases is null
                 || entry.Aliases.Count == 0
                 || entry.Aliases.Any(string.IsNullOrWhiteSpace)
@@ -41,8 +44,28 @@ public sealed record GooglePriceCatalog(
                 || string.IsNullOrWhiteSpace(entry.CacheLane)
                 || entry.ContextThreshold < 0
                 || string.IsNullOrWhiteSpace(entry.PricingUnit)
+                || string.IsNullOrWhiteSpace(entry.PricingUnitDescription)
+                || string.IsNullOrWhiteSpace(entry.BaseUnit)
+                || string.IsNullOrWhiteSpace(entry.BaseUnitDescription)
+                || entry.BaseUnitConversionFactor <= 0
+                || entry.DisplayQuantity <= 0
+                || string.IsNullOrWhiteSpace(entry.GeoTaxonomyType)
+                || entry.ServiceRegions is null
+                || entry.ServiceRegions.Count == 0
+                || entry.ServiceRegions.Any(string.IsNullOrWhiteSpace)
+                || entry.GeoTaxonomyRegions is null
+                || entry.GeoTaxonomyRegions.Count == 0
+                || entry.GeoTaxonomyRegions.Any(string.IsNullOrWhiteSpace)
+                || string.IsNullOrWhiteSpace(entry.UnitPriceCurrencyCode)
                 || string.IsNullOrWhiteSpace(entry.AggregationLevel)
+                || string.IsNullOrWhiteSpace(entry.AggregationInterval)
+                || entry.AggregationCount <= 0
                 || entry.Rate <= 0
+                || entry.EffectiveTime.InUtc().Date != entry.EffectiveFrom
+                || entry.UnitPriceCurrencyCode != Currency
+                || entry.UnitPriceNanos is < -999_999_999 or > 999_999_999
+                || Math.Sign(entry.UnitPriceUnits) * Math.Sign(entry.UnitPriceNanos) < 0
+                || entry.Rate != (entry.UnitPriceUnits + entry.UnitPriceNanos / 1_000_000_000m) * 1_000_000m
             )
             {
                 throw new InvalidDataException("Google pricing contains an incomplete or non-positive entry.");
@@ -99,18 +122,87 @@ public sealed record GooglePriceCatalog(
     }
 }
 
+[method: JsonConstructor]
 public sealed record GooglePriceEntry(
     string Service,
     string SkuId,
+    string SkuName,
+    string Description,
     IReadOnlyList<string> Aliases,
     LocalDate EffectiveFrom,
     bool EffectiveDateIsProviderDeclared,
+    Instant EffectiveTime,
     string Region,
+    string GeoTaxonomyType,
+    IReadOnlyList<string> ServiceRegions,
+    IReadOnlyList<string> GeoTaxonomyRegions,
     string Modality,
     string Tier,
     string CacheLane,
     long ContextThreshold,
     string PricingUnit,
+    string PricingUnitDescription,
+    string BaseUnit,
+    string BaseUnitDescription,
+    decimal BaseUnitConversionFactor,
+    decimal DisplayQuantity,
+    decimal TierStartUsageAmount,
+    string UnitPriceCurrencyCode,
+    long UnitPriceUnits,
+    int UnitPriceNanos,
     string AggregationLevel,
+    string AggregationInterval,
+    int AggregationCount,
+    decimal CurrencyConversionRate,
     decimal Rate
-);
+)
+{
+    public GooglePriceEntry(
+        string service,
+        string skuId,
+        IReadOnlyList<string> aliases,
+        LocalDate effectiveFrom,
+        bool effectiveDateIsProviderDeclared,
+        string region,
+        string modality,
+        string tier,
+        string cacheLane,
+        long contextThreshold,
+        string pricingUnit,
+        string aggregationLevel,
+        decimal rate
+    )
+        : this(
+            service,
+            skuId,
+            $"services/legacy/skus/{skuId}",
+            service,
+            aliases,
+            effectiveFrom,
+            effectiveDateIsProviderDeclared,
+            effectiveFrom.AtMidnight().InZoneStrictly(DateTimeZone.Utc).ToInstant(),
+            region,
+            "REGIONAL",
+            [region],
+            [region],
+            modality,
+            tier,
+            cacheLane,
+            contextThreshold,
+            pricingUnit,
+            pricingUnit,
+            pricingUnit,
+            pricingUnit,
+            1m,
+            1m,
+            0m,
+            "USD",
+            0,
+            checked((int)(rate * 1000m)),
+            aggregationLevel,
+            "DAILY",
+            1,
+            1m,
+            rate
+        ) { }
+}
