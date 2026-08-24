@@ -148,3 +148,47 @@ Commit: final remediation SHA reported in the parent handoff because this addend
 - The generic worker still contains no provider names/types and no GitHub-specific failure decision. All persisted/logged exception text passes through the existing sanitizer.
 - The Task 4 migration, model, stable source identities, source definitions, credential semantics, API Created/Corrected/Unchanged behavior, and injected-NodaTime boundaries are unchanged.
 - Known warnings remain the pre-existing duplicate-`InlineData` `xUnit1025` diagnostic and the EF CLI 10.0.8/runtime 10.0.11 notice. No actionable remediation concern remains.
+
+---
+
+## Whole-plan final slice — Google billing freshness and materialized concurrency barriers
+
+Commit: final slice SHA reported in the parent handoff because this addendum is part of that commit.
+
+### Findings resolved
+
+- Google billing ingestion now reports the latest non-empty daily billing window it actually handled. The upstream contract is one requested `LocalDate` per response, so freshness uses that date at the same UTC-day-start boundary already used for `UsageEvent.OccurredAt`; it never uses the injected ingestion clock or invents sub-day precision.
+- The inclusive range retains the greatest non-empty billing date even when an intermediate day is empty and a day's records arrive in any model order. A completely empty range still returns null.
+- Each source-state concurrency test now materializes its task sequence with `ToArray()` before releasing the shared start barrier. A local entrant assertion proves all 16/24 delegates reached the barrier first; the test no longer relies on deferred LINQ enumeration that began only inside `Task.WhenAll`.
+- No production source-state, migration, provider-registration, API, source-identity, or pricing behavior changed in this slice.
+
+### TDD evidence
+
+| RED cycle | Expected failure observed | GREEN evidence |
+| --- | --- | --- |
+| Google freshness | Both single-day and mixed non-empty/empty inclusive-range cases returned null instead of `2026-06-01T00:00:00Z` and `2026-06-03T00:00:00Z`. | Google service tests passed 3/3 with UTC-day-start freshness and the existing all-empty null case. |
+| Concurrency barrier | All three tests reported zero entrants before `start.SetResult` (`0/16`, `0/24`, `0/24`), proving the lazy `Select` had not started any task. | After `ToArray`, all barrier participation assertions and real-PostgreSQL outcomes passed 3/3. |
+
+### Verification
+
+| Command | Result |
+| --- | --- |
+| Focused Google + source-state concurrency suite | Passed 6/6; concurrency uses independent scopes against real PostgreSQL. |
+| `dotnet csharpier check .` | Passed, 181 files checked. |
+| `dotnet build AiObservatory.slnx --configuration Release` | Succeeded, 0 errors; one pre-existing `xUnit1025` warning. |
+| `dotnet test --solution AiObservatory.slnx --configuration Release --no-build --timeout 5m` | Passed 628/628. |
+| `node --test clients/observatory-sweep.test.mjs` | Passed 37/37. |
+| `dotnet ef migrations has-pending-model-changes --project src/AiObservatory.Data --startup-project src/AiObservatory.Api` | Passed: no pending model changes; the existing EF CLI/runtime patch-version notice remains. |
+
+### Files changed by this slice
+
+- `src/AiObservatory.Ingest/Services/Google/GoogleIngestionService.cs`
+- `tests/AiObservatory.Ingest.Tests/Services/GoogleIngestionServiceTests.cs`
+- `tests/AiObservatory.Ingest.Tests/Services/SourceSyncStateStoreConcurrencyTests.cs`
+- `.superpowers/sdd/2026-08-24-source-aware-usage-foundation/task-4-report.md`
+
+### Self-review and concerns
+
+- Google freshness is derived only when at least one record exists for a requested day. Empty responses cannot advance freshness, and the greatest-date comparison makes the range result independent of record order.
+- The barrier hardening adds only eager materialization and local participation counters; no helper, synchronization abstraction, production hook, or dependency was introduced.
+- Known notices remain the pre-existing duplicate-`InlineData` `xUnit1025` diagnostic and EF CLI 10.0.8/runtime 10.0.11. No actionable finding remains in this slice.

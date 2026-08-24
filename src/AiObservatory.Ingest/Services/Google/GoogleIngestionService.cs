@@ -20,14 +20,19 @@ public class GoogleIngestionService(
         CancellationToken cancellationToken
     )
     {
+        Instant? latest = null;
         for (var date = from; date <= through; date = date.PlusDays(1))
         {
-            await IngestDayAsync(date, cancellationToken);
+            var observed = await IngestDayAsync(date, cancellationToken);
+            if (observed is { } value && (latest is null || value > latest))
+            {
+                latest = value;
+            }
         }
-        return new SourceIngestionResult(null);
+        return new SourceIngestionResult(latest);
     }
 
-    private async Task IngestDayAsync(LocalDate date, CancellationToken cancellationToken)
+    private async Task<Instant?> IngestDayAsync(LocalDate date, CancellationToken cancellationToken)
     {
         var records = await client.GetDailySpendAsync(date, cancellationToken);
         var groups = records.GroupBy(r => r.Model).ToList();
@@ -68,5 +73,6 @@ public class GoogleIngestionService(
             groups.Count,
             date
         );
+        return records.Count == 0 ? null : date.AtStartOfDayInZone(DateTimeZone.Utc).ToInstant();
     }
 }

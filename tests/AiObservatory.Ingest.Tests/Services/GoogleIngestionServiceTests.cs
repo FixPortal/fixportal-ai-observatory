@@ -47,7 +47,33 @@ public class GoogleIngestionServiceTests
                 ),
                 Arg.Any<CancellationToken>()
             );
-        result.LatestObservationAt.Should().BeNull("Google's billing record supplies no observation timestamp");
+        result.LatestObservationAt.Should().Be(date.AtStartOfDayInZone(DateTimeZone.Utc).ToInstant());
+    }
+
+    [Fact]
+    public async Task IngestAsync_returns_latest_non_empty_billing_date_across_inclusive_range()
+    {
+        var first = new LocalDate(2026, 6, 1);
+        var middle = first.PlusDays(1);
+        var last = first.PlusDays(2);
+        _client
+            .GetDailySpendAsync(first, Arg.Any<CancellationToken>())
+            .Returns([new GoogleBillingRecord("AI Platform", "gemini-2.5-pro", 1m, "{}")]);
+        _client.GetDailySpendAsync(middle, Arg.Any<CancellationToken>()).Returns([]);
+        _client
+            .GetDailySpendAsync(last, Arg.Any<CancellationToken>())
+            .Returns([
+                new GoogleBillingRecord("AI Platform", "gemini-2.5-flash", 2m, "{}"),
+                new GoogleBillingRecord("AI Platform", "gemini-2.5-pro", 3m, "{}"),
+            ]);
+
+        var sut = new GoogleIngestionService(_client, _repo, _clock, NullLogger<GoogleIngestionService>.Instance);
+        var result = await sut.IngestAsync(first, last, TestContext.Current.CancellationToken);
+
+        result.LatestObservationAt.Should().Be(last.AtStartOfDayInZone(DateTimeZone.Utc).ToInstant());
+        await _client.Received(1).GetDailySpendAsync(first, Arg.Any<CancellationToken>());
+        await _client.Received(1).GetDailySpendAsync(middle, Arg.Any<CancellationToken>());
+        await _client.Received(1).GetDailySpendAsync(last, Arg.Any<CancellationToken>());
     }
 
     [Fact]
