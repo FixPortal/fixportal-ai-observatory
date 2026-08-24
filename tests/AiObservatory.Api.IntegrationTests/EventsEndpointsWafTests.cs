@@ -145,123 +145,6 @@ public class EventsEndpointsWafTests(AiObservatoryApiFactory factory)
     }
 
     [Fact]
-    public async Task PostEvents_without_provenance_keep_same_key_distinct_per_provider_and_idempotent()
-    {
-        using var client = factory.CreateAdminClient();
-        var key = $"waf-legacy-cross-provider-{Guid.NewGuid():N}";
-        var occurredAtUtc = new DateTimeOffset(2026, 8, 1, 12, 0, 0, TimeSpan.Zero);
-        object Body(string provider) =>
-            new
-            {
-                Provider = provider,
-                Model = "shared-model",
-                InputTokens = 1,
-                OutputTokens = 1,
-                CostUsd = 1m,
-                RawPayload = "{}",
-                EventKey = key,
-                OccurredAtUtc = occurredAtUtc,
-            };
-
-        var openAiCreated = await client.PostAsJsonAsync(
-            "/api/events",
-            Body("openai"),
-            TestContext.Current.CancellationToken
-        );
-        var googleCreated = await client.PostAsJsonAsync(
-            "/api/events",
-            Body("google"),
-            TestContext.Current.CancellationToken
-        );
-        var openAiRepeat = await client.PostAsJsonAsync(
-            "/api/events",
-            Body("openai"),
-            TestContext.Current.CancellationToken
-        );
-        var googleRepeat = await client.PostAsJsonAsync(
-            "/api/events",
-            Body("google"),
-            TestContext.Current.CancellationToken
-        );
-
-        openAiCreated.StatusCode.Should().Be(HttpStatusCode.Created);
-        googleCreated.StatusCode.Should().Be(HttpStatusCode.Created);
-        openAiRepeat.StatusCode.Should().Be(HttpStatusCode.OK);
-        googleRepeat.StatusCode.Should().Be(HttpStatusCode.OK);
-        (await openAiRepeat.Content.ReadFromJsonAsync<JsonElement>(TestContext.Current.CancellationToken))
-            .GetProperty("duplicate")
-            .GetBoolean()
-            .Should()
-            .BeTrue();
-        (await googleRepeat.Content.ReadFromJsonAsync<JsonElement>(TestContext.Current.CancellationToken))
-            .GetProperty("duplicate")
-            .GetBoolean()
-            .Should()
-            .BeTrue();
-    }
-
-    [Fact]
-    public async Task PatchEventCost_without_provenance_updates_only_its_provider_legacy_row()
-    {
-        using var client = factory.CreateAdminClient();
-        var key = $"waf-legacy-patch-{Guid.NewGuid():N}";
-        async Task<Guid> Post(string provider, decimal cost)
-        {
-            var response = await client.PostAsJsonAsync(
-                "/api/events",
-                new
-                {
-                    Provider = provider,
-                    Model = "shared-model",
-                    InputTokens = 1,
-                    OutputTokens = 1,
-                    CostUsd = cost,
-                    RawPayload = "{}",
-                    EventKey = key,
-                },
-                TestContext.Current.CancellationToken
-            );
-            response.StatusCode.Should().Be(HttpStatusCode.Created);
-            return (await response.Content.ReadFromJsonAsync<JsonElement>(TestContext.Current.CancellationToken))
-                .GetProperty("id")
-                .GetGuid();
-        }
-
-        var openAiId = await Post("openai", 1m);
-        var googleId = await Post("google", 2m);
-
-        (
-            await client.PatchAsJsonAsync(
-                $"/api/events/{key}/cost?provider=openai",
-                new { CostUsd = 3m },
-                TestContext.Current.CancellationToken
-            )
-        )
-            .StatusCode.Should()
-            .Be(HttpStatusCode.OK);
-        (
-            await client.PatchAsJsonAsync(
-                $"/api/events/{key}/cost?provider=google",
-                new { CostUsd = 4m },
-                TestContext.Current.CancellationToken
-            )
-        )
-            .StatusCode.Should()
-            .Be(HttpStatusCode.OK);
-
-        (await client.GetFromJsonAsync<JsonElement>($"/api/events/{openAiId}", TestContext.Current.CancellationToken))
-            .GetProperty("costUsd")
-            .GetDecimal()
-            .Should()
-            .Be(3m);
-        (await client.GetFromJsonAsync<JsonElement>($"/api/events/{googleId}", TestContext.Current.CancellationToken))
-            .GetProperty("costUsd")
-            .GetDecimal()
-            .Should()
-            .Be(4m);
-    }
-
-    [Fact]
     public async Task PostEvent_with_maximum_legacy_key_preserves_the_provider_namespace()
     {
         using var client = factory.CreateAdminClient();
@@ -290,6 +173,89 @@ public class EventsEndpointsWafTests(AiObservatoryApiFactory factory)
             .GetString()
             .Should()
             .Be($"Anthropic:{key}");
+    }
+
+    [Fact]
+    public async Task Legacy_post_and_patch_preserve_prefixed_keys_per_provider()
+    {
+        using var client = factory.CreateAdminClient();
+        var rawKey = $"waf-legacy-prefixed-{Guid.NewGuid():N}";
+        var eventKeys = new[] { rawKey, $"OpenAI:{rawKey}" };
+        var occurredAtUtc = new DateTimeOffset(2026, 8, 1, 12, 0, 0, TimeSpan.Zero);
+        var rows = new Dictionary<(string Provider, string EventKey), Guid>();
+
+        async Task<HttpResponseMessage> Post(string provider, string eventKey) =>
+            await client.PostAsJsonAsync(
+                "/api/events",
+                new
+                {
+                    Provider = provider,
+                    Model = "shared-model",
+                    InputTokens = 1,
+                    OutputTokens = 1,
+                    CostUsd = 1m,
+                    RawPayload = "{}",
+                    EventKey = eventKey,
+                    OccurredAtUtc = occurredAtUtc,
+                },
+                TestContext.Current.CancellationToken
+            );
+
+        foreach (var eventKey in eventKeys)
+        {
+            foreach (var provider in new[] { "openai", "google" })
+            {
+                var created = await Post(provider, eventKey);
+                created.StatusCode.Should().Be(HttpStatusCode.Created);
+                rows[(provider, eventKey)] = (
+                    await created.Content.ReadFromJsonAsync<JsonElement>(TestContext.Current.CancellationToken)
+                )
+                    .GetProperty("id")
+                    .GetGuid();
+            }
+        }
+
+        foreach (var eventKey in eventKeys)
+        {
+            var openAiRepeat = await Post("openai", eventKey);
+
+            openAiRepeat.StatusCode.Should().Be(HttpStatusCode.OK);
+            (await openAiRepeat.Content.ReadFromJsonAsync<JsonElement>(TestContext.Current.CancellationToken))
+                .GetProperty("duplicate")
+                .GetBoolean()
+                .Should()
+                .BeTrue();
+        }
+
+        var patches = new[]
+        {
+            (Provider: "openai", EventKey: rawKey, CostUsd: 2m),
+            (Provider: "google", EventKey: $"OpenAI:{rawKey}", CostUsd: 3m),
+        };
+        foreach (var patch in patches)
+        {
+            (
+                await client.PatchAsJsonAsync(
+                    $"/api/events/{patch.EventKey}/cost?provider={patch.Provider}",
+                    new { patch.CostUsd },
+                    TestContext.Current.CancellationToken
+                )
+            )
+                .StatusCode.Should()
+                .Be(HttpStatusCode.OK);
+        }
+
+        await using var scope = factory.Services.CreateAsyncScope();
+        var storedCosts = await scope
+            .ServiceProvider.GetRequiredService<AiObservatoryDbContext>()
+            .UsageEvents.AsNoTracking()
+            .Where(e => rows.Values.Contains(e.Id))
+            .ToDictionaryAsync(e => e.Id, e => e.CostUsd, TestContext.Current.CancellationToken);
+
+        storedCosts[rows[("openai", rawKey)]].Should().Be(2m);
+        storedCosts[rows[("google", rawKey)]].Should().Be(1m);
+        storedCosts[rows[("openai", $"OpenAI:{rawKey}")]].Should().Be(1m);
+        storedCosts[rows[("google", $"OpenAI:{rawKey}")]].Should().Be(3m);
     }
 
     [Fact]
