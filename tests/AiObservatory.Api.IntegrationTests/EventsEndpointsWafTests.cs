@@ -56,6 +56,25 @@ public class EventsEndpointsWafTests(AiObservatoryApiFactory factory)
     }
 
     [Fact]
+    public async Task PostEvent_WhenRawPayloadHasDuplicateProperties_ReturnsBadRequest()
+    {
+        using var client = factory.CreateAdminClient();
+        var body = new
+        {
+            Provider = "openai",
+            Model = "gpt-5.4",
+            InputTokens = 1,
+            OutputTokens = 1,
+            CostUsd = 0.01m,
+            RawPayload = """{"request":"first","request":"last"}""",
+        };
+
+        var response = await client.PostAsJsonAsync("/api/events", body, TestContext.Current.CancellationToken);
+
+        response.StatusCode.Should().Be(HttpStatusCode.BadRequest);
+    }
+
+    [Fact]
     public async Task PostEvent_WhenUnknownProvider_ReturnsBadRequest()
     {
         using var client = factory.CreateAdminClient();

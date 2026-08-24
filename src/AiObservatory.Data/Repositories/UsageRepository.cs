@@ -8,9 +8,12 @@ namespace AiObservatory.Data.Repositories;
 
 public class UsageRepository(AiObservatoryDbContext ctx) : IUsageRepository
 {
+    private static readonly JsonDocumentOptions RawPayloadJsonOptions = new() { AllowDuplicateProperties = false };
+
     public async Task<RecordEventResult> RecordEventAsync(UsageEvent evt, CancellationToken ct = default)
     {
         ArgumentNullException.ThrowIfNull(evt);
+        JsonDocument.Parse(evt.RawPayload, RawPayloadJsonOptions).Dispose();
         if (evt.ObservedAt == default)
         {
             evt.ObservedAt = evt.IngestedAt;
@@ -140,12 +143,20 @@ public class UsageRepository(AiObservatoryDbContext ctx) : IUsageRepository
             .ExecuteDeleteAsync(ct);
     }
 
-    private Task<UsageEvent?> FindEventForUpdateAsync(string sourceId, string eventKey, CancellationToken ct) =>
-        ctx
+    private async Task<UsageEvent?> FindEventForUpdateAsync(string sourceId, string eventKey, CancellationToken ct)
+    {
+        var existing = await ctx
             .UsageEvents.FromSqlInterpolated(
                 $"""SELECT * FROM "UsageEvents" WHERE "SourceId" = {sourceId} AND "EventKey" = {eventKey} FOR UPDATE"""
             )
             .SingleOrDefaultAsync(ct);
+        if (existing is not null)
+        {
+            await ctx.Entry(existing).ReloadAsync(ct);
+        }
+
+        return existing;
+    }
 
     private static bool CanonicalEquals(UsageEvent left, UsageEvent right) =>
         left.Provider == right.Provider
@@ -171,8 +182,8 @@ public class UsageRepository(AiObservatoryDbContext ctx) : IUsageRepository
 
     private static bool JsonEquals(string left, string right)
     {
-        using var leftJson = JsonDocument.Parse(left);
-        using var rightJson = JsonDocument.Parse(right);
+        using var leftJson = JsonDocument.Parse(left, RawPayloadJsonOptions);
+        using var rightJson = JsonDocument.Parse(right, RawPayloadJsonOptions);
         return JsonElement.DeepEquals(leftJson.RootElement, rightJson.RootElement);
     }
 
@@ -294,13 +305,8 @@ public class UsageRepository(AiObservatoryDbContext ctx) : IUsageRepository
         await using var tx = await ctx.Database.BeginTransactionAsync(ct);
         try
         {
-            var providerValue = provider.ToString();
-            var existing = await ctx
-                .UsageEvents.FromSqlInterpolated(
-                    $"""SELECT * FROM "UsageEvents" WHERE "Provider" = {providerValue} AND "SourceId" = {sourceId} AND "EventKey" = {eventKey} FOR UPDATE"""
-                )
-                .SingleOrDefaultAsync(ct);
-            if (existing is null)
+            var existing = await FindEventForUpdateAsync(sourceId, eventKey, ct);
+            if (existing is null || existing.Provider != provider)
             {
                 await tx.RollbackAsync(ct);
                 return null;
