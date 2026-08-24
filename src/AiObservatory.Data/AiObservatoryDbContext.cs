@@ -44,6 +44,7 @@ public class AiObservatoryDbContext(DbContextOptions<AiObservatoryDbContext> opt
     public DbSet<SpendEntry> SpendEntries => Set<SpendEntry>();
     public DbSet<IdeEvent> IdeEvents => Set<IdeEvent>();
     public DbSet<SourceSyncState> SourceSyncStates => Set<SourceSyncState>();
+    public DbSet<PricingSnapshot> PricingSnapshots => Set<PricingSnapshot>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -488,6 +489,22 @@ public class AiObservatoryDbContext(DbContextOptions<AiObservatoryDbContext> opt
             b.HasKey(s => s.SourceId);
             b.Property(s => s.SourceId).HasMaxLength(100);
             b.Property(s => s.LastError).HasMaxLength(500);
+        });
+
+        modelBuilder.Entity<PricingSnapshot>(b =>
+        {
+            b.Property(snapshot => snapshot.Provider).HasConversion<string>();
+            b.Property(snapshot => snapshot.SourceId).HasMaxLength(100);
+            b.Property(snapshot => snapshot.SourceUrl).HasMaxLength(2048);
+            b.Property(snapshot => snapshot.ContentHash).HasMaxLength(64);
+            // Exact first-party Markdown is evidence, not JSON. Only the normalized catalog is jsonb.
+            b.Property(snapshot => snapshot.RawEvidence).HasColumnType("text");
+            b.Property(snapshot => snapshot.NormalizedCatalog).HasColumnType("jsonb");
+            b.HasIndex(snapshot => new { snapshot.SourceId, snapshot.ContentHash }).IsUnique();
+            b.HasIndex(snapshot => snapshot.SourceId).IsUnique().HasFilter("\"IsActive\"");
+            b.ToTable(table =>
+                table.HasCheckConstraint("CK_PricingSnapshot_ContentHash_Length", "char_length(\"ContentHash\") = 64")
+            );
         });
     }
 }
