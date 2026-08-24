@@ -13,6 +13,8 @@ namespace AiObservatory.Api.Endpoints;
 
 public static class EventsEndpoints
 {
+    private static readonly JsonDocumentOptions RawPayloadJsonOptions = new() { AllowDuplicateProperties = false };
+
     public static void MapEventsEndpoints(this IEndpointRouteBuilder app)
     {
         app.MapGet("/events/{id:guid}", GetEventByIdAsync).WithName("GetEventById");
@@ -57,7 +59,7 @@ public static class EventsEndpoints
         var rawPayload = req.RawPayload ?? "{}";
         try
         {
-            JsonDocument.Parse(rawPayload).Dispose();
+            JsonDocument.Parse(rawPayload, RawPayloadJsonOptions).Dispose();
         }
         catch (JsonException)
         {

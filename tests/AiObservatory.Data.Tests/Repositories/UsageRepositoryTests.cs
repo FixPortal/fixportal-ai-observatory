@@ -205,6 +205,58 @@ public class UsageRepositoryTests : IAsyncLifetime
     }
 
     [Fact]
+    public async Task RecordEvent_correction_copies_the_new_observed_at()
+    {
+        var ct = TestContext.Current.CancellationToken;
+        var correctedObservedAt = Instant.FromUtc(2026, 8, 24, 13, 1);
+
+        await _repo.RecordEventAsync(NewEvent(input: 100), ct);
+        var result = await _repo.RecordEventAsync(NewEvent(input: 175, observedAt: correctedObservedAt), ct);
+
+        result.Disposition.Should().Be(RecordEventDisposition.Corrected);
+        var saved = await _ctx.UsageEvents.AsNoTracking().SingleAsync(ct);
+        saved.ObservedAt.Should().Be(correctedObservedAt);
+    }
+
+    [Fact]
+    public async Task RecordEvent_correction_refreshes_a_stale_tracked_snapshot()
+    {
+        var ct = TestContext.Current.CancellationToken;
+        var options = new DbContextOptionsBuilder<AiObservatoryDbContext>()
+            .UseNpgsql(_connStr, o => o.UseNodaTime())
+            .Options;
+
+        await _repo.RecordEventAsync(NewEvent(input: 100), ct);
+        await using (var otherContext = new AiObservatoryDbContext(options))
+        {
+            var otherRepository = new UsageRepository(otherContext);
+            (await otherRepository.RecordEventAsync(NewEvent(input: 200), ct))
+                .Disposition.Should()
+                .Be(RecordEventDisposition.Corrected);
+            (await otherContext.DailyAggregates.AsNoTracking().SingleAsync(ct)).InputTokens.Should().Be(200);
+        }
+
+        await _repo.RecordEventAsync(NewEvent(input: 300), ct);
+
+        _ctx.ChangeTracker.Clear();
+        (await _ctx.UsageEvents.AsNoTracking().SingleAsync(ct)).InputTokens.Should().Be(300);
+        var aggregate = await _ctx.DailyAggregates.AsNoTracking().SingleAsync(ct);
+        aggregate.InputTokens.Should().Be(300);
+        aggregate.RequestCount.Should().Be(1);
+    }
+
+    [Fact]
+    public async Task RecordEvent_rejects_duplicate_raw_payload_properties()
+    {
+        var evt = NewEvent();
+        evt.RawPayload = """{"request":"first","request":"last"}""";
+
+        var act = () => _repo.RecordEventAsync(evt, TestContext.Current.CancellationToken);
+
+        await act.Should().ThrowAsync<JsonException>();
+    }
+
+    [Fact]
     public async Task RecordEvent_failed_correction_rolls_back_event_and_aggregate()
     {
         var ct = TestContext.Current.CancellationToken;
@@ -535,6 +587,39 @@ public class UsageRepositoryTests : IAsyncLifetime
         var rows = await _ctx.DailyAggregates.AsNoTracking().ToListAsync(ct);
         rows.Single(x => x.SourceId == UsageSourceIds.CodexLocal).CostUsd.Should().Be(3m);
         rows.Single(x => x.SourceId == UsageSourceIds.OpenAiUsageApi).CostUsd.Should().Be(1m);
+    }
+
+    [Fact]
+    public async Task PatchEventCost_refreshes_a_stale_tracked_snapshot()
+    {
+        var ct = TestContext.Current.CancellationToken;
+        const string eventKey = "stale-cost-key";
+        var options = new DbContextOptionsBuilder<AiObservatoryDbContext>()
+            .UseNpgsql(_connStr, o => o.UseNodaTime())
+            .Options;
+
+        await _repo.RecordEventAsync(NewEvent(eventKey: eventKey, cost: 1m), ct);
+        await using (var otherContext = new AiObservatoryDbContext(options))
+        {
+            var otherRepository = new UsageRepository(otherContext);
+            var otherResult = await otherRepository.PatchEventCostAsync(
+                Provider.OpenAI,
+                UsageSourceIds.OpenAiUsageApi,
+                eventKey,
+                2m,
+                ct
+            );
+            otherResult.Should().NotBeNull();
+            (await otherContext.DailyAggregates.AsNoTracking().SingleAsync(ct)).CostUsd.Should().Be(2m);
+        }
+
+        await _repo.PatchEventCostAsync(Provider.OpenAI, UsageSourceIds.OpenAiUsageApi, eventKey, 3m, ct);
+
+        _ctx.ChangeTracker.Clear();
+        (await _ctx.UsageEvents.AsNoTracking().SingleAsync(ct)).CostUsd.Should().Be(3m);
+        var aggregate = await _ctx.DailyAggregates.AsNoTracking().SingleAsync(ct);
+        aggregate.CostUsd.Should().Be(3m);
+        aggregate.RequestCount.Should().Be(1);
     }
 
     [Theory]
