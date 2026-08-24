@@ -127,6 +127,51 @@ public class AggregatesEndpointsWafTests(AiObservatoryApiFactory factory)
     }
 
     [Fact]
+    public async Task GetAggregates_ExposesProvenanceWithoutRemovingExistingFields()
+    {
+        var date = new LocalDate(2019, 6, 2);
+        using (var scope = factory.Services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<AiObservatoryDbContext>();
+            db.DailyAggregates.Add(
+                new DailyAggregate
+                {
+                    Date = date,
+                    Provider = Provider.OpenAI,
+                    Model = "provenance-wire-test",
+                    SourceId = UsageSourceIds.CodexLocal,
+                    SourceKind = SourceKind.LocalTelemetry,
+                    UsageScope = UsageScope.Subscription,
+                    CostBasis = CostBasis.Notional,
+                    InputTokens = 1,
+                    OutputTokens = 2,
+                    CacheReadTokens = 3,
+                    CacheWriteTokens = 4,
+                    CacheWrite1hTokens = 1,
+                    CostUsd = 0.01m,
+                    UnknownCostCount = 0,
+                    RequestCount = 1,
+                }
+            );
+            await db.SaveChangesAsync(TestContext.Current.CancellationToken);
+        }
+
+        using var client = factory.CreateReadOnlyClient();
+        var rows = await client.GetFromJsonAsync<JsonElement>(
+            "/api/aggregates?from=2019-06-02&to=2019-06-02",
+            TestContext.Current.CancellationToken
+        );
+        var row = rows.EnumerateArray().Single();
+
+        row.GetProperty("sourceId").GetString().Should().Be(UsageSourceIds.CodexLocal);
+        row.GetProperty("sourceKind").GetString().Should().Be("localTelemetry");
+        row.GetProperty("usageScope").GetString().Should().Be("subscription");
+        row.GetProperty("costBasis").GetString().Should().Be("notional");
+        row.GetProperty("inputTokens").GetInt64().Should().Be(1);
+        row.GetProperty("requestCount").GetInt32().Should().Be(1);
+    }
+
+    [Fact]
     public async Task Aggregates_ExposeUnknownCostAndPatchToKnownZeroOnce()
     {
         using var client = factory.CreateAdminClient();

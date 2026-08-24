@@ -2,7 +2,9 @@ using System.Net;
 using System.Net.Http.Json;
 using System.Text;
 using System.Text.Json;
+using AiObservatory.Data.Entities;
 using AwesomeAssertions;
+using Microsoft.Extensions.DependencyInjection;
 
 namespace AiObservatory.Api.IntegrationTests;
 
@@ -137,6 +139,226 @@ public class EventsEndpointsWafTests(AiObservatoryApiFactory factory)
         second.StatusCode.Should().Be(HttpStatusCode.OK);
         var json = await second.Content.ReadFromJsonAsync<JsonElement>(TestContext.Current.CancellationToken);
         json.GetProperty("duplicate").GetBoolean().Should().BeTrue();
+        json.GetProperty("corrected").GetBoolean().Should().BeFalse();
+    }
+
+    [Fact]
+    public async Task PostEvent_WhenProvenanceIsOmitted_PersistsExactLegacyDefaults()
+    {
+        using var client = factory.CreateAdminClient();
+        var response = await client.PostAsJsonAsync(
+            "/api/events",
+            NewEventBody(eventKey: $"waf-legacy-provenance-{Guid.NewGuid():N}"),
+            TestContext.Current.CancellationToken
+        );
+
+        response.StatusCode.Should().Be(HttpStatusCode.Created);
+        var id = (await response.Content.ReadFromJsonAsync<JsonElement>(TestContext.Current.CancellationToken))
+            .GetProperty("id")
+            .GetGuid();
+        var stored = await client.GetFromJsonAsync<JsonElement>(
+            $"/api/events/{id}",
+            TestContext.Current.CancellationToken
+        );
+
+        stored.GetProperty("sourceId").GetString().Should().Be(UsageSourceIds.LegacyApi);
+        stored.GetProperty("sourceKind").GetString().Should().Be("legacy");
+        stored.GetProperty("usageScope").GetString().Should().Be("unknown");
+        stored.GetProperty("costBasis").GetString().Should().Be("unknown");
+        stored
+            .GetProperty("observedAt")
+            .GetDateTimeOffset()
+            .Should()
+            .Be(stored.GetProperty("ingestedAt").GetDateTimeOffset());
+    }
+
+    [Fact]
+    public async Task PostEvent_WhenProvenanceIsExplicit_NormalizesAndRoundTripsIt()
+    {
+        using var client = factory.CreateAdminClient();
+        var observedAt = new DateTimeOffset(2026, 8, 24, 12, 0, 0, TimeSpan.Zero);
+        var body = new
+        {
+            Provider = "openai",
+            Model = "gpt-5.4",
+            InputTokens = 10,
+            OutputTokens = 2,
+            CostUsd = 0.01m,
+            RawPayload = "{}",
+            EventKey = $"waf-explicit-provenance-{Guid.NewGuid():N}",
+            SourceId = "  CoDeX-LoCaL  ",
+            SourceKind = "lOcAlTeLeMeTrY",
+            UsageScope = "SUBSCRIPTION",
+            CostBasis = "nOtIoNaL",
+            ObservedAtUtc = observedAt,
+        };
+
+        var response = await client.PostAsJsonAsync("/api/events", body, TestContext.Current.CancellationToken);
+
+        response.StatusCode.Should().Be(HttpStatusCode.Created);
+        var id = (await response.Content.ReadFromJsonAsync<JsonElement>(TestContext.Current.CancellationToken))
+            .GetProperty("id")
+            .GetGuid();
+        var stored = await client.GetFromJsonAsync<JsonElement>(
+            $"/api/events/{id}",
+            TestContext.Current.CancellationToken
+        );
+
+        stored.GetProperty("sourceId").GetString().Should().Be(UsageSourceIds.CodexLocal);
+        stored.GetProperty("sourceKind").GetString().Should().Be("localTelemetry");
+        stored.GetProperty("usageScope").GetString().Should().Be("subscription");
+        stored.GetProperty("costBasis").GetString().Should().Be("notional");
+        stored.GetProperty("observedAt").GetDateTimeOffset().Should().Be(observedAt);
+    }
+
+    [Theory]
+    [InlineData("SourceKind", "not-a-kind")]
+    [InlineData("UsageScope", "0")]
+    [InlineData("CostBasis", "not-a-basis")]
+    public async Task PostEvent_WhenAProvenanceEnumIsInvalid_ReturnsBadRequest(string field, string value)
+    {
+        using var client = factory.CreateAdminClient();
+        var body = new Dictionary<string, object?>
+        {
+            ["Provider"] = "openai",
+            ["Model"] = "gpt-5.4",
+            ["InputTokens"] = 1,
+            ["OutputTokens"] = 1,
+            ["RawPayload"] = "{}",
+            [field] = value,
+        };
+
+        var response = await client.PostAsJsonAsync("/api/events", body, TestContext.Current.CancellationToken);
+
+        response.StatusCode.Should().Be(HttpStatusCode.BadRequest);
+    }
+
+    [Fact]
+    public async Task PostEvent_WhenSourceIdExceedsStorageBoundary_ReturnsBadRequest()
+    {
+        using var client = factory.CreateAdminClient();
+        var body = new
+        {
+            Provider = "openai",
+            Model = "gpt-5.4",
+            InputTokens = 1,
+            OutputTokens = 1,
+            RawPayload = "{}",
+            SourceId = new string('s', 101),
+        };
+
+        var response = await client.PostAsJsonAsync("/api/events", body, TestContext.Current.CancellationToken);
+
+        response.StatusCode.Should().Be(HttpStatusCode.BadRequest);
+    }
+
+    [Fact]
+    public async Task PostEvent_WhenObservedAtIsInTheFuture_ReturnsBadRequest()
+    {
+        using var client = factory.CreateAdminClient();
+        var now = factory.Services.GetRequiredService<NodaTime.IClock>().GetCurrentInstant();
+        var body = new
+        {
+            Provider = "openai",
+            Model = "gpt-5.4",
+            InputTokens = 1,
+            OutputTokens = 1,
+            RawPayload = "{}",
+            ObservedAtUtc = now.Plus(NodaTime.Duration.FromHours(1)).ToDateTimeOffset(),
+        };
+
+        var response = await client.PostAsJsonAsync("/api/events", body, TestContext.Current.CancellationToken);
+
+        response.StatusCode.Should().Be(HttpStatusCode.BadRequest);
+    }
+
+    [Fact]
+    public async Task PostEvent_WhenSnapshotChanges_ReturnsCorrectedWithoutDuplicate()
+    {
+        using var client = factory.CreateAdminClient();
+        var key = $"waf-corrected-{Guid.NewGuid():N}";
+        var first = new
+        {
+            Provider = "openai",
+            Model = "gpt-5.4",
+            InputTokens = 1,
+            OutputTokens = 1,
+            RawPayload = "{}",
+            EventKey = key,
+            SourceId = UsageSourceIds.CodexLocal,
+            SourceKind = "localTelemetry",
+            UsageScope = "subscription",
+            CostBasis = "notional",
+        };
+        var corrected = new
+        {
+            Provider = "openai",
+            Model = "gpt-5.4",
+            InputTokens = 2,
+            OutputTokens = 1,
+            RawPayload = "{}",
+            EventKey = key,
+            SourceId = UsageSourceIds.CodexLocal,
+            SourceKind = "localTelemetry",
+            UsageScope = "subscription",
+            CostBasis = "notional",
+        };
+
+        (await client.PostAsJsonAsync("/api/events", first, TestContext.Current.CancellationToken))
+            .StatusCode.Should()
+            .Be(HttpStatusCode.Created);
+        var response = await client.PostAsJsonAsync("/api/events", corrected, TestContext.Current.CancellationToken);
+
+        response.StatusCode.Should().Be(HttpStatusCode.OK);
+        var json = await response.Content.ReadFromJsonAsync<JsonElement>(TestContext.Current.CancellationToken);
+        json.GetProperty("duplicate").GetBoolean().Should().BeFalse();
+        json.GetProperty("corrected").GetBoolean().Should().BeTrue();
+    }
+
+    [Fact]
+    public async Task PatchEventCost_WhenSourceIdIsSupplied_UpdatesOnlyThatSourceIdentity()
+    {
+        using var client = factory.CreateAdminClient();
+        var key = $"waf-source-patch-{Guid.NewGuid():N}";
+        async Task<Guid> Post(string? sourceId)
+        {
+            var body = new
+            {
+                Provider = "openai",
+                Model = "gpt-5.4",
+                InputTokens = 1,
+                OutputTokens = 1,
+                CostUsd = 1m,
+                RawPayload = "{}",
+                EventKey = key,
+                SourceId = sourceId,
+            };
+            var created = await client.PostAsJsonAsync("/api/events", body, TestContext.Current.CancellationToken);
+            created.StatusCode.Should().Be(HttpStatusCode.Created);
+            return (await created.Content.ReadFromJsonAsync<JsonElement>(TestContext.Current.CancellationToken))
+                .GetProperty("id")
+                .GetGuid();
+        }
+
+        var legacyId = await Post(null);
+        var localId = await Post(UsageSourceIds.CodexLocal);
+        var patch = await client.PatchAsJsonAsync(
+            $"/api/events/{key}/cost?provider=openai&sourceId={UsageSourceIds.CodexLocal}",
+            new { CostUsd = 2m },
+            TestContext.Current.CancellationToken
+        );
+
+        patch.StatusCode.Should().Be(HttpStatusCode.OK);
+        (await client.GetFromJsonAsync<JsonElement>($"/api/events/{legacyId}", TestContext.Current.CancellationToken))
+            .GetProperty("costUsd")
+            .GetDecimal()
+            .Should()
+            .Be(1m);
+        (await client.GetFromJsonAsync<JsonElement>($"/api/events/{localId}", TestContext.Current.CancellationToken))
+            .GetProperty("costUsd")
+            .GetDecimal()
+            .Should()
+            .Be(2m);
     }
 
     /// <summary>

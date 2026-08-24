@@ -43,39 +43,29 @@ public static class EventsEndpoints
             return Results.BadRequest($"Unknown provider: {req.Provider}");
         }
 
-        if (HasInvalidTokenCounts(req))
+        var provenanceError = TryReadProvenance(
+            req,
+            out var sourceId,
+            out var sourceKind,
+            out var usageScope,
+            out var costBasis
+        );
+        if (provenanceError is not null)
         {
-            return Results.BadRequest("Token counts and cost must be non-negative");
+            return Results.BadRequest(provenanceError);
         }
 
-        // CacheWrite1hTokens is a SUBSET of CacheWriteTokens, not a sibling total. Rejecting
-        // an over-large one here is what lets the cost calculation derive the five-minute
-        // remainder by subtraction; the same rule is enforced again as a check constraint.
-        if (req.CacheWrite1hTokens is { } cacheWrite1h && cacheWrite1h > (req.CacheWriteTokens ?? 0))
+        var requestError = ValidateUsageRequest(req, out var rawPayload, out var eventKey);
+        if (requestError is not null)
         {
-            return Results.BadRequest("CacheWrite1hTokens must not exceed CacheWriteTokens");
-        }
-
-        var rawPayload = req.RawPayload ?? "{}";
-        try
-        {
-            JsonDocument.Parse(rawPayload, RawPayloadJsonOptions).Dispose();
-        }
-        catch (JsonException)
-        {
-            return Results.BadRequest("RawPayload must be valid JSON");
+            return Results.BadRequest(requestError);
         }
 
         var now = clock.GetCurrentInstant();
-        var eventKey = string.IsNullOrWhiteSpace(req.EventKey) ? null : req.EventKey.Trim();
-        if (eventKey is { Length: > 200 })
+        var observedAt = req.ObservedAtUtc is { } suppliedObserved ? Instant.FromDateTimeOffset(suppliedObserved) : now;
+        if (observedAt > now + Duration.FromMinutes(5))
         {
-            return Results.BadRequest("EventKey must be 200 characters or fewer");
-        }
-
-        if (HasOversizedIdentity(req))
-        {
-            return Results.BadRequest("Telemetry identity values must be 200 characters or fewer");
+            return Results.BadRequest("ObservedAtUtc must not be in the future");
         }
 
         // Backfilled events (e.g. from the local usage sweeper) carry the time the
@@ -145,14 +135,26 @@ public static class EventsEndpoints
             SessionId = req.SessionId,
             AgentId = req.AgentId,
             RawPayload = rawPayload,
+            SourceId = sourceId,
+            SourceKind = sourceKind,
+            UsageScope = usageScope,
+            CostBasis = costBasis,
+            ObservedAt = observedAt,
             EventKey = eventKey,
         };
 
         var result = await repo.RecordEventAsync(evt, ctx.RequestAborted);
 
-        return result.IsDuplicate
-            ? Results.Ok(new { Id = result.EventId, Duplicate = true })
-            : Results.CreatedAtRoute("GetEventById", new { id = result.EventId }, new { Id = result.EventId });
+        return result.Disposition == RecordEventDisposition.Created
+            ? Results.CreatedAtRoute("GetEventById", new { id = result.EventId }, new { Id = result.EventId })
+            : Results.Ok(
+                new
+                {
+                    Id = result.EventId,
+                    Duplicate = result.Disposition == RecordEventDisposition.Unchanged,
+                    Corrected = result.Disposition == RecordEventDisposition.Corrected,
+                }
+            );
     }
 
     private static async Task<IResult> GetEventsAsync(
@@ -180,6 +182,7 @@ public static class EventsEndpoints
     private static async Task<IResult> PatchEventCostAsync(
         string eventKey,
         string provider,
+        string? sourceId,
         UpdateEventCostRequest req,
         IUsageRepository repo,
         CancellationToken ct
@@ -195,9 +198,15 @@ public static class EventsEndpoints
             return Results.BadRequest("CostUsd must be non-negative");
         }
 
+        var normalizedSourceId = NormalizeSourceId(sourceId);
+        if (normalizedSourceId.Length > 100)
+        {
+            return Results.BadRequest("SourceId must be 100 characters or fewer");
+        }
+
         // Trim to match the stored key: POST persists req.EventKey.Trim(), so a padded
         // route value would otherwise miss the row and drop the cost correction as a 404.
-        var result = await repo.PatchEventCostAsync(parsed, UsageSourceIds.LegacyApi, eventKey.Trim(), req.CostUsd, ct);
+        var result = await repo.PatchEventCostAsync(parsed, normalizedSourceId, eventKey.Trim(), req.CostUsd, ct);
 
         return result is null
             ? Results.NotFound()
@@ -212,6 +221,89 @@ public static class EventsEndpoints
     }
 
     internal static string SanitizeLogValue(string value) => value.Replace('\r', ' ').Replace('\n', ' ');
+
+    internal static bool TryParseOrDefault<TEnum>(string? value, TEnum defaultValue, out TEnum parsed)
+        where TEnum : struct, Enum
+    {
+        if (string.IsNullOrWhiteSpace(value))
+        {
+            parsed = defaultValue;
+            return true;
+        }
+
+        var trimmed = value.Trim();
+        return Enum.TryParse(trimmed, ignoreCase: true, out parsed)
+            && Enum.IsDefined(parsed)
+            && string.Equals(Enum.GetName(parsed), trimmed, StringComparison.OrdinalIgnoreCase);
+    }
+
+    private static string NormalizeSourceId(string? sourceId) =>
+        string.IsNullOrWhiteSpace(sourceId) ? UsageSourceIds.LegacyApi : sourceId.Trim().ToLowerInvariant();
+
+    private static string? TryReadProvenance(
+        UsageEventRequest req,
+        out string sourceId,
+        out SourceKind sourceKind,
+        out UsageScope usageScope,
+        out CostBasis costBasis
+    )
+    {
+        sourceId = NormalizeSourceId(req.SourceId);
+        sourceKind = SourceKind.Legacy;
+        usageScope = UsageScope.Unknown;
+        costBasis = CostBasis.Unknown;
+        if (sourceId.Length > 100)
+        {
+            return "SourceId must be 100 characters or fewer";
+        }
+
+        if (!TryParseOrDefault(req.SourceKind, SourceKind.Legacy, out sourceKind))
+        {
+            return $"Unknown source kind: {req.SourceKind}";
+        }
+
+        if (!TryParseOrDefault(req.UsageScope, UsageScope.Unknown, out usageScope))
+        {
+            return $"Unknown usage scope: {req.UsageScope}";
+        }
+
+        return TryParseOrDefault(req.CostBasis, CostBasis.Unknown, out costBasis)
+            ? null
+            : $"Unknown cost basis: {req.CostBasis}";
+    }
+
+    private static string? ValidateUsageRequest(UsageEventRequest req, out string rawPayload, out string? eventKey)
+    {
+        rawPayload = req.RawPayload ?? "{}";
+        eventKey = string.IsNullOrWhiteSpace(req.EventKey) ? null : req.EventKey.Trim();
+        if (HasInvalidTokenCounts(req))
+        {
+            return "Token counts and cost must be non-negative";
+        }
+
+        // CacheWrite1hTokens is a subset of CacheWriteTokens. This is enforced again by
+        // the database constraint and lets pricing derive the five-minute remainder.
+        if (req.CacheWrite1hTokens is { } cacheWrite1h && cacheWrite1h > (req.CacheWriteTokens ?? 0))
+        {
+            return "CacheWrite1hTokens must not exceed CacheWriteTokens";
+        }
+
+        try
+        {
+            JsonDocument.Parse(rawPayload, RawPayloadJsonOptions).Dispose();
+        }
+        catch (JsonException)
+        {
+            return "RawPayload must be valid JSON";
+        }
+
+        if (eventKey is { Length: > 200 })
+        {
+            return "EventKey must be 200 characters or fewer";
+        }
+
+        return HasOversizedIdentity(req) ? "Telemetry identity values must be 200 characters or fewer" : null;
+    }
 
     private static bool HasInvalidTokenCounts(UsageEventRequest req) =>
         req.InputTokens < 0
@@ -244,7 +336,12 @@ public record UsageEventRequest(
     long? ThoughtTokens = null,
     string? Runtime = null,
     string? SessionId = null,
-    string? AgentId = null
+    string? AgentId = null,
+    string? SourceId = null,
+    string? SourceKind = null,
+    string? UsageScope = null,
+    string? CostBasis = null,
+    DateTimeOffset? ObservedAtUtc = null
 );
 
 public sealed record UpdateEventCostRequest(decimal CostUsd);
