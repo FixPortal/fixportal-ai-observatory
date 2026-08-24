@@ -11,6 +11,10 @@ public class UsageRepository(AiObservatoryDbContext ctx) : IUsageRepository
     public async Task AddUsageEventAsync(UsageEvent evt, CancellationToken ct = default)
     {
         ArgumentNullException.ThrowIfNull(evt);
+        if (evt.ObservedAt == default)
+        {
+            evt.ObservedAt = evt.IngestedAt;
+        }
         ctx.UsageEvents.Add(evt);
         await ctx.SaveChangesAsync(ct);
     }
@@ -18,15 +22,22 @@ public class UsageRepository(AiObservatoryDbContext ctx) : IUsageRepository
     public async Task<RecordEventResult> RecordEventAsync(UsageEvent evt, CancellationToken ct = default)
     {
         ArgumentNullException.ThrowIfNull(evt);
+        if (evt.ObservedAt == default)
+        {
+            evt.ObservedAt = evt.IngestedAt;
+        }
         var providerStr = evt.Provider.ToString();
         var model = evt.Model ?? "unknown";
         var date = evt.OccurredAt.InUtc().Date;
+        var sourceKind = evt.SourceKind.ToString();
+        var usageScope = evt.UsageScope.ToString();
+        var costBasis = evt.CostBasis.ToString();
 
         if (evt.EventKey is not null)
         {
             var existingId = await ctx
                 .UsageEvents.AsNoTracking()
-                .Where(e => e.Provider == evt.Provider && e.EventKey == evt.EventKey)
+                .Where(e => e.SourceId == evt.SourceId && e.EventKey == evt.EventKey)
                 .Select(e => (Guid?)e.Id)
                 .FirstOrDefaultAsync(ct);
             if (existingId is not null)
@@ -62,11 +73,13 @@ public class UsageRepository(AiObservatoryDbContext ctx) : IUsageRepository
         var cacheWrite1H = evt.CacheWrite1hTokens ?? 0L;
         var unknownCostCount = evt.CostUsd is null ? 1 : 0;
         var knownCostUsd = evt.CostUsd ?? 0m;
+        var unknownCacheSavingsCount = evt.CacheSavingsUsd is null ? 1 : 0;
+        var cacheSavingsUsd = evt.CacheSavingsUsd ?? 0m;
         await ctx.Database.ExecuteSqlInterpolatedAsync(
             $"""
-            INSERT INTO "DailyAggregates" ("Date", "Provider", "Model", "InputTokens", "OutputTokens", "CacheReadTokens", "CacheWriteTokens", "CacheWrite1hTokens", "CostUsd", "UnknownCostCount", "RequestCount")
-            VALUES ({date}, {providerStr}, {model}, {evt.InputTokens}, {evt.OutputTokens}, {cacheRead}, {cacheWrite}, {cacheWrite1H}, {knownCostUsd}, {unknownCostCount}, 1)
-            ON CONFLICT ("Date", "Provider", "Model") DO UPDATE SET
+            INSERT INTO "DailyAggregates" ("Date", "Provider", "Model", "SourceId", "SourceKind", "UsageScope", "CostBasis", "InputTokens", "OutputTokens", "CacheReadTokens", "CacheWriteTokens", "CacheWrite1hTokens", "CostUsd", "UnknownCostCount", "CacheSavingsUsd", "UnknownCacheSavingsCount", "RequestCount")
+            VALUES ({date}, {providerStr}, {model}, {evt.SourceId}, {sourceKind}, {usageScope}, {costBasis}, {evt.InputTokens}, {evt.OutputTokens}, {cacheRead}, {cacheWrite}, {cacheWrite1H}, {knownCostUsd}, {unknownCostCount}, {cacheSavingsUsd}, {unknownCacheSavingsCount}, 1)
+            ON CONFLICT ("Date", "Provider", "Model", "SourceId", "SourceKind", "UsageScope", "CostBasis") DO UPDATE SET
                 "InputTokens" = "DailyAggregates"."InputTokens" + EXCLUDED."InputTokens",
                 "OutputTokens" = "DailyAggregates"."OutputTokens" + EXCLUDED."OutputTokens",
                 "CacheReadTokens" = "DailyAggregates"."CacheReadTokens" + EXCLUDED."CacheReadTokens",
@@ -74,6 +87,8 @@ public class UsageRepository(AiObservatoryDbContext ctx) : IUsageRepository
                 "CacheWrite1hTokens" = "DailyAggregates"."CacheWrite1hTokens" + EXCLUDED."CacheWrite1hTokens",
                 "CostUsd" = "DailyAggregates"."CostUsd" + EXCLUDED."CostUsd",
                 "UnknownCostCount" = "DailyAggregates"."UnknownCostCount" + EXCLUDED."UnknownCostCount",
+                "CacheSavingsUsd" = "DailyAggregates"."CacheSavingsUsd" + EXCLUDED."CacheSavingsUsd",
+                "UnknownCacheSavingsCount" = "DailyAggregates"."UnknownCacheSavingsCount" + EXCLUDED."UnknownCacheSavingsCount",
                 "RequestCount" = "DailyAggregates"."RequestCount" + EXCLUDED."RequestCount"
             """,
             ct
@@ -107,15 +122,19 @@ public class UsageRepository(AiObservatoryDbContext ctx) : IUsageRepository
     )
     {
         var providerStr = provider.ToString();
+        const string sourceId = UsageSourceIds.LegacyApi;
+        const string sourceKind = nameof(SourceKind.Legacy);
+        const string usageScope = nameof(UsageScope.Unknown);
+        const string costBasis = nameof(CostBasis.Unknown);
         // CacheWrite1hTokens is written as a literal 0, not a parameter: the only caller is
         // the polled-API ingest arm, and Anthropic's usage report does not break cache writes
         // down by TTL. 0 means "no one-hour portion reported", which prices the whole write at
         // the five-minute rate -- the same answer this path gave before the split existed.
         return ctx.Database.ExecuteSqlInterpolatedAsync(
             $"""
-            INSERT INTO "DailyAggregates" ("Date", "Provider", "Model", "InputTokens", "OutputTokens", "CacheReadTokens", "CacheWriteTokens", "CacheWrite1hTokens", "CostUsd", "UnknownCostCount", "RequestCount")
-            VALUES ({date}, {providerStr}, {model}, {inputTokens}, {outputTokens}, {cacheReadTokens}, {cacheWriteTokens}, 0, {costUsd}, 0, {requestCount})
-            ON CONFLICT ("Date", "Provider", "Model") DO UPDATE SET
+            INSERT INTO "DailyAggregates" ("Date", "Provider", "Model", "SourceId", "SourceKind", "UsageScope", "CostBasis", "InputTokens", "OutputTokens", "CacheReadTokens", "CacheWriteTokens", "CacheWrite1hTokens", "CostUsd", "UnknownCostCount", "CacheSavingsUsd", "UnknownCacheSavingsCount", "RequestCount")
+            VALUES ({date}, {providerStr}, {model}, {sourceId}, {sourceKind}, {usageScope}, {costBasis}, {inputTokens}, {outputTokens}, {cacheReadTokens}, {cacheWriteTokens}, 0, {costUsd}, 0, 0, {requestCount}, {requestCount})
+            ON CONFLICT ("Date", "Provider", "Model", "SourceId", "SourceKind", "UsageScope", "CostBasis") DO UPDATE SET
                 "InputTokens" = EXCLUDED."InputTokens",
                 "OutputTokens" = EXCLUDED."OutputTokens",
                 "CacheReadTokens" = EXCLUDED."CacheReadTokens",
@@ -123,6 +142,8 @@ public class UsageRepository(AiObservatoryDbContext ctx) : IUsageRepository
                 "CacheWrite1hTokens" = EXCLUDED."CacheWrite1hTokens",
                 "CostUsd" = EXCLUDED."CostUsd",
                 "UnknownCostCount" = EXCLUDED."UnknownCostCount",
+                "CacheSavingsUsd" = EXCLUDED."CacheSavingsUsd",
+                "UnknownCacheSavingsCount" = EXCLUDED."UnknownCacheSavingsCount",
                 "RequestCount" = EXCLUDED."RequestCount"
             """,
             ct
@@ -226,6 +247,10 @@ public class UsageRepository(AiObservatoryDbContext ctx) : IUsageRepository
                 e.Provider,
                 e.Model,
                 e.OccurredAt,
+                e.SourceId,
+                e.SourceKind,
+                e.UsageScope,
+                e.CostBasis,
                 e.CostUsd,
             })
             .FirstOrDefaultAsync(ct);
@@ -248,6 +273,9 @@ public class UsageRepository(AiObservatoryDbContext ctx) : IUsageRepository
         var date = snapshot.OccurredAt.InUtc().Date;
         var model = snapshot.Model ?? "unknown";
         var providerStr = snapshot.Provider.ToString();
+        var sourceKind = snapshot.SourceKind.ToString();
+        var usageScope = snapshot.UsageScope.ToString();
+        var costBasis = snapshot.CostBasis.ToString();
 
         await ctx
             .UsageEvents.Where(e => e.Id == snapshot.Id)
@@ -263,6 +291,8 @@ public class UsageRepository(AiObservatoryDbContext ctx) : IUsageRepository
             SET "CostUsd" = GREATEST(0, "CostUsd" + {delta}),
                 "UnknownCostCount" = "UnknownCostCount" - {(wasUnknown ? 1 : 0)}
             WHERE "Date" = {date} AND "Provider" = {providerStr} AND "Model" = {model}
+              AND "SourceId" = {snapshot.SourceId} AND "SourceKind" = {sourceKind}
+              AND "UsageScope" = {usageScope} AND "CostBasis" = {costBasis}
             """,
             ct
         );
