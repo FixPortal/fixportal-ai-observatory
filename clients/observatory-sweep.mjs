@@ -39,6 +39,7 @@ const COPILOT_PRICING = {
 const COPILOT_DEFAULT = [2.00, 8.00, 0.50, 0]
 const ALL_LOCAL_SOURCES = ['codex', 'copilot', 'claude', 'kimi']
 const ALL_LOCAL_SOURCE_IDS = ALL_LOCAL_SOURCES.map(source => `${source}-local`)
+const PARSE_CACHE_VERSION = 1
 
 // --- Pure helpers -----------------------------------------------------------
 
@@ -482,6 +483,10 @@ export async function listJsonl(dir, out = []) {
 
 export async function scanRecords(cfg, state, enabled) {
   const records = []
+  if (state.parseCacheVersion !== PARSE_CACHE_VERSION) {
+    state.files = {}
+    state.parseCacheVersion = PARSE_CACHE_VERSION
+  }
   state.files ??= {}
 
   if (enabled.has('codex')) {

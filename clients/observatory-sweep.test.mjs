@@ -256,6 +256,42 @@ test('updateFileCache parses only changed paths and drops files deleted from the
   assert.deepEqual(Object.keys(result.cache).sort(), ['changed', 'same'])
 })
 
+test('scanRecords rebuilds an unversioned matching-mtime cache instead of reusing stale records', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'observatory-sweep-upgrade-'))
+  const sessions = join(root, 'codex', 'sessions')
+  await mkdir(sessions, { recursive: true })
+  const path = join(sessions, 'rollout.jsonl')
+  await writeFile(path, JSON.stringify({
+    type: 'event_msg',
+    payload: { type: 'token_count', info: { total_token_usage: { input_tokens: 10, output_tokens: 5 } } },
+  }))
+  const [file] = await listJsonl(sessions)
+  const stale = {
+    tool: 'codex',
+    date: '2030-01-01',
+    model: 'gpt-5',
+    occurredAtUtc: '2030-01-01T00:00:00.000Z',
+    cum: { input: 10, output: 5, cacheRead: 0, cacheWrite: 0 },
+  }
+  const state = { files: { codex: { [path]: { mtimeMs: file.mtimeMs, records: [stale] } } } }
+  const cfg = {
+    codexHome: join(root, 'codex'),
+    copilotHome: join(root, 'copilot'),
+    claudeHome: join(root, 'claude'),
+    kimiHome: join(root, 'kimi'),
+  }
+
+  try {
+    const records = await scanRecords(cfg, state, new Set(['codex']))
+
+    assert.deepEqual(records, [])
+    assert.equal(state.parseCacheVersion, 1)
+    assert.deepEqual(state.files.codex[path].records, [])
+  } finally {
+    await rm(root, { recursive: true, force: true })
+  }
+})
+
 test('listJsonl discovers old and current transcripts so age never changes cumulative truth', async () => {
   const root = await mkdtemp(join(tmpdir(), 'observatory-sweep-'))
   const nested = join(root, 'nested')
