@@ -73,6 +73,9 @@ internal static class PricingCandidate
             case KimiPriceCatalog kimi:
                 kimi.Validate();
                 break;
+            case GooglePriceCatalog google:
+                google.Validate();
+                break;
             default:
                 throw new ArgumentException("Unknown pricing catalog type.", nameof(catalog));
         }
