@@ -149,7 +149,8 @@ public class UsageMigrationTests : IAsyncLifetime
             var migrator = beforeProvenance.Database.GetService<IMigrator>();
             await migrator.MigrateAsync("20260812024132_AddUnknownCostCoverage", ct);
             const string rawPayload = "{}";
-            const string legacyKey = "shared-legacy-key";
+            const string legacyKey = "x";
+            const string prefixedLegacyKey = "OpenAI:x";
             await beforeProvenance.Database.ExecuteSqlInterpolatedAsync(
                 $"""
                 INSERT INTO "UsageEvents" ("Id", "Provider", "OccurredAt", "IngestedAt", "Model", "InputTokens", "OutputTokens", "CostUsd", "RawPayload", "EventKey")
@@ -160,7 +161,21 @@ public class UsageMigrationTests : IAsyncLifetime
             await beforeProvenance.Database.ExecuteSqlInterpolatedAsync(
                 $"""
                 INSERT INTO "UsageEvents" ("Id", "Provider", "OccurredAt", "IngestedAt", "Model", "InputTokens", "OutputTokens", "CostUsd", "RawPayload", "EventKey")
-                VALUES ('20000000-0000-0000-0000-000000000002', 'Google', '2026-08-12T00:30:00Z', '2026-08-12T00:30:00Z', 'gemini-2.5-pro', 1, 1, 1, CAST({rawPayload} AS jsonb), {legacyKey})
+                VALUES ('20000000-0000-0000-0000-000000000002', 'OpenAI', '2026-08-12T00:30:00Z', '2026-08-12T00:30:00Z', 'gpt-5.4', 1, 1, 1, CAST({rawPayload} AS jsonb), {prefixedLegacyKey})
+                """,
+                ct
+            );
+            await beforeProvenance.Database.ExecuteSqlInterpolatedAsync(
+                $"""
+                INSERT INTO "UsageEvents" ("Id", "Provider", "OccurredAt", "IngestedAt", "Model", "InputTokens", "OutputTokens", "CostUsd", "RawPayload", "EventKey")
+                VALUES ('20000000-0000-0000-0000-000000000003', 'Google', '2026-08-12T00:30:00Z', '2026-08-12T00:30:00Z', 'gemini-2.5-pro', 1, 1, 1, CAST({rawPayload} AS jsonb), {legacyKey})
+                """,
+                ct
+            );
+            await beforeProvenance.Database.ExecuteSqlInterpolatedAsync(
+                $"""
+                INSERT INTO "UsageEvents" ("Id", "Provider", "OccurredAt", "IngestedAt", "Model", "InputTokens", "OutputTokens", "CostUsd", "RawPayload", "EventKey")
+                VALUES ('20000000-0000-0000-0000-000000000004', 'Google', '2026-08-12T00:30:00Z', '2026-08-12T00:30:00Z', 'gemini-2.5-pro', 1, 1, 1, CAST({rawPayload} AS jsonb), {prefixedLegacyKey})
                 """,
                 ct
             );
@@ -171,9 +186,11 @@ public class UsageMigrationTests : IAsyncLifetime
         await using var afterProvenance = new AiObservatoryDbContext(_options);
         var events = await afterProvenance.UsageEvents.AsNoTracking().OrderBy(e => e.Provider).ToListAsync(ct);
 
-        events.Should().HaveCount(2);
-        events.Single(e => e.Provider == Provider.OpenAI).EventKey.Should().Be("OpenAI:shared-legacy-key");
-        events.Single(e => e.Provider == Provider.Google).EventKey.Should().Be("Google:shared-legacy-key");
+        events.Should().HaveCount(4);
+        events
+            .Select(e => e.EventKey)
+            .Should()
+            .BeEquivalentTo("OpenAI:x", "OpenAI:OpenAI:x", "Google:x", "Google:OpenAI:x");
 
         var rollbackMigrator = afterProvenance.Database.GetService<IMigrator>();
         await rollbackMigrator.MigrateAsync("20260812024132_AddUnknownCostCoverage", ct);
@@ -181,6 +198,6 @@ public class UsageMigrationTests : IAsyncLifetime
             .Database.SqlQueryRaw<string>("SELECT \"EventKey\" AS \"Value\" FROM \"UsageEvents\" ORDER BY \"Provider\"")
             .ToListAsync(ct);
 
-        restoredKeys.Should().Equal("shared-legacy-key", "shared-legacy-key");
+        restoredKeys.Should().BeEquivalentTo("x", "OpenAI:x", "x", "OpenAI:x");
     }
 }

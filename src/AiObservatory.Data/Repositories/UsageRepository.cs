@@ -19,7 +19,7 @@ public class UsageRepository(AiObservatoryDbContext ctx) : IUsageRepository
             evt.ObservedAt = evt.IngestedAt;
         }
 
-        var canonicalEventKey = CanonicalizeLegacyEventKey(evt.Provider, evt.SourceId, evt.EventKey);
+        var canonicalEventKey = ToStoredEventKey(evt.Provider, evt.SourceId, evt.EventKey);
         if (canonicalEventKey != evt.EventKey)
         {
             evt = CopyWithEventKey(evt, canonicalEventKey);
@@ -165,15 +165,14 @@ public class UsageRepository(AiObservatoryDbContext ctx) : IUsageRepository
         return existing;
     }
 
-    private static string? CanonicalizeLegacyEventKey(Provider provider, string sourceId, string? eventKey)
+    private static string? ToStoredEventKey(Provider provider, string sourceId, string? eventKey)
     {
         if (eventKey is null || !string.Equals(sourceId, UsageSourceIds.LegacyApi, StringComparison.OrdinalIgnoreCase))
         {
             return eventKey;
         }
 
-        var prefix = $"{provider}:";
-        return eventKey.StartsWith(prefix, StringComparison.OrdinalIgnoreCase) ? eventKey : $"{prefix}{eventKey}";
+        return $"{provider}:{eventKey}";
     }
 
     private static UsageEvent CopyWithEventKey(UsageEvent source, string? eventKey) =>
@@ -348,7 +347,7 @@ public class UsageRepository(AiObservatoryDbContext ctx) : IUsageRepository
         CancellationToken ct = default
     )
     {
-        eventKey = CanonicalizeLegacyEventKey(provider, sourceId, eventKey)!;
+        eventKey = ToStoredEventKey(provider, sourceId, eventKey)!;
         await using var tx = await ctx.Database.BeginTransactionAsync(ct);
         try
         {

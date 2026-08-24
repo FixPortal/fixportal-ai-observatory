@@ -190,17 +190,16 @@ namespace AiObservatory.Data.Migrations
                 """
             );
 
+            migrationBuilder.DropIndex(name: "IX_UsageEvents_Provider_EventKey", table: "UsageEvents");
+
             migrationBuilder.Sql(
                 """
                 UPDATE "UsageEvents"
                 SET "EventKey" = "Provider" || ':' || "EventKey"
                 WHERE "SourceId" = 'legacy-api'
                     AND "EventKey" IS NOT NULL
-                    AND "EventKey" NOT ILIKE "Provider" || ':%'
                 """
             );
-
-            migrationBuilder.DropIndex(name: "IX_UsageEvents_Provider_EventKey", table: "UsageEvents");
 
             migrationBuilder.DropPrimaryKey(name: "PK_DailyAggregates", table: "DailyAggregates");
 
@@ -231,7 +230,7 @@ namespace AiObservatory.Data.Migrations
                 UPDATE "UsageEvents"
                 SET "EventKey" = substring("EventKey" FROM char_length("Provider") + 2)
                 WHERE "SourceId" = 'legacy-api'
-                    AND "EventKey" ILIKE "Provider" || ':%'
+                    AND "EventKey" IS NOT NULL
                 """
             );
 
