@@ -3,7 +3,8 @@
 //
 // Rebuilds cumulative daily/model snapshots from local Codex, Copilot, Claude,
 // and Kimi telemetry, then POSTs them to `/api/events`. The state file caches
-// parsed files by path + mtime; stable server-side keys make losing it harmless.
+// parsed files by path + mtime and emitted keys; stable server-side keys make
+// losing it harmless.
 //
 // Zero dependencies: Node 18+ only (global fetch, fs/promises).
 
@@ -84,6 +85,7 @@ export function parseCodex(content) {
     if (!line) { continue }
     let row
     try { row = JSON.parse(line) } catch { continue }
+    if (!row || typeof row !== 'object') { continue }
     const payload = row.payload
     if (row.type === 'turn_context' && payload?.model) { model = payload.model }
     if (payload?.type === 'token_count' && payload.info?.total_token_usage) {
@@ -132,19 +134,18 @@ export function parseCopilot(content) {
   return { endedAt: shutdown.timestamp ?? null, perModel }
 }
 
-/** Parse Claude assistant-message usage, counting each message.id once per file. */
+/** Parse Claude assistant-message usage for global message.id selection. */
 export function parseClaude(content) {
   const records = []
-  const seen = new Set()
   for (const line of content.split('\n')) {
     if (!line) { continue }
     let row
     try { row = JSON.parse(line) } catch { continue }
+    if (!row || typeof row !== 'object') { continue }
     const message = row.type === 'assistant' ? row.message : null
     const usage = message?.usage
     const occurredAtUtc = isoTimestamp(row.timestamp)
-    if (!usage || !occurredAtUtc || (message.id && seen.has(message.id))) { continue }
-    if (message.id) { seen.add(message.id) }
+    if (!usage || !occurredAtUtc) { continue }
 
     const creation = usage.cache_creation ?? {}
     const cacheWrite5mTokens = token(creation.ephemeral_5m_input_tokens)
@@ -163,12 +164,14 @@ export function parseClaude(content) {
       outputTokens: token(usage.output_tokens),
       cacheReadTokens: token(usage.cache_read_input_tokens),
       cacheWriteTokens,
-      cacheWrite1hTokens,
-      cacheWrite5mTokens,
-      thoughtTokens: token(usage.thinking_tokens ?? usage.thinking_output_tokens),
-      serviceTier: usage.service_tier ?? 'unknown',
-      speed: usage.speed ?? 'unknown',
-      inferenceGeo: usage.inference_geo ?? 'unknown',
+      ...(Object.hasOwn(creation, 'ephemeral_1h_input_tokens') ? { cacheWrite1hTokens } : {}),
+      ...(Object.hasOwn(creation, 'ephemeral_5m_input_tokens') ? { cacheWrite5mTokens } : {}),
+      ...(Object.hasOwn(usage, 'thinking_tokens') || Object.hasOwn(usage, 'thinking_output_tokens')
+        ? { thoughtTokens: token(usage.thinking_tokens ?? usage.thinking_output_tokens) }
+        : {}),
+      ...(Object.hasOwn(usage, 'service_tier') ? { serviceTier: usage.service_tier ?? 'unknown' } : {}),
+      ...(Object.hasOwn(usage, 'speed') ? { speed: usage.speed ?? 'unknown' } : {}),
+      ...(Object.hasOwn(usage, 'inference_geo') ? { inferenceGeo: usage.inference_geo ?? 'unknown' } : {}),
     })
   }
   return records
@@ -181,6 +184,7 @@ export function parseKimi(content) {
     if (!line) { continue }
     let row
     try { row = JSON.parse(line) } catch { continue }
+    if (!row || typeof row !== 'object') { continue }
     if (row.type !== 'usage.record' || !row.usage) { continue }
     const occurredAtUtc = isoTimestamp(row.time)
     if (!occurredAtUtc) { continue }
@@ -222,7 +226,7 @@ function recordTokens(record) {
 
 function claudeRecordScore(record) {
   return ['serviceTier', 'speed', 'inferenceGeo', 'cacheWrite1hTokens', 'cacheWrite5mTokens', 'thoughtTokens']
-    .filter(key => Object.hasOwn(record, key) && record[key] !== 'unknown').length
+    .filter(key => Object.hasOwn(record, key)).length
 }
 
 function deduplicateClaudeRecords(records) {
@@ -340,10 +344,52 @@ export function buildDailySnapshots(records) {
             ephemeral_5m_input_tokens: group.cacheWrite5m,
             ephemeral_1h_input_tokens: group.cacheWrite1h,
           },
-          note: 'costUsd is notional - local coding telemetry is subscription-billed',
+          ...(notionalCost === null ? {} : {
+            note: 'costUsd is notional - local coding telemetry is subscription-billed',
+          }),
         }),
       }
     })
+}
+
+function zeroSnapshot(snapshot) {
+  return {
+    ...snapshot,
+    inputTokens: 0,
+    outputTokens: 0,
+    cacheReadTokens: 0,
+    cacheWriteTokens: 0,
+    cacheWrite1hTokens: 0,
+    thoughtTokens: 0,
+    costUsd: snapshot.costUsd === null ? null : 0,
+    rawPayload: JSON.stringify({
+      source: 'observatory-sweep',
+      tool: snapshot.runtime,
+      tombstone: true,
+    }),
+  }
+}
+
+/** Plan current snapshots plus zero corrections for previously emitted keys that vanished. */
+export function planSnapshotSubmissions(snapshots, emitted = {}) {
+  const currentKeys = new Set(snapshots.map(snapshot => snapshot.eventKey))
+  const submissions = snapshots.map(snapshot => ({ snapshot, active: true }))
+  for (const snapshot of Object.values(emitted)) {
+    if (!currentKeys.has(snapshot.eventKey)) {
+      // ponytail: /api/events has correction but no deletion. Zero corrections
+      // leave a one-request ceiling per removed key; add deletion only if request counts need exact removal.
+      submissions.push({ snapshot: zeroSnapshot(snapshot), active: false })
+    }
+  }
+  return submissions.sort((a, b) => a.snapshot.eventKey.localeCompare(b.snapshot.eventKey))
+}
+
+/** Advance emitted-key state only after the corresponding POST succeeds. */
+export function recordSuccessfulSubmission(emitted, submission) {
+  const next = { ...emitted }
+  if (submission.active) { next[submission.snapshot.eventKey] = submission.snapshot }
+  else { delete next[submission.snapshot.eventKey] }
+  return next
 }
 
 /** Parse changed files only and return a cache containing exactly the active scan. */
@@ -368,12 +414,6 @@ export function parseLocalSources(value) {
     ? ALL_LOCAL_SOURCES
     : value.split(',').map(x => x.trim().toLowerCase()).filter(Boolean)
   return new Set(selected.filter(x => ALL_LOCAL_SOURCES.includes(x)))
-}
-
-const SID_RE = /([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})\.jsonl$/i
-export function codexSidFromPath(path) {
-  const match = basename(path).match(SID_RE)
-  return match ? match[1] : basename(path).replace(/\.jsonl$/i, '')
 }
 
 // --- IO / orchestration -----------------------------------------------------
@@ -410,17 +450,15 @@ async function postEvent(url, apiKey, body) {
   }
 }
 
-async function listJsonl(dir, since, out = []) {
+export async function listJsonl(dir, out = []) {
   let entries
   try { entries = await readdir(dir, { withFileTypes: true }) } catch { return out }
   for (const entry of entries) {
     const full = join(dir, entry.name)
-    if (entry.isDirectory()) { await listJsonl(full, since, out) }
+    if (entry.isDirectory()) { await listJsonl(full, out) }
     else if (entry.name.endsWith('.jsonl')) {
       const details = await stat(full)
-      if (details.mtimeMs >= since) {
-        out.push({ path: full, mtimeMs: details.mtimeMs, mtime: details.mtime })
-      }
+      out.push({ path: full, mtimeMs: details.mtimeMs, mtime: details.mtime })
     }
   }
   return out
@@ -431,14 +469,13 @@ async function scanRecords(cfg, state, enabled) {
   state.files ??= {}
 
   if (enabled.has('codex')) {
-    const files = await listJsonl(join(cfg.codexHome, 'sessions'), cfg.windowStart)
+    const files = await listJsonl(join(cfg.codexHome, 'sessions'))
     const result = await updateFileCache(files, state.files.codex, (content, file) => {
       const parsed = parseCodex(content)
       if (!parsed) { return [] }
       const occurredAtUtc = isoTimestamp(parsed.endedAt) ?? file.mtime.toISOString()
       return [{
         tool: 'codex',
-        sessionId: codexSidFromPath(file.path),
         date: occurredAtUtc.slice(0, 10),
         model: parsed.model,
         occurredAtUtc,
@@ -451,7 +488,7 @@ async function scanRecords(cfg, state, enabled) {
   }
 
   if (enabled.has('copilot')) {
-    const files = (await listJsonl(join(cfg.copilotHome, 'session-state'), cfg.windowStart))
+    const files = (await listJsonl(join(cfg.copilotHome, 'session-state')))
       .filter(file => basename(file.path) === 'events.jsonl')
     const result = await updateFileCache(files, state.files.copilot, (content, file) => {
       const parsed = parseCopilot(content)
@@ -459,7 +496,6 @@ async function scanRecords(cfg, state, enabled) {
       const occurredAtUtc = isoTimestamp(parsed.endedAt) ?? file.mtime.toISOString()
       return Object.entries(parsed.perModel).map(([model, cum]) => ({
         tool: 'copilot',
-        sessionId: basename(dirname(file.path)),
         date: occurredAtUtc.slice(0, 10),
         model,
         occurredAtUtc,
@@ -472,14 +508,14 @@ async function scanRecords(cfg, state, enabled) {
   }
 
   if (enabled.has('claude')) {
-    const files = await listJsonl(join(cfg.claudeHome, 'projects'), cfg.windowStart)
+    const files = await listJsonl(join(cfg.claudeHome, 'projects'))
     const result = await updateFileCache(files, state.files.claude, content => parseClaude(content))
     state.files.claude = result.cache
     records.push(...result.records)
   }
 
   if (enabled.has('kimi')) {
-    const files = (await listJsonl(join(cfg.kimiHome, 'sessions'), cfg.windowStart))
+    const files = (await listJsonl(join(cfg.kimiHome, 'sessions')))
       .filter(file => basename(file.path) === 'wire.jsonl')
     const result = await updateFileCache(files, state.files.kimi, content => parseKimi(content))
     state.files.kimi = result.cache
@@ -494,23 +530,29 @@ async function main() {
   const apiKey = process.env.OBSERVATORY_API_KEY
   if (!apiKey) { console.error('OBSERVATORY_API_KEY not set; nothing to do.'); process.exit(0) }
 
-  const windowDays = Number(process.env.OBSERVATORY_WINDOW_DAYS ?? 30)
   const cfg = {
     codexHome: process.env.CODEX_HOME ?? join(homedir(), '.codex'),
     copilotHome: process.env.COPILOT_HOME ?? join(homedir(), '.copilot'),
     claudeHome: process.env.CLAUDE_HOME ?? join(homedir(), '.claude'),
     kimiHome: process.env.KIMI_HOME ?? join(homedir(), '.kimi-code'),
-    windowStart: Date.now() - windowDays * 86_400_000,
   }
   const statePath = process.env.OBSERVATORY_STATE ?? join(homedir(), '.ai-observatory', 'sweep-state.json')
   const state = await loadState(statePath)
   const enabled = parseLocalSources(process.env.OBSERVATORY_LOCAL_SOURCES)
   const snapshots = buildDailySnapshots(await scanRecords(cfg, state, enabled))
+  if (!state.emitted || typeof state.emitted !== 'object' || Array.isArray(state.emitted)) {
+    state.emitted = {}
+  }
+  const submissions = planSnapshotSubmissions(snapshots, state.emitted)
   await saveState(statePath, state)
 
   let posted = 0
-  for (const snapshot of snapshots) {
-    if (await postEvent(url, apiKey, { ...snapshot, observedAtUtc: new Date().toISOString() })) { posted++ }
+  for (const submission of submissions) {
+    if (await postEvent(url, apiKey, { ...submission.snapshot, observedAtUtc: new Date().toISOString() })) {
+      state.emitted = recordSuccessfulSubmission(state.emitted, submission)
+      await saveState(statePath, state)
+      posted++
+    }
   }
 
   log(`Sweep complete: ${posted} event(s) ${DRY_RUN ? 'would be ' : ''}posted.`)

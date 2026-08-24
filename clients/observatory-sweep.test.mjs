@@ -2,9 +2,13 @@
 //   node --test clients/observatory-sweep.test.mjs
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
+import { mkdtemp, mkdir, rm, utimes, writeFile } from 'node:fs/promises'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
 import {
   pickRates, costUsd, parseCodex, parseCopilot, parseClaude, parseKimi,
-  buildDailySnapshots, updateFileCache, parseLocalSources, codexSidFromPath,
+  buildDailySnapshots, updateFileCache, parseLocalSources, listJsonl,
+  planSnapshotSubmissions, recordSuccessfulSubmission,
 } from './observatory-sweep.mjs'
 
 test('pickRates resolves the longest matching prefix, not the first', () => {
@@ -45,6 +49,12 @@ test('parseCodex defaults the model when no turn_context carries one', () => {
   assert.equal(parseCodex(line).model, 'gpt-5')
 })
 
+test('parseCodex ignores valid JSON values that are not telemetry objects', () => {
+  const content = ['null', '0', 'true', '"text"', '[]'].join('\n')
+
+  assert.equal(parseCodex(content), null)
+})
+
 test('parseCopilot reads modelMetrics from the shutdown event and splits cache reads', () => {
   const shutdown = {
     type: 'session.shutdown',
@@ -65,7 +75,7 @@ test('parseCopilot returns null when the session has not shut down', () => {
   assert.equal(parseCopilot('{"type":"session.start"}\n{"type":"turn"}'), null)
 })
 
-test('parseClaude keeps one copy of each assistant message and preserves pricing dimensions', () => {
+test('parseClaude preserves pricing dimensions before global message deduplication', () => {
   const content = [
     JSON.stringify({ type: 'assistant', timestamp: '2026-08-24T12:00:00Z', message: { id: 'msg-1', model: 'claude-opus-5', usage: { input_tokens: 2, output_tokens: 10, cache_read_input_tokens: 20, cache_creation_input_tokens: 30, thinking_tokens: 4, cache_creation: { ephemeral_5m_input_tokens: 5, ephemeral_1h_input_tokens: 25 }, service_tier: 'standard', speed: 'standard', inference_geo: 'not_available' } } }),
     JSON.stringify({ type: 'assistant', timestamp: '2026-08-24T12:00:01Z', message: { id: 'msg-1', model: 'claude-opus-5', usage: { input_tokens: 2, output_tokens: 10, cache_read_input_tokens: 20, cache_creation_input_tokens: 30 } } }),
@@ -73,7 +83,7 @@ test('parseClaude keeps one copy of each assistant message and preserves pricing
 
   const records = parseClaude(content)
 
-  assert.equal(records.length, 1)
+  assert.equal(records.length, 2)
   assert.deepEqual(records[0], {
     tool: 'claude', messageId: 'msg-1', date: '2026-08-24', model: 'claude-opus-5',
     occurredAtUtc: '2026-08-24T12:00:00.000Z', inputTokens: 2, outputTokens: 10,
@@ -81,6 +91,27 @@ test('parseClaude keeps one copy of each assistant message and preserves pricing
     cacheWrite5mTokens: 5, thoughtTokens: 4, serviceTier: 'standard', speed: 'standard',
     inferenceGeo: 'not_available',
   })
+})
+
+test('parseClaude keeps sparse and rich copies for global message-id selection', () => {
+  const content = [
+    JSON.stringify({ type: 'assistant', timestamp: '2026-08-24T12:00:00Z', message: { id: 'msg-sparse-first', model: 'claude-opus-5', usage: { input_tokens: 2, output_tokens: 10, cache_creation_input_tokens: 30 } } }),
+    JSON.stringify({ type: 'assistant', timestamp: '2026-08-24T12:00:01Z', message: { id: 'msg-sparse-first', model: 'claude-opus-5', usage: { input_tokens: 2, output_tokens: 10, cache_creation_input_tokens: 30, cache_creation: { ephemeral_5m_input_tokens: 5, ephemeral_1h_input_tokens: 25 }, service_tier: 'standard', speed: 'fast', inference_geo: 'us' } } }),
+  ].join('\n')
+
+  const records = parseClaude(content)
+  const snapshots = buildDailySnapshots(records)
+
+  assert.equal(records.length, 2)
+  assert.equal(snapshots.length, 1)
+  assert.equal(snapshots[0].eventKey, 'claude:2026-08-24:claude-opus-5:standard:fast:us')
+  assert.equal(snapshots[0].cacheWrite1hTokens, 25)
+})
+
+test('parseClaude ignores valid JSON values that are not telemetry objects', () => {
+  const content = ['null', '0', 'true', '"text"', '[]'].join('\n')
+
+  assert.deepEqual(parseClaude(content), [])
 })
 
 test('buildDailySnapshots deduplicates Claude message ids across transcript files', () => {
@@ -103,6 +134,16 @@ test('buildDailySnapshots keeps the richest Claude copy when duplicate transcrip
   assert.equal(snapshots[0].cacheWrite1hTokens, 25)
 })
 
+test('buildDailySnapshots prefers a split-only richer Claude copy across files', () => {
+  const sparse = JSON.stringify({ type: 'assistant', timestamp: '2026-08-24T12:00:00Z', message: { id: 'msg-split-only', model: 'claude-opus-5', usage: { input_tokens: 2, output_tokens: 10, cache_creation_input_tokens: 30 } } })
+  const split = JSON.stringify({ type: 'assistant', timestamp: '2026-08-24T12:00:01Z', message: { id: 'msg-split-only', model: 'claude-opus-5', usage: { input_tokens: 2, output_tokens: 10, cache_creation_input_tokens: 30, cache_creation: { ephemeral_5m_input_tokens: 5, ephemeral_1h_input_tokens: 25 } } } })
+
+  const snapshots = buildDailySnapshots([...parseClaude(sparse), ...parseClaude(split)])
+
+  assert.equal(snapshots.length, 1)
+  assert.equal(snapshots[0].cacheWrite1hTokens, 25)
+})
+
 test('parseKimi reads usage.record and ignores its mirrored step.end usage', () => {
   const usage = { inputOther: 10, output: 2, inputCacheRead: 20, inputCacheCreation: 3 }
   const content = [
@@ -120,6 +161,12 @@ test('parseKimi reads usage.record and ignores its mirrored step.end usage', () 
   assert.equal(records[0].occurredAtUtc, '2026-08-24T12:00:00.000Z')
 })
 
+test('parseKimi ignores valid JSON values that are not telemetry objects', () => {
+  const content = ['null', '0', 'true', '"text"', '[]'].join('\n')
+
+  assert.deepEqual(parseKimi(content), [])
+})
+
 test('local parsers ignore records without a valid observation timestamp', () => {
   const claude = parseClaude(JSON.stringify({ type: 'assistant', timestamp: null, message: { id: 'msg-no-time', model: 'claude-opus-5', usage: { input_tokens: 1, output_tokens: 1 } } }))
   const kimi = parseKimi(JSON.stringify({ type: 'usage.record', time: null, model: 'kimi-code/kimi-for-coding', usage: { inputOther: 1, output: 1 } }))
@@ -130,8 +177,8 @@ test('local parsers ignore records without a valid observation timestamp', () =>
 
 test('buildDailySnapshots sums sessions into one stable cumulative day/model key', () => {
   const records = [
-    { tool: 'codex', sessionId: 'a', date: '2026-08-24', model: 'gpt-5.4', occurredAtUtc: '2026-08-24T10:00:00Z', cum: { input: 10, output: 2, cacheRead: 1, cacheWrite: 0 } },
-    { tool: 'codex', sessionId: 'b', date: '2026-08-24', model: 'gpt-5.4', occurredAtUtc: '2026-08-24T12:00:00Z', cum: { input: 20, output: 3, cacheRead: 2, cacheWrite: 0 } },
+    { tool: 'codex', date: '2026-08-24', model: 'gpt-5.4', occurredAtUtc: '2026-08-24T10:00:00Z', cum: { input: 10, output: 2, cacheRead: 1, cacheWrite: 0 } },
+    { tool: 'codex', date: '2026-08-24', model: 'gpt-5.4', occurredAtUtc: '2026-08-24T12:00:00Z', cum: { input: 20, output: 3, cacheRead: 2, cacheWrite: 0 } },
   ]
 
   const snapshots = buildDailySnapshots(records)
@@ -148,7 +195,7 @@ test('buildDailySnapshots sums sessions into one stable cumulative day/model key
 })
 
 test('buildDailySnapshots replaces a changed transcript under the same key', () => {
-  const record = input => ({ tool: 'codex', sessionId: 'a', date: '2026-08-24', model: 'gpt-5.4', cum: { input, output: 2, cacheRead: 1, cacheWrite: 0 } })
+  const record = input => ({ tool: 'codex', date: '2026-08-24', model: 'gpt-5.4', cum: { input, output: 2, cacheRead: 1, cacheWrite: 0 } })
 
   const before = buildDailySnapshots([record(10)])[0]
   const after = buildDailySnapshots([record(25)])[0]
@@ -170,12 +217,13 @@ test('buildDailySnapshots keeps Claude grouping dimensions and Kimi cost unknown
   assert.equal(claudeSnapshot.thoughtTokens, 4)
   assert.equal(kimiSnapshot.eventKey, 'kimi:2026-08-24:kimi-code/kimi-for-coding')
   assert.equal(kimiSnapshot.costUsd, null)
+  assert.equal(JSON.parse(kimiSnapshot.rawPayload).note, undefined)
 })
 
-test('updateFileCache parses only changed paths and drops files outside the active scan', async () => {
+test('updateFileCache parses only changed paths and drops files deleted from the full scan', async () => {
   const cache = {
-    same: { mtimeMs: 1, records: [{ sessionId: 'same' }] },
-    removed: { mtimeMs: 1, records: [{ sessionId: 'removed' }] },
+    same: { mtimeMs: 1, records: [{ id: 'same' }] },
+    removed: { mtimeMs: 1, records: [{ id: 'removed' }] },
   }
   const reads = []
   const files = [{ path: 'same', mtimeMs: 1 }, { path: 'changed', mtimeMs: 2 }]
@@ -183,21 +231,134 @@ test('updateFileCache parses only changed paths and drops files outside the acti
   const result = await updateFileCache(
     files,
     cache,
-    content => [{ sessionId: content }],
+    content => [{ id: content }],
     async path => { reads.push(path); return path },
   )
 
   assert.deepEqual(reads, ['changed'])
-  assert.deepEqual(result.records.map(x => x.sessionId).sort(), ['changed', 'same'])
+  assert.deepEqual(result.records.map(x => x.id).sort(), ['changed', 'same'])
   assert.deepEqual(Object.keys(result.cache).sort(), ['changed', 'same'])
+})
+
+test('listJsonl discovers old and current transcripts so age never changes cumulative truth', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'observatory-sweep-'))
+  const nested = join(root, 'nested')
+  await mkdir(nested)
+  const oldPath = join(root, 'old.jsonl')
+  const currentPath = join(nested, 'current.jsonl')
+  await writeFile(oldPath, '{}\n')
+  await writeFile(currentPath, '{}\n')
+  await utimes(oldPath, new Date('2020-01-01T00:00:00Z'), new Date('2020-01-01T00:00:00Z'))
+
+  try {
+    const files = await listJsonl(root)
+
+    assert.deepEqual(files.map(file => file.path).sort(), [currentPath, oldPath].sort())
+  } finally {
+    await rm(root, { recursive: true, force: true })
+  }
+})
+
+test('reconciliation sends a zero correction when the final transcript disappears', () => {
+  const prior = buildDailySnapshots([
+    { tool: 'codex', date: '2026-08-24', model: 'gpt-5.4', occurredAtUtc: '2026-08-24T12:00:00Z', cum: { input: 30, output: 5, cacheRead: 3, cacheWrite: 0 } },
+  ])[0]
+
+  const submissions = planSnapshotSubmissions([], { [prior.eventKey]: prior })
+
+  assert.equal(submissions.length, 1)
+  assert.equal(submissions[0].active, false)
+  assert.deepEqual({
+    eventKey: submissions[0].snapshot.eventKey,
+    inputTokens: submissions[0].snapshot.inputTokens,
+    outputTokens: submissions[0].snapshot.outputTokens,
+    cacheReadTokens: submissions[0].snapshot.cacheReadTokens,
+    cacheWriteTokens: submissions[0].snapshot.cacheWriteTokens,
+    thoughtTokens: submissions[0].snapshot.thoughtTokens,
+    costUsd: submissions[0].snapshot.costUsd,
+  }, {
+    eventKey: 'codex:2026-08-24:gpt-5.4',
+    inputTokens: 0,
+    outputTokens: 0,
+    cacheReadTokens: 0,
+    cacheWriteTokens: 0,
+    thoughtTokens: 0,
+    costUsd: 0,
+  })
+  assert.equal(JSON.parse(submissions[0].snapshot.rawPayload).tombstone, true)
+})
+
+test('successful disable reconciliation allows a source to be re-enabled cleanly', () => {
+  const snapshot = buildDailySnapshots([
+    { tool: 'kimi', date: '2026-08-24', model: 'kimi-code/kimi-for-coding', occurredAtUtc: '2026-08-24T12:00:00Z', inputTokens: 10, outputTokens: 2, cacheReadTokens: 20, cacheWriteTokens: 3 },
+  ])[0]
+  const emitted = { [snapshot.eventKey]: snapshot }
+  const disabledSnapshots = parseLocalSources('codex').has('kimi') ? [snapshot] : []
+  const [disabled] = planSnapshotSubmissions(disabledSnapshots, emitted)
+
+  const afterDisable = recordSuccessfulSubmission(emitted, disabled)
+  const reenabledSnapshots = parseLocalSources('kimi').has('kimi') ? [snapshot] : []
+  const [reenabled] = planSnapshotSubmissions(reenabledSnapshots, afterDisable)
+
+  assert.deepEqual(afterDisable, {})
+  assert.equal(reenabled.active, true)
+  assert.equal(reenabled.snapshot.eventKey, 'kimi:2026-08-24:kimi-code/kimi-for-coding')
+  assert.equal(reenabled.snapshot.inputTokens, 10)
+})
+
+test('reconciliation corrects a daily snapshot after one transcript is deleted', () => {
+  const record = input => ({
+    tool: 'codex', date: '2026-08-24', model: 'gpt-5.4', occurredAtUtc: '2026-08-24T12:00:00Z',
+    cum: { input, output: 2, cacheRead: 1, cacheWrite: 0 },
+  })
+  const prior = buildDailySnapshots([record(10), record(20)])[0]
+  const current = buildDailySnapshots([record(10)])[0]
+
+  const submissions = planSnapshotSubmissions([current], { [prior.eventKey]: prior })
+
+  assert.equal(submissions.length, 1)
+  assert.equal(submissions[0].active, true)
+  assert.equal(submissions[0].snapshot.eventKey, 'codex:2026-08-24:gpt-5.4')
+  assert.equal(submissions[0].snapshot.inputTokens, 10)
+})
+
+test('reconciliation clears the old key when a Claude pricing dimension changes', () => {
+  const claude = speed => buildDailySnapshots(parseClaude(JSON.stringify({
+    type: 'assistant',
+    timestamp: '2026-08-24T12:00:00Z',
+    message: {
+      id: 'msg-dimension-change',
+      model: 'claude-opus-5',
+      usage: { input_tokens: 2, output_tokens: 10, service_tier: 'standard', speed, inference_geo: 'us' },
+    },
+  })))[0]
+  const prior = claude('standard')
+  const current = claude('fast')
+
+  const submissions = planSnapshotSubmissions([current], { [prior.eventKey]: prior })
+  const oldKey = submissions.find(item => !item.active)
+  const newKey = submissions.find(item => item.active)
+
+  assert.equal(submissions.length, 2)
+  assert.equal(oldKey.snapshot.eventKey, 'claude:2026-08-24:claude-opus-5:standard:standard:us')
+  assert.equal(oldKey.snapshot.inputTokens, 0)
+  assert.equal(newKey.snapshot.eventKey, 'claude:2026-08-24:claude-opus-5:standard:fast:us')
+  assert.equal(newKey.snapshot.inputTokens, 2)
+})
+
+test('losing emitted state only resubmits the current stable snapshot', () => {
+  const snapshot = buildDailySnapshots([
+    { tool: 'copilot', date: '2026-08-24', model: 'gpt-5.4', occurredAtUtc: '2026-08-24T12:00:00Z', cum: { input: 10, output: 2, cacheRead: 20, cacheWrite: 0 } },
+  ])[0]
+
+  const submissions = planSnapshotSubmissions([snapshot], {})
+
+  assert.equal(submissions.length, 1)
+  assert.equal(submissions[0].active, true)
+  assert.equal(submissions[0].snapshot.eventKey, 'copilot:2026-08-24:gpt-5.4')
 })
 
 test('parseLocalSources defaults to every collector and honors an explicit allowlist', () => {
   assert.deepEqual([...parseLocalSources()].sort(), ['claude', 'codex', 'copilot', 'kimi'])
   assert.deepEqual([...parseLocalSources('codex,kimi')].sort(), ['codex', 'kimi'])
-})
-
-test('codexSidFromPath extracts the trailing UUID', () => {
-  const p = '/x/sessions/2026/05/28/rollout-2026-05-28T09-02-11-019e6d9a-f12f-7f02-ac67-61b284977a18.jsonl'
-  assert.equal(codexSidFromPath(p), '019e6d9a-f12f-7f02-ac67-61b284977a18')
 })

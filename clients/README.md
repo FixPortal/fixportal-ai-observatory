@@ -40,9 +40,11 @@ Preview without posting (and see exactly what would be sent):
 OBSERVATORY_API_KEY=your-key node clients/observatory-sweep.mjs --dry-run --verbose
 ```
 
-Re-running is always safe. The state file caches parsed records by path and mtime
-to avoid rereading unchanged logs; it is not the system of record. Deleting it
-only causes a rescan and harmless resubmission under the same stable keys.
+Re-running is always safe. Every transcript remains part of the cumulative truth;
+the state file caches parsed records by path and mtime to avoid rereading unchanged
+logs and remembers emitted keys so removed observations can be corrected to zero.
+It is not the system of record. Deleting it only causes a full rescan and harmless
+resubmission under the same stable keys.
 
 ## Environment variables
 
@@ -50,8 +52,7 @@ only causes a rescan and harmless resubmission under the same stable keys.
 |---|---|---|
 | `OBSERVATORY_API_KEY` | *(required)* | Sent as the `X-Observatory-Key` header. Without it the script exits cleanly doing nothing. |
 | `OBSERVATORY_URL` | `http://localhost:5039` | Base URL of the Observatory API. The default is the API's `dotnet run` address. Under Compose the API publishes no host port — use `http://localhost:4173`, the frontend's nginx proxy. Against a deployment, set the full origin. |
-| `OBSERVATORY_STATE` | `~/.ai-observatory/sweep-state.json` | Per-file parse cache. Safe to delete. |
-| `OBSERVATORY_WINDOW_DAYS` | `30` | Only consider session logs modified within this many days. |
+| `OBSERVATORY_STATE` | `~/.ai-observatory/sweep-state.json` | Per-file parse and emitted-key cache. Safe to delete. |
 | `OBSERVATORY_LOCAL_SOURCES` | `codex,copilot,claude,kimi` | Comma-separated collector allowlist. Exclude `claude` when Claude Code Usage API coverage overlaps it. |
 | `CODEX_HOME` | `~/.codex` | Override the Codex home (e.g. a non-standard install). |
 | `COPILOT_HOME` | `~/.copilot` | Override the Copilot home. |
