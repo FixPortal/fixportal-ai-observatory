@@ -1,58 +1,83 @@
+using AiObservatory.Data.Entities;
 using AiObservatory.Data.Repositories;
+using AiObservatory.Ingest.Sources;
 using Microsoft.Extensions.Options;
 using NodaTime;
 
 namespace AiObservatory.Ingest.Services.GitHub;
 
-// Called once per poll cycle (not once per lookback date, unlike the other
-// providers) — GitHub's API takes a since-date range, so re-querying the same
-// range per date would triple API calls for no benefit. See IGitHubActivityClient.
 public class GitHubIngestionService(
     IGitHubActivityClient client,
     IGitHubActivityRepository repository,
     IOptions<IngestOptions> options,
     ILogger<GitHubIngestionService> logger,
     IClock clock
-)
+) : IUsageSource
 {
     private const int BackfillDays = 30;
 
-    // Returns the count of repos that failed with a non-rate-limit exception this cycle, so
-    // the caller (ProviderPollingWorkerService) can decide whether the whole provider should
-    // be treated as failed for its escalation alerting — a single flaky repo among several
-    // healthy ones must not trip that, but every configured repo failing should.
+    public string SourceId => UsageSourceIds.GitHubActivityApi;
+
+    public async Task<SourceIngestionResult> IngestAsync(
+        LocalDate from,
+        LocalDate through,
+        CancellationToken cancellationToken
+    )
+    {
+        _ = through;
+        var result = await IngestCoreAsync(from, cancellationToken);
+        if (result.RateLimited)
+        {
+            throw new SourceUnavailableException("GitHub API rate limit exhausted");
+        }
+        if (result.FailedRepoCount > 0 && result.FailedRepoCount == options.Value.GitHubRepoAllowlist.Length)
+        {
+            throw new InvalidOperationException(
+                $"All {result.FailedRepoCount} configured GitHub repos failed to ingest this cycle"
+            );
+        }
+        return new SourceIngestionResult(result.LatestObservationAt);
+    }
+
+    public async Task<int> IngestSinceAsync(LocalDate date, CancellationToken cancellationToken = default) =>
+        (await IngestCoreAsync(date, cancellationToken)).FailedRepoCount;
+
 #pragma warning disable S3776 // One linear per-repository orchestration flow keeps failure policy visible.
-    public async Task<int> IngestSinceAsync(LocalDate date, CancellationToken ct = default)
+    private async Task<GitHubIngestionResult> IngestCoreAsync(LocalDate date, CancellationToken cancellationToken)
     {
         var now = clock.GetCurrentInstant();
         var failedRepoCount = 0;
+        Instant? latest = null;
         foreach (var configuredRepo in options.Value.GitHubRepoAllowlist)
         {
             var repo = configuredRepo.ToLowerInvariant();
             try
             {
-                var status = await repository.GetBackfillStatusAsync(repo, ct);
+                var status = await repository.GetBackfillStatusAsync(repo, cancellationToken);
                 LocalDate SinceDate(bool hasBackfilled) => hasBackfilled ? date : date.PlusDays(-BackfillDays);
-                var prsSince = SinceDate(status.HasPullRequests);
-                var commitsSince = SinceDate(status.HasCommits);
-                var runsSince = SinceDate(status.HasWorkflowRuns);
-
-                var prs = await client.GetPullRequestsAsync(repo, prsSince, ct);
+                var prs = await client.GetPullRequestsAsync(repo, SinceDate(status.HasPullRequests), cancellationToken);
                 foreach (var pr in prs)
                 {
-                    await repository.UpsertPullRequestAsync(pr, now, ct);
+                    await repository.UpsertPullRequestAsync(pr, now, cancellationToken);
+                    latest = Latest(latest, pr.CreatedAt, pr.MergedAt, pr.ClosedAt, pr.FirstReviewAt);
                 }
 
-                var commits = await client.GetCommitsAsync(repo, commitsSince, ct);
-                foreach (var c in commits)
+                var commits = await client.GetCommitsAsync(repo, SinceDate(status.HasCommits), cancellationToken);
+                foreach (var commit in commits)
                 {
-                    await repository.UpsertCommitAsync(c, now, ct);
+                    await repository.UpsertCommitAsync(commit, now, cancellationToken);
+                    latest = Latest(latest, commit.CommittedAt);
                 }
 
-                var runs = await client.GetWorkflowRunsAsync(repo, runsSince, ct);
-                foreach (var r in runs)
+                var runs = await client.GetWorkflowRunsAsync(
+                    repo,
+                    SinceDate(status.HasWorkflowRuns),
+                    cancellationToken
+                );
+                foreach (var run in runs)
                 {
-                    await repository.UpsertWorkflowRunAsync(r, now, ct);
+                    await repository.UpsertWorkflowRunAsync(run, now, cancellationToken);
+                    latest = Latest(latest, run.CreatedAt);
                 }
 
                 logger.LogInformation(
@@ -66,9 +91,9 @@ public class GitHubIngestionService(
             catch (GitHubRateLimitExceededException ex)
             {
                 logger.LogWarning(ex, "GitHub: aborting remaining repos this poll cycle due to rate limit");
-                return failedRepoCount;
+                return new GitHubIngestionResult(failedRepoCount, true, latest);
             }
-            catch (OperationCanceledException) when (ct.IsCancellationRequested)
+            catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
             {
                 throw;
             }
@@ -78,7 +103,21 @@ public class GitHubIngestionService(
                 failedRepoCount++;
             }
         }
-        return failedRepoCount;
+        return new GitHubIngestionResult(failedRepoCount, false, latest);
     }
 #pragma warning restore S3776
+
+    private static Instant? Latest(Instant? current, params Instant?[] candidates)
+    {
+        foreach (var candidate in candidates)
+        {
+            if (candidate is { } value && (current is null || value > current))
+            {
+                current = value;
+            }
+        }
+        return current;
+    }
+
+    private sealed record GitHubIngestionResult(int FailedRepoCount, bool RateLimited, Instant? LatestObservationAt);
 }

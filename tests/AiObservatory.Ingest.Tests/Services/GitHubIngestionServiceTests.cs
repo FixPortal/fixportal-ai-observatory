@@ -1,5 +1,6 @@
 using AiObservatory.Data.Repositories;
 using AiObservatory.Ingest.Services.GitHub;
+using AiObservatory.Ingest.Sources;
 using AwesomeAssertions;
 using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Options;
@@ -148,9 +149,14 @@ public class GitHubIngestionServiceTests
             NullLogger<GitHubIngestionService>.Instance,
             Clock
         );
-        await sut.IngestSinceAsync(new LocalDate(2026, 7, 1), TestContext.Current.CancellationToken);
+        var result = await sut.IngestAsync(
+            new LocalDate(2026, 7, 1),
+            new LocalDate(2026, 7, 2),
+            TestContext.Current.CancellationToken
+        );
 
         await repo.Received(1).UpsertPullRequestAsync(pr, FixedNow, Arg.Any<CancellationToken>());
+        result.LatestObservationAt.Should().Be(Instant.FromUtc(2026, 7, 1, 9, 0));
     }
 
     [Fact]
@@ -299,5 +305,59 @@ public class GitHubIngestionServiceTests
             .DidNotReceive()
             .GetPullRequestsAsync("fix-portal/never-reached", Arg.Any<LocalDate>(), Arg.Any<CancellationToken>());
         failedCount.Should().Be(1);
+    }
+
+    [Fact]
+    public async Task IngestAsync_WhenEveryConfiguredRepositoryFails_RejectsTheWholeSourceAttempt()
+    {
+        var client = Substitute.For<IGitHubActivityClient>();
+        var repo = Substitute.For<IGitHubActivityRepository>();
+        repo.GetBackfillStatusAsync(Arg.Any<string>(), Arg.Any<CancellationToken>())
+            .Returns(Task.FromException<GitHubBackfillStatus>(new HttpRequestException("403")));
+        var sut = new GitHubIngestionService(
+            client,
+            repo,
+            Options("fix-portal/one", "fix-portal/two"),
+            NullLogger<GitHubIngestionService>.Instance,
+            Clock
+        );
+
+        var act = () =>
+            sut.IngestAsync(
+                new LocalDate(2026, 7, 1),
+                new LocalDate(2026, 7, 2),
+                TestContext.Current.CancellationToken
+            );
+
+        await act.Should().ThrowAsync<InvalidOperationException>().WithMessage("All 2 configured GitHub repos failed*");
+    }
+
+    [Fact]
+    public async Task IngestAsync_WhenGitHubRateLimits_ReportsTheSourceUnavailable()
+    {
+        var client = Substitute.For<IGitHubActivityClient>();
+        var repo = Substitute.For<IGitHubActivityRepository>();
+        repo.GetBackfillStatusAsync(Arg.Any<string>(), Arg.Any<CancellationToken>()).Returns(FullyBackfilled);
+        client
+            .GetPullRequestsAsync(Arg.Any<string>(), Arg.Any<LocalDate>(), Arg.Any<CancellationToken>())
+            .Returns(
+                Task.FromException<IReadOnlyList<GitHubPullRequestRecord>>(new GitHubRateLimitExceededException(10))
+            );
+        var sut = new GitHubIngestionService(
+            client,
+            repo,
+            Options("fix-portal/example"),
+            NullLogger<GitHubIngestionService>.Instance,
+            Clock
+        );
+
+        var act = () =>
+            sut.IngestAsync(
+                new LocalDate(2026, 7, 1),
+                new LocalDate(2026, 7, 2),
+                TestContext.Current.CancellationToken
+            );
+
+        await act.Should().ThrowAsync<SourceUnavailableException>();
     }
 }

@@ -1,5 +1,6 @@
 using AiObservatory.Data.Entities;
 using AiObservatory.Data.Repositories;
+using AiObservatory.Ingest.Sources;
 using NodaTime;
 
 namespace AiObservatory.Ingest.Services.OpenAi;
@@ -9,12 +10,33 @@ public class OpenAiIngestionService(
     IUsageRepository repository,
     IClock clock,
     ILogger<OpenAiIngestionService> logger
-)
+) : IUsageSource
 {
-    public async Task IngestAsync(LocalDate date, CancellationToken ct = default)
+    public string SourceId => UsageSourceIds.OpenAiUsageApi;
+
+    public async Task<SourceIngestionResult> IngestAsync(
+        LocalDate from,
+        LocalDate through,
+        CancellationToken cancellationToken
+    )
     {
-        var records = await client.GetDailyUsageAsync(date, ct);
+        Instant? latest = null;
+        for (var date = from; date <= through; date = date.PlusDays(1))
+        {
+            var observed = await IngestDayAsync(date, cancellationToken);
+            if (observed is { } value && (latest is null || value > latest))
+            {
+                latest = value;
+            }
+        }
+        return new SourceIngestionResult(latest);
+    }
+
+    private async Task<Instant?> IngestDayAsync(LocalDate date, CancellationToken cancellationToken)
+    {
+        var records = await client.GetDailyUsageAsync(date, cancellationToken);
         var groups = records.GroupBy(r => r.Model).ToList();
+        var observedAt = clock.GetCurrentInstant();
 
         var events =
             from g in groups
@@ -29,7 +51,7 @@ public class OpenAiIngestionService(
             {
                 Provider = Provider.OpenAI,
                 OccurredAt = date.AtStartOfDayInZone(DateTimeZone.Utc).ToInstant(),
-                IngestedAt = clock.GetCurrentInstant(),
+                IngestedAt = observedAt,
                 Model = model,
                 InputTokens = inputTokens,
                 OutputTokens = outputTokens,
@@ -37,11 +59,16 @@ public class OpenAiIngestionService(
                 CostUsd = cost,
                 EventKey = eventKey,
                 RawPayload = combinedPayload,
+                SourceId = SourceId,
+                SourceKind = SourceKind.ProviderApi,
+                UsageScope = UsageScope.Api,
+                CostBasis = CostBasis.ListPriceEstimate,
+                ObservedAt = observedAt,
             };
 
         foreach (var evt in events)
         {
-            await repository.RecordEventAsync(evt, ct);
+            await repository.RecordEventAsync(evt, cancellationToken);
         }
 
         logger.LogInformation(
@@ -50,5 +77,8 @@ public class OpenAiIngestionService(
             groups.Count,
             date
         );
+        return records.Count == 0
+            ? null
+            : records.Max(record => record.Date).AtStartOfDayInZone(DateTimeZone.Utc).ToInstant();
     }
 }

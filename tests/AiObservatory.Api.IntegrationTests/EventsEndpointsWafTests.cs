@@ -2,8 +2,10 @@ using System.Net;
 using System.Net.Http.Json;
 using System.Text;
 using System.Text.Json;
+using AiObservatory.Data;
 using AiObservatory.Data.Entities;
 using AwesomeAssertions;
+using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 
 namespace AiObservatory.Api.IntegrationTests;
@@ -313,6 +315,83 @@ public class EventsEndpointsWafTests(AiObservatoryApiFactory factory)
         var json = await response.Content.ReadFromJsonAsync<JsonElement>(TestContext.Current.CancellationToken);
         json.GetProperty("duplicate").GetBoolean().Should().BeFalse();
         json.GetProperty("corrected").GetBoolean().Should().BeTrue();
+    }
+
+    [Fact]
+    public async Task PostLocalTelemetry_RefreshesSourceStateForCreatedCorrectedAndUnchangedSnapshots()
+    {
+        await using (var cleanupScope = factory.Services.CreateAsyncScope())
+        {
+            await cleanupScope
+                .ServiceProvider.GetRequiredService<AiObservatoryDbContext>()
+                .SourceSyncStates.Where(x => x.SourceId == UsageSourceIds.CodexLocal)
+                .ExecuteDeleteAsync(TestContext.Current.CancellationToken);
+        }
+
+        using var client = factory.CreateAdminClient();
+        var key = $"codex:2026-08-24:gpt-5.4:{Guid.NewGuid():N}";
+        var now = NodaTime.Instant.FromUnixTimeSeconds(
+            factory.Services.GetRequiredService<NodaTime.IClock>().GetCurrentInstant().ToUnixTimeSeconds()
+        );
+        object Snapshot(long inputTokens, NodaTime.Instant observedAt) =>
+            new
+            {
+                Provider = "openai",
+                Model = "gpt-5.4",
+                InputTokens = inputTokens,
+                OutputTokens = 2,
+                RawPayload = "{}",
+                EventKey = key,
+                OccurredAtUtc = (now - NodaTime.Duration.FromHours(1)).ToDateTimeOffset(),
+                SourceId = UsageSourceIds.CodexLocal,
+                SourceKind = "localTelemetry",
+                UsageScope = "subscription",
+                CostBasis = "notional",
+                ObservedAtUtc = observedAt.ToDateTimeOffset(),
+            };
+
+        (
+            await client.PostAsJsonAsync(
+                "/api/events",
+                Snapshot(1, now - NodaTime.Duration.FromMinutes(3)),
+                TestContext.Current.CancellationToken
+            )
+        )
+            .StatusCode.Should()
+            .Be(HttpStatusCode.Created);
+        var corrected = await client.PostAsJsonAsync(
+            "/api/events",
+            Snapshot(2, now - NodaTime.Duration.FromMinutes(2)),
+            TestContext.Current.CancellationToken
+        );
+        corrected.StatusCode.Should().Be(HttpStatusCode.OK);
+        (await corrected.Content.ReadFromJsonAsync<JsonElement>(TestContext.Current.CancellationToken))
+            .GetProperty("corrected")
+            .GetBoolean()
+            .Should()
+            .BeTrue();
+        var unchanged = await client.PostAsJsonAsync(
+            "/api/events",
+            Snapshot(2, now - NodaTime.Duration.FromMinutes(1)),
+            TestContext.Current.CancellationToken
+        );
+        unchanged.StatusCode.Should().Be(HttpStatusCode.OK);
+        (await unchanged.Content.ReadFromJsonAsync<JsonElement>(TestContext.Current.CancellationToken))
+            .GetProperty("duplicate")
+            .GetBoolean()
+            .Should()
+            .BeTrue();
+
+        await using var scope = factory.Services.CreateAsyncScope();
+        var state = await scope
+            .ServiceProvider.GetRequiredService<AiObservatoryDbContext>()
+            .SourceSyncStates.AsNoTracking()
+            .SingleAsync(x => x.SourceId == UsageSourceIds.CodexLocal, TestContext.Current.CancellationToken);
+        state.IsConfigured.Should().BeTrue();
+        state.IsAvailable.Should().BeTrue();
+        state.ExpectedRefreshIntervalSeconds.Should().Be(86_400);
+        state.LatestObservationAt.Should().Be(now - NodaTime.Duration.FromMinutes(1));
+        state.ConsecutiveFailureCount.Should().Be(0);
     }
 
     [Fact]

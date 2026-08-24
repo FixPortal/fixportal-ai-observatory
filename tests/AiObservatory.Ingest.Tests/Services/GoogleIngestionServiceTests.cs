@@ -1,6 +1,7 @@
 using AiObservatory.Data.Entities;
 using AiObservatory.Data.Repositories;
 using AiObservatory.Ingest.Services.Google;
+using AwesomeAssertions;
 using Microsoft.Extensions.Logging.Abstractions;
 using NodaTime;
 using NodaTime.Testing;
@@ -23,7 +24,7 @@ public class GoogleIngestionServiceTests
             .Returns([new GoogleBillingRecord("AI Platform", "gemini-2.5-pro", 2.50m, "{}")]);
 
         var sut = new GoogleIngestionService(_client, _repo, _clock, NullLogger<GoogleIngestionService>.Instance);
-        await sut.IngestAsync(date, TestContext.Current.CancellationToken);
+        var result = await sut.IngestAsync(date, date, TestContext.Current.CancellationToken);
 
         await _repo
             .Received(1)
@@ -37,21 +38,30 @@ public class GoogleIngestionServiceTests
                     && e.IngestedAt == _clock.GetCurrentInstant()
                     && e.InputTokens == 0
                     && e.OutputTokens == 0
+                    && e.SourceId == UsageSourceIds.GoogleCloudBillingExport
+                    && e.SourceKind == SourceKind.ProviderApi
+                    && e.UsageScope == UsageScope.Api
+                    && e.CostBasis == CostBasis.Billed
+                    && e.ObservedAt == _clock.GetCurrentInstant()
                     && e.EventKey == "google:2026-06-01:gemini-2.5-pro"
                 ),
                 Arg.Any<CancellationToken>()
             );
+        result.LatestObservationAt.Should().BeNull("Google's billing record supplies no observation timestamp");
     }
 
     [Fact]
     public async Task IngestAsync_handles_empty_billing_response()
     {
         var date = new LocalDate(2026, 6, 1);
-        _client.GetDailySpendAsync(date, Arg.Any<CancellationToken>()).Returns([]);
+        _client.GetDailySpendAsync(Arg.Any<LocalDate>(), Arg.Any<CancellationToken>()).Returns([]);
 
         var sut = new GoogleIngestionService(_client, _repo, _clock, NullLogger<GoogleIngestionService>.Instance);
-        await sut.IngestAsync(date, TestContext.Current.CancellationToken);
+        var result = await sut.IngestAsync(date, date.PlusDays(1), TestContext.Current.CancellationToken);
 
         await _repo.DidNotReceive().RecordEventAsync(Arg.Any<UsageEvent>(), Arg.Any<CancellationToken>());
+        await _client.Received(1).GetDailySpendAsync(date, Arg.Any<CancellationToken>());
+        await _client.Received(1).GetDailySpendAsync(date.PlusDays(1), Arg.Any<CancellationToken>());
+        result.LatestObservationAt.Should().BeNull();
     }
 }

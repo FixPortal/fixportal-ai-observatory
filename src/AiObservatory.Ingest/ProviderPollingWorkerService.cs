@@ -1,16 +1,11 @@
-using AiObservatory.Ingest.Services.Anthropic;
-using AiObservatory.Ingest.Services.Copilot;
-using AiObservatory.Ingest.Services.GitHub;
-using AiObservatory.Ingest.Services.Google;
-using AiObservatory.Ingest.Services.OpenAi;
+using System.Text.RegularExpressions;
+using AiObservatory.Data.Repositories;
+using AiObservatory.Ingest.Sources;
 using Microsoft.Extensions.Options;
 using NodaTime;
 
 namespace AiObservatory.Ingest;
 
-// Polls each configured provider once per interval (default: hourly) and ingests
-// the previous day's usage into the observatory database.
-// A provider is skipped unless its required config key is present (see Program.cs).
 public class ProviderPollingWorkerService(
     IServiceScopeFactory scopeFactory,
     IClock clock,
@@ -18,39 +13,19 @@ public class ProviderPollingWorkerService(
     IOptions<IngestOptions> options
 ) : BackgroundService
 {
-    // After this many consecutive failed polls a provider's log is escalated so persistent
-    // breakage (misconfig, expired credential) stops reading as ordinary transient noise.
     private const int ConsecutiveFailureAlertThreshold = 3;
+    private static readonly Regex UriQuery = new(
+        @"(https?://[^\s?]+)\?[^\s]*",
+        RegexOptions.IgnoreCase | RegexOptions.CultureInvariant,
+        TimeSpan.FromSeconds(1)
+    );
 
-    // Per-provider consecutive-failure count. The worker runs a single poll loop with no
-    // concurrency, so a plain dictionary is safe.
-    private readonly Dictionary<string, int> _consecutiveFailures = [];
-
-    // Written by the poll loop, read by the /healthz endpoint on a request thread, so both
-    // cross threads unlike _consecutiveFailures above. Ticks rather than an Instant because
-    // a nullable struct cannot be assigned atomically.
     private long _lastCycleCompletedTicks;
-
     private int _cyclesCompleted;
 
-    /// <summary>
-    /// When the most recent poll cycle finished, or null if none has yet. A cycle
-    /// "completing" means every configured provider was attempted — individual providers
-    /// may still have failed and been logged by <c>TryIngestAsync</c>, so this is evidence
-    /// the loop is turning, NOT evidence that data was ingested.
-    /// </summary>
-    /// <remarks>
-    /// "Has a cycle run?" is answered by the counter, never by the timestamp being zero:
-    /// 0 ticks is a perfectly valid <see cref="Instant"/> (1970-01-01T00:00:00Z), so a
-    /// clock reading the epoch would otherwise complete a cycle and still report null.
-    /// The ordering is load-bearing — the poll loop writes the ticks BEFORE incrementing
-    /// the counter, and both are interlocked, so a non-zero counter guarantees the
-    /// timestamp beside it is the one from that cycle.
-    /// </remarks>
     public Instant? LastCycleCompletedAt =>
         CyclesCompleted == 0 ? null : Instant.FromUnixTimeTicks(Interlocked.Read(ref _lastCycleCompletedTicks));
 
-    /// <summary>Poll cycles finished since start. Exposed for /healthz.</summary>
     public int CyclesCompleted => Volatile.Read(ref _cyclesCompleted);
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
@@ -66,13 +41,9 @@ public class ProviderPollingWorkerService(
         );
         while (!stoppingToken.IsCancellationRequested)
         {
-            var yesterday = clock.GetCurrentInstant().InUtc().Date.PlusDays(-1);
-            // Trailing window ending yesterday, oldest first.
-            var dates = Enumerable
-                .Range(0, lookbackDays)
-                .Select(offset => yesterday.PlusDays(-(lookbackDays - 1 - offset)))
-                .ToList();
-            await RunPollAsync(dates, stoppingToken);
+            var through = clock.GetCurrentInstant().InUtc().Date.PlusDays(-1);
+            var from = through.PlusDays(-(lookbackDays - 1));
+            await RunPollAsync(from, through, stoppingToken);
             Interlocked.Exchange(ref _lastCycleCompletedTicks, clock.GetCurrentInstant().ToUnixTimeTicks());
             Interlocked.Increment(ref _cyclesCompleted);
             await Task.Delay(interval, stoppingToken);
@@ -82,94 +53,131 @@ public class ProviderPollingWorkerService(
     private void LogEnabledArms()
     {
         using var scope = scopeFactory.CreateScope();
-        var services = scope.ServiceProvider.GetRequiredService<IServiceProviderIsService>();
-        logger.LogInformation(
-            "Provider polling arms — Anthropic: {AnthropicState}, Copilot: {CopilotState}, "
-                + "Google: {GoogleState}, OpenAI: {OpenAiState}, GitHub: {GitHubState}",
-            State<AnthropicIngestionService>(services),
-            State<CopilotIngestionService>(services),
-            State<GoogleIngestionService>(services),
-            State<OpenAiIngestionService>(services),
-            State<GitHubIngestionService>(services)
+        var sources = scope.ServiceProvider.GetServices<IUsageSource>().Select(x => x.SourceId).ToHashSet();
+        var definitions = scope.ServiceProvider.GetServices<SourceDefinition>();
+        var states = definitions.Select(definition =>
+            $"{definition.SourceId}: {(definition.IsConfigured && sources.Contains(definition.SourceId) ? "enabled" : "NOT CONFIGURED")}"
         );
+        logger.LogInformation("Provider polling arms — {SourceStates}", string.Join(", ", states));
     }
 
-    private static string State<TService>(IServiceProviderIsService services)
-        where TService : class => services.IsService(typeof(TService)) ? "enabled" : "NOT CONFIGURED";
-
-    private async Task RunPollAsync(IReadOnlyList<LocalDate> dates, CancellationToken ct)
+    public async Task RunPollAsync(LocalDate from, LocalDate through, CancellationToken cancellationToken)
     {
         await using var scope = scopeFactory.CreateAsyncScope();
-        var sp = scope.ServiceProvider;
+        var services = scope.ServiceProvider;
+        var sources = services.GetServices<IUsageSource>().ToDictionary(source => source.SourceId);
+        var definitions = services.GetServices<SourceDefinition>().ToList();
+        var stateStore = services.GetRequiredService<SourceSyncStateStore>();
+        var current = clock.GetCurrentInstant();
 
-        await TryIngestAsync<AnthropicIngestionService>(sp, "Anthropic", (s, d) => s.IngestAsync(d, ct), dates, ct);
-        await TryIngestAsync<CopilotIngestionService>(sp, "Copilot", (s, d) => s.IngestAsync(d, ct), dates, ct);
-        await TryIngestAsync<GoogleIngestionService>(sp, "Google", (s, d) => s.IngestAsync(d, ct), dates, ct);
-        await TryIngestAsync<OpenAiIngestionService>(sp, "OpenAI", (s, d) => s.IngestAsync(d, ct), dates, ct);
-        // GitHub takes a since-date RANGE per call (unlike the other providers'
-        // single-day calls), so it's invoked once per cycle with the earliest
-        // lookback date, not once per date in `dates`.
-        await TryIngestAsync<GitHubIngestionService>(
-            sp,
-            "GitHub",
-            async (s, _) =>
-            {
-                var failed = await s.IngestSinceAsync(dates[0], ct);
-                if (failed > 0 && failed == options.Value.GitHubRepoAllowlist.Length)
-                {
-                    throw new InvalidOperationException(
-                        $"All {failed} configured GitHub repos failed to ingest this cycle"
-                    );
-                }
-            },
-            [dates[0]],
-            ct
-        );
+        foreach (
+            var definition in definitions.Where(definition =>
+                !definition.IsConfigured || !sources.ContainsKey(definition.SourceId)
+            )
+        )
+        {
+            await stateStore.MarkUnconfiguredAsync(
+                definition.SourceId,
+                definition.ExpectedRefreshInterval,
+                current,
+                cancellationToken
+            );
+        }
+
+        foreach (
+            var definition in definitions.Where(definition =>
+                definition.IsConfigured && sources.ContainsKey(definition.SourceId)
+            )
+        )
+        {
+            await PollSourceAsync(
+                sources[definition.SourceId],
+                definition,
+                stateStore,
+                current,
+                from,
+                through,
+                cancellationToken
+            );
+        }
     }
 
-    private async Task TryIngestAsync<TService>(
-        IServiceProvider sp,
-        string name,
-        Func<TService, LocalDate, Task> action,
-        IReadOnlyList<LocalDate> dates,
-        CancellationToken ct
+    private async Task PollSourceAsync(
+        IUsageSource source,
+        SourceDefinition definition,
+        SourceSyncStateStore stateStore,
+        Instant current,
+        LocalDate from,
+        LocalDate through,
+        CancellationToken cancellationToken
     )
-        where TService : class
     {
-        var service = sp.GetService<TService>();
-        if (service is null)
-        {
-            return;
-        }
+        await stateStore.MarkAttemptAsync(
+            source.SourceId,
+            definition.ExpectedRefreshInterval,
+            current,
+            cancellationToken
+        );
         try
         {
-            foreach (var date in dates)
-            {
-                await action(service, date);
-            }
-            _consecutiveFailures[name] = 0;
+            var result = await source.IngestAsync(from, through, cancellationToken);
+            await stateStore.MarkSuccessAsync(
+                source.SourceId,
+                definition.ExpectedRefreshInterval,
+                current,
+                result.LatestObservationAt,
+                cancellationToken
+            );
         }
-        catch (OperationCanceledException) when (ct.IsCancellationRequested)
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
         {
             throw;
         }
+        catch (SourceUnavailableException ex)
+        {
+            var error = SanitizeError(ex.Message);
+            var count = await stateStore.MarkUnavailableAsync(
+                source.SourceId,
+                definition.ExpectedRefreshInterval,
+                current,
+                error,
+                cancellationToken
+            );
+            LogFailure(source.SourceId, count, error);
+        }
         catch (Exception ex)
         {
-            var count = _consecutiveFailures.GetValueOrDefault(name) + 1;
-            _consecutiveFailures[name] = count;
-            if (count >= ConsecutiveFailureAlertThreshold)
-            {
-                logger.LogError(
-                    ex,
-                    "{Provider} ingestion has failed {Count} consecutive polls — provider may be misconfigured or unavailable",
-                    name,
-                    count
-                );
-            }
-            else
-            {
-                logger.LogError(ex, "{Provider} ingestion failed", name);
-            }
+            var error = SanitizeError(ex.Message);
+            var count = await stateStore.MarkFailureAsync(
+                source.SourceId,
+                definition.ExpectedRefreshInterval,
+                current,
+                error,
+                cancellationToken
+            );
+            LogFailure(source.SourceId, count, error);
         }
+    }
+
+    private void LogFailure(string sourceId, int count, string error)
+    {
+        if (count >= ConsecutiveFailureAlertThreshold)
+        {
+            logger.LogError(
+                "{SourceId} ingestion has failed {Count} consecutive polls — source may be misconfigured or unavailable: {Error}",
+                sourceId,
+                count,
+                error
+            );
+            return;
+        }
+
+        logger.LogError("{SourceId} ingestion failed: {Error}", sourceId, error);
+    }
+
+    internal static string SanitizeError(string error)
+    {
+        var sanitized = UriQuery.Replace(error.Replace('\r', ' ').Replace('\n', ' '), "$1");
+        return sanitized.Length <= 500 ? sanitized : sanitized[..500];
     }
 }

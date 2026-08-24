@@ -17,6 +17,7 @@ public static class ServiceCollectionExtensions
         services.AddScoped<IUsageRepository, UsageRepository>();
         services.AddScoped<IAdversarialReviewRepository, AdversarialReviewRepository>();
         services.AddScoped<IGitHubActivityRepository, GitHubActivityRepository>();
+        services.AddScoped<SourceSyncStateStore>();
         return services;
     }
 }

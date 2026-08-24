@@ -1,6 +1,7 @@
 using AiObservatory.Data.Entities;
 using AiObservatory.Data.Repositories;
 using AiObservatory.Ingest.Services.Copilot;
+using AwesomeAssertions;
 using Microsoft.Extensions.Logging.Abstractions;
 using NodaTime;
 using NodaTime.Testing;
@@ -31,7 +32,7 @@ public class CopilotIngestionServiceTests
             );
 
         var sut = new CopilotIngestionService(_client, _repo, _clock, NullLogger<CopilotIngestionService>.Instance);
-        await sut.IngestAsync(date, TestContext.Current.CancellationToken);
+        var result = await sut.IngestAsync(date, date, TestContext.Current.CancellationToken);
 
         await _repo
             .Received(1)
@@ -40,21 +41,32 @@ public class CopilotIngestionServiceTests
                     e != null
                     && e.Provider == Provider.Copilot
                     && e.CostUsd == 0m
+                    && e.SourceId == UsageSourceIds.CopilotOrgReport
+                    && e.SourceKind == SourceKind.ProviderApi
+                    && e.UsageScope == UsageScope.Subscription
+                    && e.CostBasis == CostBasis.None
+                    && e.ObservedAt == _clock.GetCurrentInstant()
                     && e.EventKey == "copilot:2026-06-01:copilot"
                 ),
                 Arg.Any<CancellationToken>()
             );
+        result.LatestObservationAt.Should().Be(date.AtStartOfDayInZone(DateTimeZone.Utc).ToInstant());
     }
 
     [Fact]
     public async Task IngestAsync_does_nothing_when_client_returns_null()
     {
         var date = new LocalDate(2026, 6, 1);
-        _client.GetDailyUsageAsync(date, Arg.Any<CancellationToken>()).Returns((CopilotUsageRecord?)null);
+        _client
+            .GetDailyUsageAsync(Arg.Any<LocalDate>(), Arg.Any<CancellationToken>())
+            .Returns((CopilotUsageRecord?)null);
 
         var sut = new CopilotIngestionService(_client, _repo, _clock, NullLogger<CopilotIngestionService>.Instance);
-        await sut.IngestAsync(date, TestContext.Current.CancellationToken);
+        var result = await sut.IngestAsync(date, date.PlusDays(1), TestContext.Current.CancellationToken);
 
         await _repo.DidNotReceive().RecordEventAsync(Arg.Any<UsageEvent>(), Arg.Any<CancellationToken>());
+        await _client.Received(1).GetDailyUsageAsync(date, Arg.Any<CancellationToken>());
+        await _client.Received(1).GetDailyUsageAsync(date.PlusDays(1), Arg.Any<CancellationToken>());
+        result.LatestObservationAt.Should().BeNull();
     }
 }

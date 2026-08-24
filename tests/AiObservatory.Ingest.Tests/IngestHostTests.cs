@@ -1,11 +1,15 @@
+using AiObservatory.Data.Entities;
 using AiObservatory.Ingest.Services.Anthropic;
 using AiObservatory.Ingest.Services.Copilot;
+using AiObservatory.Ingest.Services.GitHub;
 using AiObservatory.Ingest.Services.Google;
 using AiObservatory.Ingest.Services.OpenAi;
+using AiObservatory.Ingest.Sources;
 using AwesomeAssertions;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.Extensions.Configuration;
+using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 
 namespace AiObservatory.Ingest.Tests;
@@ -57,6 +61,58 @@ public class IngestHostTests
 
         thrown.Should().NotBeNull();
         ExceptionChainContains(thrown!, "CacheWrite1h").Should().BeTrue();
+    }
+
+    [Fact]
+    public async Task RegistersExactlyOneDefinitionForEveryKnownSourceWhenUnconfigured()
+    {
+        await using var factory = new IngestFactory();
+
+        var definitions = factory.Services.GetServices<SourceDefinition>().ToList();
+
+        definitions
+            .Select(x => x.SourceId)
+            .Should()
+            .BeEquivalentTo(
+                UsageSourceIds.AnthropicUsageApi,
+                UsageSourceIds.CopilotOrgReport,
+                UsageSourceIds.GoogleCloudBillingExport,
+                UsageSourceIds.OpenAiUsageApi,
+                UsageSourceIds.GitHubActivityApi
+            );
+        definitions.Should().OnlyContain(x => !x.IsConfigured);
+        definitions.Select(x => x.SourceId).Should().OnlyHaveUniqueItems();
+    }
+
+    [Theory]
+    [InlineData("ANTHROPIC_BILLING_KEY", typeof(AnthropicIngestionService), UsageSourceIds.AnthropicUsageApi)]
+    [InlineData("COPILOT_ORG", typeof(CopilotIngestionService), UsageSourceIds.CopilotOrgReport)]
+    [InlineData("GOOGLE_BILLING_ACCOUNT_ID", typeof(GoogleIngestionService), UsageSourceIds.GoogleCloudBillingExport)]
+    [InlineData("OPENAI_ADMIN_KEY", typeof(OpenAiIngestionService), UsageSourceIds.OpenAiUsageApi)]
+    [InlineData("GITHUB_TOKEN", typeof(GitHubIngestionService), UsageSourceIds.GitHubActivityApi)]
+    public async Task ConfiguredCredentialRegistersTheMatchingUsageSource(
+        string setting,
+        Type implementationType,
+        string sourceId
+    )
+    {
+        await using var factory = new IngestFactory();
+        factory.Settings[setting] = "configured";
+        if (setting == "COPILOT_ORG")
+        {
+            factory.Settings["GITHUB_TOKEN"] = "configured-token";
+        }
+        if (setting == "GITHUB_TOKEN")
+        {
+            factory.ConfigurationOverrides["Ingest:GitHubRepoAllowlist:0"] = "fix-portal/example";
+        }
+
+        using var scope = factory.Services.CreateScope();
+        var sources = scope.ServiceProvider.GetServices<IUsageSource>().ToList();
+        var definitions = scope.ServiceProvider.GetServices<SourceDefinition>().ToList();
+
+        sources.Should().ContainSingle(x => x.GetType() == implementationType).Which.SourceId.Should().Be(sourceId);
+        definitions.Should().ContainSingle(x => x.SourceId == sourceId).Which.IsConfigured.Should().BeTrue();
     }
 
     private static bool ExceptionChainContains(Exception ex, string fragment)
