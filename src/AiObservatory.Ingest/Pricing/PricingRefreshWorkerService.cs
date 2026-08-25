@@ -131,7 +131,14 @@ public sealed class PricingRefreshWorkerService(
         var error = ProviderPollingWorkerService.SanitizeError(exception.Message);
         try
         {
-            await states.MarkFailureAsync(sourceId, definition.ExpectedRefreshInterval, now, error, cancellationToken);
+            await states.MarkFailureAsync(
+                sourceId,
+                definition.ExpectedRefreshInterval,
+                now,
+                error,
+                cancellationToken,
+                onlyIfLatestAttempt: true
+            );
             logger.LogError("{SourceId} pricing refresh failed: {Error}", sourceId, error);
         }
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)

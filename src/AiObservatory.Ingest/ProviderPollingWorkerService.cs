@@ -198,14 +198,16 @@ public class ProviderPollingWorkerService(
                     definition.ExpectedRefreshInterval,
                     current,
                     error,
-                    cancellationToken
+                    cancellationToken,
+                    onlyIfLatestAttempt: true
                 )
                 : await stateStore.MarkFailureAsync(
                     sourceId,
                     definition.ExpectedRefreshInterval,
                     current,
                     error,
-                    cancellationToken
+                    cancellationToken,
+                    onlyIfLatestAttempt: true
                 );
             LogFailure(sourceId, count, error);
         }
