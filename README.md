@@ -1,743 +1,118 @@
----
-title: AI Observatory
-date: 2026-06-03
-status: active
-repo: FixPortal/fixportal-ai-observatory
-stack: .NET 10 · React 19 · PostgreSQL 16
-license: Apache-2.0
----
-
-<p align="center">
-  <img src="docs/images/ai-observatory-hero-labs.png" alt="AI Observatory by FixPortal" width="1200">
-</p>
-
 ![Build](https://github.com/FixPortal/fixportal-ai-observatory/actions/workflows/ci.yml/badge.svg)
 ![License](https://img.shields.io/github/license/FixPortal/fixportal-ai-observatory)
 
 # AI Observatory
 
-> Full-stack observability dashboard for AI service spending. Tracks token usage
-> and costs across Anthropic, Google, and GitHub Copilot with AI-generated
-> insights, subscription management, and budget alerting. Live at
-> [observatory.fixportal.org](https://observatory.fixportal.org).
+> OSS observability for AI usage and cost evidence, as of 2026-08-25. It keeps billed spend, public-list estimates, subscription notional values, and missing data distinct.
 
-![AI Observatory dashboard](docs/dashboard.png)
+AI Observatory is a .NET 10 and React 19 dashboard with a PostgreSQL store. Provider sources, local CLI telemetry, and manual entries retain provenance so unlike evidence is never silently merged.
 
-![AI Observatory reporting](docs/reporting.png)
+## Read these first
 
-## What It Does
+- [Provider setup](docs/provider-setup.md) — every source, access requirement, and known unavailable capability.
+- [Truth and pricing](docs/truth-and-pricing.md) — source/scope/basis meanings and safe catalog refresh.
+- [Adding a provider](docs/adding-a-provider.md) — the compile-time adapter seam.
+- [Local producers](clients/README.md) — Codex, Copilot, Claude, and Kimi sweeper setup.
+- [Postman collection](docs/ai-observatory.postman_collection.json) — representative authenticated API requests.
 
-- Aggregates daily token usage and costs per provider and model
-- Displays a 14-day spend trend chart and provider breakdown
-- Runs a background intelligence worker that generates anomaly, efficiency, recommendation, and summary insights via the Anthropic SDK
-- Manages subscriptions (monthly flat cost + extra usage overlay, progress bar vs. period spend)
-- Supports budget rules and FX-rate-aware GBP display
+## Local development
 
-Usage events enter via a `POST /api/events` endpoint. Vendor billing is polled
-by the `AiObservatory.Ingest` worker (Anthropic, OpenAI, Google, Copilot), and
-session-level token usage is pushed by local producers on the developer's
-machine — a Claude Code `Stop` hook plus the drop-in **[Codex / Copilot
-sweeper](clients/README.md)** for tools whose subscription usage the billing
-APIs cannot see.
+### Quick start
 
-## Tech Stack
+> [!WARNING]
+> Restore depends on private FixPortal GitHub Packages. Only contributors explicitly granted package access can build; public users without it cannot complete this quick start. This is an unresolved OSS release blocker.
 
-| Layer | Technology |
-|---|---|
-| Frontend | React 19, TypeScript 6, Vite 8 |
-| Charts | Recharts 3 (lazy-loaded) |
-| Server state | TanStack React Query 5 |
-| Styling | Custom CSS + vendored design tokens & components (no Tailwind) |
-| Backend | ASP.NET Core 10, Minimal APIs |
-| ORM | EF Core 10 + NodaTime |
-| Database | PostgreSQL 16 |
-| AI insights | Anthropic SDK v5 (`claude-*` models) |
-| Hosting | Azure Static Web App (frontend), Azure App Service F1 (API) |
-| IaC | Bicep (in `infra/`) |
-| Observability | Azure Application Insights |
-
-## Compatibility
-
-| Component | Requirement |
-|---|---|
-| .NET SDK | 10 (no down-level targets) |
-| Node | 24+ |
-| PostgreSQL | 16 |
-| Azure | App Service F1 + Static Web App Free tier |
-
-## Project Structure
-
-```
-fixportal-ai-observatory/
-├── .github/
-│   └── workflows/
-│       ├── ci.yml              # Build & test (PR + main)
-│       ├── deploy.yml          # Release to Azure (triggered by CI on main)
-│       ├── infra.yml           # Bicep deploy (triggered on infra/** changes)
-│       └── react-doctor.yml    # React diagnostics on PRs
-├── infra/
-│   ├── main.bicep
-│   └── modules/
-│       ├── appservice.bicep    # fpaiobs-api App Service
-│       ├── postgresql.bicep    # fpaiobs-db managed PostgreSQL
-│       ├── keyvault.bicep      # fpaiobs-kv secrets
-│       ├── appinsights.bicep   # Application Insights
-│       └── swa.bicep           # fpaiobs-swa Static Web App
-├── src/
-│   ├── AiObservatory.Api/      # ASP.NET Core 10 Minimal API
-│   ├── AiObservatory.Data/     # EF Core entities, DbContext, migrations
-│   └── AiObservatory.Web/      # React 19 frontend
-├── tests/
-│   ├── AiObservatory.Api.Tests/
-│   └── AiObservatory.Data.Tests/
-└── AiObservatory.slnx
-```
-
-### Why a monorepo?
-
-The API and frontend are kept in a single repository for three reasons:
-
-1. **Source-first local development.** `docker compose up --build` builds both from source in one command. Splitting the repos would break this unless pre-built images are published to a registry — which adds a CI publishing step before local dev works for new contributors.
-2. **Atomic changes.** Adding a new endpoint and the component that calls it is one PR, one review, one merge. Cross-repo PRs for tightly-coupled changes are friction.
-3. **OSS contributor experience.** One clone gets you everything. No co-ordinating two repos, two CI pipelines, or two sets of issue trackers.
-
-### Path to a split
-
-If the frontend ever grows to the point where a React contributor shouldn't need the .NET SDK installed, splitting is viable. The pattern: both repos publish Docker images to a registry (e.g. GHCR) on merge, and a single `docker-compose.yml` in the backend repo wires the pre-built images together — no source build required for deployment or local demo. [fixportal-ci-backend](https://github.com/FixPortal/fixportal-ci-backend) is a working example of this approach.
-
-## API Endpoints
-
-All routes are under `/api`. Requests require an `X-Observatory-Key` header
-matching the `OBSERVATORY_API_KEY` secret.
-
-| Method | Route | Description |
-|---|---|---|
-| `GET` | `/api/aggregates` | Daily token usage + cost by provider/model (default: last 31 days) |
-| `GET` | `/api/insights` | 50 most recent AI-generated insights |
-| `POST` | `/api/insights/{id}/acknowledge` | Mark an insight as read |
-| `GET` | `/api/subscriptions` | List billing subscriptions |
-| `POST` | `/api/subscriptions` | Create a subscription |
-| `PUT` | `/api/subscriptions/{id}` | Update a subscription |
-| `PATCH` | `/api/subscriptions/{id}/extra-usage` | Set extra usage cost override |
-| `DELETE` | `/api/subscriptions/{id}` | Remove a subscription |
-| `GET` | `/api/budget-rules` | List budget alert rules |
-| `POST` | `/api/events` | Ingest a raw usage event |
-
-## Frontend Architecture
-
-The frontend (`src/AiObservatory.Web`) is a single-page app served by Azure Static Web App. It calls the API directly (cross-origin — there is no /api proxy on the free SWA tier).
-
-### Code splitting
-
-- React and Recharts ship in separate vendor chunks
-- `SpendChart` and `ProviderSplit` are wrapped in `React.lazy()` + `Suspense` so Recharts is never in the initial bundle
-
-### Design system
-
-The app uses a small set of vendored design tokens and UI primitives in `src/design/` — `tokens.css`, `components.css`, and the `BrandWordmark` / `Button` / `Card` / `StatusBadge` / `ThemeToggle` components — copied in so the repo builds standalone with no private package dependency. `src/index.css` imports those tokens for universal surface, text, brand, status, and border values and never redefines them; app-local tokens (provider palette, spacing scale, radius) also live in `src/index.css`.
-
-Provider colours are categorical, not semantic:
-
-| Provider | Light | Dark |
-|---|---|---|
-| anthropic | `#7c3aed` (violet) | `#a78bfa` |
-| google | `#0284c7` (sky) | `#38bdf8` |
-| copilot | `#db2777` (rose) | `#f472b6` |
-| openai | `#ea580c` (orange) | `#fb923c` |
-| moonshot | `#65a30d` (lime) | `#a3e635` |
-| other | `#64748b` (slate) | `#94a3b8` |
-| judge | `#d97706` (amber) | `#fbbf24` |
-
-Adding a provider means three edits in step — a `--provider-<key>` pair in
-`index.css`, an entry in `src/config/providers.ts`, and the key in
-`BACKEND_PROVIDERS` in `src/config/providers.test.ts`. That test fails if the
-frontend list drifts from the backend `Provider` enum or if a `colorVar` names a
-variable no theme defines.
-
-Theming uses `[data-theme="light|dark|system"]` on `<html>`, persisted to `localStorage`.
-
-Depth is expressed through borders only — no box shadows anywhere.
-
-### Insight type → status colour mapping
-
-| Insight type | Status token |
-|---|---|
-| anomaly | bad |
-| efficiency | ok |
-| recommendation | info |
-| summary | neutral |
-
-## Local Development
-
-### Quick start (Docker)
-
-The fastest way to see a populated dashboard — one command, no local
-.NET / Node / PostgreSQL setup needed:
+Authorized contributors can set their package-read token before Docker or manual restore:
 
 ```powershell
-$env:GITHUB_PACKAGES_TOKEN = "<github-token-with-read-packages>"
+$env:GITHUB_PACKAGES_TOKEN = '<github-packages-token>'
 ```
 
 ```powershell
 docker compose up --build
 ```
 
-This starts PostgreSQL, the API (with EF migrations auto-applied), and the
-React frontend served by nginx on [http://localhost:4173](http://localhost:4173).
-A one-shot `seed` container fires once the API is healthy and populates 14 days
-of sample data.
+This starts PostgreSQL, the API, and the frontend at [http://localhost:4173](http://localhost:4173). The compose seed populates sample data; it is for local exploration, not a representation of provider billing.
 
-To supply an Anthropic API key (enables AI insights):
-
-```bash
-ANTHROPIC_API_KEY=sk-ant-... docker compose up --build
-```
-
-Without the key the API boots fine — AI insights and the `/explain` endpoint
-are simply disabled.
-
-To stop and wipe the database volume:
-
-```bash
-docker compose down -v
-```
-
-### Prerequisites (manual setup)
-
-- .NET 10 SDK
-- Node 24+
-- PostgreSQL 16 (or Docker)
-- `GITHUB_PACKAGES_TOKEN` set to a GitHub token with `read:packages` access to the `FixPortal` organization.
+For a manual run, install .NET SDK 10, Node 24+, and PostgreSQL 16. Configure `DB_CONNECTION` and `OBSERVATORY_API_KEY` through user secrets or environment variables, then start the API and web app:
 
 ```powershell
-$env:GITHUB_PACKAGES_TOKEN = "<github-token-with-read-packages>"
-```
-
-### Backend
-
-```powershell
-cd src/AiObservatory.Api
-dotnet run
-```
-
-Set these environment variables (or user secrets):
-
-```
-DB_CONNECTION=Host=localhost;Database=aiobservatory;Username=...;Password=...
-OBSERVATORY_API_KEY=<any-guid>
-ANTHROPIC_API_KEY=sk-ant-...   # optional — omit to skip AI insights
-```
-
-Run EF Core migrations on first launch or after pulling new migrations:
-
-```powershell
-dotnet ef database update --project ../AiObservatory.Data --startup-project .
-```
-
-### Ingest worker configuration
-
-> [!IMPORTANT]
-> `AiObservatory.Ingest` is a background worker that also hosts a **minimal Kestrel
-> serving only `GET /healthz`**. That web host is not a feature — it exists because
-> Linux App Service is HTTP-first and kills any container that fails a startup probe
-> on port 8080. Without it the worker restart-looped indefinitely while both the portal
-> and `az webapp show` reported `"state": "Running"` — that is the *site* state, not the
-> container's — and every ingestion arm was silently dead. Do not remove the listener,
-> and do not add routes to it: this process holds provider credentials the public API
-> does not.
-
-**Which port, and who sets it.** Nothing in the code binds a port. Kestrel takes its
-binding from **`ASPNETCORE_URLS`**, which App Service injects into the container at the
-platform level — it is not one of the app settings in `infra/`, so you will not find it
-listed there. The API is the working proof: same `DOTNETCORE|10.0` image, no port
-configuration of its own, and it logs `Now listening on: http://[::]:8080` on every start.
-The worker inherits that behaviour unchanged. Locally,
-`src/AiObservatory.Ingest/Properties/launchSettings.json` sets `ASPNETCORE_URLS` to
-**`http://localhost:5040`** — beside the API's 5039 — so `dotnet run` never contends for a
-commonly-occupied port such as 8080.
-
-**What `/healthz` does and does not assert.** It is wired to `healthCheckPath` in
-`infra/modules/ingest.bicep`, and returns **503 on exactly one condition**: the poll loop
-has stopped while the host is still up (`ExecuteTask` completed — faulted, cancelled, or
-simply returned). That is unambiguous silent death and the instance deserves replacing.
-
-It deliberately does **not** go unhealthy on a stale `lastCycleCompletedAt`. The polling
-interval is configurable, so a long legitimate gap would have App Service recycle a healthy
-container — recreating the exact restart loop this design removes. The response body
-carries `cyclesCompleted` and `lastCycleCompletedAt` so staleness is visible to a human,
-who can judge it with context a threshold cannot.
-
-Note also that a completed cycle means every configured provider was *attempted*.
-Individual providers can still have failed and been logged; the endpoint is evidence the
-loop is turning, not that data was ingested.
-
-Each provider arm of `AiObservatory.Ingest` stays disabled until its credential is
-present, so an unconfigured worker is a no-op rather than an error:
-
-| Setting | Enables | Notes |
-|---|---|---|
-| `ANTHROPIC_BILLING_KEY` | Anthropic Messages usage and billed Cost Report | Claude Platform organization **Admin API key** (`sk-ant-admin...`), not a standard API key or Claude Enterprise Analytics key |
-| `CLAUDE_CODE_USAGE_ENABLED=true` | Claude Code daily usage | Opt-in; also requires `ANTHROPIC_BILLING_KEY` and an organization with Admin API access |
-| `OPENAI_ADMIN_KEY` | OpenAI usage | Admin key with `openai.usage.read` |
-| `GOOGLE_CLOUD_PROJECT_ID` + `GOOGLE_BILLING_EXPORT_TABLE` | Google Cloud Billing export | Required together. Query/billing project and `project.dataset.table` for a Standard/Detailed export table or stable compatible view; uses Application Default Credentials (ADC). |
-| `GITHUB_TOKEN` + `COPILOT_ORG` | Copilot organization 28-day engagement report | Classic token needs `read:org`; fine-grained token needs Organization Copilot metrics (read) |
-| `GITHUB_TOKEN` + `Ingest__GitHubRepoAllowlist` | GitHub PR/commit/CI activity | Token additionally needs `contents:read`, `pull-requests:read`, `actions:read` |
-
-`Ingest__GitHubRepoAllowlist` is the repo scope for GitHub activity ingestion, and
-**both** it and `GITHUB_TOKEN` must be set — an empty allowlist leaves the GitHub
-Activity client unregistered, which is why that dashboard section renders empty
-rather than failing. It binds from either shape:
-
-- **Locally** — an array in `appsettings.Development.json` or user secrets:
-  `"Ingest": { "GitHubRepoAllowlist": ["FixPortal/example"] }`
-- **Deployed** — a single comma-delimited value, because App Service surfaces a
-  Key Vault reference as one scalar app setting:
-  `Ingest__GitHubRepoAllowlist=FixPortal/one,FixPortal/two`
-
-The deployed list lives in Key Vault as `github-repo-allowlist` rather than in this
-repo, because most of the repos it names are private and this repo is public. Set it
-with:
-
-```powershell
-az keyvault secret set --vault-name fpaiobs-kv -n github-repo-allowlist --value "FixPortal/one,FixPortal/two"
-```
-
-Entries that are not well-formed `owner/repo` are discarded, so an unresolved
-`@Microsoft.KeyVault(...)` reference degrades to "GitHub activity off" instead of
-polling a garbage repo.
-
-### GitHub billing sync (API, not the worker)
-
-The API — not `AiObservatory.Ingest` — pulls GitHub's own billed usage into the
-spend ledger, because it is the side that owns the FX provider and the ledger write
-path (`Ingest_must_not_depend_on_Api` is an enforced architecture rule).
-
-| Setting | Enables | Notes |
-|---|---|---|
-| `GITHUB_TOKEN` + `GITHUB_BILLING_ORG` | GitHub billed spend | Token needs **billing read** — "Plan" read on a fine-grained PAT, or `admin:org` on a classic one |
-
-This exists because **the GitHub org bill is not paid from the account the spend CSV
-exports.** Before the sync, every penny of Actions, Advanced Security and Code
-Quality AI Credits was missing from the ledger — not misfiled, absent.
-
-It runs as a step in the API's daily background cycle and **upserts** on
-`(Source=Api, EntryKey)`, where the key is
-`github:{yyyy-MM}:{product}:{sku}` — deliberately excluding the amount. An open
-month accrues daily, so keying on identity rather than value lets a re-run update
-the figure instead of either duplicating it or waiting for month end.
-
-Products map to vendor and category as follows; an unrecognised product still lands,
-under `github`/`subscription`, so a new GitHub product line shows up in the total
-before anyone teaches the map about it:
-
-| Product | Vendor | Category |
-|---|---|---|
-| `actions`, `packages` | `github-actions` | `ci` |
-| `code_quality` | `github` | `code-review` |
-| `ghas` | `github` | `subscription` |
-
-The sync owns the **amount** only. A hand recategorisation on the dashboard survives
-the next run, so a line booked somewhere more useful stays there.
-
-A token that cannot read billing gets a 403/404, which the client turns into "no
-usage items" and a warning — a visible gap in the ledger, rather than an exception
-that would take the whole daily cycle (insights, budget alerts) down with it.
-
-#### Inert arms, and why `SecretNotFound` is expected
-
-`ANTHROPIC_BILLING_KEY` and `COPILOT_ORG` have no Key Vault secret in this
-deployment, so inspecting the running app's Key Vault references reports
-`SecretNotFound` for both. **The absent secret is the designed state, not a
-fault.** Both integrations are supported but remain opt-in.
-`Program.cs` treats an unresolved `@Microsoft.KeyVault(...)` literal as unset
-precisely so that an absent optional secret leaves the arm unregistered, rather
-than enabling it with a garbage credential and 401-ing every hour.
-
-They are inert because this deployment does not have the required upstream
-organization credentials:
-
-- **Google Cloud Billing — supported, but unconfigured in this Azure deployment.**
-  Enable BigQuery billing export (Standard or Detailed) and provide
-  `GOOGLE_CLOUD_PROJECT_ID` plus `GOOGLE_BILLING_EXPORT_TABLE`; the worker uses ADC,
-  so grant that identity BigQuery query access and read access to the export or view.
-  Google can append invoice corrections after the original usage date, so each poll
-  reaggregates groups changed since the prior `export_time` watermark as well as the
-  requested usage range. Amounts retain the export's local currency and are converted
-  to GBP through the existing historical-FX path. This creates billed cloud-spend
-  evidence only—never token telemetry—and BigQuery query charges remain the customer's
-  responsibility. Cross-cloud credential provisioning and committed service-account
-  keys are deliberately outside this repository.
-
-- **Anthropic — supported, but this deployment has no organization Admin key.**
-  With `ANTHROPIC_BILLING_KEY`, the worker reads complete paginated Platform
-  Admin reports from `/v1/organizations/usage_report/messages` and
-  `/v1/organizations/cost_report`. Messages become API/list-price estimates;
-  the Cost Report becomes billed spend. Those are deliberately separate facts,
-  so billed spend is never inferred from the usage estimate.
-
-  `CLAUDE_CODE_USAGE_ENABLED=true` additionally enables the single-day
-  [`/v1/organizations/usage_report/claude_code`](https://platform.claude.com/docs/en/api/http/admin/usage_report/retrieve_claude_code)
-  report. Its upstream `customer_type` chooses API or subscription scope, and
-  an upstream estimated cost stays provider-estimated rather than billed. The
-  endpoint requires Admin API access and is unavailable on Claude Platform on
-  AWS; the worker does not hardcode plan names as an eligibility test. An
-  explicit provider ineligibility response marks only this source unavailable,
-  while authentication and transient failures remain visible failures.
-
-- **Copilot — supported signed organization reports.**
-  The worker requests the current
-  [`organization-28-day/latest`](https://docs.github.com/en/rest/copilot/copilot-usage-metrics)
-  descriptor, validates its complete 28-day window, and downloads every NDJSON
-  part through separate unauthenticated HTTPS clients so GitHub credentials are
-  never forwarded to signed URLs. It validates the complete report before one
-  atomic correction/upsert into `CopilotDailyReports`.
-
-  These are engagement facts — daily/weekly/monthly active users, user-initiated
-  interactions, generations, and acceptances — with the provider wrapper retained
-  as raw evidence. They create no `UsageEvent`, token, cost, billing, or spend row.
-  The local Copilot sweeper remains the separate
-  `copilot-local/Subscription/Notional` token-utilisation lane; it is not an
-  organization-report substitute or an invoice.
-
-Anthropic usage here comes from the local sweeper reading
-`~/.claude/projects/**/*.jsonl` instead.
-
-Two things to know before enabling either arm:
-
-- **Remote Claude Code reports and the local sweeper do not deduplicate against
-  each other.** They are independent provider and local-telemetry observations.
-  Running both over the same Claude Code activity counts overlapping tokens (and
-  any provider estimate) twice; choose one acquisition lane for that activity.
-  Messages API usage is a separate API lane and must not be treated as a Claude
-  subscription observation merely because the model name matches.
-- An absent *optional* secret is not the same failure as a *required* setting
-  left unset. `Ingest__GitHubRepoAllowlist` was the latter — a real defect that
-  silently disabled GitHub activity. These two are the former.
-
-### Frontend
-
-```powershell
-cd src/AiObservatory.Web
-npm install
-npm run dev
-```
-
-No API URL configuration is needed. The Vite dev server proxies `/api` to the API's
-`dotnet run` address (`http://localhost:5039`) — see `server.proxy` in
-`vite.config.ts` — so the SPA and the API share an origin exactly as they do behind
-nginx in Compose.
-
-Only override this when the API is somewhere else, and note the variable is
-`VITE_API_BASE` (no `_URL`), read in `src/api/client.ts`:
-
-```
-VITE_API_BASE=http://localhost:5039
-```
-
-It is baked in at build time, so a change needs a restarted dev server or a rebuild.
-
-### Seeding local data
-
-In development mode the API exposes a seed endpoint that wipes the database and
-populates 14 days of sample aggregates across Anthropic, Google, and Copilot,
-plus subscriptions, budget rules, and three sample insights — the fastest way to
-see a fully populated dashboard locally:
-
-```bash
-curl -X POST http://localhost:5039/api/dev/seed
-```
-
-That address is the `dotnet run` API. Under Compose there is **no API port on the
-host** — the API is reachable only through the frontend's nginx proxy, and the key
-is required because `docker-compose.yml` sets `OBSERVATORY_API_KEY`:
-
-```bash
-curl -X POST http://localhost:4173/api/dev/seed -H "X-Observatory-Key: change-me"
-```
-
-Compose seeds itself anyway: the one-shot `seed` container runs this once the API
-reports healthy, so you only need this by hand to re-seed.
-
-This endpoint is only available when `ASPNETCORE_ENVIRONMENT=Development` (the
-default for `dotnet run`). It is not deployed to production.
-
-### Sending your first event
-
-To ingest a real usage event, `POST /api/events` with an `X-Observatory-Key`
-header. Writes always require `OBSERVATORY_API_KEY`. GETs are keyless only while
-**neither** key is configured — set either `OBSERVATORY_API_KEY` or
-`OBSERVATORY_READONLY_API_KEY` and reads start requiring one too
-(`ApiKeyEndpointFilter`). That is why Compose, which sets the admin key, answers
-`401` to an unkeyed `GET /api/aggregates`.
-
-```bash
-curl -X POST http://localhost:5039/api/events \
-  -H "X-Observatory-Key: <your-key>" \
-  -H "Content-Type: application/json" \
-  -d '{
-    "provider": "anthropic",
-    "model": "claude-sonnet-4-6",
-    "inputTokens": 1500,
-    "outputTokens": 800,
-    "cacheReadTokens": 0,
-    "cacheWriteTokens": 0,
-    "cacheWrite1hTokens": 0,
-    "costUsd": null,
-    "sourceId": "manual-anthropic",
-    "sourceKind": "providerApi",
-    "usageScope": "api",
-    "costBasis": "listPriceEstimate",
-    "rawPayload": "{\"service_tier\":\"standard\",\"speed\":\"standard\",\"inference_geo\":\"global\",\"cache_creation\":{\"ephemeral_5m_input_tokens\":0,\"ephemeral_1h_input_tokens\":0}}",
-    "eventKey": "my-first-event"
-  }'
-```
-
-Valid providers: `anthropic`, `google`, `copilot`, `openai`, `moonshot`. The
-optional `eventKey` is an idempotency key — a duplicate key for the same provider
-is silently ignored. The optional `occurredAtUtc` backfills the event onto the
-correct historical day.
-
-`cacheWrite1hTokens` is optional and defaults to 0. It is the **one-hour-TTL
-subset** of `cacheWriteTokens` — not a separate total — and must not exceed it.
-Anthropic bills a one-hour cache write at 2x base input against a five-minute
-write's 1.25x, so the remainder (`cacheWriteTokens - cacheWrite1hTokens`) prices
-at the five-minute rate. Omitting the field prices the whole write at five
-minutes; for a Claude Code transcript, whose writes are one-hour, that
-understates the cache line by around 60%. The value is in
-`usage.cache_creation.ephemeral_1h_input_tokens` on each assistant message.
-
-For an explicit `listPriceEstimate` or `notional` cost basis, the API computes
-`costUsd` itself from the active first-party catalog and **ignores whatever the
-producer sends**. Producers must supply the exact token lanes and every
-price-bearing raw dimension. Anthropic requires `service_tier`, `speed`, and
-`inference_geo`; a cache write also requires the exact five-minute/one-hour split
-under `cache_creation`. An unknown model, missing catalog/effective window, or
-missing required dimension stores both `costUsd` and `cacheSavingsUsd` as `null`
-rather than guessing or falling back.
-
-Requests that omit all provenance fields remain accepted for compatibility as
-legacy `unknown` cost-basis events; they retain a supplied `costUsd` and do not
-use server pricing. New producers should always send `sourceId`, `sourceKind`,
-`usageScope`, and either `listPriceEstimate` or `notional`. Explicit `billed`
-events belong on the spend/billing path and are rejected by `/events`.
-
-### Subscription-billed providers (Copilot, Moonshot)
-
-Not every provider event has an attributable metered price. Ambiguous Copilot
-events and generic Kimi Code/Moonshot subscription telemetry carry
-`costUsd: null`, not zero: their tokens measure **utilisation, not spend**, while
-the money is represented by the `Subscription` row. They also have no monetary
-cache-savings estimate; a cache read on a flat plan saves context, not an
-attributable per-event charge.
-
-Moonshot usage comes from Kimi Code rather than a billing API. Kimi Code
-authenticates through the Allegretto OAuth subscription against
-`api.kimi.com/coding/v1`, and there is no metered `api.moonshot.ai` account
-behind it, so there is nothing for the `AiObservatory.Ingest` worker to poll.
-Instead the local sweeper reads each session's wire log at
-`~/.kimi-code/sessions/<workspace>/<session>/agents/<agent>/wire.jsonl` and posts
-the `usage.record` lines. Two things matter when reading that file:
-
-- Take **only** `type == "usage.record"`. The same figures also appear on
-  `context.append_loop_event` (`event.type == "step.end"`) lines; counting both
-  doubles every session.
-- Take **every** `usage.record`, both `usageScope` values. `session`-scope
-  records are additional spend (context compaction and similar), not a running
-  total of the `turn` records — filtering to `turn` alone silently under-counts.
-
-The usage object is `{ inputOther, output, inputCacheRead, inputCacheCreation }`,
-which maps onto `inputTokens` / `outputTokens` / `cacheReadTokens` /
-`cacheWriteTokens` respectively.
-
-A [Postman collection](docs/ai-observatory.postman_collection.json) covering all
-endpoints ships in `docs/`. Import it into Postman, set the `base_url` and
-`api_key` collection variables, and run the **Dev / Seed sample data** request
-to get a populated dashboard in one click.
-
-### Authentication (production)
-
-Two modes are available; pick one for your deployment.
-
-#### Option A — Entra (Azure AD)
-
-The default for Azure-hosted deployments. The dashboard signs in via Microsoft
-redirect — no API key in the browser. A single app registration (`fpaiobs-spa`)
-acts as both the SPA and the API it calls; the App Service validates the bearer
-token. Machine callers (hooks) keep using the API key.
-
-One-time setup (run as a tenant admin):
-
-```powershell
-az login
-infra/scripts/setup-entra.ps1
-```
-
-It prints `VITE_AAD_CLIENT_ID` / `VITE_AAD_TENANT_ID` / `VITE_AAD_API_SCOPE` for
-`src/AiObservatory.Web/.env.production`, and the `aadClientId` for the Bicep
-param. Sign-in is restricted to the assigned user.
-
-To use a different tenant (self-hosting): edit the `setup-entra.ps1` defaults or
-pass `-TenantId` / `-SubscriptionId` flags and re-run. The script is idempotent.
-
-#### Option B — API key (no Azure AD)
-
-For self-hosters who do not want an Entra app registration. Set a single
-environment variable at build time:
-
-```
-VITE_API_KEY=<your-OBSERVATORY_API_KEY-value>
-```
-
-The UI sends `X-Observatory-Key` on every request instead of a bearer token.
-No sign-in screen is shown. The backend already accepts this header from any
-caller (it is the same key used by the machine hooks).
-
-Use `OBSERVATORY_READONLY_API_KEY` here if you want the UI to be read-only,
-or `OBSERVATORY_API_KEY` for full access.
-
-> **Note:** The key is baked into the frontend bundle at build time and visible
-> to anyone who can load the page. Protect access at the network or hosting
-> layer (IP allowlist, private VPC, basic-auth reverse proxy) rather than
-> relying on the key alone.
-
-#### Local dev
-
-`npm run dev` leaves all auth env vars unset. The app reaches the API through the
-Vite dev proxy on `http://localhost:5039` (or `VITE_API_BASE`, if set) with no
-credentials. That works only while the API has neither `OBSERVATORY_API_KEY` nor
-`OBSERVATORY_READONLY_API_KEY` configured — set either in user secrets and reads
-start returning `401` until you send it.
-
-### Tests
-
-Run unit tests without PostgreSQL:
-
-```powershell
-dotnet test --solution AiObservatory.slnx --filter "Category!=Integration" --ignore-exit-code 8
-```
-
-Run PostgreSQL integration tests after setting `TEST_DB_CONNECTION` or starting
-the local test container:
-
-```powershell
-docker run -d --name aiobs-test-pg -e POSTGRES_DB=aiobs_test -e POSTGRES_USER=postgres -e POSTGRES_PASSWORD=postgres -p 5432:5432 postgres:16
+dotnet restore AiObservatory.slnx
 ```
 
 ```powershell
-while ($true) { docker exec aiobs-test-pg pg_isready -U postgres -d aiobs_test; if ($LASTEXITCODE -eq 0) { break }; Start-Sleep -Seconds 1 }
+npm --prefix src/AiObservatory.Web ci
 ```
 
 ```powershell
-dotnet test --solution AiObservatory.slnx --filter "Category=Integration"
-```
-
-Run frontend tests and diagnostics:
-
-```powershell
-npm --prefix src/AiObservatory.Web test
+dotnet run --project src/AiObservatory.Api
 ```
 
 ```powershell
-npm --prefix src/AiObservatory.Web run doctor
+npm --prefix src/AiObservatory.Web run dev
 ```
 
-## CI / CD
+The ingest worker is optional and only activates sources whose required settings are present:
 
-| Workflow | Trigger | What it does |
-|---|---|---|
-| `ci.yml` | PR + push to main | .NET build + test (PostgreSQL container); npm build |
-| `deploy.yml` | CI success on main | Publishes API to `fpaiobs-api` App Service; deploys web to `fpaiobs-swa` SWA |
-| `infra.yml` | Push to `infra/**` or manual | `az deployment group create` on `fpaiobs-rg` (westeurope) |
-| `react-doctor.yml` | Every PR | React diagnostics with inline PR annotations; fails on error-severity findings |
+```powershell
+dotnet run --project src/AiObservatory.Ingest
+```
 
-GitHub Actions secrets required for deployment: `AZURE_CREDENTIALS` (Azure service-principal login) and `SWA_DEPLOYMENT_TOKEN` (Static Web App deploy token). Runtime configuration — the database connection string, `ANTHROPIC_API_KEY`, and `OBSERVATORY_API_KEY` — is supplied to the API App Service via its application settings / Key Vault (pulled at runtime by the managed identity), **not** as GitHub secrets.
+Use neutral placeholders such as `<observatory-api-key>` outside your secret store. See [Provider setup](docs/provider-setup.md) for acquisition settings; pricing catalogs for OpenAI, Claude, and Kimi refresh without credentials, while Google catalog pricing remains known unavailable until verified SKU mappings exist.
 
-## Infrastructure
+## Dashboard truth
 
-All Azure resources live in `fpaiobs-rg` (westeurope). Bicep templates in `infra/` are idempotent and redeploy via `infra.yml`.
+- Billed spend contains provider-reported financial or ledger evidence only.
+- Estimated cost is API usage rated from an observed public catalog.
+- Subscription notional value is a separate comparison, not spend.
+- Missing money or tokens read `Not reported`, never zero.
+- Source status shows configuration, freshness, failure, and unavailability separately from process liveness.
 
-| Resource | Name | Purpose |
-|---|---|---|
-| App Service Plan | `fpaiobs-plan` | F1 Free, Linux |
-| App Service | `fpaiobs-api` | .NET 10 API |
-| PostgreSQL Flexible | `fpaiobs-db` | Production database |
-| Key Vault | `fpaiobs-kv` | Secrets (DB string, API keys) |
-| Application Insights | `fpaiobs-ai` | Telemetry |
-| Static Web App | `fpaiobs-swa` | React frontend → observatory.fixportal.org |
+Supported acquisition includes OpenAI usage/costs, Anthropic usage/cost reports and optional Claude Code analytics, GitHub Copilot organization engagement, Google Cloud Billing BigQuery export, GitHub activity/billing, and local Codex/Copilot/Claude/Kimi telemetry. The [provider matrix](docs/provider-setup.md) is the authoritative capability list.
 
-The API App Service uses a system-assigned managed identity to pull secrets from Key Vault at runtime — no secrets in app settings or environment variables.
+## API
 
-## Background Intelligence Worker
+Requests use `X-Observatory-Key` when API keys are configured. The most useful entry points are:
 
-`IntelligenceWorkerService` runs in-process on the API and periodically analyses recent aggregates to produce insights. It uses the Anthropic SDK (`claude-*`) via `AnthropicIntelligenceClient`, building prompts with `PromptBuilder` and parsing structured responses with `InsightResponseParser`.
+| Method | Route | What it provides |
+| --- | --- | --- |
+| `GET` | `/api/aggregates` | Daily source-aware usage and cost aggregates |
+| `GET` | `/api/sources/status` | Source configuration, freshness, and sanitized status |
+| `POST` | `/api/events` | A provenance-labelled usage event |
+| `GET` | `/api/subscriptions` | Subscription ledger records |
+| `GET` | `/api/insights` | Generated insights |
 
-Insight types generated:
-
-- **summary** — period overview
-- **efficiency** — cost-per-token observations
-- **anomaly** — unusual spend spikes or drops
-- **recommendation** — actionable optimisation suggestions
-
-Insights are stored in the `Insights` table and surfaced in the `InsightsFeed` component.
-
-## Troubleshooting
-
-| Symptom | Cause | Fix |
-|---|---|---|
-| Infra deploy fails with `RoleAssignmentUpdateNotPermitted` | App Service was deleted and recreated — Azure prevents updating the immutable `principalId` of an existing role assignment | Delete the stale Key Vault role assignment for the old identity from Key Vault IAM in the portal, then re-run `infra.yml` |
-| API returns `401` despite correct key | `OBSERVATORY_API_KEY` env var not set or Key Vault secret not replicated yet | Verify the secret in `fpaiobs-kv`; allow a few minutes after a Key Vault update before the App Service picks it up |
-| Frontend shows no data after deploy | `VITE_API_BASE` was empty at **build** time, so the bundle calls a same-origin `/api` that SWA Free cannot proxy | Fix it in `.github/workflows/deploy.yml` (the `npm run build` step sets `VITE_API_BASE: https://fpaiobs-api.azurewebsites.net`) and redeploy. A SWA *application setting* cannot fix this — every `VITE_*` is baked into the bundle at build time, not read at runtime |
-| EF migrations fail on first run | Database does not yet exist or user lacks `CREATE` privileges | Ensure `DB_CONNECTION` points at an existing PostgreSQL 16 instance with a user that can create tables |
-| Entra sign-in loop or `401` after SSO | `aadClientId` Bicep param or `VITE_AAD_*` env vars are stale after app registration recreation | Re-run `infra/scripts/setup-entra.ps1` and redeploy both API and frontend with the new values |
-| UI shows no data with `VITE_API_KEY` set | Key baked at build time — runtime env var has no effect | Rebuild the frontend with the env var set; confirm the value matches `OBSERVATORY_API_KEY` or `OBSERVATORY_READONLY_API_KEY` |
-| Intelligence worker produces no insights | `ANTHROPIC_API_KEY` missing or invalid | Verify the secret in `fpaiobs-kv`; check Application Insights for `AnthropicIntelligenceClient` exceptions |
-| `docker compose up` — seed container exits 1 | API not yet healthy when seed ran, or `OBSERVATORY_API_KEY` mismatch | Run `docker compose up` again; the seed is idempotent. Confirm the key in `docker-compose.yml` matches |
-| `docker compose up` — `api` keeps restarting | Database not ready or `DB_CONNECTION` wrong | Check `docker compose logs db`; ensure the `db` healthcheck passes before `api` starts |
+Import the [Postman collection](docs/ai-observatory.postman_collection.json), set `base_url` and `api_key`, and use its source-aware event examples. It is a representative collection, not an exhaustive API specification.
 
 ## Contributing
 
-Issues and pull requests are welcome. See [CONTRIBUTING.md](CONTRIBUTING.md) for
-local setup and the PR checklist, and [CODE_OF_CONDUCT.md](CODE_OF_CONDUCT.md)
-for community expectations. In short: branch from `main` as
-`feat/<scope>` / `fix/<scope>` / `chore/<scope>`, PRs merge via **rebase** (no
-merge commits, no squash), and CI must pass before merging.
+Run the focused local-producer check:
 
-The [Postman collection](docs/ai-observatory.postman_collection.json) at
-`docs/ai-observatory.postman_collection.json` covers every endpoint and is a
-useful companion while exploring or extending the API.
+```powershell
+node --test clients/observatory-sweep.test.mjs
+```
 
-To report a security vulnerability, follow [SECURITY.md](SECURITY.md) — please
-do not open a public issue.
+Run the solution checks before a pull request:
 
-## License
+```powershell
+dotnet test --solution AiObservatory.slnx --configuration Release
+```
 
-[Apache-2.0](LICENSE) © 2026 Chris Dowling. See [NOTICE](NOTICE) for attribution.
+```powershell
+npm --prefix src/AiObservatory.Web test -- --run
+```
 
-## Appendix
+The repository is [Apache-2.0](LICENSE) licensed. Keep provider changes source-aware and update the setup matrix with any new capability or limitation.
 
-### Live endpoints
+- [Contributing](CONTRIBUTING.md)
+- [Code of Conduct](CODE_OF_CONDUCT.md)
+- [Security policy](SECURITY.md)
 
-| Surface | URL |
-|---|---|
-| Dashboard | `https://observatory.fixportal.org` |
-| API | `https://fpaiobs-api.azurewebsites.net` |
-| API snapshot | `https://fpaiobs-api.azurewebsites.net/api/aggregates` |
+## Troubleshooting
 
-### Azure resources (`fpaiobs-rg`, westeurope)
-
-| Resource | Name |
-|---|---|
-| Resource group | `fpaiobs-rg` |
-| App Service | `fpaiobs-api` |
-| App Service Plan | `fpaiobs-plan` |
-| PostgreSQL Flexible | `fpaiobs-db` |
-| Key Vault | `fpaiobs-kv` |
-| Application Insights | `fpaiobs-ai` |
-| Static Web App | `fpaiobs-swa` |
-
-### Required GitHub Actions secrets
-
-| Secret | Purpose |
-|---|---|
-| `AZURE_CREDENTIALS` | Service principal login for `az` CLI in CI |
-| `SWA_DEPLOYMENT_TOKEN` | Static Web App deploy token |
+| Symptom | Cause and next step |
+| --- | --- |
+| A provider is `Not configured` | Supply the exact required settings and upstream access in [Provider setup](docs/provider-setup.md). |
+| Google catalog stays unavailable | This is expected while verified SKU mappings are empty; billed BigQuery export remains independent. |
+| Claude activity appears twice | Exclude local Claude telemetry when Claude Code Analytics covers the same activity. |
+| A cost is missing | Required model dimensions may be unknown; Observatory intentionally returns no guessed fallback price. |
