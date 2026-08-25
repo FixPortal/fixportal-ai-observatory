@@ -1,4 +1,5 @@
-using System.Collections.Concurrent;
+using System.Security.Cryptography;
+using System.Text;
 using System.Text.Json;
 using AiObservatory.Data.Entities;
 using Microsoft.Extensions.Logging;
@@ -8,8 +9,9 @@ namespace AiObservatory.Data.Pricing;
 public sealed class UsagePriceResolver
 {
     private const int MaximumWarningKeys = 4096;
-    private static readonly ConcurrentDictionary<(Provider Provider, string Model, string Missing), byte> Warnings =
-        new();
+    private const int MaximumLoggedModelLength = 160;
+    private static readonly object WarningGate = new();
+    private static readonly HashSet<(Provider Provider, string ModelFingerprint, string Missing)> Warnings = [];
     private readonly PricingSnapshotStore _store;
     private readonly IReadOnlyDictionary<Provider, IProviderPriceCalculator> _calculators;
     private readonly ILogger<UsagePriceResolver> _logger;
@@ -28,6 +30,11 @@ public sealed class UsagePriceResolver
     public async Task<UsagePriceQuote?> ResolveAsync(UsageEvent usage, CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(usage);
+        if (IsExactZeroUsage(usage))
+        {
+            return new UsagePriceQuote(0m, 0m);
+        }
+
         if (!_calculators.TryGetValue(usage.Provider, out var calculator))
         {
             WarnOnce(usage, "calculator");
@@ -57,16 +64,36 @@ public sealed class UsagePriceResolver
     private void WarnOnce(UsageEvent usage, string missing)
     {
         var model = usage.Model ?? "<missing>";
-        if (Warnings.Count < MaximumWarningKeys && Warnings.TryAdd((usage.Provider, model, missing), 0))
+        var fingerprint = Convert.ToHexStringLower(SHA256.HashData(Encoding.UTF8.GetBytes(model)));
+        lock (WarningGate)
         {
-            _logger.LogWarning(
-                "No exact {Provider} price for model '{Model}'; missing or unmatched dimensions: {MissingDimensions}.",
-                usage.Provider,
-                model.Replace('\r', ' ').Replace('\n', ' '),
-                missing
-            );
+            if (Warnings.Count >= MaximumWarningKeys || !Warnings.Add((usage.Provider, fingerprint, missing)))
+            {
+                return;
+            }
         }
+
+        var sanitizedModel = model.Replace('\r', ' ').Replace('\n', ' ');
+        if (sanitizedModel.Length > MaximumLoggedModelLength)
+        {
+            sanitizedModel = sanitizedModel[..MaximumLoggedModelLength] + "...";
+        }
+
+        _logger.LogWarning(
+            "No exact {Provider} price for model '{Model}'; missing or unmatched dimensions: {MissingDimensions}.",
+            usage.Provider,
+            sanitizedModel,
+            missing
+        );
     }
+
+    private static bool IsExactZeroUsage(UsageEvent usage) =>
+        usage.InputTokens == 0
+        && usage.OutputTokens == 0
+        && (usage.CacheReadTokens ?? 0) == 0
+        && (usage.CacheWriteTokens ?? 0) == 0
+        && (usage.CacheWrite1hTokens ?? 0) == 0
+        && (usage.ThoughtTokens ?? 0) == 0;
 
     private static string MissingDimensions(UsageEvent usage)
     {

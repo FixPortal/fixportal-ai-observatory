@@ -165,7 +165,7 @@ public class UsageRepository(AiObservatoryDbContext ctx) : IUsageRepository
         var insertCacheWrite1h = Math.Max(0, cacheWrite1hDelta);
         var insertCost = Math.Max(0, costDelta);
         var insertUnknownCost = Math.Max(0, unknownCostDelta);
-        var insertCacheSavings = Math.Max(0, cacheSavingsDelta);
+        var insertCacheSavings = sign > 0 ? cacheSavingsDelta : 0m;
         var insertUnknownCacheSavings = Math.Max(0, unknownCacheSavingsDelta);
         var insertRequest = Math.Max(0, requestDelta);
 

@@ -79,9 +79,26 @@ public sealed class OpenAiUsageClientTests : IDisposable
                     {
                       "model": "{{model}}",
                       "input_tokens": 1000000,
-                      "output_tokens": 1000000,
-                      "input_cached_tokens": 250000,
-                      "num_model_requests": 1
+                      "input_cached_tokens": 400000,
+                      "input_cache_write_tokens": 100000,
+                      "input_uncached_tokens": 500000,
+                      "output_tokens": 500000,
+                      "input_text_tokens": 400000,
+                      "output_text_tokens": 400000,
+                      "input_cached_text_tokens": 300000,
+                      "input_audio_tokens": 50000,
+                      "input_cached_audio_tokens": 50000,
+                      "output_audio_tokens": 50000,
+                      "input_image_tokens": 50000,
+                      "input_cached_image_tokens": 50000,
+                      "output_image_tokens": 50000,
+                      "num_model_requests": 5,
+                      "project_id": null,
+                      "user_id": null,
+                      "api_key_id": null,
+                      "batch": null,
+                      "service_tier": null,
+                      "object": "organization.usage.completions.result"
                     }
                   ]
                 }
@@ -104,8 +121,9 @@ public sealed class OpenAiUsageClientTests : IDisposable
         var records = await sut.GetDailyUsageAsync(date, TestContext.Current.CancellationToken);
 
         records.Single().Model.Should().Be("gpt-4.1-mini-2025-04-14");
-        records.Single().InputTokens.Should().Be(750_000);
-        records.Single().CachedInputTokens.Should().Be(250_000);
+        records.Single().InputTokens.Should().Be(500_000);
+        records.Single().CachedInputTokens.Should().Be(400_000);
+        records.Single().CacheWriteTokens.Should().Be(100_000);
     }
 
     [Fact]
@@ -142,7 +160,7 @@ public sealed class OpenAiUsageClientTests : IDisposable
     }
 
     [Fact]
-    public async Task GetDailyUsageAsync_ThrowsWhenInputTokensAreMissing()
+    public async Task GetDailyUsageAsync_ThrowsWhenUncachedInputTokensAreMissing()
     {
         var json = """
             {
@@ -153,8 +171,10 @@ public sealed class OpenAiUsageClientTests : IDisposable
                   "results": [
                     {
                       "model": "gpt-5.4",
+                      "input_tokens": 10,
                       "output_tokens": 10,
                       "input_cached_tokens": 0,
+                      "input_cache_write_tokens": 0,
                       "num_model_requests": 1
                     }
                   ]

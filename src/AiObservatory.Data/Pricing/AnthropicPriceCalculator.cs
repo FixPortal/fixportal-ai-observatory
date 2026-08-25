@@ -56,20 +56,24 @@ public sealed class AnthropicPriceCalculator : IProviderPriceCalculator
         }
 
         var cacheRead = usage.CacheReadTokens ?? 0;
+        var pricingModifier = inputRate.Value / entry.Input;
+        var cacheReadRate = entry.CacheRead * pricingModifier;
+        var cacheWrite5mRate = entry.CacheWrite5m * pricingModifier;
+        var cacheWrite1hRate = entry.CacheWrite1h * pricingModifier;
         var cost =
             (
                 PerMillion(usage.InputTokens, inputRate.Value)
                 + PerMillion(usage.OutputTokens, outputRate.Value)
-                + PerMillion(cacheRead, entry.CacheRead)
-                + PerMillion(cacheWrite5m, entry.CacheWrite5m)
-                + PerMillion(cacheWrite1h, entry.CacheWrite1h)
+                + PerMillion(cacheRead, cacheReadRate)
+                + PerMillion(cacheWrite5m, cacheWrite5mRate)
+                + PerMillion(cacheWrite1h, cacheWrite1hRate)
             ) * multiplier.Value;
         var cacheSavings =
             (
                 PerMillion(cacheRead + cacheWrite, inputRate.Value)
-                - PerMillion(cacheRead, entry.CacheRead)
-                - PerMillion(cacheWrite5m, entry.CacheWrite5m)
-                - PerMillion(cacheWrite1h, entry.CacheWrite1h)
+                - PerMillion(cacheRead, cacheReadRate)
+                - PerMillion(cacheWrite5m, cacheWrite5mRate)
+                - PerMillion(cacheWrite1h, cacheWrite1hRate)
             ) * multiplier.Value;
         return new UsagePriceQuote(cost, cacheSavings);
     }
