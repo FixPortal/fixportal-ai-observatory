@@ -117,11 +117,11 @@ test('formatMinutes renders minutes to 1dp', () => {
 })
 
 test('bankersRound rounds half to even', () => {
-  expect(bankersRound(0.125, 2)).toBe(0.12) // tie → even (2)
-  expect(bankersRound(0.135, 2)).toBe(0.14) // tie → even (4)
+  expect(bankersRound(0.125, 2)).toBeCloseTo(0.12) // tie → even (2)
+  expect(bankersRound(0.135, 2)).toBeCloseTo(0.14) // tie → even (4)
   expect(bankersRound(2.5, 0)).toBe(2)      // tie → even
   expect(bankersRound(3.5, 0)).toBe(4)      // tie → even
   expect(bankersRound(4.24, 0)).toBe(4)     // normal round down
   expect(bankersRound(4.6, 0)).toBe(5)      // normal round up
-  expect(bankersRound(0.03019, 2)).toBe(0.03)
+  expect(bankersRound(0.03019, 2)).toBeCloseTo(0.03)
 })

@@ -520,7 +520,7 @@ public class UsageRepositoryTests : IAsyncLifetime
         );
 
         result.Should().NotBeNull();
-        result!.OldCostUsd.Should().Be(0.0024m);
+        result.OldCostUsd.Should().Be(0.0024m);
         result.NewCostUsd.Should().Be(newCost);
 
         // ExecuteUpdateAsync bypasses the EF change tracker; use AsNoTracking to read the live DB row.
@@ -530,7 +530,7 @@ public class UsageRepositoryTests : IAsyncLifetime
         var agg = await _ctx.DailyAggregates.FirstOrDefaultAsync(a => a.Model == "gemini-3.5-flash", ct);
         agg.Should().NotBeNull();
         // Aggregate delta = newCost - 0.0024m; check it's updated correctly.
-        agg!.CostUsd.Should().BeApproximately(newCost, precision: 0.000001m);
+        agg.CostUsd.Should().BeApproximately(newCost, precision: 0.000001m);
     }
 
     [Fact]
@@ -574,7 +574,7 @@ public class UsageRepositoryTests : IAsyncLifetime
         );
 
         result.Should().NotBeNull();
-        result!.OldCostUsd.Should().Be(0.0083m);
+        result.OldCostUsd.Should().Be(0.0083m);
         result.NewCostUsd.Should().Be(0.0083m);
         // CostUsd unchanged on the entity.
         (await _ctx.UsageEvents.FindAsync([evt.Id], ct))!

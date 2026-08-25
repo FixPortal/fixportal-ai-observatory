@@ -60,7 +60,7 @@ public sealed class GooglePricingSourceTests
         var candidate = await source.FetchAsync(TestContext.Current.CancellationToken);
 
         candidate.Should().NotBeNull();
-        candidate!.Provider.Should().Be(Provider.Google);
+        candidate.Provider.Should().Be(Provider.Google);
         candidate.SourceId.Should().Be(PricingSourceIds.GoogleCloudCatalog);
         candidate.SourceUrl.Should().Be("https://cloudbilling.googleapis.com/v1/services/synthetic-service/skus");
         candidate.RawEvidence.Should().NotContain(ApiKey).And.NotContain("pageToken").And.NotContain("sku-unmapped");
@@ -118,7 +118,7 @@ public sealed class GooglePricingSourceTests
             UsageDate
         );
         global.Should().NotBeNull();
-        global!.GeoTaxonomyType.Should().Be("GLOBAL");
+        global.GeoTaxonomyType.Should().Be("GLOBAL");
         global.GeoTaxonomyRegions.Should().BeEmpty();
 
         handler.Requests.Should().HaveCount(2);

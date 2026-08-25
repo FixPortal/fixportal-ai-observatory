@@ -1,4 +1,6 @@
+using System.Text.RegularExpressions;
 using AiObservatory.Api.Services.GitHub;
+using AiObservatory.Data.Entities;
 using AiObservatory.Data.Repositories;
 using NodaTime;
 
@@ -10,6 +12,13 @@ public class IntelligenceWorkerService(
     ILogger<IntelligenceWorkerService> logger
 ) : BackgroundService
 {
+    private static readonly Duration GitHubBillingRefreshInterval = Duration.FromDays(1);
+    private static readonly Regex UriQuery = new(
+        @"(https?://[^\s?]+)\?[^\s]*",
+        RegexOptions.IgnoreCase | RegexOptions.CultureInvariant,
+        TimeSpan.FromSeconds(1)
+    );
+
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
         LogEnabledArms();
@@ -133,16 +142,34 @@ public class IntelligenceWorkerService(
     /// </summary>
     private async Task RunGitHubBillingSyncAsync(CancellationToken ct)
     {
+        var configured = false;
         try
         {
             await using var scope = scopeFactory.CreateAsyncScope();
+            var states = scope.ServiceProvider.GetRequiredService<SourceSyncStateStore>();
+            var now = clock.GetCurrentInstant();
             // Optional: registered only when GITHUB_TOKEN and GITHUB_BILLING_ORG are both set.
             if (scope.ServiceProvider.GetService<GitHubBillingSyncService>() is not { } sync)
             {
+                await states.MarkUnconfiguredAsync(
+                    UsageSourceIds.GitHubBillingApi,
+                    GitHubBillingRefreshInterval,
+                    now,
+                    ct
+                );
                 return;
             }
 
+            configured = true;
+            await states.MarkAttemptAsync(UsageSourceIds.GitHubBillingApi, GitHubBillingRefreshInterval, now, ct);
             await sync.SyncAsync(ct);
+            await states.MarkSuccessAsync(
+                UsageSourceIds.GitHubBillingApi,
+                GitHubBillingRefreshInterval,
+                clock.GetCurrentInstant(),
+                latestObservationAt: null,
+                ct
+            );
         }
         catch (OperationCanceledException) when (ct.IsCancellationRequested)
         {
@@ -150,10 +177,36 @@ public class IntelligenceWorkerService(
         }
         catch (Exception ex)
         {
+            if (configured)
+            {
+                try
+                {
+                    await using var statusScope = scopeFactory.CreateAsyncScope();
+                    await statusScope
+                        .ServiceProvider.GetRequiredService<SourceSyncStateStore>()
+                        .MarkFailureAsync(
+                            UsageSourceIds.GitHubBillingApi,
+                            GitHubBillingRefreshInterval,
+                            clock.GetCurrentInstant(),
+                            SanitizeError(ex.Message),
+                            ct
+                        );
+                }
+                catch (Exception statusException)
+                {
+                    logger.LogWarning(statusException, "Could not record GitHub billing source failure");
+                }
+            }
             // Broad by design, matching the steps above: a GitHub or FX outage must not
             // stop the worker reaching tomorrow's cycle.
             logger.LogError(ex, "Intelligence worker GitHub billing sync failed");
         }
+    }
+
+    internal static string SanitizeError(string error)
+    {
+        var sanitized = UriQuery.Replace(error.Replace('\r', ' ').Replace('\n', ' '), "$1");
+        return sanitized.Length <= 500 ? sanitized : sanitized[..500];
     }
 
     private async Task RunBudgetCheckAsync(CancellationToken ct)

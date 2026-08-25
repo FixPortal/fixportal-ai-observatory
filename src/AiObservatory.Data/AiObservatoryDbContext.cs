@@ -40,6 +40,7 @@ public class AiObservatoryDbContext(DbContextOptions<AiObservatoryDbContext> opt
     public DbSet<GitHubPullRequest> GitHubPullRequests => Set<GitHubPullRequest>();
     public DbSet<GitHubCommit> GitHubCommits => Set<GitHubCommit>();
     public DbSet<GitHubWorkflowRun> GitHubWorkflowRuns => Set<GitHubWorkflowRun>();
+    public DbSet<GitHubBackfillState> GitHubBackfillStates => Set<GitHubBackfillState>();
     public DbSet<SpendCategory> SpendCategories => Set<SpendCategory>();
     public DbSet<SpendVendor> SpendVendors => Set<SpendVendor>();
     public DbSet<SpendEntry> SpendEntries => Set<SpendEntry>();
@@ -457,6 +458,12 @@ public class AiObservatoryDbContext(DbContextOptions<AiObservatoryDbContext> opt
             b.Property(r => r.Status).HasMaxLength(20).IsRequired();
             b.HasIndex(r => new { r.Repo, r.RunId }).IsUnique();
             b.HasIndex(r => r.CreatedAt);
+        });
+
+        modelBuilder.Entity<GitHubBackfillState>(b =>
+        {
+            b.HasKey(state => state.Repo);
+            b.Property(state => state.Repo).HasMaxLength(200);
         });
 
         modelBuilder.Entity<AdversarialReviewRun>(b =>

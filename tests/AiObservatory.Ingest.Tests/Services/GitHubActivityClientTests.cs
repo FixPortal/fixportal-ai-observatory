@@ -175,7 +175,7 @@ public sealed class GitHubActivityClientTests : IDisposable
             }
 
             // Page 1: a full 100-row page (forces a second page request); page 2: short page, stop.
-            if (req.RequestUri!.ToString().Contains("page=2"))
+            if (req.RequestUri.ToString().Contains("page=2"))
             {
                 return JsonResponse(
                     """[{"number":2,"title":"b","user":{"login":"chris"},"state":"open","created_at":"2026-07-01T09:00:00Z","updated_at":"2026-07-01T09:00:00Z","merged_at":null,"closed_at":null}]"""
@@ -215,7 +215,7 @@ public sealed class GitHubActivityClientTests : IDisposable
             {
                 return JsonResponse("[]");
             }
-            if (req.RequestUri!.ToString().Contains("page=2"))
+            if (req.RequestUri.ToString().Contains("page=2"))
             {
                 return JsonResponse("""[]""");
             }

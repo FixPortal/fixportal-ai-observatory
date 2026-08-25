@@ -111,6 +111,54 @@ public class DevSeedEndpointTests
         (await db.Insights.AnyAsync(TestContext.Current.CancellationToken)).Should().BeTrue();
     }
 
+    [Fact]
+    public async Task Seeded_aggregates_demonstrate_distinct_source_aware_cost_lanes()
+    {
+        await using var factory = new AiObservatoryApiFactory();
+        await factory.InitializeAsync();
+        using var client = factory.CreateAdminClient();
+
+        var response = await client.PostAsync("/api/dev/seed", content: null, TestContext.Current.CancellationToken);
+        response.EnsureSuccessStatusCode();
+
+        using var scope = factory.Services.CreateScope();
+        var aggregates = await scope
+            .ServiceProvider.GetRequiredService<AiObservatoryDbContext>()
+            .DailyAggregates.AsNoTracking()
+            .ToListAsync(TestContext.Current.CancellationToken);
+
+        aggregates
+            .Should()
+            .Contain(a =>
+                a.Provider == Provider.Anthropic
+                && a.SourceId == UsageSourceIds.DemoSeed
+                && a.SourceKind == SourceKind.Synthetic
+                && a.UsageScope == UsageScope.Api
+                && a.CostBasis == CostBasis.ListPriceEstimate
+                && a.CostUsd > 0
+            );
+        aggregates
+            .Should()
+            .Contain(a =>
+                a.Provider == Provider.Copilot
+                && a.SourceId == UsageSourceIds.DemoSeed
+                && a.SourceKind == SourceKind.Synthetic
+                && a.UsageScope == UsageScope.Subscription
+                && a.CostBasis == CostBasis.Notional
+                && a.CostUsd > 0
+            );
+        aggregates
+            .Should()
+            .Contain(a =>
+                a.Provider == Provider.Google
+                && a.SourceId == UsageSourceIds.LegacyApi
+                && a.SourceKind == SourceKind.Legacy
+                && a.UsageScope == UsageScope.Unknown
+                && a.CostBasis == CostBasis.Unknown
+                && a.CostUsd > 0
+            );
+    }
+
     private static async Task<List<Guid>> GetSubscriptionIdsAsync(AiObservatoryApiFactory factory)
     {
         using var scope = factory.Services.CreateScope();

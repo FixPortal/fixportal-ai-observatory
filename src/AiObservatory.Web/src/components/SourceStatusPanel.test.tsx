@@ -3,8 +3,8 @@ import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest'
 import type { SourceStatusResponse } from '../api/client'
 import SourceStatusPanel, { formatLastSuccess, mergeSourceStatuses } from './SourceStatusPanel'
 
-const data = vi.hoisted(() => ({ statuses: [] as SourceStatusResponse[], isError: false }))
-vi.mock('../api/queries', () => ({ useSourceStatuses: () => ({ statuses: data.statuses, isError: data.isError, isLoading: false }) }))
+const data = vi.hoisted(() => ({ statuses: [] as SourceStatusResponse[], isError: false, isLoading: false }))
+vi.mock('../api/queries', () => ({ useSourceStatuses: () => data }))
 
 const status = (overrides: Partial<SourceStatusResponse>): SourceStatusResponse => ({
   sourceId: 'openai-usage-api', status: 'fresh', isConfigured: true,
@@ -16,6 +16,7 @@ const status = (overrides: Partial<SourceStatusResponse>): SourceStatusResponse 
 beforeEach(() => {
   data.statuses = []
   data.isError = false
+  data.isLoading = false
   vi.useFakeTimers()
   vi.setSystemTime(new Date('2026-08-25T12:00:00Z'))
 })
@@ -65,7 +66,7 @@ test('maps all statuses, shows failure evidence, and uses native time/details/li
   fireEvent.click(disclosure)
   expect(within(failingRow).getByText('Sanitized failure only')).toBeInTheDocument()
   expect(failingRow.querySelector('time')).toHaveAttribute('datetime', '2026-08-25T11:00:00Z')
-  const setup = screen.getByRole('link', { name: /set up codex local/i })
+  const setup = screen.getByRole('link', { name: 'Setup: Codex local' })
   setup.focus()
   expect(setup).toHaveFocus()
   expect(setup).toHaveAttribute('href', expect.stringContaining('docs/provider-setup.md'))
@@ -80,4 +81,17 @@ test('shows readable API-only sources without inventing setup links and does not
   data.isError = true
   rerender(<SourceStatusPanel />)
   expect(screen.queryByRole('region', { name: 'Source freshness' })).not.toBeInTheDocument()
+})
+
+test('keeps the registry rows in place while source status is loading', () => {
+  data.isLoading = true
+  render(<SourceStatusPanel />)
+
+  const panel = screen.getByRole('region', { name: 'Source freshness' })
+  expect(panel).toHaveAttribute('aria-busy', 'true')
+  expect(within(panel).getAllByRole('listitem')).toHaveLength(17)
+  expect(within(panel).getByText('Repository activity')).toBeInTheDocument()
+  expect(within(panel).getByText('GitHub billing')).toBeInTheDocument()
+  expect(within(panel).getAllByText('Loading')).toHaveLength(17)
+  expect(within(panel).queryByRole('link')).not.toBeInTheDocument()
 })

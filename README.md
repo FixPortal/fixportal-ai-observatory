@@ -25,9 +25,9 @@ Restore uses public feeds; no GitHub Packages token is required.
 docker compose up --build
 ```
 
-This starts PostgreSQL, the API, and the frontend at [http://localhost:4173](http://localhost:4173). The compose seed populates sample data; it is for local exploration, not a representation of provider billing.
+This starts PostgreSQL, the API, provider/pricing ingest, and the frontend at [http://localhost:4173](http://localhost:4173). The compose seed populates synthetic sample data; it is labelled `demo-seed` and is not a representation of provider billing. Optional GitHub billing uses `GITHUB_TOKEN` plus `GITHUB_BILLING_ORG`; the token needs the broader access listed in [provider setup](docs/provider-setup.md#non-provider-sources).
 
-For a manual run, install .NET SDK 10, Node 24+, and PostgreSQL 16. Configure `DB_CONNECTION` and `OBSERVATORY_API_KEY` through user secrets or environment variables, then start the API and web app:
+For a manual run, install .NET SDK 10, Node `^22.22.2`, `^24.15.0`, or `>=26.0.0`, and PostgreSQL 16. Configure `DB_CONNECTION` and `OBSERVATORY_API_KEY` through user secrets or environment variables, then start the API and web app:
 
 ```powershell
 dotnet restore AiObservatory.slnx
@@ -45,7 +45,7 @@ dotnet run --project src/AiObservatory.Api
 npm --prefix src/AiObservatory.Web run dev
 ```
 
-The ingest worker is optional and only activates sources whose required settings are present:
+For a manual run, start the ingest worker separately; it only activates sources whose required settings are present:
 
 ```powershell
 dotnet run --project src/AiObservatory.Ingest

@@ -58,12 +58,24 @@ public class GitHubIngestionService(
                     await repository.UpsertPullRequestAsync(pr, now, cancellationToken);
                     latest = Latest(latest, pr.CreatedAt, pr.UpdatedAt, pr.MergedAt, pr.ClosedAt, pr.FirstReviewAt);
                 }
+                if (!status.HasPullRequests)
+                {
+                    await repository.MarkBackfillCompletedAsync(
+                        repo,
+                        GitHubActivityKind.PullRequests,
+                        cancellationToken
+                    );
+                }
 
                 var commits = await client.GetCommitsAsync(repo, SinceDate(status.HasCommits), cancellationToken);
                 foreach (var commit in commits)
                 {
                     await repository.UpsertCommitAsync(commit, now, cancellationToken);
                     latest = Latest(latest, commit.CommittedAt);
+                }
+                if (!status.HasCommits)
+                {
+                    await repository.MarkBackfillCompletedAsync(repo, GitHubActivityKind.Commits, cancellationToken);
                 }
 
                 var runs = await client.GetWorkflowRunsAsync(
@@ -75,6 +87,14 @@ public class GitHubIngestionService(
                 {
                     await repository.UpsertWorkflowRunAsync(run, now, cancellationToken);
                     latest = Latest(latest, run.CreatedAt);
+                }
+                if (!status.HasWorkflowRuns)
+                {
+                    await repository.MarkBackfillCompletedAsync(
+                        repo,
+                        GitHubActivityKind.WorkflowRuns,
+                        cancellationToken
+                    );
                 }
 
                 logger.LogInformation(

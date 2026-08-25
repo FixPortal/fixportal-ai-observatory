@@ -36,7 +36,7 @@ public sealed class OpenAiPricingSourceTests
         var entry = catalog.Resolve("gpt-5.4-2026-08-01", processing, context, "global", ObservedOn);
 
         entry.Should().NotBeNull();
-        entry!.Input.Should().Be((decimal)input);
+        entry.Input.Should().Be((decimal)input);
         entry.CachedInput.Should().Be((decimal)cachedInput);
         entry.Output.Should().Be((decimal)output);
         entry.EffectiveFrom.Should().Be(ObservedOn);
@@ -129,7 +129,7 @@ public sealed class OpenAiPricingSourceTests
         var second = await source.FetchAsync(TestContext.Current.CancellationToken);
 
         first.Should().BeSameAs(second);
-        first!.Provider.Should().Be(Provider.OpenAI);
+        first.Provider.Should().Be(Provider.OpenAI);
         first.SourceId.Should().Be(PricingSourceIds.OpenAi);
         first.SourceUrl.Should().Be("https://developers.openai.com/api/docs/pricing.md");
         first.RawEvidence.Should().Be(raw);

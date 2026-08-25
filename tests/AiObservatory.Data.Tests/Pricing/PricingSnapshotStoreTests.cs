@@ -234,10 +234,10 @@ public sealed class PricingSnapshotStoreTests : IAsyncLifetime
 
         august.Should().NotBeNull();
         september.Should().NotBeNull();
-        var catalog = JsonSerializer.Deserialize<OpenAiPriceCatalog>(september!.NormalizedCatalog, JsonOptions)!;
+        var catalog = JsonSerializer.Deserialize<OpenAiPriceCatalog>(september.NormalizedCatalog, JsonOptions)!;
         catalog.Resolve("gpt-5.4", "standard", "short", "global", new LocalDate(2026, 8, 31))!.Input.Should().Be(1m);
         catalog.Resolve("gpt-5.4", "standard", "short", "global", new LocalDate(2026, 9, 1))!.Input.Should().Be(2m);
-        august!.ContentHash.Should().Be(september.ContentHash);
+        august.ContentHash.Should().Be(september.ContentHash);
     }
 
     [Fact]

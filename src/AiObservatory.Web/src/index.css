@@ -350,10 +350,15 @@ body {
 
 /* Initial-load banner — App Service cold start makes the first request slow, so
    give the user a signal instead of an empty dashboard of zeros. */
+#dashboard-tabpanel { position: relative; }
 .loading-banner {
+  position: absolute;
+  z-index: 1;
+  left: 50%;
+  transform: translateX(-50%);
   max-width: 1200px;
   width: 100%;
-  margin: var(--space-4) auto 0;
+  margin: 0;
   padding: var(--space-3) var(--space-4);
   display: flex;
   align-items: center;
@@ -760,6 +765,8 @@ body {
   background: var(--card-bg);
   border-bottom: 1px solid var(--border);
   overflow-x: auto;
+  scrollbar-width: thin;
+  scrollbar-color: var(--border-strong) transparent;
 }
 
 .page-nav__tab {

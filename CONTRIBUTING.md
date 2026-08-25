@@ -13,7 +13,7 @@ best-effort basis; issues and pull requests are welcome.
 
 ## Getting set up
 
-Prerequisites: **.NET 10 SDK**, **Node 22+**, and **PostgreSQL 16** (or Docker).
+Prerequisites: **.NET 10 SDK**, **Node `^22.22.2`, `^24.15.0`, or `>=26.0.0`**, and **PostgreSQL 16** (or Docker).
 See the [README](README.md#local-development) for the full local setup,
 environment variables, and EF Core migration steps.
 

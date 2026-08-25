@@ -34,7 +34,7 @@ public class IngestHostTests
         var thrown = CaptureServicesException(factory);
 
         thrown.Should().NotBeNull();
-        ExceptionChainContains(thrown!, "DB_CONNECTION").Should().BeTrue();
+        ExceptionChainContains(thrown, "DB_CONNECTION").Should().BeTrue();
     }
 
     [Theory]
@@ -130,7 +130,7 @@ public class IngestHostTests
         var thrown = CaptureServicesException(factory);
 
         thrown.Should().NotBeNull();
-        ExceptionChainContains(thrown!, "GOOGLE_CLOUD_PROJECT_ID and GOOGLE_BILLING_EXPORT_TABLE").Should().BeTrue();
+        ExceptionChainContains(thrown, "GOOGLE_CLOUD_PROJECT_ID and GOOGLE_BILLING_EXPORT_TABLE").Should().BeTrue();
     }
 
     [Fact]
@@ -269,7 +269,7 @@ public class IngestHostTests
 
         descriptor.BaseAddress.Should().Be(new Uri("https://api.github.com"));
         descriptor.DefaultRequestHeaders.Authorization.Should().NotBeNull();
-        descriptor.DefaultRequestHeaders.Authorization!.ToString().Should().Be("Bearer github-secret");
+        descriptor.DefaultRequestHeaders.Authorization.ToString().Should().Be("Bearer github-secret");
         descriptor.DefaultRequestHeaders.Accept.Single().MediaType.Should().Be("application/vnd.github+json");
         descriptor
             .DefaultRequestHeaders.GetValues("X-GitHub-Api-Version")
@@ -424,7 +424,7 @@ public class IngestHostTests
         var thrown = CaptureServicesException(factory);
 
         thrown.Should().NotBeNull();
-        ExceptionChainContains(thrown!, "CLAUDE_CODE_USAGE_ENABLED requires ANTHROPIC_BILLING_KEY").Should().BeTrue();
+        ExceptionChainContains(thrown, "CLAUDE_CODE_USAGE_ENABLED requires ANTHROPIC_BILLING_KEY").Should().BeTrue();
     }
 
     [Fact]

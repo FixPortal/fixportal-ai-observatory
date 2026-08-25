@@ -72,12 +72,31 @@ public class GitHubActivityRepository(AiObservatoryDbContext ctx) : IGitHubActiv
             ct
         );
 
-    public async Task<GitHubBackfillStatus> GetBackfillStatusAsync(string repo, CancellationToken ct = default) =>
-        new(
-            await ctx.GitHubPullRequests.AsNoTracking().AnyAsync(p => p.Repo == repo, ct),
-            await ctx.GitHubCommits.AsNoTracking().AnyAsync(c => c.Repo == repo, ct),
-            await ctx.GitHubWorkflowRuns.AsNoTracking().AnyAsync(r => r.Repo == repo, ct)
+    public async Task<GitHubBackfillStatus> GetBackfillStatusAsync(string repo, CancellationToken ct = default)
+    {
+        var state = await ctx.GitHubBackfillStates.AsNoTracking().SingleOrDefaultAsync(s => s.Repo == repo, ct);
+        return state is null
+            ? new GitHubBackfillStatus(false, false, false)
+            : new GitHubBackfillStatus(state.HasPullRequests, state.HasCommits, state.HasWorkflowRuns);
+    }
+
+    public Task MarkBackfillCompletedAsync(string repo, GitHubActivityKind kind, CancellationToken ct = default)
+    {
+        var hasPullRequests = kind == GitHubActivityKind.PullRequests;
+        var hasCommits = kind == GitHubActivityKind.Commits;
+        var hasWorkflowRuns = kind == GitHubActivityKind.WorkflowRuns;
+        return ctx.Database.ExecuteSqlInterpolatedAsync(
+            $"""
+            INSERT INTO "GitHubBackfillStates" ("Repo", "HasPullRequests", "HasCommits", "HasWorkflowRuns")
+            VALUES ({Truncate(repo, 200)}, {hasPullRequests}, {hasCommits}, {hasWorkflowRuns})
+            ON CONFLICT ("Repo") DO UPDATE SET
+                "HasPullRequests" = "GitHubBackfillStates"."HasPullRequests" OR EXCLUDED."HasPullRequests",
+                "HasCommits" = "GitHubBackfillStates"."HasCommits" OR EXCLUDED."HasCommits",
+                "HasWorkflowRuns" = "GitHubBackfillStates"."HasWorkflowRuns" OR EXCLUDED."HasWorkflowRuns"
+            """,
+            ct
         );
+    }
 
     private static string Truncate(string value, int maxLength) =>
         value.Length <= maxLength ? value : value[..maxLength];

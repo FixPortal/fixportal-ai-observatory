@@ -56,7 +56,7 @@ public static class GitHubActivityEndpoints
     {
         var body = new ReplaceParameterVisitor(RepoAllowedTemplate.Parameters[0], repoSelector.Body).Visit(
             RepoAllowedTemplate.Body
-        )!;
+        );
         return Expression.Lambda<Func<T, bool>>(body, repoSelector.Parameters[0]);
     }
 
