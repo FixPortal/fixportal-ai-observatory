@@ -124,7 +124,7 @@ public sealed class OpenAiAdminClient(HttpClient http) : IOpenAiAdminClient
             foreach (var result in RequireArray(bucket, "results").EnumerateArray())
             {
                 ValidateObjectType(result, "organization.usage.completions.result");
-                var model = RequireNonBlankString(result, "model");
+                var model = OptionalNonBlankString(result, "model");
                 var batch = OptionalBoolean(result, "batch");
                 var serviceTier = OptionalNonBlankString(result, "service_tier");
                 var totalInput = RequireNonNegativeInt64(result, "input_tokens");

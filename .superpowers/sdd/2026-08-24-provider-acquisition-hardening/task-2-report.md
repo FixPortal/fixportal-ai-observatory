@@ -57,3 +57,17 @@ The Ingest composition root always exposes the two OpenAI `SourceDefinition` row
 ## Ponytail full
 
 No universal provider abstraction, generic pagination framework, repository/unit-of-work layer, event bus, fallback pricing table, package, or polling-worker change was added. The only shared seam is the required provider-local admin client; the two small source classes preserve the system's existing semantic boundaries for activity and money.
+
+## Review follow-up — nullable model and whitespace credentials
+
+Review found two trust-boundary mismatches. The current official OpenAI Completions Usage reference, rechecked on 2026-08-25, explicitly shows `model: null` in its response example. The client instead required a nonblank string and discarded otherwise-valid token facts. Separately, the shared composition helper treated whitespace-only credentials as configured, enabling provider definitions and sources with a bogus bearer token.
+
+TDD evidence:
+
+- Client RED: the official-shape null-model response threw `InvalidDataException` at the required-string parser. GREEN: null is retained while a parameterized whitespace/non-string matrix remains rejected, `3/3`.
+- Source RED: a nullable model reached `OpenAiUsageSource` but threw `NullReferenceException` in event-key encoding. GREEN: a real-PostgreSQL test stores the exact token lanes with `UsageEvent.Model = null` and `CostUsd = null`, while proving null and the real model name `"null"` have distinct stable keys, `1/1`.
+- Composition RED: a whitespace-only `OPENAI_ADMIN_KEY` registered both OpenAI source implementations. GREEN: the shared `IsConfigured` root now uses `string.IsNullOrWhiteSpace` while retaining unresolved Key Vault rejection; both OpenAI definitions remain unconfigured and neither source resolves, `1/1`.
+
+The nullable identity encoding uses a negative length sentinel, which cannot collide with any real string's nonnegative length prefix. The same existing helper now gives batch and service-tier nulls the same collision-safe treatment. No fallback model or price was introduced.
+
+Fresh follow-up gates: combined OpenAI/client/source/host/worker `92/92`; full Release backend `843/843`; Release build succeeded with only the documented pre-existing `xUnit1025` warning; CSharpier 218 files and both scoped analyzer gates passed. No web, migration, package, or polling-worker code changed.

@@ -1,4 +1,5 @@
 using System.Text.Json;
+using AiObservatory.Data;
 using AiObservatory.Data.Entities;
 using AiObservatory.Data.Pricing;
 using AiObservatory.Data.Pricing.Catalogs;
@@ -6,6 +7,7 @@ using AiObservatory.Data.Repositories;
 using AiObservatory.Ingest.Services.OpenAi;
 using AiObservatory.Ingest.Sources;
 using AwesomeAssertions;
+using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging.Abstractions;
 using NodaTime;
 using NodaTime.Testing;
@@ -14,7 +16,7 @@ using NSubstitute;
 namespace AiObservatory.Ingest.Tests.Services;
 
 [Collection("ProviderPollingWorker")]
-public sealed class OpenAiUsageSourceTests
+public sealed class OpenAiUsageSourceTests(ProviderPollingDatabase database)
 {
     private static readonly Instant Start = Instant.FromUtc(2026, 8, 1, 0, 0);
     private static readonly Instant End = Instant.FromUtc(2026, 8, 2, 0, 0);
@@ -128,6 +130,60 @@ public sealed class OpenAiUsageSourceTests
     }
 
     [Fact]
+    [Trait("Category", "Integration")]
+    public async Task IngestAsync_RetainsUnknownModelUsageWithNullCostAndDistinctIdentity()
+    {
+        var client = Substitute.For<IOpenAiAdminClient>();
+        client
+            .GetUsageAsync(Start.InUtc().Date, Start.InUtc().Date, Arg.Any<CancellationToken>())
+            .Returns([
+                Usage(false, null, null, uncached: 500, cached: 400, cacheWrite: 100, output: 500) with
+                {
+                    Model = null,
+                },
+                Usage(false, null, null, evidence: 2) with
+                {
+                    Model = "null",
+                },
+            ]);
+        await using var db = CreateDb();
+        var store = new PricingSnapshotStore(db);
+        var repository = new UsageRepository(
+            db,
+            store,
+            new UsagePriceResolver(store, [new OpenAiPriceCalculator()], NullLogger<UsagePriceResolver>.Instance)
+        );
+        var sut = new OpenAiUsageSource(
+            client,
+            repository,
+            new FakeClock(Instant.FromUtc(2026, 8, 3, 9, 0)),
+            NullLogger<OpenAiUsageSource>.Instance
+        );
+
+        await sut.IngestAsync(Start.InUtc().Date, Start.InUtc().Date, TestContext.Current.CancellationToken);
+
+        var events = await db
+            .UsageEvents.AsNoTracking()
+            .Where(row => row.SourceId == UsageSourceIds.OpenAiUsageApi && row.OccurredAt == Start)
+            .ToListAsync(TestContext.Current.CancellationToken);
+        events.Should().HaveCount(2);
+        events.Select(row => row.EventKey).Should().OnlyHaveUniqueItems();
+        events
+            .Single(row => row.Model == null)
+            .Should()
+            .BeEquivalentTo(
+                new
+                {
+                    InputTokens = 500L,
+                    CacheReadTokens = (long?)400,
+                    CacheWriteTokens = (long?)100,
+                    OutputTokens = 500L,
+                    CostUsd = (decimal?)null,
+                }
+            );
+    }
+
+    [Fact]
     public async Task IngestAsync_WhenAnyUpstreamPageFails_WritesNothing()
     {
         var client = Substitute.For<IOpenAiAdminClient>();
@@ -149,6 +205,13 @@ public sealed class OpenAiUsageSourceTests
     }
 
     private static JsonElement Evidence(UsageEvent usage) => JsonSerializer.Deserialize<JsonElement>(usage.RawPayload);
+
+    private AiObservatoryDbContext CreateDb() =>
+        new(
+            new DbContextOptionsBuilder<AiObservatoryDbContext>()
+                .UseNpgsql(database.ConnectionString, options => options.UseNodaTime())
+                .Options
+        );
 
     private static IReadOnlyList<OpenAiUsageRecord> List(OpenAiUsageRecord record) => [record];
 

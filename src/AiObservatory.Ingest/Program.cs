@@ -227,7 +227,7 @@ static IResult ReportHealth(ProviderPollingWorkerService worker)
 }
 
 static bool IsConfigured(string? value) =>
-    !string.IsNullOrEmpty(value) && !value.StartsWith("@Microsoft.KeyVault(", StringComparison.OrdinalIgnoreCase);
+    !string.IsNullOrWhiteSpace(value) && !value.StartsWith("@Microsoft.KeyVault(", StringComparison.OrdinalIgnoreCase);
 
 static void RegisterPricingSources(IServiceCollection services, IConfiguration configuration)
 {

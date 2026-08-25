@@ -55,6 +55,45 @@ public sealed class OpenAiAdminClientTests : IDisposable
     }
 
     [Fact]
+    public async Task GetUsageAsync_AcceptsTheOfficialShapeWithANullModel()
+    {
+        var sut = CreateSut(
+            new QueueHandler(_ => Ok(UsagePage(From, null, batch: null, serviceTier: null, false, null)))
+        );
+
+        var records = await sut.GetUsageAsync(From, Through, TestContext.Current.CancellationToken);
+
+        records
+            .Should()
+            .ContainSingle()
+            .Which.Should()
+            .BeEquivalentTo(
+                new
+                {
+                    Model = (string?)null,
+                    InputUncachedTokens = 500L,
+                    InputCachedTokens = 400L,
+                    InputCacheWriteTokens = 100L,
+                    OutputTokens = 500L,
+                }
+            );
+    }
+
+    [Theory]
+    [InlineData(" ")]
+    [InlineData(42)]
+    public async Task GetUsageAsync_RejectsAnInvalidNonNullModel(object model)
+    {
+        var sut = CreateSut(
+            new QueueHandler(_ => Ok(UsagePage(From, model, batch: null, serviceTier: null, false, null)))
+        );
+
+        var act = () => sut.GetUsageAsync(From, Through, TestContext.Current.CancellationToken);
+
+        await act.Should().ThrowAsync<InvalidDataException>();
+    }
+
+    [Fact]
     public async Task GetCostsAsync_FetchesEveryPageAndPreservesOfficialMoneyFacts()
     {
         var handler = new QueueHandler(
@@ -237,7 +276,7 @@ public sealed class OpenAiAdminClientTests : IDisposable
 
     private static string UsagePage(
         LocalDate day,
-        string model,
+        object? model,
         bool? batch,
         string? serviceTier,
         bool hasMore,
