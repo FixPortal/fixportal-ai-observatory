@@ -209,7 +209,11 @@ def main():
         jobs = document.get("jobs", {})
         if isinstance(jobs, dict) and "deploy-api" in jobs and "deploy-ingest" in jobs:
             dependencies = {
-                name: [needs] if isinstance(needs := job.get("needs", []), str) else needs
+                name: (
+                    [needs]
+                    if isinstance(needs := job.get("needs", []), str)
+                    else needs if isinstance(needs, list) else []
+                )
                 for name, job in jobs.items()
                 if isinstance(job, dict)
             }
