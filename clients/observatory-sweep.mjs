@@ -28,6 +28,30 @@ function isoTimestamp(value) {
   return Number.isNaN(date.valueOf()) ? null : date.toISOString()
 }
 
+export function observatoryUrl(value) {
+  let url
+  try { url = new URL(value) } catch { throw new Error('OBSERVATORY_URL must be an absolute HTTP(S) URL') }
+  if (!['http:', 'https:'].includes(url.protocol)) {
+    throw new Error('OBSERVATORY_URL must use HTTP or HTTPS')
+  }
+  if (url.username || url.password || url.search || url.hash) {
+    throw new Error('OBSERVATORY_URL must not contain credentials, a query, or a fragment')
+  }
+  const loopback = ['localhost', '127.0.0.1', '[::1]'].includes(url.hostname)
+  if (url.protocol === 'http:' && !loopback) {
+    throw new Error('OBSERVATORY_URL must use HTTPS unless it targets loopback')
+  }
+  return url.href.replace(/\/+$/, '')
+}
+
+export function observatoryFetch(url, apiKey, options = {}) {
+  return fetch(url, {
+    ...options,
+    headers: { ...options.headers, 'X-Observatory-Key': apiKey },
+    redirect: 'error',
+  })
+}
+
 /**
  * Parse a Codex rollout into its last cumulative token_count.
  *
@@ -394,9 +418,9 @@ async function saveState(path, state) {
 async function postEvent(url, apiKey, body) {
   if (DRY_RUN) { log('DRYRUN would post:', JSON.stringify(body)); return true }
   try {
-    const response = await fetch(`${url}/api/events`, {
+    const response = await observatoryFetch(`${url}/api/events`, apiKey, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'X-Observatory-Key': apiKey },
+      headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(body),
       signal: AbortSignal.timeout(10_000),
     })
@@ -411,10 +435,10 @@ async function postEvent(url, apiKey, body) {
 async function fetchSnapshotInventory(url, apiKey) {
   const inventory = []
   for (const sourceId of ALL_LOCAL_SOURCE_IDS) {
-    const response = await fetch(
+    const response = await observatoryFetch(
       `${url}/api/events/local-snapshots?sourceId=${encodeURIComponent(sourceId)}`,
+      apiKey,
       {
-        headers: { 'X-Observatory-Key': apiKey },
         signal: AbortSignal.timeout(10_000),
       },
     )
@@ -514,7 +538,7 @@ export async function scanRecords(cfg, state, enabled, discover = listJsonl) {
 }
 
 export async function main({ discover = listJsonl } = {}) {
-  const url = (process.env.OBSERVATORY_URL ?? 'http://localhost:5039').replace(/\/$/, '')
+  const url = observatoryUrl(process.env.OBSERVATORY_URL ?? 'http://localhost:5039')
   const apiKey = process.env.OBSERVATORY_API_KEY
   if (!apiKey) { console.error('OBSERVATORY_API_KEY not set; nothing to do.'); process.exit(0) }
 

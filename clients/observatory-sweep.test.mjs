@@ -12,8 +12,47 @@ import { promisify } from 'node:util'
 import {
   parseCodex, parseCopilot, parseClaude, parseKimi,
   buildDailySnapshots, updateFileCache, parseLocalSources, listJsonl,
-  planSnapshotSubmissions, scanRecords,
+  planSnapshotSubmissions, scanRecords, observatoryUrl, observatoryFetch,
 } from './observatory-sweep.mjs'
+
+test('observatoryUrl protects the API key in transit', () => {
+  assert.equal(observatoryUrl('https://observatory.example/api/'), 'https://observatory.example/api')
+  assert.equal(observatoryUrl('http://127.0.0.1:5039/'), 'http://127.0.0.1:5039')
+  assert.equal(observatoryUrl('http://[::1]:5039'), 'http://[::1]:5039')
+
+  for (const value of [
+    'http://observatory.example',
+    'ftp://observatory.example',
+    'https://key@observatory.example',
+    'https://observatory.example?redirect=elsewhere',
+    'not-a-url',
+  ]) {
+    assert.throws(() => observatoryUrl(value), /OBSERVATORY_URL/)
+  }
+})
+
+test('observatoryFetch does not forward the API key across redirects', async () => {
+  let redirectedKey = null
+  const target = createServer((request, response) => {
+    redirectedKey = request.headers['x-observatory-key']
+    response.writeHead(200).end()
+  })
+  await new Promise(resolve => target.listen(0, '127.0.0.1', resolve))
+  const targetAddress = target.address()
+  const redirector = createServer((_request, response) => {
+    response.writeHead(302, { Location: `http://127.0.0.1:${targetAddress.port}` }).end()
+  })
+  await new Promise(resolve => redirector.listen(0, '127.0.0.1', resolve))
+  const redirectorAddress = redirector.address()
+
+  try {
+    await assert.rejects(observatoryFetch(`http://127.0.0.1:${redirectorAddress.port}`, 'secret'))
+    assert.equal(redirectedKey, null)
+  } finally {
+    await new Promise(resolve => redirector.close(resolve))
+    await new Promise(resolve => target.close(resolve))
+  }
+})
 
 test('parseCodex takes the last token_count and splits cached input out', () => {
   const lines = [
