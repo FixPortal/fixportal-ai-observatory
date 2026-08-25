@@ -55,3 +55,21 @@ GitHub net-only wire facts are normalized as gross = net and credits = 0, with s
 - The shared Data registration does not register the writer. It is registered in the API composition root beside the configured FX client. Registering it in `AddDataLayer` broke 14 Ingest-host tests because the Task 1 Ingest root intentionally has no FX client yet; later provider-cost tasks can register both together rather than acquiring an implicit default HTTP client.
 - `dotnet format ... analyzers --verify-no-changes` reports the pre-existing `xUnit1025` duplicate-inline-data warning at `SpendEntriesEndpointsWafTests.cs:813`. The same warning appears in the otherwise-green Release build. It is unrelated to Task 1 and was left untouched.
 - Ponytail full: no provider framework, repository/unit-of-work layer, event bus, one-implementation interface, or speculative dependency was added. The concrete writer and database constraints are the smallest shared boundary that protects this money path.
+
+## Review follow-up — preserve frozen FX on exact replay
+
+Review identified that an exact non-zero billing replay still fetched the current historical rate and compared it with the ledger's frozen rate. A changed provider rate alone therefore produced `Corrected` and overwrote `FxRate`, `AmountGbp`, and `RecordedAt`, despite unchanged billing facts.
+
+The real-PostgreSQL regression was added first. RED reproduced the defect with an initial `0.75` rate and an identical replay at `0.79`: the writer returned `Corrected` instead of `Unchanged`. The minimal fix excludes frozen FX and GBP fields from the unchanged-provider-facts comparison. A genuine provider-fact correction still resolves and freezes its replacement FX before the transaction.
+
+Follow-up GREEN evidence:
+
+- Frozen-FX replay regression: `1/1`; disposition `Unchanged`, `FxRate` remains `0.75`, `AmountGbp` remains `6.00`, and `RecordedAt` remains unchanged.
+- PostgreSQL writer and migration lane: `24/24`, retaining correction, zero-net, refund, concurrency, rollback, and legacy-convergence coverage.
+- Focused FX/GitHub/worker-arm unit lane: `32/32`.
+- GitHub PostgreSQL integration lane: `6/6`.
+- Release solution build: pass with zero warnings and zero errors.
+- Full Release backend: `820/820`, zero failed and zero skipped.
+- CSharpier and staged diff checks: pass.
+
+Follow-up commit: the commit containing this section; its SHA is recorded in the Task 1 handoff after commit creation.
