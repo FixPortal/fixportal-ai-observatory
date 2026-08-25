@@ -46,6 +46,7 @@ public class OpenAiIngestionService(
             let inputTokens = g.Sum(x => x.InputTokens)
             let outputTokens = g.Sum(x => x.OutputTokens)
             let cachedTokens = g.Sum(x => x.CachedInputTokens)
+            let cacheWriteTokens = g.Sum(x => x.CacheWriteTokens)
             let combinedPayload = "[" + string.Join(",", g.Select(x => x.RawJson)) + "]"
             let eventKey = $"openai:{date:yyyy-MM-dd}:{model}"
             select new UsageEvent
@@ -57,6 +58,7 @@ public class OpenAiIngestionService(
                 InputTokens = inputTokens,
                 OutputTokens = outputTokens,
                 CacheReadTokens = cachedTokens,
+                CacheWriteTokens = cacheWriteTokens,
                 CostUsd = null,
                 EventKey = eventKey,
                 RawPayload = combinedPayload,

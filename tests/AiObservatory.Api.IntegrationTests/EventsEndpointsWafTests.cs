@@ -327,6 +327,58 @@ public class EventsEndpointsWafTests(AiObservatoryApiFactory factory)
         stored.GetProperty("observedAt").GetDateTimeOffset().Should().Be(observedAt);
     }
 
+    [Fact]
+    public async Task PostEvent_ZeroLocalCorrectionStoresKnownZeroWithoutPricingDimensions()
+    {
+        using var client = factory.CreateAdminClient();
+        var model = $"removed-snapshot-{Guid.NewGuid():N}";
+        var eventKey = $"codex:tombstone:{Guid.NewGuid():N}";
+        var occurredAt = factory
+            .Services.GetRequiredService<NodaTime.IClock>()
+            .GetCurrentInstant()
+            .Minus(NodaTime.Duration.FromMinutes(1))
+            .ToDateTimeOffset();
+        var response = await client.PostAsJsonAsync(
+            "/api/events",
+            new
+            {
+                Provider = "openai",
+                Model = model,
+                InputTokens = 0,
+                OutputTokens = 0,
+                CacheReadTokens = 0,
+                CacheWriteTokens = 0,
+                CacheWrite1hTokens = 0,
+                ThoughtTokens = 0,
+                CostUsd = 99m,
+                RawPayload = "{\"source\":\"observatory-sweep\",\"tombstone\":true}",
+                EventKey = eventKey,
+                OccurredAtUtc = occurredAt,
+                SourceId = UsageSourceIds.CodexLocal,
+                SourceKind = "localTelemetry",
+                UsageScope = "subscription",
+                CostBasis = "notional",
+            },
+            TestContext.Current.CancellationToken
+        );
+
+        response.StatusCode.Should().Be(HttpStatusCode.Created);
+        await using var scope = factory.Services.CreateAsyncScope();
+        var db = scope.ServiceProvider.GetRequiredService<AiObservatoryDbContext>();
+        var stored = await db
+            .UsageEvents.AsNoTracking()
+            .SingleAsync(e => e.EventKey == eventKey, TestContext.Current.CancellationToken);
+        var aggregate = await db
+            .DailyAggregates.AsNoTracking()
+            .SingleAsync(a => a.Model == model, TestContext.Current.CancellationToken);
+        stored.CostUsd.Should().Be(0m);
+        stored.CacheSavingsUsd.Should().Be(0m);
+        aggregate.CostUsd.Should().Be(0m);
+        aggregate.CacheSavingsUsd.Should().Be(0m);
+        aggregate.UnknownCostCount.Should().Be(0);
+        aggregate.UnknownCacheSavingsCount.Should().Be(0);
+    }
+
     [Theory]
     [InlineData("SourceKind", "not-a-kind")]
     [InlineData("UsageScope", "0")]

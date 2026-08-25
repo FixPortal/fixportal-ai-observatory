@@ -26,10 +26,16 @@ public sealed class AnthropicUsageClientTests : IDisposable
 
     private sealed class StubHandler(string json) : HttpMessageHandler
     {
+        public Uri? RequestUri { get; private set; }
+
         protected override Task<HttpResponseMessage> SendAsync(
             HttpRequestMessage request,
             CancellationToken cancellationToken
-        ) => Task.FromResult(CreateResponse(HttpStatusCode.OK, json));
+        )
+        {
+            RequestUri = request.RequestUri;
+            return Task.FromResult(CreateResponse(HttpStatusCode.OK, json));
+        }
     }
 
     private sealed class NeverResolvingHandler : HttpMessageHandler
@@ -61,44 +67,76 @@ public sealed class AnthropicUsageClientTests : IDisposable
         ) => Task.FromResult(CreateResponse(statusCode));
     }
 
-    private AnthropicUsageClient CreateSut(LocalDate bucketDate, string model)
+    private (AnthropicUsageClient Client, StubHandler Handler) CreateSut(LocalDate bucketDate, string model)
     {
         var json = $$"""
             {
+              "organization_id": "org_test",
               "data": [
                 {
                   "starting_at": "{{bucketDate:yyyy-MM-dd}}T00:00:00Z",
                   "ending_at": "{{bucketDate.PlusDays(1):yyyy-MM-dd}}T00:00:00Z",
                   "results": [
                     {
+                      "context_window": "0-200k",
+                      "inference_geo": "us",
                       "model": "{{model}}",
-                      "input_tokens": 1000000,
-                      "output_tokens": 1000000,
-                      "cache_read_input_tokens": 0,
-                      "cache_creation_input_tokens": 0
+                      "output_tokens": 700000,
+                      "product": "chat",
+                      "requests": 2,
+                      "server_tool_use": { "web_search_requests": 0 },
+                      "service_tier": "batch",
+                      "speed": "standard",
+                      "uncached_input_tokens": 500000,
+                      "cache_read_input_tokens": 300000,
+                      "cache_creation": {
+                        "ephemeral_5m_input_tokens": 100000,
+                        "ephemeral_1h_input_tokens": 200000
+                      }
                     }
                   ]
                 }
               ],
+              "data_refreshed_at": "{{bucketDate.PlusDays(1):yyyy-MM-dd}}T04:00:00Z",
               "has_more": false,
               "next_page": null
             }
             """;
-        var http = new HttpClient(new StubHandler(json)) { BaseAddress = new Uri("https://api.anthropic.com") };
+        var handler = new StubHandler(json);
+        var http = new HttpClient(handler) { BaseAddress = new Uri("https://api.anthropic.com") };
         _httpClients.Add(http);
-        return new AnthropicUsageClient(http, NullLogger<AnthropicUsageClient>.Instance);
+        return (new AnthropicUsageClient(http, NullLogger<AnthropicUsageClient>.Instance), handler);
     }
 
     [Fact]
     public async Task GetUsageAsyncReturnsObservedUsageWithoutPricingIt()
     {
         var date = new LocalDate(2026, 8, 31);
-        var sut = CreateSut(date, "claude-sonnet-5");
+        var (sut, handler) = CreateSut(date, "claude-sonnet-5");
 
         var records = await sut.GetUsageAsync(date, TestContext.Current.CancellationToken);
 
-        records.Single().Model.Should().Be("claude-sonnet-5");
-        records.Single().Date.Should().Be(date);
+        records
+            .Single()
+            .Should()
+            .BeEquivalentTo(
+                new
+                {
+                    Date = date,
+                    Model = "claude-sonnet-5",
+                    ServiceTier = "batch",
+                    InferenceGeo = "us",
+                    Speed = "standard",
+                    InputTokens = 500_000L,
+                    OutputTokens = 700_000L,
+                    CacheReadTokens = 300_000L,
+                    CacheWrite5mTokens = 100_000L,
+                    CacheWrite1hTokens = 200_000L,
+                }
+            );
+        handler.RequestUri!.Query.Should().Contain("group_by[]=service_tier");
+        handler.RequestUri.Query.Should().Contain("group_by[]=inference_geo");
+        handler.RequestUri.Query.Should().Contain("group_by[]=speed");
     }
 
     [Fact]
@@ -131,7 +169,7 @@ public sealed class AnthropicUsageClientTests : IDisposable
     }
 
     [Fact]
-    public async Task GetUsageAsync_ThrowsWhenInputTokensAreMissing()
+    public async Task GetUsageAsync_ThrowsWhenUncachedInputTokensAreMissing()
     {
         var json = """
             {
@@ -144,7 +182,13 @@ public sealed class AnthropicUsageClientTests : IDisposable
                       "model": "claude-sonnet-5",
                       "output_tokens": 10,
                       "cache_read_input_tokens": 0,
-                      "cache_creation_input_tokens": 0
+                      "cache_creation": {
+                        "ephemeral_5m_input_tokens": 0,
+                        "ephemeral_1h_input_tokens": 0
+                      },
+                      "service_tier": "standard",
+                      "inference_geo": "global",
+                      "speed": "standard"
                     }
                   ]
                 }

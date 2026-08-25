@@ -174,6 +174,39 @@ public sealed class UsagePriceResolverTests : IAsyncLifetime
     }
 
     [Theory]
+    [InlineData("batch", "standard", 1.35, 0.65)]
+    [InlineData("standard", "fast", 13.5, 6.5)]
+    public void AnthropicCalculatorStacksBatchAndFastWithCacheMultipliers(
+        string tier,
+        string speed,
+        double expectedCost,
+        double expectedSavings
+    )
+    {
+        var usage = Event(
+            Provider.Anthropic,
+            "claude-sonnet-5",
+            Json(
+                new
+                {
+                    service_tier = tier,
+                    speed,
+                    inference_geo = "global",
+                    cache_creation = new { ephemeral_5m_input_tokens = 1_000_000, ephemeral_1h_input_tokens = 0 },
+                }
+            ),
+            input: 0,
+            output: 0,
+            cacheRead: 1_000_000,
+            cacheWrite: 1_000_000
+        );
+
+        var quote = new AnthropicPriceCalculator().Calculate(usage, Json(AnthropicCatalog()));
+
+        quote.Should().Be(new UsagePriceQuote((decimal)expectedCost, (decimal)expectedSavings));
+    }
+
+    [Theory]
     [InlineData("{}")]
     [InlineData("{\"service_tier\":\"standard\",\"speed\":\"standard\"}")]
     [InlineData(
@@ -301,6 +334,32 @@ public sealed class UsagePriceResolverTests : IAsyncLifetime
         (await Resolver(logger).ResolveAsync(usage, ct)).Should().BeNull();
 
         logger.Warnings.Should().ContainSingle().Which.Should().Contain("context,processing,region");
+    }
+
+    [Fact]
+    public async Task ResolverReturnsAnExactZeroQuoteWithoutCatalogOrPricingDimensions()
+    {
+        var usage = Event(Provider.OpenAI, "removed-local-snapshot", "{}", input: 0, output: 0);
+
+        var quote = await Resolver().ResolveAsync(usage, TestContext.Current.CancellationToken);
+
+        quote.Should().Be(new UsagePriceQuote(0m, 0m));
+    }
+
+    [Fact]
+    public async Task ResolverBoundsTheDiagnosticForAnUntrustedLongModelName()
+    {
+        var ct = TestContext.Current.CancellationToken;
+        await _store.ActivateAsync(Candidate(OpenAiCatalog()), ct);
+        var logger = new CapturingLogger<UsagePriceResolver>();
+        var model = $"diagnostic-{Guid.NewGuid():N}-" + new string('x', 10_000) + "\r\nsecret-tail";
+
+        (await Resolver(logger).ResolveAsync(Event(Provider.OpenAI, model, "{}"), ct)).Should().BeNull();
+
+        logger.Warnings.Should().ContainSingle();
+        logger.Warnings.Single().Should().Contain(model[..48]);
+        logger.Warnings.Single().Should().NotContain("secret-tail");
+        logger.Warnings.Single().Length.Should().BeLessThan(512);
     }
 
     private UsagePriceResolver Resolver(ILogger<UsagePriceResolver>? logger = null) =>

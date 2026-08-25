@@ -185,6 +185,18 @@ public class UsageRepositoryTests : IAsyncLifetime
     }
 
     [Fact]
+    public async Task RecordEvent_new_cache_write_preserves_negative_savings_in_new_aggregate()
+    {
+        var ct = TestContext.Current.CancellationToken;
+
+        await _repo.RecordEventAsync(NewEvent(cacheSavings: -0.75m), ct);
+
+        var aggregate = await _ctx.DailyAggregates.AsNoTracking().SingleAsync(ct);
+        aggregate.CacheSavingsUsd.Should().Be(-0.75m);
+        aggregate.UnknownCacheSavingsCount.Should().Be(0);
+    }
+
+    [Fact]
     public async Task RecordEvent_changed_observation_metadata_is_unchanged()
     {
         var ct = TestContext.Current.CancellationToken;

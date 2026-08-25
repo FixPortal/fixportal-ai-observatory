@@ -9,7 +9,8 @@ namespace AiObservatory.Ingest.Services.OpenAi;
 // Calls GET https://api.openai.com/v1/organization/usage/completions
 // Requires an admin API key (OPENAI_ADMIN_KEY env var) with the
 // openai.usage.read permission (create one at platform.openai.com/api-keys).
-// See https://platform.openai.com/docs/api-reference/usage for the schema.
+// See https://developers.openai.com/api/reference/resources/organization/subresources/usage/methods/completions
+// for the schema.
 public class OpenAiUsageClient(HttpClient http, ILogger<OpenAiUsageClient> logger) : IOpenAiUsageClient
 {
     // Requesting more pages than this for a single day's usage indicates the pagination
@@ -78,18 +79,19 @@ public class OpenAiUsageClient(HttpClient http, ILogger<OpenAiUsageClient> logge
             {
                 continue;
             }
-            if (result.InputTokens is null || result.OutputTokens is null)
+            if (result.InputUncachedTokens is null || result.OutputTokens is null)
             {
-                throw new JsonException("OpenAI usage result is missing input_tokens or output_tokens.");
+                throw new JsonException("OpenAI usage result is missing input_uncached_tokens or output_tokens.");
             }
 
             records.Add(
                 new OpenAiUsageRecord(
                     Date: date,
                     Model: result.Model,
-                    InputTokens: Math.Max(0, result.InputTokens.Value - result.InputCachedTokens),
+                    InputTokens: result.InputUncachedTokens.Value,
                     OutputTokens: result.OutputTokens.Value,
                     CachedInputTokens: result.InputCachedTokens,
+                    CacheWriteTokens: result.InputCacheWriteTokens,
                     RawJson: JsonSerializer.Serialize(result, options)
                 )
             );
@@ -105,6 +107,8 @@ public class OpenAiUsageClient(HttpClient http, ILogger<OpenAiUsageClient> logge
         long? InputTokens,
         long? OutputTokens,
         long InputCachedTokens,
+        long InputCacheWriteTokens,
+        long? InputUncachedTokens,
         long NumModelRequests
     );
 }

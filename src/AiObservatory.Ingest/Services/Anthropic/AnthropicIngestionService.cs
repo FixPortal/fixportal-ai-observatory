@@ -1,3 +1,4 @@
+using System.Text.Json;
 using AiObservatory.Data.Entities;
 using AiObservatory.Data.Pricing;
 using AiObservatory.Data.Repositories;
@@ -37,19 +38,33 @@ public class AnthropicIngestionService(
     private async Task<Instant?> IngestDayAsync(LocalDate date, CancellationToken cancellationToken)
     {
         var records = await client.GetUsageAsync(date, cancellationToken);
-        var groups = records.GroupBy(r => new { r.Date, r.Model }).ToList();
+        var groups = records
+            .GroupBy(r => new
+            {
+                r.Date,
+                r.Model,
+                r.ServiceTier,
+                r.InferenceGeo,
+                r.Speed,
+            })
+            .ToList();
         var observedAt = clock.GetCurrentInstant();
 
         var events =
             from g in groups
             let rDate = g.Key.Date
             let model = g.Key.Model
+            let serviceTier = g.Key.ServiceTier
+            let inferenceGeo = g.Key.InferenceGeo
+            let speed = g.Key.Speed
             let input = g.Sum(x => x.InputTokens)
             let output = g.Sum(x => x.OutputTokens)
             let cacheRead = g.Sum(x => x.CacheReadTokens)
-            let cacheWrite = g.Sum(x => x.CacheWriteTokens)
-            let combinedPayload = "[" + string.Join(",", g.Select(x => x.RawJson)) + "]"
-            let eventKey = $"anthropic:{rDate:yyyy-MM-dd}:{model}"
+            let cacheWrite5m = g.Sum(x => x.CacheWrite5mTokens)
+            let cacheWrite1h = g.Sum(x => x.CacheWrite1hTokens)
+            let cacheWrite = checked(cacheWrite5m + cacheWrite1h)
+            let combinedPayload = BuildPricingEvidence(g, cacheWrite5m, cacheWrite1h)
+            let eventKey = $"anthropic:{rDate:yyyy-MM-dd}:{model}:{serviceTier ?? "unknown"}:{inferenceGeo ?? "unknown"}:{speed ?? "unknown"}"
             select new UsageEvent
             {
                 Provider = Provider.Anthropic,
@@ -60,6 +75,7 @@ public class AnthropicIngestionService(
                 OutputTokens = output,
                 CacheReadTokens = cacheRead,
                 CacheWriteTokens = cacheWrite,
+                CacheWrite1hTokens = cacheWrite1h,
                 CostUsd = null,
                 EventKey = eventKey,
                 RawPayload = combinedPayload,
@@ -87,5 +103,28 @@ public class AnthropicIngestionService(
         return records.Count == 0
             ? null
             : records.Max(record => record.Date).AtStartOfDayInZone(DateTimeZone.Utc).ToInstant();
+    }
+
+    private static string BuildPricingEvidence(
+        IEnumerable<AnthropicUsageRecord> records,
+        long cacheWrite5m,
+        long cacheWrite1h
+    )
+    {
+        var rows = records.ToArray();
+        return JsonSerializer.Serialize(
+            new
+            {
+                service_tier = rows[0].ServiceTier,
+                inference_geo = rows[0].InferenceGeo,
+                speed = rows[0].Speed,
+                cache_creation = new
+                {
+                    ephemeral_5m_input_tokens = cacheWrite5m,
+                    ephemeral_1h_input_tokens = cacheWrite1h,
+                },
+                provider_records = rows.Select(row => JsonSerializer.Deserialize<JsonElement>(row.RawJson)),
+            }
+        );
     }
 }

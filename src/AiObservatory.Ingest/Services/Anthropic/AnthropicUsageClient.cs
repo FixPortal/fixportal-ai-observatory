@@ -1,5 +1,6 @@
 using System.Net.Http.Json;
 using System.Text.Json;
+using System.Text.Json.Serialization;
 using NodaTime;
 using NodaTime.Text;
 
@@ -9,7 +10,8 @@ namespace AiObservatory.Ingest.Services.Anthropic;
 
 // Calls GET https://api.anthropic.com/v1/organizations/usage_report/messages
 // Requires an API key with workspace admin access (ANTHROPIC_BILLING_KEY env var).
-// See https://docs.anthropic.com/en/api/usage for the current response schema.
+// See https://platform.claude.com/docs/en/api/http/admin/usage_report/retrieve_messages
+// for the current response schema.
 public class AnthropicUsageClient(HttpClient http, ILogger<AnthropicUsageClient> logger) : IAnthropicUsageClient
 {
     // Requesting more pages than this for a single day's usage indicates the pagination
@@ -43,7 +45,7 @@ public class AnthropicUsageClient(HttpClient http, ILogger<AnthropicUsageClient>
             }
 
             var url =
-                $"/v1/organizations/usage_report/messages?starting_at={startStr}&ending_at={endStr}&bucket_width=1d&group_by[]=model";
+                $"/v1/organizations/usage_report/messages?starting_at={startStr}&ending_at={endStr}&bucket_width=1d&group_by[]=model&group_by[]=service_tier&group_by[]=inference_geo&group_by[]=speed";
             if (!string.IsNullOrEmpty(nextPage))
             {
                 // The response's next_page token is passed back as the `page` request parameter.
@@ -76,9 +78,11 @@ public class AnthropicUsageClient(HttpClient http, ILogger<AnthropicUsageClient>
         // results[] array; the bucket itself carries only the time window.
         foreach (var result in bucket.Results ?? [])
         {
-            if (result.InputTokens is null || result.OutputTokens is null)
+            if (result.UncachedInputTokens is null || result.OutputTokens is null || result.CacheCreation is null)
             {
-                throw new JsonException("Anthropic usage result is missing input_tokens or output_tokens.");
+                throw new JsonException(
+                    "Anthropic usage result is missing uncached_input_tokens, output_tokens, or cache_creation."
+                );
             }
 
             var model = result.Model ?? "unknown";
@@ -86,10 +90,14 @@ public class AnthropicUsageClient(HttpClient http, ILogger<AnthropicUsageClient>
                 new AnthropicUsageRecord(
                     Date: date,
                     Model: model,
-                    InputTokens: result.InputTokens.Value,
+                    ServiceTier: result.ServiceTier,
+                    InferenceGeo: result.InferenceGeo,
+                    Speed: result.Speed,
+                    InputTokens: result.UncachedInputTokens.Value,
                     OutputTokens: result.OutputTokens.Value,
                     CacheReadTokens: result.CacheReadInputTokens,
-                    CacheWriteTokens: result.CacheCreationInputTokens,
+                    CacheWrite5mTokens: result.CacheCreation.Ephemeral5mInputTokens,
+                    CacheWrite1hTokens: result.CacheCreation.Ephemeral1hInputTokens,
                     RawJson: JsonSerializer.Serialize(result, options)
                 )
             );
@@ -117,9 +125,17 @@ public class AnthropicUsageClient(HttpClient http, ILogger<AnthropicUsageClient>
 
     private sealed record AnthropicUsageResult(
         string? Model,
-        long? InputTokens,
+        string? ServiceTier,
+        string? InferenceGeo,
+        string? Speed,
+        long? UncachedInputTokens,
         long? OutputTokens,
         long CacheReadInputTokens,
-        long CacheCreationInputTokens
+        AnthropicCacheCreation? CacheCreation
+    );
+
+    private sealed record AnthropicCacheCreation(
+        [property: JsonPropertyName("ephemeral_5m_input_tokens")] long Ephemeral5mInputTokens,
+        [property: JsonPropertyName("ephemeral_1h_input_tokens")] long Ephemeral1hInputTokens
     );
 }

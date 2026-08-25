@@ -25,9 +25,9 @@ public class OpenAiIngestionServiceTests(ProviderPollingDatabase database)
             .Returns(
                 new List<OpenAiUsageRecord>
                 {
-                    new(date, "gpt-5.4", 10, 5, 2, """{"id":1}"""),
-                    new(date, "gpt-5.4", 20, 7, 3, """{"id":2}"""),
-                    new(date, "o4-mini", 4, 2, 1, """{"id":3}"""),
+                    new(date, "gpt-5.4", 10, 5, 2, 7, """{"id":1}"""),
+                    new(date, "gpt-5.4", 20, 7, 3, 11, """{"id":2}"""),
+                    new(date, "o4-mini", 4, 2, 1, 0, """{"id":3}"""),
                 }
             );
         var recorded = new List<UsageEvent>();
@@ -62,6 +62,7 @@ public class OpenAiIngestionServiceTests(ProviderPollingDatabase database)
                     InputTokens = 30L,
                     OutputTokens = 12L,
                     CacheReadTokens = (long?)5,
+                    CacheWriteTokens = (long?)18,
                     CostUsd = (decimal?)null,
                     SourceId = UsageSourceIds.OpenAiUsageApi,
                     SourceKind = SourceKind.ProviderApi,
