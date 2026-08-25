@@ -27,7 +27,7 @@ public sealed class ClaudeCodeUsageSourceTests(ProviderPollingDatabase database)
         client
             .GetClaudeCodeUsageAsync(Day, Day, Arg.Any<CancellationToken>())
             .Returns([
-                Usage($"api-{suffix}", "api", false, "vscode", "claude-sonnet-5", 1234m),
+                Usage($"api-{suffix}", "api", false, "vscode", "claude-sonnet-5", 1234m, "enterprise"),
                 Usage($"sub-{suffix}", "subscription", true, "remote", "claude-sonnet-5", null),
             ]);
         await using var db = CreateDb();
@@ -48,7 +48,8 @@ public sealed class ClaudeCodeUsageSourceTests(ProviderPollingDatabase database)
             .ToListAsync(TestContext.Current.CancellationToken);
         rows = rows.Where(row => row.RawPayload.Contains(suffix, StringComparison.Ordinal)).ToList();
         rows.Should().HaveCount(2);
-        rows.Single(row => row.UsageScope == UsageScope.Api)
+        var apiRow = rows.Single(row => row.UsageScope == UsageScope.Api);
+        apiRow
             .Should()
             .BeEquivalentTo(
                 new
@@ -64,6 +65,8 @@ public sealed class ClaudeCodeUsageSourceTests(ProviderPollingDatabase database)
                     SourceKind = SourceKind.ProviderApi,
                 }
             );
+        using var apiEvidence = JsonDocument.Parse(apiRow.RawPayload);
+        apiEvidence.RootElement.GetProperty("subscription_type").GetString().Should().Be("enterprise");
         rows.Single(row => row.UsageScope == UsageScope.Subscription)
             .Should()
             .BeEquivalentTo(new { CostUsd = (decimal?)null, CostBasis = CostBasis.None });
@@ -145,15 +148,18 @@ public sealed class ClaudeCodeUsageSourceTests(ProviderPollingDatabase database)
         bool isRemote,
         string terminal,
         string model,
-        decimal? estimatedMinor
-    ) =>
-        new(
+        decimal? estimatedMinor,
+        string? subscriptionType = null
+    )
+    {
+        subscriptionType ??= customerType == "subscription" ? "team" : null;
+        return new ClaudeCodeUsageRecord(
             Day,
             "user_actor",
             actor,
             "org-test",
             customerType,
-            customerType == "subscription" ? "team" : null,
+            subscriptionType,
             isRemote,
             terminal,
             model,
@@ -170,7 +176,7 @@ public sealed class ClaudeCodeUsageSourceTests(ProviderPollingDatabase database)
                     actor = new { type = "user_actor", email_address = actor },
                     organization_id = "org-test",
                     customer_type = customerType,
-                    subscription_type = customerType == "subscription" ? "team" : null,
+                    subscription_type = subscriptionType,
                     is_remote = isRemote,
                     terminal_type = terminal,
                     model_breakdown = new
@@ -190,4 +196,5 @@ public sealed class ClaudeCodeUsageSourceTests(ProviderPollingDatabase database)
                 }
             )
         );
+    }
 }

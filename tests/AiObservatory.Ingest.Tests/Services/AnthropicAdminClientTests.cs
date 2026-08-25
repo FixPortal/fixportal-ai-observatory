@@ -167,6 +167,34 @@ public sealed class AnthropicAdminClientTests : IDisposable
         handler.Requests[2].Should().Contain("starting_at=2026-08-02").And.NotContain("page=");
     }
 
+    [Fact]
+    public async Task GetClaudeCodeUsageAsync_AcceptsOfficialApiCustomerWithEnterpriseSubscriptionType()
+    {
+        var sut = CreateSut(
+            new QueueHandler(_ =>
+                Ok(
+                    ClaudeCodePage(
+                        From,
+                        "user_actor",
+                        "user@emaildomain.com",
+                        "api",
+                        false,
+                        null,
+                        subscriptionType: "enterprise"
+                    )
+                )
+            )
+        );
+
+        var records = await sut.GetClaudeCodeUsageAsync(From, From, TestContext.Current.CancellationToken);
+
+        records
+            .Should()
+            .ContainSingle()
+            .Which.Should()
+            .BeEquivalentTo(new { CustomerType = "api", SubscriptionType = "enterprise" });
+    }
+
     [Theory]
     [InlineData("messages")]
     [InlineData("costs")]
@@ -549,7 +577,8 @@ public sealed class AnthropicAdminClientTests : IDisposable
         bool hasMore,
         string? nextPage,
         decimal? estimatedMinor = 123.45m,
-        string currency = "USD"
+        string currency = "USD",
+        string? subscriptionType = null
     )
     {
         object actor =
@@ -568,7 +597,7 @@ public sealed class AnthropicAdminClientTests : IDisposable
                         actor,
                         organization_id = "org-test",
                         customer_type = customerType,
-                        subscription_type = customerType == "subscription" ? "team" : null,
+                        subscription_type = subscriptionType ?? (customerType == "subscription" ? "team" : null),
                         is_remote = false,
                         terminal_type = "vscode",
                         core_metrics = new

@@ -32,7 +32,6 @@ public sealed class AnthropicAdminClient(HttpClient http) : IAnthropicAdminClien
                     cursor
                 ),
             root => ParseMessagePage(root, rangeStart, rangeEnd),
-            classifyUnavailable: true,
             cancellationToken
         );
     }
@@ -56,7 +55,6 @@ public sealed class AnthropicAdminClient(HttpClient http) : IAnthropicAdminClien
                     cursor
                 ),
             root => ParseCostPage(root, rangeStart, rangeEnd),
-            classifyUnavailable: true,
             cancellationToken
         );
     }
@@ -78,7 +76,6 @@ public sealed class AnthropicAdminClient(HttpClient http) : IAnthropicAdminClien
                 cursor =>
                     $"/v1/organizations/usage_report/claude_code?starting_at={day:yyyy-MM-dd}&limit=1000{Page(cursor)}",
                 root => ParseClaudeCodePage(root, day),
-                classifyUnavailable: true,
                 cancellationToken,
                 () =>
                 {
@@ -101,7 +98,6 @@ public sealed class AnthropicAdminClient(HttpClient http) : IAnthropicAdminClien
     private async Task<IReadOnlyList<T>> GetAllPagesAsync<T>(
         Func<string?, string> buildUrl,
         Func<JsonElement, IReadOnlyList<T>> parsePage,
-        bool classifyUnavailable,
         CancellationToken cancellationToken,
         Action? consumeReportPage = null
     )
@@ -123,7 +119,7 @@ public sealed class AnthropicAdminClient(HttpClient http) : IAnthropicAdminClien
             var body = await ReadBoundedAsync(response.Content, cancellationToken);
             if (!response.IsSuccessStatusCode)
             {
-                if (classifyUnavailable && IsExplicitlyUnavailable(response, body))
+                if (IsExplicitlyUnavailable(response, body))
                 {
                     throw new SourceUnavailableException(
                         "Anthropic reports that this Admin report is unavailable for this organization."
@@ -338,10 +334,7 @@ public sealed class AnthropicAdminClient(HttpClient http) : IAnthropicAdminClien
             throw new InvalidDataException("Anthropic returned an unknown Claude Code customer type.");
         }
         var subscriptionType = OptionalNonBlankString(row, "subscription_type");
-        if (
-            subscriptionType is not null and not ("enterprise" or "team")
-            || customerType == "api" && subscriptionType is not null
-        )
+        if (subscriptionType is not null and not ("enterprise" or "team"))
         {
             throw new InvalidDataException("Anthropic returned an invalid Claude Code subscription type.");
         }

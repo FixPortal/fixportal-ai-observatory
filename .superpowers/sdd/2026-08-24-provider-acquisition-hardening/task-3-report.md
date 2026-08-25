@@ -21,7 +21,7 @@ The implemented financial endpoint is `/v1/organizations/cost_report` under the 
 
 Messages requests one complete inclusive range with daily buckets and exact model/service-tier/inference-geography/speed grouping. The client retains the uncached input, cache read, nested 5-minute/1-hour cache creation, and output lanes. The configured `fast-mode-2026-02-01` beta header is required for speed grouping.
 
-Claude Code is a single-day endpoint, so the client completes every page for every requested UTC day before returning its immutable result. It validates the actor union, core and tool-action counts, customer type, remote/terminal facts, model token lanes, and optional estimated cost. The request date is `YYYY-MM-DD`; the response date is an RFC 3339 UTC-midnight timestamp. `estimated_cost.amount` is a JSON number in minor currency units and is divided by 100 only when persisted.
+Claude Code is a single-day endpoint, so the client completes every page for every requested UTC day before returning its immutable result. It validates the actor union, core and tool-action counts, customer type, remote/terminal facts, model token lanes, and optional estimated cost. The request date is `YYYY-MM-DD`; the response date is an RFC 3339 UTC-midnight timestamp. `estimated_cost.amount` is a JSON number in minor currency units and is divided by 100 only when persisted. The current official 200 example pairs `customer_type: api` with `subscription_type: enterprise`, despite the adjacent field description saying API customers use null. The client therefore validates and retains the documented `enterprise`/`team` subscription values independently of customer type; only `customer_type` determines usage scope.
 
 The standard Anthropic error taxonomy has no entitlement-specific error type separate from `permission_error`. The client therefore classifies an unavailable source only when a structured 403 contains `permission_error` plus an explicit unavailable/not-enabled/ineligible statement. Generic missing-scope 403s, authentication, timeouts, rate limits, and transient failures remain failures. Error bodies and credentials are never logged.
 
@@ -45,14 +45,15 @@ Composition always exposes exactly three Anthropic definitions. A configured `AN
 - Strict grouped-shape RED: removing required nullable Messages or Cost grouping keys produced `0/6`; presence-with-null retention fixed it to `6/6`.
 - Source-unavailability RED: explicit structured unavailability worked only for Claude Code (`1/3`); applying the same narrow classification to all three Admin reports produced `3/3` while generic permission errors remained failures.
 - Review RED: shifted 24-hour Messages/Cost buckets were accepted (`0/2`), and Claude Code made a 10,001st request because its page budget reset each day (`0/1`). Exact UTC-midnight validation and one report-wide page budget produced `3/3`.
-- Final expanded Anthropic/Claude/OpenAI/host/worker lane: `144/144`.
+- Live-example RED: the official `customer_type: api` plus `subscription_type: enterprise` pairing threw `InvalidDataException` (`0/1`). Independent enum validation now retains the upstream value while the downstream PostgreSQL event remains `UsageScope.Api` with the pairing in raw evidence (`2/2` client/source regression).
+- Final expanded Anthropic/Claude/OpenAI/host/worker lane: `145/145`.
 - Final Data writer/migration lane: `24/24`.
 
 ## Final gates
 
 - `dotnet csharpier check .`: pass, 224 files.
 - Release solution build: pass.
-- Full Release backend: pass, `887/887`, zero failed and zero skipped.
+- Full Release backend: pass, `888/888`, zero failed and zero skipped.
 - Scoped Ingest and Ingest-test analyzer gates: pass with no findings. The whole-solution analyzer gate still reports only the pre-existing `xUnit1025` at `SpendEntriesEndpointsWafTests.cs:813`.
 - Observatory sweep Node regression: pass, `36/36`.
 - Web Vitest: pass, `214/214` across 30 files.
@@ -66,4 +67,4 @@ Composition always exposes exactly three Anthropic definitions. A configured `AN
 
 ## Ponytail full
 
-The existing source, repository, pricing, billing-writer, HTTP, JSON, and DI patterns were reused. No universal provider client, runtime plugin system, cross-provider paginator, event bus, package, polling-worker branch, or speculative plan matrix was added. The only extracted methods are concrete Anthropic parsing and composition helpers required to keep analyzer gates clean.
+The existing source, repository, pricing, billing-writer, HTTP, JSON, and DI patterns were reused. No universal provider client, runtime plugin system, cross-provider paginator, event bus, package, polling-worker branch, or speculative plan matrix was added. The only extracted methods are concrete Anthropic parsing and composition helpers required to keep analyzer gates clean; the dead per-call unavailability switch was removed because every Admin report uses the same narrow structured classification.
