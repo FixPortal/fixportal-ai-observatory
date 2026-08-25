@@ -151,7 +151,7 @@ public sealed class SourceSyncStateStore(AiObservatoryDbContext db)
     )
     {
         var expectedSeconds = ExpectedSeconds(expectedRefreshInterval);
-        await db.Database.ExecuteSqlInterpolatedAsync(
+        var rowsAffected = await db.Database.ExecuteSqlInterpolatedAsync(
             $"""
             INSERT INTO "SourceSyncStates"
                 ("SourceId", "IsConfigured", "IsAvailable", "ExpectedRefreshIntervalSeconds",
@@ -171,6 +171,10 @@ public sealed class SourceSyncStateStore(AiObservatoryDbContext db)
             """,
             cancellationToken
         );
+        if (onlyIfLatestAttempt && rowsAffected == 0)
+        {
+            return -1;
+        }
 
         return await db
             .SourceSyncStates.AsNoTracking()

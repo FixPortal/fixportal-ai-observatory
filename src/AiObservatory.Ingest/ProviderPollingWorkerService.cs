@@ -209,7 +209,10 @@ public class ProviderPollingWorkerService(
                     cancellationToken,
                     onlyIfLatestAttempt: true
                 );
-            LogFailure(sourceId, count, error);
+            if (count >= 0)
+            {
+                LogFailure(sourceId, count, error);
+            }
         }
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
         {
