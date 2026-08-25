@@ -54,6 +54,17 @@ jobs:
             echo "::error::OBSERVATORY_IDE_API_KEY Key Vault reference is not Resolved (status: ${reference_status:-missing})."
             exit 1
           fi
+      - name: Stop ingest before running API migrations
+        run: |
+          az webapp stop --resource-group fpaiobs-rg --name fpaiobs-ingest
+          deadline=$(( $(date +%s) + 120 ))
+          while [ "$(az webapp show --resource-group fpaiobs-rg --name fpaiobs-ingest --query state -o tsv)" != "Stopped" ]; do
+            [ "$(date +%s)" -lt "$deadline" ] || {
+              echo "::error::Ingest did not stop; refusing to migrate under an active worker."
+              exit 1
+            }
+            sleep 5
+          done
       - uses: azure/webapps-deploy@02a81bead70021f5284939794bcec79c271ab383 # v3
         with:
           app-name: fpaiobs-api
@@ -126,16 +137,25 @@ jobs:
           app-name: fpaiobs-ingest
           package: ./publish/ingest
 
-      # Same rationale as the API gate above, but this one asserts more. /healthz is
-      # unauthenticated and reports the worker's own state, so a 200 here means the poll
-      # loop is actually running — not merely that a web host bound a port. That matters
-      # for this app in particular: it spent its entire deployed life failing App Service's
-      # startup probe while `az webapp show` reported "state": "Running", and nothing
-      # noticed for months.
+  ensure-ingest-running:
+    name: Ensure ingest is running
+    needs: [deploy-api, deploy-ingest]
+    runs-on: ubuntu-latest
+    if: ${{ always() && ((github.event_name == 'workflow_run' && github.event.workflow_run.conclusion == 'success' && github.event.workflow_run.event == 'push' && github.event.workflow_run.head_branch == 'main') || (github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main')) }}
+    timeout-minutes: 15
+    permissions:
+      contents: read
+    steps:
+      - uses: azure/login@f5d393ae46f8fde4be8b75f32e3fc50e654ad0ca # v3
+        with:
+          creds: ${{ secrets.AZURE_CREDENTIALS }}
+      - name: Start ingest after deployment
+        run: az webapp start --resource-group fpaiobs-rg --name fpaiobs-ingest
+
+      # This runs even when either deployment fails. A failed deployment therefore leaves
+      # a red workflow and a verified running worker, rather than a silently stopped one.
       - name: Verify the ingest worker is healthy
         run: |
-          # Same deadline bound and the same curl-status handling as the API gate above;
-          # see that step for why `$(curl ... || echo 000)` is wrong.
           deadline=$(( $(date +%s) + 600 ))
           while :; do
             code=$(curl -s -o /dev/null -w '%{http_code}' --max-time 15 \

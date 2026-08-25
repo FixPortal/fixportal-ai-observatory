@@ -30,10 +30,10 @@ public class GitHubIngestionService(
         {
             throw new SourceUnavailableException("GitHub API rate limit exhausted");
         }
-        if (result.FailedRepoCount > 0 && result.FailedRepoCount == options.Value.GitHubRepoAllowlist.Length)
+        if (result.FailedRepoCount > 0)
         {
             throw new InvalidOperationException(
-                $"All {result.FailedRepoCount} configured GitHub repos failed to ingest this cycle"
+                $"{result.FailedRepoCount} of {options.Value.GitHubRepoAllowlist.Length} configured GitHub repos failed to ingest this cycle"
             );
         }
         return new SourceIngestionResult(result.LatestObservationAt);

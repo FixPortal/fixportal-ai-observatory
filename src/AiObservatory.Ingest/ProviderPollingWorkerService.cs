@@ -125,13 +125,21 @@ public class ProviderPollingWorkerService(
     {
         try
         {
+            var state = await stateStore.GetAsync(source.SourceId, cancellationToken);
+            var sourceFrom = state?.LastSuccessAt is { } lastSuccessAt
+                ? LocalDate.Min(from, lastSuccessAt.InUtc().Date)
+                : from;
+            sourceFrom = state?.PendingFromDate is { } pendingFromDate
+                ? LocalDate.Min(sourceFrom, pendingFromDate)
+                : sourceFrom;
             await stateStore.MarkAttemptAsync(
                 source.SourceId,
                 definition.ExpectedRefreshInterval,
                 current,
-                cancellationToken
+                cancellationToken,
+                sourceFrom
             );
-            var result = await source.IngestAsync(from, through, cancellationToken);
+            var result = await source.IngestAsync(sourceFrom, through, cancellationToken);
             await stateStore.MarkSuccessAsync(
                 source.SourceId,
                 definition.ExpectedRefreshInterval,

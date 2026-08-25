@@ -208,13 +208,52 @@ def main():
 
         jobs = document.get("jobs", {})
         if isinstance(jobs, dict) and "deploy-api" in jobs and "deploy-ingest" in jobs:
-            ingest_needs = jobs["deploy-ingest"].get("needs", [])
-            if isinstance(ingest_needs, str):
-                ingest_needs = [ingest_needs]
-            if "deploy-api" not in ingest_needs:
+            dependencies = {
+                name: [needs] if isinstance(needs := job.get("needs", []), str) else needs
+                for name, job in jobs.items()
+                if isinstance(job, dict)
+            }
+            if "deploy-api" not in dependencies.get("deploy-ingest", []):
                 print(
-                    f"::error file={path}::The ingest deployment must need deploy-api so "
-                    "database migrations complete before the worker starts."
+                    f"::error file={path}::deploy-ingest must need deploy-api so migrations "
+                    "complete before the new worker starts."
+                )
+                failed = True
+
+            api_steps = jobs["deploy-api"].get("steps", [])
+            stop_step = next(
+                (
+                    index
+                    for index, step in enumerate(api_steps)
+                    if isinstance(step, dict)
+                    and "az webapp stop" in step.get("run", "")
+                    and "fpaiobs-ingest" in step.get("run", "")
+                ),
+                None,
+            )
+            deploy_step = next(
+                (
+                    index
+                    for index, step in enumerate(api_steps)
+                    if isinstance(step, dict) and step.get("uses", "").startswith("azure/webapps-deploy@")
+                ),
+                None,
+            )
+            if stop_step is None or deploy_step is None or stop_step > deploy_step:
+                print(
+                    f"::error file={path}::deploy-api must stop fpaiobs-ingest before the API "
+                    "deployment can run its database migrations."
+                )
+                failed = True
+
+            recovery = jobs.get("ensure-ingest-running", {})
+            recovery_if = recovery.get("if", "") if isinstance(recovery, dict) else ""
+            if not {"deploy-api", "deploy-ingest"}.issubset(dependencies.get("ensure-ingest-running", [])) or (
+                "always()" not in recovery_if
+            ):
+                print(
+                    f"::error file={path}::ensure-ingest-running must always run after both "
+                    "deploy jobs so a failed deployment cannot leave ingestion stopped."
                 )
                 failed = True
 

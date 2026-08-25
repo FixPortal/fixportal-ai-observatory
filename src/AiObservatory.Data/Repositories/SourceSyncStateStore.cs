@@ -45,7 +45,8 @@ public sealed class SourceSyncStateStore(AiObservatoryDbContext db)
         string sourceId,
         Duration expectedRefreshInterval,
         Instant current,
-        CancellationToken cancellationToken
+        CancellationToken cancellationToken,
+        LocalDate? pendingFromDate = null
     )
     {
         var expectedSeconds = ExpectedSeconds(expectedRefreshInterval);
@@ -53,13 +54,15 @@ public sealed class SourceSyncStateStore(AiObservatoryDbContext db)
             $"""
             INSERT INTO "SourceSyncStates"
                 ("SourceId", "IsConfigured", "IsAvailable", "ExpectedRefreshIntervalSeconds",
-                 "LastAttemptAt", "LastSuccessAt", "LatestObservationAt", "ConsecutiveFailureCount", "LastError")
+                 "LastAttemptAt", "LastSuccessAt", "LatestObservationAt", "PendingFromDate",
+                 "ConsecutiveFailureCount", "LastError")
             VALUES
-                ({sourceId}, TRUE, NULL, {expectedSeconds}, {current}, NULL, NULL, 0, NULL)
+                ({sourceId}, TRUE, NULL, {expectedSeconds}, {current}, NULL, NULL, {pendingFromDate}, 0, NULL)
             ON CONFLICT ("SourceId") DO UPDATE SET
                 "IsConfigured" = TRUE,
                 "ExpectedRefreshIntervalSeconds" = EXCLUDED."ExpectedRefreshIntervalSeconds",
-                "LastAttemptAt" = GREATEST("SourceSyncStates"."LastAttemptAt", EXCLUDED."LastAttemptAt")
+                "LastAttemptAt" = GREATEST("SourceSyncStates"."LastAttemptAt", EXCLUDED."LastAttemptAt"),
+                "PendingFromDate" = LEAST("SourceSyncStates"."PendingFromDate", EXCLUDED."PendingFromDate")
             """,
             cancellationToken
         );
@@ -91,6 +94,7 @@ public sealed class SourceSyncStateStore(AiObservatoryDbContext db)
                     "SourceSyncStates"."LatestObservationAt",
                     EXCLUDED."LatestObservationAt"
                 ),
+                "PendingFromDate" = NULL,
                 "ConsecutiveFailureCount" = 0,
                 "LastError" = NULL
             """,
