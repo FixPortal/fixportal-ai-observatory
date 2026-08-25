@@ -276,7 +276,8 @@ present, so an unconfigured worker is a no-op rather than an error:
 
 | Setting | Enables | Notes |
 |---|---|---|
-| `ANTHROPIC_BILLING_KEY` | Anthropic usage | Workspace **admin** key, not a standard API key |
+| `ANTHROPIC_BILLING_KEY` | Anthropic Messages usage and billed Cost Report | Claude Platform organization **Admin API key** (`sk-ant-admin...`), not a standard API key or Claude Enterprise Analytics key |
+| `CLAUDE_CODE_USAGE_ENABLED=true` | Claude Code daily usage | Opt-in; also requires `ANTHROPIC_BILLING_KEY` and an organization with Admin API access |
 | `OPENAI_ADMIN_KEY` | OpenAI usage | Admin key with `openai.usage.read` |
 | `GOOGLE_BILLING_ACCOUNT_ID` | Google billing | Also needs `GOOGLE_APPLICATION_CREDENTIALS` |
 | `GITHUB_TOKEN` + `COPILOT_ORG` | Copilot seat metrics | Token needs `manage_billing:copilot` |
@@ -355,20 +356,21 @@ than enabling it with a garbage credential and 401-ing every hour.
 
 They are inert for **different** reasons, and only one of them is sound code:
 
-- **Anthropic — correct code, wrong fit.**
-  `/v1/organizations/usage_report/messages` is grouped and filtered entirely by
-  API-traffic dimensions (`api_key_id`, `workspace_id`, `service_account_id`,
-  `service_tier`), so usage billed against a Claude plan does not appear in it.
-  The arm would work for an organisation billed through the API.
+- **Anthropic — supported, but this deployment has no organization Admin key.**
+  With `ANTHROPIC_BILLING_KEY`, the worker reads complete paginated Platform
+  Admin reports from `/v1/organizations/usage_report/messages` and
+  `/v1/organizations/cost_report`. Messages become API/list-price estimates;
+  the Cost Report becomes billed spend. Those are deliberately separate facts,
+  so billed spend is never inferred from the usage estimate.
 
-  Note the narrower scope of that claim: Anthropic *does* expose subscription
-  usage via a **different** endpoint,
-  [`/v1/organizations/usage_report/claude_code`](https://platform.claude.com/docs/en/api/admin/usage_report),
-  which reports `customer_type: "api" | "subscription"` with per-model token
-  breakdowns. It requires an organisation Admin key and its `subscription_type`
-  admits only `enterprise` and `team`, so a personal Pro/Max deployment still
-  cannot use it — but "Anthropic exposes no subscription usage at all" would be
-  wrong, and this arm is worth revisiting on a Team upgrade.
+  `CLAUDE_CODE_USAGE_ENABLED=true` additionally enables the single-day
+  [`/v1/organizations/usage_report/claude_code`](https://platform.claude.com/docs/en/api/http/admin/usage_report/retrieve_claude_code)
+  report. Its upstream `customer_type` chooses API or subscription scope, and
+  an upstream estimated cost stays provider-estimated rather than billed. The
+  endpoint requires Admin API access and is unavailable on Claude Platform on
+  AWS; the worker does not hardcode plan names as an eligibility test. An
+  explicit provider ineligibility response marks only this source unavailable,
+  while authentication and transient failures remain visible failures.
 
 - **Copilot — the endpoint no longer exists.**
   `CopilotUsageClient.cs:23` calls `/orgs/{org}/copilot/metrics`, which GitHub
@@ -385,11 +387,12 @@ Anthropic usage here comes from the local sweeper reading
 
 Two things to know before enabling either arm:
 
-- **The Anthropic arm and the local sweeper do not deduplicate against each
-  other.** The unique index is `(Provider, EventKey)`; the sweeper writes
-  `anthropic:<session>:<model>:<in>-<out>` while the worker writes
-  `anthropic:<date>:<model>`. Run both over overlapping usage and the aggregates
-  count it twice.
+- **Remote Claude Code reports and the local sweeper do not deduplicate against
+  each other.** They are independent provider and local-telemetry observations.
+  Running both over the same Claude Code activity counts overlapping tokens (and
+  any provider estimate) twice; choose one acquisition lane for that activity.
+  Messages API usage is a separate API lane and must not be treated as a Claude
+  subscription observation merely because the model name matches.
 - An absent *optional* secret is not the same failure as a *required* setting
   left unset. `Ingest__GitHubRepoAllowlist` was the latter — a real defect that
   silently disabled GitHub activity. These two are the former.
