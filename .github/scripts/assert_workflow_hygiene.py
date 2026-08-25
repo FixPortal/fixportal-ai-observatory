@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """Assert workflow hygiene structurally: no target-context trigger, no blanket
-write token, third-party actions pinned to an immutable ref.
+write token, third-party actions pinned to an immutable ref, and schema-owning
+API deployments complete before ingest workers start.
 
 This replaces three line-anchored `grep` assertions. They were bypassable by
 ORDINARY block-style YAML, not by any evasion technique: a value may sit on the
@@ -202,6 +203,18 @@ def main():
                 print(
                     f"::error file={path}::Third-party action '{ref}' (job '{job}') is not pinned to "
                     "an immutable revision. A mutable tag can change after review."
+                )
+                failed = True
+
+        jobs = document.get("jobs", {})
+        if isinstance(jobs, dict) and "deploy-api" in jobs and "deploy-ingest" in jobs:
+            ingest_needs = jobs["deploy-ingest"].get("needs", [])
+            if isinstance(ingest_needs, str):
+                ingest_needs = [ingest_needs]
+            if "deploy-api" not in ingest_needs:
+                print(
+                    f"::error file={path}::The ingest deployment must need deploy-api so "
+                    "database migrations complete before the worker starts."
                 )
                 failed = True
 
