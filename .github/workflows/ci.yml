@@ -22,7 +22,6 @@ jobs:
     timeout-minutes: 10
     permissions:
       contents: read
-      packages: read
     services:
       postgres:
         # Pull from the AWS ECR Public mirror of the Docker official image, not
@@ -65,8 +64,6 @@ jobs:
 
       - name: Restore
         run: dotnet restore AiObservatory.slnx
-        env:
-          GITHUB_PACKAGES_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Build
         run: dotnet build AiObservatory.slnx --configuration Release --no-restore
@@ -90,7 +87,6 @@ jobs:
     timeout-minutes: 10
     permissions:
       contents: read
-      packages: read
     defaults:
       run:
         working-directory: src/AiObservatory.Web
@@ -110,11 +106,8 @@ jobs:
           node-version: '24'
           cache: 'npm'
           cache-dependency-path: src/AiObservatory.Web/package-lock.json
-          registry-url: 'https://npm.pkg.github.com'
 
       - run: npm ci
-        env:
-          NODE_AUTH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       - run: npm run lint
       - run: npm test
       - run: npm run build

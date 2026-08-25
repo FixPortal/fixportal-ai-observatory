@@ -1,1 +1,2 @@
 *.cs text eol=crlf
+eng/analysis/CodeStyle.globalconfig text eol=lf

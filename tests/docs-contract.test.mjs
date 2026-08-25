@@ -79,9 +79,9 @@ test('documentation describes the source-aware setup contract', async () => {
 
   for (const guide of guides) assert.match(readme, new RegExp(`\\(${guide.replace('.', '\\.') }\\)`), `README missing ${guide}`)
   assert.doesNotMatch(readme, /14-day|merged spend|exhaustive Postman/i, 'README contains retired dashboard or collection claim')
-  assert.match(readme, /GITHUB_PACKAGES_TOKEN/, 'README needs the private-feed restore prerequisite')
-  assert.match(readme, /only contributors explicitly granted package access/i, 'README must state the private-feed access limit')
-  assert.match(readme, /public users.*cannot complete.*quick start/i, 'README must state that public users cannot complete quick start')
+  assert.match(readme, /Restore uses public feeds; no GitHub Packages token is required\./i, 'README must state the public restore prerequisite')
+  const privateRestoreToken = ['GITHUB', 'PACKAGES', 'TOKEN'].join('_')
+  assert.doesNotMatch(readme, new RegExp(`${privateRestoreToken}|private FixPortal GitHub Packages|public users.*cannot complete.*quick start`, 'i'), 'README must not retain the private restore blocker')
   assert.doesNotMatch(readme, /Task 5/i, 'README must not expose internal task jargon')
   assert.match(readme, /^## Local development$/m, 'README needs the Local development anchor')
   assert.match(readme, /npm --prefix src\/AiObservatory\.Web ci/, 'README manual quick start needs deterministic dependency installation')
