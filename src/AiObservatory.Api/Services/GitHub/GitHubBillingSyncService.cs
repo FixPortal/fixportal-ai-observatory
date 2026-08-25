@@ -47,6 +47,7 @@ public class GitHubBillingSyncService(
         }
 
         var written = 0;
+        List<Exception>? failures = null;
         foreach (var line in Aggregate(items))
         {
             var (vendorKey, categoryKey) = ProductMap.GetValueOrDefault(line.Product, Fallback);
@@ -67,6 +68,7 @@ public class GitHubBillingSyncService(
             }
             catch (Exception exception)
             {
+                (failures ??= []).Add(exception);
                 logger.LogError(
                     exception,
                     "GitHub billing: could not retain {Product}/{Sku} in {Month}",
@@ -78,6 +80,10 @@ public class GitHubBillingSyncService(
         }
 
         logger.LogInformation("GitHub billing: {Written} entries written or updated", written);
+        if (failures is not null)
+        {
+            throw new AggregateException("One or more GitHub billing lines could not be retained.", failures);
+        }
         return written;
     }
 

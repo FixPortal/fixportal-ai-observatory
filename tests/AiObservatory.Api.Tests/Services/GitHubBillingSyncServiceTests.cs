@@ -142,7 +142,7 @@ public sealed class GitHubBillingSyncServiceTests : IDisposable
     }
 
     [Fact]
-    public async Task OneRejectedLineDoesNotTakeTheRestOfTheBillWithIt()
+    public async Task RejectedLinesFailTheSyncAfterTheRestOfTheBillIsProcessed()
     {
         var writes = new List<CapturedWrite>();
         var writer = Writer(
@@ -154,9 +154,10 @@ public sealed class GitHubBillingSyncServiceTests : IDisposable
         );
         var sut = Create(ClientReturning(Item("actions", "linux", 10m), Item("code_quality", "quality", 20m)), writer);
 
-        var written = await sut.SyncAsync(TestContext.Current.CancellationToken);
+        var act = () => sut.SyncAsync(TestContext.Current.CancellationToken);
 
-        written.Should().Be(1);
+        var thrown = await act.Should().ThrowAsync<AggregateException>();
+        thrown.Which.InnerExceptions.Should().ContainSingle().Which.Message.Should().Be("test rejection");
         writes.Select(write => write.Observation.Sku).Should().Equal("linux", "quality");
     }
 
