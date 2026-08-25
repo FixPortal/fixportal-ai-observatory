@@ -12,6 +12,7 @@ using AiObservatory.Ingest.Services.GitHub;
 using AiObservatory.Ingest.Services.Google;
 using AiObservatory.Ingest.Services.OpenAi;
 using AiObservatory.Ingest.Sources;
+using Google.Cloud.BigQuery.V2;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Http;
@@ -83,28 +84,7 @@ var host = Host.CreateDefaultBuilder(args)
                 services.TryAddEnumerable(ServiceDescriptor.Scoped<IUsageSource, CopilotReportSource>());
             }
 
-            // Google — enabled when GOOGLE_BILLING_ACCOUNT_ID is set.
-            // Also requires GOOGLE_APPLICATION_CREDENTIALS pointing at a service account key.
-            // See GoogleBillingClient.cs for full setup instructions.
-            var googleBillingAccount = cfg["GOOGLE_BILLING_ACCOUNT_ID"];
-            var googleConfigured = IsConfigured(googleBillingAccount);
-            services.AddSingleton(
-                new SourceDefinition(UsageSourceIds.GoogleCloudBillingExport, googleConfigured, expectedRefreshInterval)
-            );
-            if (googleConfigured)
-            {
-                services.AddHttpClient<IGoogleBillingClient, GoogleBillingClient>(c =>
-                {
-                    c.BaseAddress = new Uri("https://cloudbilling.googleapis.com");
-                });
-                services.AddScoped<IGoogleBillingClient>(sp =>
-                {
-                    var factory = sp.GetRequiredService<IHttpClientFactory>();
-                    var http = factory.CreateClient(nameof(IGoogleBillingClient));
-                    return new GoogleBillingClient(http, googleBillingAccount!);
-                });
-                services.TryAddEnumerable(ServiceDescriptor.Scoped<IUsageSource, GoogleIngestionService>());
-            }
+            var googleConfigured = RegisterGoogleBillingExport(services, cfg, expectedRefreshInterval);
 
             // OpenAI — enabled when OPENAI_ADMIN_KEY is set.
             // Requires an admin API key with the openai.usage.read permission.
@@ -128,7 +108,7 @@ var host = Host.CreateDefaultBuilder(args)
                 services.TryAddEnumerable(ServiceDescriptor.Scoped<IUsageSource, OpenAiCostsSource>());
             }
 
-            if (anthropicConfigured || openAiConfigured)
+            if (anthropicConfigured || openAiConfigured || googleConfigured)
             {
                 services.AddMemoryCache();
                 services.AddHttpClient<FxRateProvider>().ConfigureHttpClient(c => c.Timeout = TimeSpan.FromSeconds(10));
@@ -276,6 +256,40 @@ static bool RegisterAnthropicSources(
     {
         services.TryAddEnumerable(ServiceDescriptor.Scoped<IUsageSource, ClaudeCodeUsageSource>());
     }
+    return true;
+}
+
+static bool RegisterGoogleBillingExport(
+    IServiceCollection services,
+    IConfiguration configuration,
+    Duration expectedRefreshInterval
+)
+{
+    var projectId = configuration["GOOGLE_CLOUD_PROJECT_ID"];
+    var table = configuration["GOOGLE_BILLING_EXPORT_TABLE"];
+    var projectConfigured = IsConfigured(projectId);
+    var tableConfigured = IsConfigured(table);
+    if (projectConfigured != tableConfigured)
+    {
+        throw new InvalidOperationException(
+            "GOOGLE_CLOUD_PROJECT_ID and GOOGLE_BILLING_EXPORT_TABLE must be configured together."
+        );
+    }
+
+    services.AddSingleton(
+        new SourceDefinition(UsageSourceIds.GoogleCloudBillingExport, projectConfigured, expectedRefreshInterval)
+    );
+    if (!projectConfigured)
+    {
+        return false;
+    }
+
+    GoogleBillingExportClient.ValidateExportTable(table!);
+    services.AddSingleton<IGoogleBillingExportClient>(_ => new GoogleBillingExportClient(
+        new Lazy<BigQueryClient>(() => BigQueryClient.Create(projectId!)),
+        table!
+    ));
+    services.TryAddEnumerable(ServiceDescriptor.Scoped<IUsageSource, GoogleBillingExportSource>());
     return true;
 }
 

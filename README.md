@@ -279,7 +279,7 @@ present, so an unconfigured worker is a no-op rather than an error:
 | `ANTHROPIC_BILLING_KEY` | Anthropic Messages usage and billed Cost Report | Claude Platform organization **Admin API key** (`sk-ant-admin...`), not a standard API key or Claude Enterprise Analytics key |
 | `CLAUDE_CODE_USAGE_ENABLED=true` | Claude Code daily usage | Opt-in; also requires `ANTHROPIC_BILLING_KEY` and an organization with Admin API access |
 | `OPENAI_ADMIN_KEY` | OpenAI usage | Admin key with `openai.usage.read` |
-| `GOOGLE_BILLING_ACCOUNT_ID` | Google billing | Also needs `GOOGLE_APPLICATION_CREDENTIALS` |
+| `GOOGLE_CLOUD_PROJECT_ID` + `GOOGLE_BILLING_EXPORT_TABLE` | Google Cloud Billing export | Required together. Query/billing project and `project.dataset.table` for a Standard/Detailed export table or stable compatible view; uses Application Default Credentials (ADC). |
 | `GITHUB_TOKEN` + `COPILOT_ORG` | Copilot organization 28-day engagement report | Classic token needs `read:org`; fine-grained token needs Organization Copilot metrics (read) |
 | `GITHUB_TOKEN` + `Ingest__GitHubRepoAllowlist` | GitHub PR/commit/CI activity | Token additionally needs `contents:read`, `pull-requests:read`, `actions:read` |
 
@@ -355,6 +355,18 @@ than enabling it with a garbage credential and 401-ing every hour.
 
 They are inert because this deployment does not have the required upstream
 organization credentials:
+
+- **Google Cloud Billing — supported, but unconfigured in this Azure deployment.**
+  Enable BigQuery billing export (Standard or Detailed) and provide
+  `GOOGLE_CLOUD_PROJECT_ID` plus `GOOGLE_BILLING_EXPORT_TABLE`; the worker uses ADC,
+  so grant that identity BigQuery query access and read access to the export or view.
+  Google can append invoice corrections after the original usage date, so each poll
+  reaggregates groups changed since the prior `export_time` watermark as well as the
+  requested usage range. Amounts retain the export's local currency and are converted
+  to GBP through the existing historical-FX path. This creates billed cloud-spend
+  evidence only—never token telemetry—and BigQuery query charges remain the customer's
+  responsibility. Cross-cloud credential provisioning and committed service-account
+  keys are deliberately outside this repository.
 
 - **Anthropic — supported, but this deployment has no organization Admin key.**
   With `ANTHROPIC_BILLING_KEY`, the worker reads complete paginated Platform

@@ -1,0 +1,80 @@
+using System.Globalization;
+using System.Security.Cryptography;
+using System.Text;
+using AiObservatory.Data.Entities;
+using AiObservatory.Data.Repositories;
+using AiObservatory.Data.Spend;
+using AiObservatory.Ingest.Sources;
+using NodaTime;
+
+namespace AiObservatory.Ingest.Services.Google;
+
+public sealed class GoogleBillingExportSource(
+    IGoogleBillingExportClient client,
+    SourceSyncStateStore states,
+    BillingObservationWriter writer,
+    ILogger<GoogleBillingExportSource> logger
+) : IUsageSource
+{
+    public string SourceId => UsageSourceIds.GoogleCloudBillingExport;
+
+    public async Task<SourceIngestionResult> IngestAsync(
+        LocalDate from,
+        LocalDate through,
+        CancellationToken cancellationToken
+    )
+    {
+        var fromInstant = from.AtStartOfDayInZone(DateTimeZone.Utc).ToInstant();
+        var throughExclusive = through.PlusDays(1).AtStartOfDayInZone(DateTimeZone.Utc).ToInstant();
+        var previous = await states.GetAsync(SourceId, cancellationToken);
+        var records = await client.GetBillingRecordsAsync(
+            fromInstant,
+            throughExclusive,
+            previous?.LatestObservationAt ?? fromInstant,
+            cancellationToken
+        );
+        foreach (var record in records)
+        {
+            await writer.RecordAsync(
+                new BillingObservation
+                {
+                    ProviderKey = "google",
+                    SourceId = SourceId,
+                    SourceKind = SourceKind.ProviderApi,
+                    UsageScope = UsageScope.Api,
+                    CostBasis = CostBasis.Billed,
+                    ObservationKey = ObservationKey(record),
+                    OccurredOn = record.UsageDate,
+                    BillingPeriod = record.BillingPeriod,
+                    Service = record.ServiceDescription,
+                    Sku = record.SkuDescription,
+                    Currency = record.Currency,
+                    GrossAmount = record.GrossAmount,
+                    CreditAmount = record.CreditAmount,
+                    NetAmount = record.NetAmount,
+                    RawPayload = record.RawJson,
+                    ObservedAt = record.ObservedAt,
+                },
+                "google",
+                "cloud",
+                cancellationToken
+            );
+        }
+        logger.LogInformation("Google: retained {Count} BigQuery billing observations", records.Count);
+        return new SourceIngestionResult(records.Count == 0 ? null : records.Max(record => record.ObservedAt));
+    }
+
+    private static string ObservationKey(GoogleBillingRecord record)
+    {
+        var material = string.Concat(
+            Part(record.UsageDate.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture)),
+            Part(record.BillingPeriod),
+            Part(record.ServiceId),
+            Part(record.SkuId),
+            Part(record.Currency)
+        );
+        return $"google:{record.UsageDate:yyyy-MM-dd}:{Convert.ToHexStringLower(SHA256.HashData(Encoding.UTF8.GetBytes(material)))}";
+    }
+
+    private static string Part(string value) => $"{value.Length.ToString(CultureInfo.InvariantCulture)}:{value}";
+}
