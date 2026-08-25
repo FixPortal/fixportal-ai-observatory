@@ -1,19 +1,19 @@
 {
   "info": {
     "name": "AI Observatory",
-    "description": "All API endpoints for the AI Observatory service.\n\nSetup:\n1. Set `base_url` to `http://localhost:5000/api` (local) or `https://fpaiobs-api.azurewebsites.net/api` (production).\n2. Set `api_key` to your `OBSERVATORY_API_KEY` value.\n3. In local dev, GET requests work without a key; writes require it.\n\nAfter creating a subscription, insight lookup, or budget rule, copy the returned `id` into the matching collection variable (`subscription_id`, `insight_id`, `budget_rule_id`).",
+    "description": "Representative API requests for the AI Observatory service.\n\nSetup:\n1. Set `base_url` to `http://localhost:5039/api` (local) or your deployed API base URL ending in `/api`.\n2. Set `api_key` to your `OBSERVATORY_API_KEY` value when needed.\n3. In Development, GET is keyless only when both `OBSERVATORY_API_KEY` and `OBSERVATORY_READONLY_API_KEY` are unset; otherwise either configured key is required. Non-GET is keyless when `OBSERVATORY_API_KEY` is unset; when configured, its admin key is required. Non-Development refuses to start unless `OBSERVATORY_API_KEY`, `OBSERVATORY_READONLY_API_KEY`, and `OBSERVATORY_IDE_API_KEY` are present, non-default, and mutually distinct.\n\nAfter creating a subscription, insight lookup, or budget rule, copy the returned `id` into the matching collection variable (`subscription_id`, `insight_id`, `budget_rule_id`).",
     "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
   },
   "variable": [
     {
       "key": "base_url",
-      "value": "http://localhost:5000/api",
-      "description": "Change to https://fpaiobs-api.azurewebsites.net/api for production."
+      "value": "http://localhost:5039/api",
+      "description": "Change to your deployed API base URL ending in `/api` for production."
     },
     {
       "key": "api_key",
       "value": "",
-      "description": "Value of OBSERVATORY_API_KEY. Required for all writes; GETs are keyless in local dev."
+      "description": "Admin key for writes. In Development, GET is keyless only when both `OBSERVATORY_API_KEY` and `OBSERVATORY_READONLY_API_KEY` are unset; Non-GET is keyless when `OBSERVATORY_API_KEY` is unset."
     },
     {
       "key": "subscription_id",
@@ -38,10 +38,30 @@
     {
       "key": "event_key",
       "value": "my-event-key-001",
-      "description": "Idempotency key used when ingesting events and when patching event cost."
+      "description": "Source-scoped idempotency key used when ingesting events."
     }
   ],
   "item": [
+    {
+      "name": "Sources",
+      "item": [
+        {
+          "name": "Get source status",
+          "request": {
+            "method": "GET",
+            "header": [
+              { "key": "X-Observatory-Key", "value": "{{api_key}}" }
+            ],
+            "url": {
+              "raw": "{{base_url}}/sources/status",
+              "host": ["{{base_url}}"],
+              "path": ["sources", "status"]
+            },
+            "description": "Returns configured, fresh, stale, failing, unavailable, or not-configured source status without treating it as process liveness."
+          }
+        }
+      ]
+    },
     {
       "name": "Events",
       "item": [
@@ -55,7 +75,7 @@
             ],
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"provider\": \"anthropic\",\n  \"model\": \"claude-sonnet-4-6\",\n  \"inputTokens\": 1500,\n  \"outputTokens\": 800,\n  \"cacheReadTokens\": 200,\n  \"cacheWriteTokens\": 0,\n  \"costUsd\": 0.012,\n  \"eventKey\": \"{{event_key}}\",\n  \"rawPayload\": \"{}\"\n}",
+              "raw": "{\n  \"provider\": \"anthropic\",\n  \"model\": \"claude-sonnet-4-6\",\n  \"inputTokens\": 1500,\n  \"outputTokens\": 800,\n  \"cacheReadTokens\": 200,\n  \"cacheWriteTokens\": 0,\n  \"cacheWrite1hTokens\": 0,\n  \"costUsd\": null,\n  \"sourceId\": \"anthropic-usage-api\",\n  \"sourceKind\": \"providerApi\",\n  \"usageScope\": \"api\",\n  \"costBasis\": \"listPriceEstimate\",\n  \"observedAtUtc\": \"2026-08-25T10:00:00Z\",\n  \"eventKey\": \"{{event_key}}\",\n  \"rawPayload\": \"{\\\"service_tier\\\":\\\"standard\\\",\\\"speed\\\":\\\"standard\\\",\\\"inference_geo\\\":\\\"global\\\",\\\"cache_creation\\\":{\\\"ephemeral_5m_input_tokens\\\":0,\\\"ephemeral_1h_input_tokens\\\":0}}\"\n}",
               "options": { "raw": { "language": "json" } }
             },
             "url": {
@@ -63,7 +83,7 @@
               "host": ["{{base_url}}"],
               "path": ["events"]
             },
-            "description": "Ingest a single usage event.\n\nValid providers: `anthropic`, `google`, `copilot`, `openai`.\n\n`eventKey` is an optional idempotency key — a second POST with the same key and provider returns `{ id, duplicate: true }` without creating a duplicate row.\n\n`occurredAtUtc` (optional) backfills the event onto the correct day; omit it to use ingestion time."
+            "description": "Ingest a single usage event. Valid providers: `anthropic`, `google`, `copilot`, `openai`, and `moonshot`.\n\n`eventKey` is optional and source-scoped: a second POST with the same `sourceId` and `eventKey` corrects that snapshot without creating a duplicate row.\n\n`occurredAtUtc` (optional) backfills the event onto the correct day; omit it to use ingestion time."
           }
         },
         {
@@ -76,7 +96,7 @@
             ],
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"provider\": \"google\",\n  \"model\": \"gemini-2.0-flash\",\n  \"inputTokens\": 5000,\n  \"outputTokens\": 2000,\n  \"cacheReadTokens\": 0,\n  \"cacheWriteTokens\": 0,\n  \"costUsd\": 0.003,\n  \"occurredAtUtc\": \"2026-06-20T14:30:00Z\"\n}",
+              "raw": "{\n  \"provider\": \"openai\",\n  \"model\": \"codex\",\n  \"inputTokens\": 5000,\n  \"outputTokens\": 2000,\n  \"cacheReadTokens\": 0,\n  \"cacheWriteTokens\": 0,\n  \"cacheWrite1hTokens\": 0,\n  \"costUsd\": null,\n  \"sourceId\": \"codex-local\",\n  \"sourceKind\": \"localTelemetry\",\n  \"usageScope\": \"subscription\",\n  \"costBasis\": \"notional\",\n  \"occurredAtUtc\": \"2026-06-20T14:30:00Z\",\n  \"observedAtUtc\": \"2026-08-25T10:00:00Z\"\n}",
               "options": { "raw": { "language": "json" } }
             },
             "url": {
@@ -114,36 +134,12 @@
               "host": ["{{base_url}}"],
               "path": ["events"],
               "query": [
-                { "key": "provider", "value": "anthropic", "description": "Required. One of: anthropic, google, copilot, openai." },
+                { "key": "provider", "value": "anthropic", "description": "Required. One of: anthropic, google, copilot, openai, moonshot." },
                 { "key": "from", "value": null, "description": "Optional. ISO 8601 timestamp (e.g. 2026-06-01T00:00:00Z).", "disabled": true },
                 { "key": "to", "value": null, "description": "Optional. ISO 8601 timestamp.", "disabled": true },
                 { "key": "limit", "value": "100", "description": "Max rows to return (1–10000, default 10000)." }
               ]
             }
-          }
-        },
-        {
-          "name": "Update event cost",
-          "request": {
-            "method": "PATCH",
-            "header": [
-              { "key": "Content-Type", "value": "application/json" },
-              { "key": "X-Observatory-Key", "value": "{{api_key}}" }
-            ],
-            "body": {
-              "mode": "raw",
-              "raw": "{\n  \"costUsd\": 0.025\n}",
-              "options": { "raw": { "language": "json" } }
-            },
-            "url": {
-              "raw": "{{base_url}}/events/{{event_key}}/cost?provider=anthropic",
-              "host": ["{{base_url}}"],
-              "path": ["events", "{{event_key}}", "cost"],
-              "query": [
-                { "key": "provider", "value": "anthropic", "description": "Required. Scopes the eventKey lookup to one provider." }
-              ]
-            },
-            "description": "Correct the cost on an already-ingested event identified by its eventKey. Used by the sweeper to backfill accurate costs after the fact."
           }
         }
       ]
@@ -163,11 +159,11 @@
               "host": ["{{base_url}}"],
               "path": ["aggregates"],
               "query": [
-                { "key": "from", "value": "2026-06-01", "description": "Start date (yyyy-MM-dd). Default: 30 days ago.", "disabled": true },
-                { "key": "to", "value": "2026-06-21", "description": "End date (yyyy-MM-dd). Default: today.", "disabled": true }
+                { "key": "from", "value": "2026-06-01", "description": "Start date (yyyy-MM-dd). Default: 30-day inclusive window (today-29 through today).", "disabled": true },
+                { "key": "to", "value": "2026-06-21", "description": "End date (yyyy-MM-dd). Default: 30-day inclusive window (today-29 through today).", "disabled": true }
               ]
             },
-            "description": "Daily token usage and cost broken down by provider and model. Default range is the last 31 days."
+            "description": "Daily token usage and cost broken down by provider and model. Default range is the 30-day inclusive window (today-29 through today)."
           }
         },
         {
@@ -397,18 +393,18 @@
           }
         },
         {
-          "name": "Webhook status",
+          "name": "Email status",
           "request": {
             "method": "GET",
             "header": [
               { "key": "X-Observatory-Key", "value": "{{api_key}}" }
             ],
             "url": {
-              "raw": "{{base_url}}/budget-rules/webhook-status",
+              "raw": "{{base_url}}/budget-rules/email-status",
               "host": ["{{base_url}}"],
-              "path": ["budget-rules", "webhook-status"]
+              "path": ["budget-rules", "email-status"]
             },
-            "description": "Returns { configured: true/false } indicating whether BUDGET_ALERT_WEBHOOK_URL is set."
+            "description": "Returns { configured: true/false } indicating whether BUDGET_ALERT_EMAIL_TO is set."
           }
         },
         {
@@ -429,7 +425,7 @@
               "host": ["{{base_url}}"],
               "path": ["budget-rules"]
             },
-            "description": "Create a budget alert rule. `provider` is optional (null = across all providers). `period` values: `daily`, `weekly`, `monthly`. A webhook fires when spend crosses `thresholdUsd` within the period."
+            "description": "Create a budget alert rule. `provider` is optional (null = across all providers). `period` values: `daily`, `weekly`, `monthly`. A conditional email notification is sent when email alerts are configured and spend crosses `thresholdUsd` within the period."
           }
         },
         {
@@ -539,7 +535,7 @@
             ],
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"eventType\": \"adversarial-review-run\",\n  \"reviewer\": \"anthropic\",\n  \"model\": \"claude-sonnet-4-6\",\n  \"inputTokens\": 12000,\n  \"outputTokens\": 3500,\n  \"costUsd\": 0.18,\n  \"reviewDurationMs\": 14200,\n  \"issuesRaised\": 7,\n  \"issuesAccepted\": 4,\n  \"runId\": \"2026-06-21T10:00:00Z\"\n}",
+              "raw": "{\n  \"eventType\": \"adversarial-review-run\",\n  \"role\": \"reviewer\",\n  \"reviewer\": \"anthropic\",\n  \"model\": \"claude-sonnet-4-6\",\n  \"inputTokens\": 12000,\n  \"outputTokens\": 3500,\n  \"costUsd\": 0.18,\n  \"reviewDurationMs\": 14200,\n  \"issuesRaised\": 7,\n  \"issuesAccepted\": 4,\n  \"runId\": \"2026-06-21T10:00:00Z\"\n}",
               "options": { "raw": { "language": "json" } }
             },
             "url": {
@@ -596,7 +592,7 @@
               "host": ["{{base_url}}"],
               "path": ["dev", "seed"]
             },
-            "description": "Wipes the database and inserts 14 days of sample aggregates (Anthropic, Google, Copilot), two subscriptions, two budget rules, and three insights. The fastest way to see a populated dashboard locally."
+            "description": "Seeds sample aggregates, subscriptions, budget rules, and insights only when the relevant tables are empty; otherwise it skips them. The fastest way to see a populated dashboard locally."
           }
         }
       ]

@@ -1,99 +1,80 @@
 # Local usage producers
 
-Some AI coding CLIs cannot report their own subscription usage to the Observatory:
+> Machine-local Codex, Copilot, Claude, and Kimi telemetry guide as of 2026-08-25. These are best-effort subscription/notional facts, not invoices.
 
-- **Codex**, **Copilot**, **Claude**, and **Kimi** running on subscription seats are
-  invisible to the vendor billing APIs the `AiObservatory.Ingest` worker polls
-  (or require an organisation plan unavailable to personal subscriptions).
+`observatory-sweep.mjs` reads installed CLI logs and posts cumulative daily/model snapshots to `POST /api/events`. It has no dependencies beyond Node 18+.
 
-The **`observatory-sweep.mjs`** producer reads their local telemetry and sends
-cumulative daily/model snapshots to `POST /api/events`. Stable source-scoped keys
-let a changed transcript correct the same server row without aggregate drift.
-Codex and Copilot retain their local **notional** comparison; Claude is priced by
-the API's Anthropic transition table; Kimi cost remains unknown.
+Each posted snapshot carries explicit provenance so the API preserves its subscription/notional meaning:
 
-| Tool | Log read | Provider recorded |
-|---|---|---|
-| Codex | `~/.codex/sessions/YYYY/MM/DD/rollout-*.jsonl` (last `token_count`) | `OpenAI` |
-| Copilot | `~/.copilot/session-state/<sid>/events.jsonl` (last `session.shutdown`) | `Copilot` |
-| Claude | `~/.claude/projects/**/*.jsonl` (`assistant` messages with usage, deduplicated by `message.id`) | `Anthropic` |
-| Kimi | `~/.kimi-code/sessions/**/wire.jsonl` (`usage.record` only; `step.end` mirrors are ignored) | `Moonshot` |
+```json
+{
+  "provider": "OpenAI",
+  "model": "codex",
+  "inputTokens": 1200,
+  "outputTokens": 400,
+  "cacheReadTokens": 150,
+  "cacheWriteTokens": 80,
+  "cacheWrite1hTokens": 0,
+  "thoughtTokens": 120,
+  "costUsd": null,
+  "eventKey": "codex:2026-08-25:codex",
+  "occurredAtUtc": "2026-08-25T10:00:00.000Z",
+  "sourceId": "codex-local",
+  "sourceKind": "localTelemetry",
+  "usageScope": "subscription",
+  "costBasis": "notional",
+  "observedAtUtc": "2026-08-25T10:00:00Z",
+  "runtime": "codex",
+  "rawPayload": "{\"source\":\"observatory-sweep\",\"tool\":\"codex\",\"thinking_tokens\":120,\"processing\":\"standard\",\"context\":\"short\",\"region\":\"global\"}"
+}
+```
 
-It no-ops cleanly for whichever tools are not installed.
+## What it reads
 
-## Requirements
+| Tool | Local path and fact | Meaning and safeguard |
+| --- | --- | --- |
+| Codex | `~/.codex/sessions/**/rollout-*.jsonl`; final cumulative `token_count` | `codex-local` / subscription / notional; final cumulative value wins |
+| Copilot | `~/.copilot/session-state/**/events.jsonl`; final `session.shutdown` per-model totals | `copilot-local` / subscription / notional; final cumulative totals win |
+| Claude | `~/.claude/projects/**/*.jsonl`; assistant usage | `claude-local` / subscription / notional; global `message.id` dedupe retains the richest copy |
+| Kimi | `~/.kimi-code/sessions/**/wire.jsonl`; `usage.record` only | `kimi-local` / subscription / notional; mirrored `step.end` rows do not count; turn and session scopes count |
 
-- **Node 18+** (uses the built-in `fetch` and `fs/promises`). No `npm install` —
-  zero dependencies. Node is already present if you run Codex or Copilot CLI.
+Stable source-scoped keys make resubmission safe. Before posting, the sweeper reads server inventory and emits zero corrections for removed or disabled snapshots. Its state file is only a parse cache; losing it causes a safe full rescan, not a loss of server truth.
+
+> [!WARNING]
+> Set `OBSERVATORY_LOCAL_SOURCES` without `claude` when `claude-code-usage-api` covers the same account/activity. The two lanes do not cross-deduplicate.
 
 ## Run
 
-```bash
-OBSERVATORY_URL=https://your-observatory.example \
-OBSERVATORY_API_KEY=your-key \
+Set `OBSERVATORY_API_KEY` to `<observatory-api-key>` and, when needed, `OBSERVATORY_URL` to the Observatory API origin, then run:
+
+```powershell
 node clients/observatory-sweep.mjs
 ```
 
-Preview without posting (and see exactly what would be sent):
-
-```bash
-OBSERVATORY_API_KEY=your-key node clients/observatory-sweep.mjs --dry-run --verbose
-```
-
-Re-running is always safe. Every transcript remains part of the cumulative truth;
-the state file caches parsed records by path and mtime to avoid rereading unchanged
-logs. Before posting, the sweeper reads the API's source-exact local snapshot
-inventory so removed observations can be corrected to zero even after state loss.
-The state file is not the system of record. Deleting it only causes a full rescan
-and harmless reconciliation under the same stable keys.
-
-## Environment variables
-
-| Variable | Default | Purpose |
-|---|---|---|
-| `OBSERVATORY_API_KEY` | *(required)* | Sent as the `X-Observatory-Key` header. Without it the script exits cleanly doing nothing. |
-| `OBSERVATORY_URL` | `http://localhost:5039` | Base URL of the Observatory API. The default is the API's `dotnet run` address. Under Compose the API publishes no host port — use `http://localhost:4173`, the frontend's nginx proxy. Against a deployment, set the full origin. |
-| `OBSERVATORY_STATE` | `~/.ai-observatory/sweep-state.json` | Per-file parse cache. Safe to delete. |
-| `OBSERVATORY_LOCAL_SOURCES` | `codex,copilot,claude,kimi` | Comma-separated collector allowlist. Exclude `claude` when Claude Code Usage API coverage overlaps it. |
-| `CODEX_HOME` | `~/.codex` | Override the Codex home (e.g. a non-standard install). |
-| `COPILOT_HOME` | `~/.copilot` | Override the Copilot home. |
-| `CLAUDE_HOME` | `~/.claude` | Override the Claude home. |
-| `KIMI_HOME` | `~/.kimi-code` | Override the Kimi home. |
-
-## Schedule it
-
-The sweep is throttle-free and idempotent, so just run it on a timer.
-
-**macOS / Linux (cron, every 15 minutes):**
-
-```bash
-crontab -e
-# add (adjust the path and key):
-*/15 * * * * OBSERVATORY_URL=https://your-observatory.example OBSERVATORY_API_KEY=your-key /usr/bin/node /path/to/clients/observatory-sweep.mjs >/dev/null 2>&1
-```
-
-**Windows (Task Scheduler, every 15 minutes):**
+Preview without posting:
 
 ```powershell
-$env:OBSERVATORY_URL = 'https://your-observatory.example'
-$action  = New-ScheduledTaskAction -Execute 'node' -Argument "$HOME\path\to\clients\observatory-sweep.mjs"
-$trigger = New-ScheduledTaskTrigger -Once -At (Get-Date) -RepetitionInterval (New-TimeSpan -Minutes 15)
-Register-ScheduledTask -TaskName 'AiObservatorySweep' -Action $action -Trigger $trigger
+node clients/observatory-sweep.mjs --dry-run --verbose
 ```
 
-Set `OBSERVATORY_API_KEY` as a user environment variable (`setx OBSERVATORY_API_KEY your-key`)
-so the scheduled task picks it up.
+## Environment
+
+| Variable | Default | Purpose |
+| --- | --- | --- |
+| `OBSERVATORY_API_KEY` | Required | Sent as `X-Observatory-Key`; absent means no post. |
+| `OBSERVATORY_URL` | `http://localhost:5039` | API origin; use `http://localhost:4173` for Compose's frontend proxy. |
+| `OBSERVATORY_STATE` | `~/.ai-observatory/sweep-state.json` | Safe-to-delete parse cache. |
+| `OBSERVATORY_LOCAL_SOURCES` | `codex,copilot,claude,kimi` | Comma-separated collector allowlist. |
+| `CODEX_HOME`, `COPILOT_HOME`, `CLAUDE_HOME`, `KIMI_HOME` | Tool homes above | Optional home overrides. |
+
+Schedule the same one-line command with your platform's scheduler. Re-running is safe and idempotent; there is no throttle or separate server-side sweeper state to maintain.
+
+## Schedule
+
+Run the sweep every 15 minutes with cron, Task Scheduler, or the scheduler already used for your developer machine. Give the scheduled process the same `OBSERVATORY_API_KEY`, optional `OBSERVATORY_URL`, and home overrides; preview with `--dry-run --verbose` before enabling posts.
 
 ## Test
 
-```bash
+```powershell
 node --test clients/observatory-sweep.test.mjs
 ```
-
-## Adding another tool
-
-The parsers are small pure functions in `observatory-sweep.mjs`
-(`parseCodex`, `parseCopilot`, `parseClaude`, `parseKimi`). To cover a new CLI,
-add its normalized records to `buildDailySnapshots` and scan its log directory.
-The provider string must be one of the API's `Provider` enum values
-(`Anthropic`, `Copilot`, `Google`, `OpenAI`, `Moonshot`).
