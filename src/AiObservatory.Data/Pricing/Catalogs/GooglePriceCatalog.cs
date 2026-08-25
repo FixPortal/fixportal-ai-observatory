@@ -25,7 +25,19 @@ public sealed record GooglePriceCatalog(
             throw new InvalidDataException("Google pricing entries are required.");
         }
 
-        var effectiveDates = new Dictionary<string, LocalDate>(StringComparer.OrdinalIgnoreCase);
+        var effectiveDates =
+            new Dictionary<
+                (
+                    string Alias,
+                    string SkuId,
+                    string Region,
+                    string Modality,
+                    string Tier,
+                    string CacheLane,
+                    long Context
+                ),
+                LocalDate
+            >();
         foreach (var entry in Entries)
         {
             if (
@@ -79,14 +91,13 @@ public sealed record GooglePriceCatalog(
 
             foreach (var alias in entry.Aliases.Prepend(entry.Service).Distinct(StringComparer.OrdinalIgnoreCase))
             {
-                var key = string.Join(
-                    '\u001f',
-                    alias,
+                var key = (
+                    alias.ToUpperInvariant(),
                     entry.SkuId,
-                    entry.Region,
-                    entry.Modality,
-                    entry.Tier,
-                    entry.CacheLane,
+                    entry.Region.ToUpperInvariant(),
+                    entry.Modality.ToUpperInvariant(),
+                    entry.Tier.ToUpperInvariant(),
+                    entry.CacheLane.ToUpperInvariant(),
                     entry.ContextThreshold
                 );
                 if (effectiveDates.TryGetValue(key, out var previous) && entry.EffectiveFrom <= previous)
@@ -105,8 +116,12 @@ public sealed record GooglePriceCatalog(
             "GLOBAL" => entry.Region == "global"
                 && entry.GeoTaxonomyRegions.Count == 0
                 && entry.ServiceRegions.Contains("global", StringComparer.Ordinal),
-            "REGIONAL" or "MULTI_REGIONAL" => entry.Region != "global"
-                && entry.GeoTaxonomyRegions.Count > 0
+            "REGIONAL" => entry.Region != "global"
+                && entry.GeoTaxonomyRegions.Count == 1
+                && entry.GeoTaxonomyRegions.Contains(entry.Region, StringComparer.Ordinal)
+                && entry.ServiceRegions.Contains(entry.Region, StringComparer.Ordinal),
+            "MULTI_REGIONAL" => entry.Region != "global"
+                && entry.GeoTaxonomyRegions.Count >= 2
                 && entry.GeoTaxonomyRegions.Contains(entry.Region, StringComparer.Ordinal)
                 && entry.ServiceRegions.Contains(entry.Region, StringComparer.Ordinal),
             _ => false,

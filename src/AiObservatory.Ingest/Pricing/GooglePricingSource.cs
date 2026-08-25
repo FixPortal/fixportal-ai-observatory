@@ -78,12 +78,14 @@ public sealed class GooglePricingSource : IPricingSource
         }
 
         _sourceUrl = $"https://cloudbilling.googleapis.com/v1/services/{serviceId}/skus";
-        _client = new HttpClient(handler ?? new HttpClientHandler { AllowAutoRedirect = false }, handler is null)
+        _client = new HttpClient(handler ?? CreateHttpMessageHandler(), handler is null)
         {
             Timeout = Timeout.InfiniteTimeSpan,
         };
         _client.DefaultRequestHeaders.Add("X-Goog-Api-Key", apiKey);
     }
+
+    internal static HttpClientHandler CreateHttpMessageHandler() => new() { AllowAutoRedirect = false };
 
     public string SourceId => PricingSourceIds.GoogleCloudCatalog;
 
@@ -307,7 +309,11 @@ public sealed class GooglePricingSource : IPricingSource
             "GLOBAL" => mapping.Region == "global"
                 && geoRegions.Count == 0
                 && serviceRegions.Contains("global", StringComparer.Ordinal),
-            "REGIONAL" or "MULTI_REGIONAL" => serviceRegions.Contains(mapping.Region, StringComparer.Ordinal)
+            "REGIONAL" => geoRegions.Count == 1
+                && serviceRegions.Contains(mapping.Region, StringComparer.Ordinal)
+                && geoRegions.Contains(mapping.Region, StringComparer.Ordinal),
+            "MULTI_REGIONAL" => geoRegions.Count >= 2
+                && serviceRegions.Contains(mapping.Region, StringComparer.Ordinal)
                 && geoRegions.Contains(mapping.Region, StringComparer.Ordinal),
             _ => false,
         };

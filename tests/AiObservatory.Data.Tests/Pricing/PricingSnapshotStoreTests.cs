@@ -486,6 +486,8 @@ public sealed class PricingSnapshotStoreTests : IAsyncLifetime
     [InlineData("taxonomy-enum")]
     [InlineData("global-regions")]
     [InlineData("regional-regions")]
+    [InlineData("regional-two-regions")]
+    [InlineData("multi-regional-one-region")]
     [InlineData("aggregation-level")]
     [InlineData("aggregation-interval")]
     [InlineData("tier-start")]
@@ -511,6 +513,8 @@ public sealed class PricingSnapshotStoreTests : IAsyncLifetime
                 GeoTaxonomyRegions = ["global"],
             },
             "regional-regions" => valid with { GeoTaxonomyRegions = [] },
+            "regional-two-regions" => valid with { GeoTaxonomyRegions = ["us", "europe-west1"] },
+            "multi-regional-one-region" => valid with { GeoTaxonomyType = "MULTI_REGIONAL" },
             "aggregation-level" => valid with { AggregationLevel = "TEAM" },
             "aggregation-interval" => valid with { AggregationInterval = "HOURLY" },
             "tier-start" => valid with { TierStartUsageAmount = -1m },
@@ -524,6 +528,34 @@ public sealed class PricingSnapshotStoreTests : IAsyncLifetime
             _ => throw new ArgumentOutOfRangeException(nameof(mutation)),
         };
         var catalog = new GooglePriceCatalog("USD", "https://example.com/pricing", RetrievedAt, [entry]);
+
+        ((Action)catalog.Validate).Should().Throw<InvalidDataException>();
+    }
+
+    [Fact]
+    public void GoogleCatalogValidatorAllowsCaseDistinctSkuIdsInTheSameDimensions()
+    {
+        var entry = GoogleEntry(new LocalDate(2026, 8, 24));
+        var catalog = new GooglePriceCatalog(
+            "USD",
+            "https://example.com/pricing",
+            RetrievedAt,
+            [entry, entry with { SkuId = "SKU" }]
+        );
+
+        ((Action)catalog.Validate).Should().NotThrow();
+    }
+
+    [Fact]
+    public void GoogleCatalogValidatorRejectsSameSkuOverlapAcrossDimensionCaseVariants()
+    {
+        var entry = GoogleEntry(new LocalDate(2026, 8, 24));
+        var catalog = new GooglePriceCatalog(
+            "USD",
+            "https://example.com/pricing",
+            RetrievedAt,
+            [entry, entry with { Modality = "TEXT" }]
+        );
 
         ((Action)catalog.Validate).Should().Throw<InvalidDataException>();
     }
