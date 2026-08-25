@@ -127,6 +127,7 @@ public sealed class SourceSyncStateStoreConcurrencyTests(ProviderPollingDatabase
         var olderAttempt = Instant.FromUtc(2026, 8, 24, 12, 0);
         var newerAttempt = olderAttempt.Plus(Duration.FromMinutes(1));
         var pendingFrom = new LocalDate(2026, 8, 1);
+        int failureCount;
 
         await using (var scope = services.CreateAsyncScope())
         {
@@ -154,7 +155,7 @@ public sealed class SourceSyncStateStoreConcurrencyTests(ProviderPollingDatabase
                     newerAttempt,
                     TestContext.Current.CancellationToken
                 );
-                await states.MarkFailureAsync(
+                failureCount = await states.MarkFailureAsync(
                     sourceId,
                     Duration.FromHours(1),
                     olderAttempt,
@@ -172,7 +173,7 @@ public sealed class SourceSyncStateStoreConcurrencyTests(ProviderPollingDatabase
                     olderAttempt,
                     TestContext.Current.CancellationToken
                 );
-                await states.MarkFailureAsync(
+                failureCount = await states.MarkFailureAsync(
                     sourceId,
                     Duration.FromHours(1),
                     newerAttempt,
@@ -188,6 +189,7 @@ public sealed class SourceSyncStateStoreConcurrencyTests(ProviderPollingDatabase
         state.LastError.Should().Be(newerAttemptSucceeds ? null : "newer attempt failed");
         state.IsAvailable.Should().Be(newerAttemptSucceeds ? true : null);
         state.ConsecutiveFailureCount.Should().Be(newerAttemptSucceeds ? 0 : 1);
+        failureCount.Should().Be(newerAttemptSucceeds ? -1 : 1);
     }
 
     private ServiceProvider CreateServices()
