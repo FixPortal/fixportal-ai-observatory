@@ -21,8 +21,8 @@ public sealed class AnthropicPriceCalculator : IProviderPriceCalculator
             return null;
         }
 
-        var entry = ProviderPricingJson
-            .Catalog<AnthropicPriceCatalog>(normalizedCatalog)
+        var entry = PricingCatalogJson
+            .Deserialize<AnthropicPriceCatalog>(normalizedCatalog)
             .Resolve(usage.Model, usage.OccurredAt.InUtc().Date);
         if (entry is null)
         {
