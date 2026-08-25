@@ -9,6 +9,7 @@ using AiObservatory.Ingest.Tests.Services;
 using AwesomeAssertions;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
 using NodaTime;
 using NodaTime.Testing;
@@ -119,6 +120,60 @@ public sealed class PricingRefreshWorkerServiceTests(ProviderPollingDatabase dat
         state.LastError.Should().Be("bad  https://example.test/catalog");
     }
 
+    [Theory]
+    [InlineData("missing")]
+    [InlineData("malformed")]
+    public async Task IsolatesBundleFailureAndContinuesLaterBundlesAndRemoteRefresh(string failure)
+    {
+        var directory = await CopyBundlesWithBrokenOpenAiAsync(failure);
+        var bundleLogger = new CapturingLogger<BundledPricingCatalogLoader>();
+        try
+        {
+            var healthyCandidate = await CandidateAsync(PricingSourceIds.Claude, "healthy remote evidence");
+            var healthy = Substitute.For<IPricingSource>();
+            healthy.SourceId.Returns(PricingSourceIds.Claude);
+            WorkerHarness? harness = null;
+            healthy
+                .FetchAsync(Arg.Any<CancellationToken>())
+                .Returns(async _ =>
+                {
+                    (await harness!.LoadActiveAsync(PricingSourceIds.Claude)).Should().NotBeNull();
+                    return (PricingSnapshotCandidate?)healthyCandidate;
+                });
+            harness = await CreateHarnessAsync(
+                [healthy],
+                [Definition(PricingSourceIds.Claude)],
+                directory.FullName,
+                bundleLogger
+            );
+            await using (harness)
+            {
+                await harness.Worker.RunOnceAsync(TestContext.Current.CancellationToken);
+
+                await healthy.Received(1).FetchAsync(Arg.Any<CancellationToken>());
+                (await harness.LoadActiveAsync(PricingSourceIds.Claude))!
+                    .ContentHash.Should()
+                    .Be(healthyCandidate.ContentHash);
+                (await harness.LoadActiveAsync(PricingSourceIds.Kimi)).Should().NotBeNull();
+                (await harness.LoadActiveAsync(PricingSourceIds.GoogleCloudCatalog)).Should().NotBeNull();
+                (await harness.LoadActiveAsync(PricingSourceIds.OpenAi)).Should().BeNull();
+                (await harness.FindStateAsync(PricingSourceIds.OpenAi)).Should().BeNull();
+            }
+
+            bundleLogger.Messages.Should().ContainSingle();
+            var message = bundleLogger.Messages.Single();
+            message.Should().Contain(PricingSourceIds.OpenAi);
+            message.Should().NotContain(directory.FullName);
+            message.Should().NotContain("secret");
+            message.Should().NotContain("?signature=");
+            message.Length.Should().BeLessThan(600);
+        }
+        finally
+        {
+            directory.Delete(recursive: true);
+        }
+    }
+
     [Fact]
     public async Task FailureAndUnchangedFetchBothPreserveTheActiveHash()
     {
@@ -215,9 +270,35 @@ public sealed class PricingRefreshWorkerServiceTests(ProviderPollingDatabase dat
         };
     }
 
+    private static async Task<DirectoryInfo> CopyBundlesWithBrokenOpenAiAsync(string failure)
+    {
+        var directory = Directory.CreateTempSubdirectory();
+        var bundleDirectory = Directory.CreateDirectory(Path.Combine(directory.FullName, "Pricing", "Bundled"));
+        foreach (var fileName in new[] { "claude.json", "kimi.json", "google.json" })
+        {
+            File.Copy(
+                Path.Combine(AppContext.BaseDirectory, "Pricing", "Bundled", fileName),
+                Path.Combine(bundleDirectory.FullName, fileName)
+            );
+        }
+        if (failure == "malformed")
+        {
+            await File.WriteAllTextAsync(
+                Path.Combine(bundleDirectory.FullName, "openai.json"),
+                """
+                { "sourceUrl": "https://example.test/catalog?signature=secret", "entries": [
+                """,
+                TestContext.Current.CancellationToken
+            );
+        }
+        return directory;
+    }
+
     private async Task<WorkerHarness> CreateHarnessAsync(
         IReadOnlyList<IPricingSource> sources,
-        IReadOnlyList<PricingSourceDefinition> definitions
+        IReadOnlyList<PricingSourceDefinition> definitions,
+        string? bundleBaseDirectory = null,
+        ILogger<BundledPricingCatalogLoader>? bundleLogger = null
     )
     {
         var services = new ServiceCollection();
@@ -226,7 +307,11 @@ public sealed class PricingRefreshWorkerServiceTests(ProviderPollingDatabase dat
         );
         services.AddScoped<PricingSnapshotStore>();
         services.AddScoped<SourceSyncStateStore>();
-        services.AddScoped<BundledPricingCatalogLoader>();
+        services.AddScoped(provider => new BundledPricingCatalogLoader(
+            provider.GetRequiredService<PricingSnapshotStore>(),
+            bundleLogger ?? NullLogger<BundledPricingCatalogLoader>.Instance,
+            bundleBaseDirectory ?? AppContext.BaseDirectory
+        ));
         foreach (var source in sources)
         {
             services.AddScoped<IPricingSource>(_ => source);
@@ -263,6 +348,14 @@ public sealed class PricingRefreshWorkerServiceTests(ProviderPollingDatabase dat
                 ?? throw new InvalidOperationException("Source state was not persisted.");
         }
 
+        public async Task<SourceSyncState?> FindStateAsync(string sourceId)
+        {
+            await using var scope = services.CreateAsyncScope();
+            return await scope
+                .ServiceProvider.GetRequiredService<SourceSyncStateStore>()
+                .GetAsync(sourceId, TestContext.Current.CancellationToken);
+        }
+
         public async Task<PricingSnapshot?> LoadActiveAsync(string sourceId)
         {
             await using var scope = services.CreateAsyncScope();
@@ -295,5 +388,47 @@ public sealed class PricingRefreshWorkerServiceTests(ProviderPollingDatabase dat
         }
 
         public ValueTask DisposeAsync() => services.DisposeAsync();
+    }
+
+    private sealed class CapturingLogger<T> : ILogger<T>
+    {
+        private readonly Lock _gate = new();
+        private readonly List<string> _messages = [];
+        private readonly NullScope _nullScope = new();
+
+        public IReadOnlyList<string> Messages
+        {
+            get
+            {
+                lock (_gate)
+                {
+                    return [.. _messages];
+                }
+            }
+        }
+
+        public IDisposable BeginScope<TState>(TState state)
+            where TState : notnull => _nullScope;
+
+        public bool IsEnabled(LogLevel logLevel) => true;
+
+        public void Log<TState>(
+            LogLevel logLevel,
+            EventId eventId,
+            TState state,
+            Exception? exception,
+            Func<TState, Exception?, string> formatter
+        )
+        {
+            lock (_gate)
+            {
+                _messages.Add(formatter(state, exception));
+            }
+        }
+
+        private sealed class NullScope : IDisposable
+        {
+            public void Dispose() { }
+        }
     }
 }

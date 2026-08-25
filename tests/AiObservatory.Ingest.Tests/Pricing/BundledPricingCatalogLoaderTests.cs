@@ -10,6 +10,8 @@ using AiObservatory.Ingest.Tests.Services;
 using AwesomeAssertions;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Logging.Abstractions;
+using Npgsql;
 
 namespace AiObservatory.Ingest.Tests.Pricing;
 
@@ -95,7 +97,7 @@ public sealed class BundledPricingCatalogLoaderTests(ProviderPollingDatabase dat
     }
 
     [Fact]
-    public async Task RejectsAnUnmappedBundleMemberBeforeActivation()
+    public async Task RejectsAnUnmappedBundleMemberWithoutAbortingTheBundlePass()
     {
         await using var harness = await CreateHarnessAsync();
         var directory = Directory.CreateTempSubdirectory();
@@ -115,11 +117,14 @@ public sealed class BundledPricingCatalogLoaderTests(ProviderPollingDatabase dat
                 """,
                 TestContext.Current.CancellationToken
             );
-            var loader = new BundledPricingCatalogLoader(harness.Store, directory.FullName);
+            var loader = new BundledPricingCatalogLoader(
+                harness.Store,
+                NullLogger<BundledPricingCatalogLoader>.Instance,
+                directory.FullName
+            );
 
-            var act = () => loader.LoadAsync(TestContext.Current.CancellationToken);
+            await loader.LoadAsync(TestContext.Current.CancellationToken);
 
-            await act.Should().ThrowAsync<System.Text.Json.JsonException>();
             (await harness.Store.GetActiveAsync(PricingSourceIds.OpenAi, TestContext.Current.CancellationToken))
                 .Should()
                 .BeNull();
@@ -127,6 +132,92 @@ public sealed class BundledPricingCatalogLoaderTests(ProviderPollingDatabase dat
         finally
         {
             directory.Delete(recursive: true);
+        }
+    }
+
+    [Fact]
+    public async Task BundleWaitsForRemoteActivationAndCannotOverwriteIt()
+    {
+        var services = new ServiceCollection();
+        services.AddDbContext<AiObservatoryDbContext>(options =>
+            options.UseNpgsql(database.ConnectionString, npgsql => npgsql.UseNodaTime())
+        );
+        await using var provider = services.BuildServiceProvider();
+        await using var remoteScope = provider.CreateAsyncScope();
+        await using var bundleScope = provider.CreateAsyncScope();
+        var remoteDb = remoteScope.ServiceProvider.GetRequiredService<AiObservatoryDbContext>();
+        await remoteDb.PricingSnapshots.ExecuteDeleteAsync(TestContext.Current.CancellationToken);
+        await remoteDb.SourceSyncStates.ExecuteDeleteAsync(TestContext.Current.CancellationToken);
+        var remoteStore = new PricingSnapshotStore(remoteDb);
+        var bundleStore = new PricingSnapshotStore(
+            bundleScope.ServiceProvider.GetRequiredService<AiObservatoryDbContext>()
+        );
+        var loader = new BundledPricingCatalogLoader(
+            bundleStore,
+            NullLogger<BundledPricingCatalogLoader>.Instance,
+            AppContext.BaseDirectory
+        );
+        var raw = await File.ReadAllTextAsync(
+            Path.Combine(AppContext.BaseDirectory, "Pricing", "Bundled", "openai.json"),
+            TestContext.Current.CancellationToken
+        );
+        var catalog = PricingCatalogJson.Deserialize<OpenAiPriceCatalog>(raw);
+        var remoteCandidate = PricingCandidate.Create(
+            Provider.OpenAI,
+            PricingSourceIds.OpenAi,
+            catalog.RetrievedAt,
+            catalog.SourceUrl,
+            "remote evidence",
+            catalog
+        );
+        var remoteHasLock = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var releaseRemote = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var remoteActivation = remoteStore.ActivateAsync(
+            remoteCandidate,
+            TestContext.Current.CancellationToken,
+            async (_, cancellationToken) =>
+            {
+                remoteHasLock.SetResult();
+                await releaseRemote.Task.WaitAsync(cancellationToken);
+            }
+        );
+        await remoteHasLock.Task.WaitAsync(TestContext.Current.CancellationToken);
+
+        var bundleActivation = loader.LoadAsync(TestContext.Current.CancellationToken);
+        try
+        {
+            await WaitForAdvisoryLockWaitAsync();
+        }
+        finally
+        {
+            releaseRemote.TrySetResult();
+        }
+        await Task.WhenAll(remoteActivation, bundleActivation);
+
+        var active = await remoteStore.GetActiveAsync(PricingSourceIds.OpenAi, TestContext.Current.CancellationToken);
+        active!.ContentHash.Should().Be(remoteCandidate.ContentHash);
+        active.RawEvidence.Should().Be("remote evidence");
+    }
+
+    private async Task WaitForAdvisoryLockWaitAsync()
+    {
+        using var timeout = CancellationTokenSource.CreateLinkedTokenSource(TestContext.Current.CancellationToken);
+        timeout.CancelAfter(TimeSpan.FromSeconds(30));
+        await using var connection = new NpgsqlConnection(database.ConnectionString);
+        await connection.OpenAsync(timeout.Token);
+        await using var command = connection.CreateCommand();
+        command.CommandText = """
+            SELECT EXISTS (
+                SELECT 1
+                FROM pg_locks
+                WHERE locktype = 'advisory'
+                  AND NOT granted
+                  AND database = (SELECT oid FROM pg_database WHERE datname = current_database())
+            )
+            """;
+        while (!(bool)(await command.ExecuteScalarAsync(timeout.Token) ?? false))
+        {
+            await Task.Delay(10, timeout.Token);
         }
     }
 
@@ -142,7 +233,13 @@ public sealed class BundledPricingCatalogLoaderTests(ProviderPollingDatabase dat
         await db.PricingSnapshots.ExecuteDeleteAsync(TestContext.Current.CancellationToken);
         await db.SourceSyncStates.ExecuteDeleteAsync(TestContext.Current.CancellationToken);
         var store = new PricingSnapshotStore(db);
-        return new LoaderHarness(provider, scope, db, store, new BundledPricingCatalogLoader(store));
+        return new LoaderHarness(
+            provider,
+            scope,
+            db,
+            store,
+            new BundledPricingCatalogLoader(store, NullLogger<BundledPricingCatalogLoader>.Instance)
+        );
     }
 
     private sealed class LoaderHarness(
