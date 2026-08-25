@@ -39,6 +39,7 @@ public class IngestHostTests
 
     [Theory]
     [InlineData("ANTHROPIC_BILLING_KEY", UsageSourceIds.AnthropicUsageApi)]
+    [InlineData("ANTHROPIC_BILLING_KEY", UsageSourceIds.AnthropicCostReport)]
     [InlineData("COPILOT_ORG", UsageSourceIds.CopilotOrgReport)]
     [InlineData("GOOGLE_BILLING_ACCOUNT_ID", UsageSourceIds.GoogleCloudBillingExport)]
     [InlineData("OPENAI_ADMIN_KEY", UsageSourceIds.OpenAiUsageApi)]
@@ -79,6 +80,8 @@ public class IngestHostTests
             .Should()
             .BeEquivalentTo(
                 UsageSourceIds.AnthropicUsageApi,
+                UsageSourceIds.AnthropicCostReport,
+                UsageSourceIds.ClaudeCodeUsageApi,
                 UsageSourceIds.CopilotOrgReport,
                 UsageSourceIds.GoogleCloudBillingExport,
                 UsageSourceIds.OpenAiUsageApi,
@@ -90,7 +93,6 @@ public class IngestHostTests
     }
 
     [Theory]
-    [InlineData("ANTHROPIC_BILLING_KEY", typeof(AnthropicIngestionService), UsageSourceIds.AnthropicUsageApi)]
     [InlineData("COPILOT_ORG", typeof(CopilotIngestionService), UsageSourceIds.CopilotOrgReport)]
     [InlineData("GOOGLE_BILLING_ACCOUNT_ID", typeof(GoogleIngestionService), UsageSourceIds.GoogleCloudBillingExport)]
     [InlineData("GITHUB_TOKEN", typeof(GitHubIngestionService), UsageSourceIds.GitHubActivityApi)]
@@ -150,6 +152,86 @@ public class IngestHostTests
     }
 
     [Fact]
+    public async Task AnthropicAdminKeyRegistersUsageAndCostsWithOneClientAndSharedBillingServices()
+    {
+        await using var factory = new IngestFactory();
+        factory.Settings["ANTHROPIC_BILLING_KEY"] = "configured-secret";
+
+        using var scope = factory.Services.CreateScope();
+        var sources = scope
+            .ServiceProvider.GetServices<IUsageSource>()
+            .Where(source =>
+                source.SourceId
+                    is UsageSourceIds.AnthropicUsageApi
+                        or UsageSourceIds.AnthropicCostReport
+                        or UsageSourceIds.ClaudeCodeUsageApi
+            )
+            .ToList();
+        var definitions = scope
+            .ServiceProvider.GetServices<SourceDefinition>()
+            .Where(definition =>
+                definition.SourceId
+                    is UsageSourceIds.AnthropicUsageApi
+                        or UsageSourceIds.AnthropicCostReport
+                        or UsageSourceIds.ClaudeCodeUsageApi
+            )
+            .ToList();
+
+        sources
+            .Select(source => source.GetType())
+            .Should()
+            .BeEquivalentTo([typeof(AnthropicUsageSource), typeof(AnthropicCostsSource)]);
+        definitions.Should().HaveCount(3);
+        definitions.Single(row => row.SourceId == UsageSourceIds.ClaudeCodeUsageApi).IsConfigured.Should().BeFalse();
+        definitions
+            .Where(row => row.SourceId != UsageSourceIds.ClaudeCodeUsageApi)
+            .Should()
+            .OnlyContain(row => row.IsConfigured);
+        scope.ServiceProvider.GetServices<IAnthropicAdminClient>().Should().ContainSingle();
+        scope.ServiceProvider.GetServices<FxRateProvider>().Should().ContainSingle();
+        scope.ServiceProvider.GetServices<BillingObservationWriter>().Should().ContainSingle();
+        definitions
+            .Select(definition => definition.ToString())
+            .Should()
+            .OnlyContain(value => !value.Contains("configured-secret", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public async Task ClaudeCodeOptInRegistersTheThirdAnthropicSource()
+    {
+        await using var factory = new IngestFactory();
+        factory.Settings["ANTHROPIC_BILLING_KEY"] = "configured-secret";
+        factory.Settings["CLAUDE_CODE_USAGE_ENABLED"] = "true";
+
+        using var scope = factory.Services.CreateScope();
+
+        scope
+            .ServiceProvider.GetServices<IUsageSource>()
+            .Should()
+            .ContainSingle(source => source is ClaudeCodeUsageSource)
+            .Which.SourceId.Should()
+            .Be(UsageSourceIds.ClaudeCodeUsageApi);
+        scope
+            .ServiceProvider.GetServices<SourceDefinition>()
+            .Should()
+            .ContainSingle(definition => definition.SourceId == UsageSourceIds.ClaudeCodeUsageApi)
+            .Which.IsConfigured.Should()
+            .BeTrue();
+    }
+
+    [Fact]
+    public async Task ClaudeCodeOptInWithoutAnAdminKeyFailsStartupClearly()
+    {
+        await using var factory = new IngestFactory();
+        factory.Settings["CLAUDE_CODE_USAGE_ENABLED"] = "true";
+
+        var thrown = CaptureServicesException(factory);
+
+        thrown.Should().NotBeNull();
+        ExceptionChainContains(thrown!, "CLAUDE_CODE_USAGE_ENABLED requires ANTHROPIC_BILLING_KEY").Should().BeTrue();
+    }
+
+    [Fact]
     public async Task WhitespaceOpenAiAdminKeyRegistersNeitherSource()
     {
         await using var factory = new IngestFactory();
@@ -171,17 +253,20 @@ public class IngestHostTests
     }
 
     [Fact]
-    public async Task AnthropicUsageHttpClientOptsIntoFastModeForSpeedGrouping()
+    public async Task AnthropicAdminHttpClientUsesVersionFastModeAndIntegrationIdentity()
     {
         await using var factory = new IngestFactory();
         factory.Settings["ANTHROPIC_BILLING_KEY"] = "configured";
 
         using var client = factory
             .Services.GetRequiredService<IHttpClientFactory>()
-            .CreateClient(nameof(IAnthropicUsageClient));
+            .CreateClient(nameof(IAnthropicAdminClient));
 
         client.DefaultRequestHeaders.TryGetValues("anthropic-beta", out var values).Should().BeTrue();
         values.Should().ContainSingle().Which.Should().Be("fast-mode-2026-02-01");
+        client.DefaultRequestHeaders.TryGetValues("anthropic-version", out var versions).Should().BeTrue();
+        versions.Should().ContainSingle().Which.Should().Be("2023-06-01");
+        client.DefaultRequestHeaders.UserAgent.ToString().Should().Contain("AiObservatory.Ingest/");
     }
 
     [Fact]
@@ -259,6 +344,7 @@ public class IngestHostTests
         [
             "DB_CONNECTION",
             "ANTHROPIC_BILLING_KEY",
+            "CLAUDE_CODE_USAGE_ENABLED",
             "GITHUB_TOKEN",
             "COPILOT_ORG",
             "GOOGLE_BILLING_ACCOUNT_ID",

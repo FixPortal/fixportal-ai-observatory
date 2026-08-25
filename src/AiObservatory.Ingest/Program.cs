@@ -46,24 +46,7 @@ var host = Host.CreateDefaultBuilder(args)
             var githubRepoAllowlist = IngestOptions.ResolveGitHubRepoAllowlist(cfg);
             services.PostConfigure<IngestOptions>(o => o.GitHubRepoAllowlist = githubRepoAllowlist);
 
-            // Anthropic — enabled when ANTHROPIC_BILLING_KEY is set.
-            // Requires a workspace admin API key (different from the standard API key).
-            var anthropicKey = cfg["ANTHROPIC_BILLING_KEY"];
-            var anthropicConfigured = IsConfigured(anthropicKey);
-            services.AddSingleton(
-                new SourceDefinition(UsageSourceIds.AnthropicUsageApi, anthropicConfigured, expectedRefreshInterval)
-            );
-            if (anthropicConfigured)
-            {
-                services.AddHttpClient<IAnthropicUsageClient, AnthropicUsageClient>(c =>
-                {
-                    c.BaseAddress = new Uri("https://api.anthropic.com");
-                    c.DefaultRequestHeaders.Add("x-api-key", anthropicKey);
-                    c.DefaultRequestHeaders.Add("anthropic-version", "2023-06-01");
-                    c.DefaultRequestHeaders.Add("anthropic-beta", "fast-mode-2026-02-01");
-                });
-                services.TryAddEnumerable(ServiceDescriptor.Scoped<IUsageSource, AnthropicIngestionService>());
-            }
+            var anthropicConfigured = RegisterAnthropicSources(services, cfg, expectedRefreshInterval);
 
             // Copilot — enabled when GITHUB_TOKEN and COPILOT_ORG are both set.
             // GITHUB_TOKEN requires the manage_billing:copilot scope.
@@ -132,11 +115,15 @@ var host = Host.CreateDefaultBuilder(args)
                     c.BaseAddress = new Uri("https://api.openai.com");
                     c.DefaultRequestHeaders.Add("Authorization", $"Bearer {openAiAdminKey}");
                 });
+                services.TryAddEnumerable(ServiceDescriptor.Scoped<IUsageSource, OpenAiUsageSource>());
+                services.TryAddEnumerable(ServiceDescriptor.Scoped<IUsageSource, OpenAiCostsSource>());
+            }
+
+            if (anthropicConfigured || openAiConfigured)
+            {
                 services.AddMemoryCache();
                 services.AddHttpClient<FxRateProvider>().ConfigureHttpClient(c => c.Timeout = TimeSpan.FromSeconds(10));
                 services.AddScoped<BillingObservationWriter>();
-                services.TryAddEnumerable(ServiceDescriptor.Scoped<IUsageSource, OpenAiUsageSource>());
-                services.TryAddEnumerable(ServiceDescriptor.Scoped<IUsageSource, OpenAiCostsSource>());
             }
 
             // GitHub Activity — enabled when GITHUB_TOKEN is set AND at least one repo is
@@ -228,6 +215,61 @@ static IResult ReportHealth(ProviderPollingWorkerService worker)
 
 static bool IsConfigured(string? value) =>
     !string.IsNullOrWhiteSpace(value) && !value.StartsWith("@Microsoft.KeyVault(", StringComparison.OrdinalIgnoreCase);
+
+static bool RegisterAnthropicSources(
+    IServiceCollection services,
+    IConfiguration configuration,
+    Duration expectedRefreshInterval
+)
+{
+    var key = configuration["ANTHROPIC_BILLING_KEY"];
+    var configured = IsConfigured(key);
+    var claudeCodeEnabled = string.Equals(
+        configuration["CLAUDE_CODE_USAGE_ENABLED"],
+        "true",
+        StringComparison.OrdinalIgnoreCase
+    );
+    if (claudeCodeEnabled && !configured)
+    {
+        throw new InvalidOperationException(
+            "CLAUDE_CODE_USAGE_ENABLED requires ANTHROPIC_BILLING_KEY with an organization Admin API key."
+        );
+    }
+
+    services.AddSingleton(new SourceDefinition(UsageSourceIds.AnthropicUsageApi, configured, expectedRefreshInterval));
+    services.AddSingleton(
+        new SourceDefinition(UsageSourceIds.AnthropicCostReport, configured, expectedRefreshInterval)
+    );
+    services.AddSingleton(
+        new SourceDefinition(
+            UsageSourceIds.ClaudeCodeUsageApi,
+            configured && claudeCodeEnabled,
+            expectedRefreshInterval
+        )
+    );
+    if (!configured)
+    {
+        return false;
+    }
+
+    services.AddHttpClient<IAnthropicAdminClient, AnthropicAdminClient>(client =>
+    {
+        client.BaseAddress = new Uri("https://api.anthropic.com");
+        client.DefaultRequestHeaders.Add("x-api-key", key);
+        client.DefaultRequestHeaders.Add("anthropic-version", "2023-06-01");
+        client.DefaultRequestHeaders.Add("anthropic-beta", "fast-mode-2026-02-01");
+        client.DefaultRequestHeaders.UserAgent.ParseAdd(
+            "AiObservatory.Ingest/1.0 (+https://github.com/FixPortal/fixportal-ai-observatory)"
+        );
+    });
+    services.TryAddEnumerable(ServiceDescriptor.Scoped<IUsageSource, AnthropicUsageSource>());
+    services.TryAddEnumerable(ServiceDescriptor.Scoped<IUsageSource, AnthropicCostsSource>());
+    if (claudeCodeEnabled)
+    {
+        services.TryAddEnumerable(ServiceDescriptor.Scoped<IUsageSource, ClaudeCodeUsageSource>());
+    }
+    return true;
+}
 
 static void RegisterPricingSources(IServiceCollection services, IConfiguration configuration)
 {
