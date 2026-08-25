@@ -354,6 +354,7 @@ api.MapSubscriptionsEndpoints();
 api.MapBudgetRulesEndpoints();
 api.MapSpendCatalogEndpoints();
 api.MapSpendEntriesEndpoints();
+api.MapSourceStatusEndpoints();
 
 await app.RunAsync();
 
