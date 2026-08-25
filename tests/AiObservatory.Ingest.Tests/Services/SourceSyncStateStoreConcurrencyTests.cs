@@ -117,8 +117,10 @@ public sealed class SourceSyncStateStoreConcurrencyTests(ProviderPollingDatabase
         state.LastAttemptAt.Should().Be(Instant.FromUtc(2026, 8, 24, 12, 23));
     }
 
-    [Fact]
-    public async Task OlderSuccess_DoesNotClearNewerFailedAttemptsPendingWindow()
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task OverlappingAttempts_KeepNewestOutcome(bool newerAttemptSucceeds)
     {
         await using var services = CreateServices();
         var sourceId = $"overlapping-attempts-{Guid.NewGuid():N}";
@@ -143,27 +145,49 @@ public sealed class SourceSyncStateStoreConcurrencyTests(ProviderPollingDatabase
                 TestContext.Current.CancellationToken,
                 pendingFrom.PlusDays(1)
             );
-            await states.MarkSuccessAsync(
-                sourceId,
-                Duration.FromHours(1),
-                olderAttempt,
-                olderAttempt,
-                TestContext.Current.CancellationToken
-            );
-            await states.MarkFailureAsync(
-                sourceId,
-                Duration.FromHours(1),
-                newerAttempt,
-                "newer attempt failed",
-                TestContext.Current.CancellationToken
-            );
+            if (newerAttemptSucceeds)
+            {
+                await states.MarkSuccessAsync(
+                    sourceId,
+                    Duration.FromHours(1),
+                    newerAttempt,
+                    newerAttempt,
+                    TestContext.Current.CancellationToken
+                );
+                await states.MarkFailureAsync(
+                    sourceId,
+                    Duration.FromHours(1),
+                    olderAttempt,
+                    "older attempt failed late",
+                    TestContext.Current.CancellationToken,
+                    onlyIfLatestAttempt: true
+                );
+            }
+            else
+            {
+                await states.MarkSuccessAsync(
+                    sourceId,
+                    Duration.FromHours(1),
+                    olderAttempt,
+                    olderAttempt,
+                    TestContext.Current.CancellationToken
+                );
+                await states.MarkFailureAsync(
+                    sourceId,
+                    Duration.FromHours(1),
+                    newerAttempt,
+                    "newer attempt failed",
+                    TestContext.Current.CancellationToken,
+                    onlyIfLatestAttempt: true
+                );
+            }
         }
 
         var state = await LoadStateAsync(services, sourceId);
-        state.PendingFromDate.Should().Be(pendingFrom);
-        state.LastError.Should().Be("newer attempt failed");
-        state.IsAvailable.Should().BeNull();
-        state.ConsecutiveFailureCount.Should().Be(1);
+        state.PendingFromDate.Should().Be(newerAttemptSucceeds ? null : pendingFrom);
+        state.LastError.Should().Be(newerAttemptSucceeds ? null : "newer attempt failed");
+        state.IsAvailable.Should().Be(newerAttemptSucceeds ? true : null);
+        state.ConsecutiveFailureCount.Should().Be(newerAttemptSucceeds ? 0 : 1);
     }
 
     private ServiceProvider CreateServices()

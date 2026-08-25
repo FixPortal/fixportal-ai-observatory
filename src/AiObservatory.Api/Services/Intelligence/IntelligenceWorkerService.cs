@@ -143,6 +143,7 @@ public class IntelligenceWorkerService(
     private async Task RunGitHubBillingSyncAsync(CancellationToken ct)
     {
         var configured = false;
+        Instant? attemptAt = null;
         try
         {
             await using var scope = scopeFactory.CreateAsyncScope();
@@ -161,12 +162,13 @@ public class IntelligenceWorkerService(
             }
 
             configured = true;
+            attemptAt = now;
             await states.MarkAttemptAsync(UsageSourceIds.GitHubBillingApi, GitHubBillingRefreshInterval, now, ct);
             await sync.SyncAsync(ct);
             await states.MarkSuccessAsync(
                 UsageSourceIds.GitHubBillingApi,
                 GitHubBillingRefreshInterval,
-                clock.GetCurrentInstant(),
+                now,
                 latestObservationAt: null,
                 ct
             );
@@ -177,7 +179,7 @@ public class IntelligenceWorkerService(
         }
         catch (Exception ex)
         {
-            if (configured)
+            if (configured && attemptAt is { } failedAttemptAt)
             {
                 try
                 {
@@ -187,9 +189,10 @@ public class IntelligenceWorkerService(
                         .MarkFailureAsync(
                             UsageSourceIds.GitHubBillingApi,
                             GitHubBillingRefreshInterval,
-                            clock.GetCurrentInstant(),
+                            failedAttemptAt,
                             SanitizeError(ex.Message),
-                            ct
+                            ct,
+                            onlyIfLatestAttempt: true
                         );
                 }
                 catch (Exception statusException)

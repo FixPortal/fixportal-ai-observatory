@@ -109,16 +109,36 @@ public sealed class SourceSyncStateStore(AiObservatoryDbContext db)
         Duration expectedRefreshInterval,
         Instant current,
         string error,
-        CancellationToken cancellationToken
-    ) => MarkFailedAttemptAsync(sourceId, expectedRefreshInterval, current, error, false, cancellationToken);
+        CancellationToken cancellationToken,
+        bool onlyIfLatestAttempt = false
+    ) =>
+        MarkFailedAttemptAsync(
+            sourceId,
+            expectedRefreshInterval,
+            current,
+            error,
+            false,
+            cancellationToken,
+            onlyIfLatestAttempt
+        );
 
     public Task<int> MarkFailureAsync(
         string sourceId,
         Duration expectedRefreshInterval,
         Instant current,
         string error,
-        CancellationToken cancellationToken
-    ) => MarkFailedAttemptAsync(sourceId, expectedRefreshInterval, current, error, null, cancellationToken);
+        CancellationToken cancellationToken,
+        bool onlyIfLatestAttempt = false
+    ) =>
+        MarkFailedAttemptAsync(
+            sourceId,
+            expectedRefreshInterval,
+            current,
+            error,
+            null,
+            cancellationToken,
+            onlyIfLatestAttempt
+        );
 
     private async Task<int> MarkFailedAttemptAsync(
         string sourceId,
@@ -126,7 +146,8 @@ public sealed class SourceSyncStateStore(AiObservatoryDbContext db)
         Instant current,
         string error,
         bool? isAvailable,
-        CancellationToken cancellationToken
+        CancellationToken cancellationToken,
+        bool onlyIfLatestAttempt
     )
     {
         var expectedSeconds = ExpectedSeconds(expectedRefreshInterval);
@@ -144,6 +165,9 @@ public sealed class SourceSyncStateStore(AiObservatoryDbContext db)
                 "LastAttemptAt" = GREATEST("SourceSyncStates"."LastAttemptAt", EXCLUDED."LastAttemptAt"),
                 "ConsecutiveFailureCount" = "SourceSyncStates"."ConsecutiveFailureCount" + 1,
                 "LastError" = EXCLUDED."LastError"
+            WHERE NOT {onlyIfLatestAttempt}
+                OR "SourceSyncStates"."LastAttemptAt" IS NULL
+                OR EXCLUDED."LastAttemptAt" >= "SourceSyncStates"."LastAttemptAt"
             """,
             cancellationToken
         );
