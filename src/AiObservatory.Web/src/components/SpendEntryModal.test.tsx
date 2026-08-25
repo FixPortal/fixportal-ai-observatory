@@ -2,6 +2,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { render, screen, fireEvent, waitFor } from '@testing-library/react'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import SpendEntryModal from './SpendEntryModal'
+// eslint-disable-next-line sonarjs/no-wildcard-import -- vi.spyOn requires the live module namespace
 import * as client from '../api/client'
 
 const categories = [{ id: 'c1', key: 'credits', displayName: 'Credits', colorVar: '--c', sortOrder: 1, archivedAt: null }]
@@ -64,7 +65,7 @@ describe('SpendEntryModal', () => {
 
     await waitFor(() => expect(post).toHaveBeenCalledTimes(1))
     // Signed amount is how a refund nets off the total — see SpendEntry.Amount.
-    expect(post.mock.calls[0][0][0].amount).toBe(-286.16)
+    expect(post.mock.calls[0][0][0].amount).toBeCloseTo(-286.16)
   })
 
   it('refuses a typed negative amount — the toggle is the only way to book a refund', async () => {

@@ -810,7 +810,6 @@ public class SpendEntriesEndpointsWafTests(AiObservatoryApiFactory factory) : IC
 
     [Theory]
     [InlineData(0)]
-    [InlineData(0.0)]
     public async Task PostEntry_WithZeroAmount_IsRejected(double amount)
     {
         using var client = factory.CreateAdminClient();

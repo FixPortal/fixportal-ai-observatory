@@ -5,6 +5,7 @@ public enum SourceKind
     ProviderApi,
     LocalTelemetry,
     Manual,
+    Synthetic,
     Legacy,
 }
 
@@ -31,6 +32,7 @@ public static class UsageSourceIds
     public const string LegacyApi = "legacy-api";
     public const string LegacySpend = "legacy-spend";
     public const string ManualLedger = "manual-ledger";
+    public const string DemoSeed = "demo-seed";
     public const string GitHubBillingApi = "github-billing-api";
     public const string GitHubActivityApi = "github-activity-api";
     public const string OpenAiUsageApi = "openai-usage-api";

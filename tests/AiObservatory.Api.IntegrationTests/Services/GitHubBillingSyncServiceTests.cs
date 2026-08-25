@@ -95,7 +95,7 @@ public class GitHubBillingSyncServiceTests(AiObservatoryApiFactory factory) : IC
 
         var entry = await FindAsync(db, sku, TestContext.Current.CancellationToken);
         entry.Should().NotBeNull();
-        entry!
+        entry
             .OccurredOn.Should()
             .Be(
                 new LocalDate(2026, 6, 1),

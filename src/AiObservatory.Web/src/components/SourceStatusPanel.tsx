@@ -1,6 +1,6 @@
 import type { SourceStatusResponse } from '../api/client'
 import { useSourceStatuses } from '../api/queries'
-import { PROVIDERS, getSource, providerDisplayName, sourceDisplayName } from '../config/providers'
+import { NON_PROVIDER_SOURCES, PROVIDERS, getSource, providerDisplayName, sourceDisplayName, type ProviderSource } from '../config/providers'
 import { StatusBadge } from '../design/StatusBadge'
 
 /* eslint-disable react-refresh/only-export-components -- focused tests exercise deterministic merge and time formatting helpers */
@@ -11,7 +11,10 @@ export interface SourceStatusRow extends SourceStatusResponse {
   setupHref?: string
 }
 
-const registrySources = PROVIDERS.flatMap(provider => provider.sources.map(source => ({ ...source, provider: provider.key })))
+const registrySources: (ProviderSource & { provider?: string })[] = [
+  ...PROVIDERS.flatMap(provider => provider.sources.map(source => ({ ...source, provider: provider.key }))),
+  ...NON_PROVIDER_SOURCES,
+]
 
 const missingStatus = (sourceId: string): SourceStatusResponse => ({
   sourceId,
@@ -73,18 +76,20 @@ const statusPresentation: Record<string, { variant: 'ok' | 'warn' | 'bad' | 'inf
 
 export default function SourceStatusPanel() {
   const { statuses, isError, isLoading } = useSourceStatuses()
-  if (isError || isLoading) return null
+  if (isError) return null
   const rows = mergeSourceStatuses(statuses)
 
   return (
-    <section className="source-status" aria-label="Source freshness">
+    <section className="source-status" aria-label="Source freshness" aria-busy={isLoading || undefined}>
       <div className="source-status__header">
         <h2>Source freshness</h2>
         <span>{rows.length} capabilities</span>
       </div>
       <ul className="source-status__list">
         {rows.map(row => {
-          const status = statusPresentation[row.status] ?? { variant: 'info' as const, label: sourceDisplayName(row.status) }
+          const status = isLoading
+            ? { variant: 'info' as const, label: 'Loading' }
+            : statusPresentation[row.status] ?? { variant: 'info' as const, label: sourceDisplayName(row.status) }
           const lastSuccess = formatLastSuccess(row.lastSuccessAt)
           return (
             <li key={row.sourceId} className="source-status__row">
@@ -94,13 +99,13 @@ export default function SourceStatusPanel() {
               </div>
               <StatusBadge variant={status.variant} label={status.label} />
               <span className="source-status__success">
-                {lastSuccess ? <time dateTime={lastSuccess.dateTime}>{lastSuccess.relative} · {lastSuccess.absolute}</time> : 'Not reported'}
+                {isLoading ? 'Waiting for status' : lastSuccess ? <time dateTime={lastSuccess.dateTime}>{lastSuccess.relative} · {lastSuccess.absolute}</time> : 'Not reported'}
               </span>
               <span className="source-status__failures">
-                {row.consecutiveFailureCount.toLocaleString()} {row.consecutiveFailureCount === 1 ? 'failure' : 'failures'}
+                {isLoading ? '—' : `${row.consecutiveFailureCount.toLocaleString()} ${row.consecutiveFailureCount === 1 ? 'failure' : 'failures'}`}
               </span>
-              {row.status === 'notConfigured' && row.setupHref && (
-                <a className="source-status__setup" href={row.setupHref} aria-label={`Set up ${row.displayName}`}>Setup</a>
+              {!isLoading && row.status === 'notConfigured' && row.setupHref && (
+                <a className="source-status__setup" href={row.setupHref} aria-label={`Setup: ${row.displayName}`}>Setup</a>
               )}
               {row.lastError && (
                 <details className="source-status__error">

@@ -78,6 +78,11 @@ export const PROVIDERS = [
   },
 ] satisfies ProviderConfig[]
 
+export const NON_PROVIDER_SOURCES = [
+  { id: 'github-activity-api', displayName: 'Repository activity', setupHref: SETUP_HREF },
+  { id: 'github-billing-api', displayName: 'GitHub billing', setupHref: SETUP_HREF },
+] satisfies ProviderSource[]
+
 /** Stable display order for provider filter chips and dropdowns. */
 export const PROVIDER_ORDER: ProviderKey[] = PROVIDERS.map(p => p.key)
 
@@ -85,7 +90,7 @@ export function getProvider(key: string): ProviderConfig | undefined {
   return PROVIDERS.find(p => p.key === key)
 }
 
-const SOURCES = PROVIDERS.flatMap(provider => provider.sources)
+const SOURCES = [...PROVIDERS.flatMap(provider => provider.sources), ...NON_PROVIDER_SOURCES]
 
 export function getSource(id: string): ProviderSource | undefined {
   return SOURCES.find(source => source.id === id)

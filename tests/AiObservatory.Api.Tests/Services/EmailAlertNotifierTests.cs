@@ -65,7 +65,7 @@ public class EmailAlertNotifierTests
         await smtp.Received(1).DisconnectAsync(true, Arg.Any<CancellationToken>());
 
         sent.Should().NotBeNull();
-        sent!.Subject.Should().Contain("Anthropic").And.Contain("10.00");
+        sent.Subject.Should().Contain("Anthropic").And.Contain("10.00");
         sent.To.ToString().Should().Contain("alerts@example.com");
     }
 }

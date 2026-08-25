@@ -137,7 +137,8 @@ public sealed class PricingRefreshWorkerServiceTests(ProviderPollingDatabase dat
                 .FetchAsync(Arg.Any<CancellationToken>())
                 .Returns(async _ =>
                 {
-                    (await harness!.LoadActiveAsync(PricingSourceIds.Claude)).Should().NotBeNull();
+                    var activeHarness = harness ?? throw new InvalidOperationException("Harness was not initialized.");
+                    (await activeHarness.LoadActiveAsync(PricingSourceIds.Claude)).Should().NotBeNull();
                     return (PricingSnapshotCandidate?)healthyCandidate;
                 });
             harness = await CreateHarnessAsync(

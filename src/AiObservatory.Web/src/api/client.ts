@@ -62,7 +62,7 @@ async function readErrorMessage(res: Response, path: string, method: string): Pr
   }
 }
 
-export type SourceKind = 'providerApi' | 'localTelemetry' | 'manual' | 'legacy' | string
+export type SourceKind = 'providerApi' | 'localTelemetry' | 'manual' | 'synthetic' | 'legacy' | string
 export type UsageScope = 'api' | 'subscription' | 'mixed' | 'unknown' | string
 export type CostBasis = 'billed' | 'providerEstimated' | 'listPriceEstimate' | 'notional' | 'none' | 'unknown' | string
 

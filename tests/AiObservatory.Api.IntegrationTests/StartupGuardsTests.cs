@@ -31,7 +31,7 @@ public class StartupGuardsTests
         var thrown = CaptureServicesException(factory);
 
         thrown.Should().NotBeNull();
-        ExceptionChainContains(thrown!, "OBSERVATORY_API_KEY")
+        ExceptionChainContains(thrown, "OBSERVATORY_API_KEY")
             .Should()
             .BeTrue($"the exception chain should mention OBSERVATORY_API_KEY; got: {thrown}");
     }
@@ -51,7 +51,7 @@ public class StartupGuardsTests
         var thrown = CaptureServicesException(factory);
 
         thrown.Should().NotBeNull();
-        ExceptionChainContains(thrown!, "OBSERVATORY_READONLY_API_KEY")
+        ExceptionChainContains(thrown, "OBSERVATORY_READONLY_API_KEY")
             .Should()
             .BeTrue($"the exception chain should mention OBSERVATORY_READONLY_API_KEY; got: {thrown}");
     }
@@ -70,7 +70,7 @@ public class StartupGuardsTests
         var thrown = CaptureServicesException(factory);
 
         thrown.Should().NotBeNull();
-        ExceptionChainContains(thrown!, "must be different")
+        ExceptionChainContains(thrown, "must be different")
             .Should()
             .BeTrue($"the exception chain should reject identical API keys; got: {thrown}");
     }
@@ -91,7 +91,7 @@ public class StartupGuardsTests
         var thrown = CaptureServicesException(factory);
 
         thrown.Should().NotBeNull();
-        ExceptionChainContains(thrown!, "OBSERVATORY_IDE_API_KEY").Should().BeTrue();
+        ExceptionChainContains(thrown, "OBSERVATORY_IDE_API_KEY").Should().BeTrue();
     }
 
     [Theory]
@@ -108,7 +108,7 @@ public class StartupGuardsTests
         var thrown = CaptureServicesException(factory);
 
         thrown.Should().NotBeNull();
-        ExceptionChainContains(thrown!, "must be different").Should().BeTrue();
+        ExceptionChainContains(thrown, "must be different").Should().BeTrue();
     }
 
     [Trait("Category", "Integration")]
@@ -133,7 +133,7 @@ public class StartupGuardsTests
         var thrown = CaptureServicesException(factory);
 
         thrown.Should().NotBeNull();
-        ExceptionChainContains(thrown!, "DB_CONNECTION")
+        ExceptionChainContains(thrown, "DB_CONNECTION")
             .Should()
             .BeTrue($"the exception chain should mention DB_CONNECTION; got: {thrown}");
     }

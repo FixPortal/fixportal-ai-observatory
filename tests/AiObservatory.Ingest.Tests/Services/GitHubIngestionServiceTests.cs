@@ -49,6 +49,20 @@ public class GitHubIngestionServiceTests
         await client
             .Received(1)
             .GetPullRequestsAsync("fix-portal/example", pollDate.PlusDays(-30), Arg.Any<CancellationToken>());
+        await repo.Received(1)
+            .MarkBackfillCompletedAsync(
+                "fix-portal/example",
+                GitHubActivityKind.PullRequests,
+                Arg.Any<CancellationToken>()
+            );
+        await repo.Received(1)
+            .MarkBackfillCompletedAsync("fix-portal/example", GitHubActivityKind.Commits, Arg.Any<CancellationToken>());
+        await repo.Received(1)
+            .MarkBackfillCompletedAsync(
+                "fix-portal/example",
+                GitHubActivityKind.WorkflowRuns,
+                Arg.Any<CancellationToken>()
+            );
     }
 
     [Fact]
@@ -116,6 +130,71 @@ public class GitHubIngestionServiceTests
         await client
             .Received(1)
             .GetWorkflowRunsAsync("fix-portal/example", pollDate.PlusDays(-30), Arg.Any<CancellationToken>());
+    }
+
+    [Fact]
+    public async Task IngestAsync_WhenBackfillPersistenceFails_DoesNotMarkThatLaneComplete()
+    {
+        var client = Substitute.For<IGitHubActivityClient>();
+        var repo = Substitute.For<IGitHubActivityRepository>();
+        repo.GetBackfillStatusAsync("fix-portal/example", Arg.Any<CancellationToken>()).Returns(NoPriorData);
+        var prs = new[]
+        {
+            new GitHubPullRequestRecord(
+                "fix-portal/example",
+                1,
+                "first",
+                "chris",
+                "open",
+                FixedNow,
+                FixedNow,
+                null,
+                null,
+                null,
+                0
+            ),
+            new GitHubPullRequestRecord(
+                "fix-portal/example",
+                2,
+                "second",
+                "chris",
+                "open",
+                FixedNow,
+                FixedNow,
+                null,
+                null,
+                null,
+                0
+            ),
+        };
+        client
+            .GetPullRequestsAsync("fix-portal/example", Arg.Any<LocalDate>(), Arg.Any<CancellationToken>())
+            .Returns(prs);
+        repo.UpsertPullRequestAsync(prs[1], FixedNow, Arg.Any<CancellationToken>())
+            .Returns(Task.FromException(new InvalidOperationException("database unavailable")));
+
+        var sut = new GitHubIngestionService(
+            client,
+            repo,
+            Options("fix-portal/example"),
+            NullLogger<GitHubIngestionService>.Instance,
+            Clock
+        );
+
+        var act = () =>
+            sut.IngestAsync(
+                new LocalDate(2026, 7, 1),
+                new LocalDate(2026, 7, 1),
+                TestContext.Current.CancellationToken
+            );
+
+        await act.Should().ThrowAsync<InvalidOperationException>();
+        await repo.DidNotReceive()
+            .MarkBackfillCompletedAsync(
+                "fix-portal/example",
+                GitHubActivityKind.PullRequests,
+                Arg.Any<CancellationToken>()
+            );
     }
 
     [Fact]

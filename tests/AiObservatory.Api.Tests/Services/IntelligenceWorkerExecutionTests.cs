@@ -14,6 +14,16 @@ namespace AiObservatory.Api.Tests.Services;
 public class IntelligenceWorkerExecutionTests
 {
     [Fact]
+    public void GitHubBillingStatusErrorsAreSingleLineBoundedAndDropQueryStrings()
+    {
+        var error = $"failed at https://example.test/billing?token=secret\r\n{new string('x', 600)}";
+
+        var sanitized = IntelligenceWorkerService.SanitizeError(error);
+
+        sanitized.Should().HaveLength(500).And.NotContain("secret").And.NotContain("\r").And.NotContain("\n");
+    }
+
+    [Fact]
     public async Task AnalysisFailureDoesNotPreventTheBudgetArmOrStopTheWorker()
     {
         var ct = TestContext.Current.CancellationToken;
@@ -35,7 +45,7 @@ public class IntelligenceWorkerExecutionTests
 
             logger.Messages.Should().Contain(m => m.Contains("catchup failed"));
             worker.ExecuteTask.Should().NotBeNull();
-            worker.ExecuteTask!.IsCompleted.Should().BeFalse();
+            worker.ExecuteTask.IsCompleted.Should().BeFalse();
         }
         finally
         {

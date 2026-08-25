@@ -278,17 +278,27 @@ public class GitHubActivityRepositoryTests : IAsyncLifetime
     }
 
     [Fact]
-    public async Task GetBackfillStatusAsync_WhenOnlyCommitsExist_OnlyCommitsTrue()
+    public async Task GetBackfillStatusAsync_WhenRowsExistWithoutCompletionMarker_AllFalse()
     {
-        // Regression case: a crash/rate-limit abort after PRs ingested but before
-        // commits/runs must not permanently skip THEIR backfill — each table's
-        // status is independent, not OR'd into one repo-wide bool.
         var ct = TestContext.Current.CancellationToken;
         await _repo.UpsertCommitAsync(
             new GitHubCommitRecord("fix-portal/example", "abc123", "chris", Instant.FromUtc(2026, 7, 1, 9, 0), 1, 0),
             Instant.FromUtc(2026, 7, 1, 9, 0),
             ct
         );
+
+        var result = await _repo.GetBackfillStatusAsync("fix-portal/example", ct);
+        result.HasPullRequests.Should().BeFalse();
+        result.HasCommits.Should().BeFalse();
+        result.HasWorkflowRuns.Should().BeFalse();
+    }
+
+    [Fact]
+    public async Task MarkBackfillCompletedAsync_AdvancesOnlyTheCompletedLane()
+    {
+        var ct = TestContext.Current.CancellationToken;
+
+        await _repo.MarkBackfillCompletedAsync("fix-portal/example", GitHubActivityKind.Commits, ct);
 
         var result = await _repo.GetBackfillStatusAsync("fix-portal/example", ct);
         result.HasPullRequests.Should().BeFalse();

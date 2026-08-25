@@ -24,7 +24,7 @@ public sealed class ClaudePricingSourceTests
         var older = catalog.Resolve("claude-opus-4-5-20251101", ObservedOn);
 
         opus.Should().NotBeNull();
-        opus!.Input.Should().Be(5m);
+        opus.Input.Should().Be(5m);
         opus.Output.Should().Be(25m);
         opus.CacheRead.Should().Be(0.50m);
         opus.CacheWrite5m.Should().Be(6.25m);

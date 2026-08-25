@@ -96,7 +96,7 @@ public sealed class GoogleBillingExportClientTests
         records.Should().BeEmpty();
         sql.Should().Contain("@from").And.Contain("@through_exclusive").And.Contain("@changes_since");
         parameters.Should().NotBeNull();
-        parameters!.Select(parameter => parameter.Name).Should().Equal("from", "through_exclusive", "changes_since");
+        parameters.Select(parameter => parameter.Name).Should().Equal("from", "through_exclusive", "changes_since");
         parameters.Select(parameter => parameter.Type).Should().OnlyContain(type => type == BigQueryDbType.Timestamp);
         parameters
             .Select(parameter => parameter.Value)

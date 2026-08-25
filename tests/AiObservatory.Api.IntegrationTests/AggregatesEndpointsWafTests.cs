@@ -78,7 +78,7 @@ public class AggregatesEndpointsWafTests(AiObservatoryApiFactory factory)
         rows.Should().ContainSingle();
         // Regression guard: must be strict yyyy-MM-dd, never the server culture's long-date
         // format ("29 May 2019") that broke the frontend's slice/sort and scrambled the axis.
-        rows![0].Date.Should().Be("2019-05-29");
+        rows[0].Date.Should().Be("2019-05-29");
     }
 
     [Fact]

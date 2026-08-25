@@ -36,7 +36,7 @@ public sealed class KimiPricingSourceTests
 
         catalog.Entries.Should().HaveCount(5);
         entry.Should().NotBeNull();
-        entry!.CacheHit.Should().Be((decimal)cacheHit);
+        entry.CacheHit.Should().Be((decimal)cacheHit);
         entry.CacheMiss.Should().Be((decimal)cacheMiss);
         entry.Output.Should().Be((decimal)output);
         entry.BatchMultiplier.Should().Be(batchMultiplier is null ? null : (decimal)batchMultiplier.Value);

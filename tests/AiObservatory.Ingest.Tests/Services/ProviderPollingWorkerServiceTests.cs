@@ -45,7 +45,7 @@ public class ProviderPollingWorkerServiceTests(ProviderPollingDatabase database)
             await WaitUntilAsync(() => harness.Worker.CyclesCompleted > 0);
             harness.Worker.LastCycleCompletedAt.Should().Be(current);
             harness.Worker.ExecuteTask.Should().NotBeNull();
-            harness.Worker.ExecuteTask!.IsCompleted.Should().BeFalse();
+            harness.Worker.ExecuteTask.IsCompleted.Should().BeFalse();
         }
         finally
         {
