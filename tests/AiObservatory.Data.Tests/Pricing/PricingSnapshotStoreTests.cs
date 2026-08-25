@@ -312,23 +312,7 @@ public sealed class PricingSnapshotStoreTests : IAsyncLifetime
                     "USD",
                     googleSource,
                     RetrievedAt,
-                    [
-                        new(
-                            "Gemini",
-                            "sku",
-                            ["gemini"],
-                            date,
-                            false,
-                            "us",
-                            "text",
-                            "standard",
-                            "none",
-                            0,
-                            "1M tokens",
-                            "ACCOUNT",
-                            1m
-                        ),
-                    ]
+                    [GoogleEntry(date) with { ContextThreshold = 0 }]
                 ),
                 JsonOptions
             )
@@ -463,23 +447,7 @@ public sealed class PricingSnapshotStoreTests : IAsyncLifetime
             "USD",
             source,
             RetrievedAt,
-            [
-                new(
-                    "",
-                    "sku",
-                    ["product"],
-                    date,
-                    false,
-                    "us",
-                    "text",
-                    "standard",
-                    "none",
-                    128_000,
-                    "1M tokens",
-                    "ACCOUNT",
-                    1m
-                ),
-            ]
+            [GoogleEntry(date) with { Service = "" }]
         );
 
         ((Action)invalidOpenAi.Validate).Should().Throw<InvalidDataException>();
@@ -508,31 +476,56 @@ public sealed class PricingSnapshotStoreTests : IAsyncLifetime
                 RetrievedAt,
                 [new("kimi", ["kimi"], date, false, 0.1m, 1m, 2m, false, 0.6m)]
             ).Validate,
-            new GooglePriceCatalog(
-                "USD",
-                source,
-                RetrievedAt,
-                [
-                    new(
-                        "Gemini",
-                        "sku",
-                        ["gemini"],
-                        date,
-                        true,
-                        "us",
-                        "text",
-                        "standard",
-                        "none",
-                        128_000,
-                        "1M tokens",
-                        "ACCOUNT",
-                        1m
-                    ),
-                ]
-            ).Validate,
+            new GooglePriceCatalog("USD", source, RetrievedAt, [GoogleEntry(date)]).Validate,
         };
 
         catalogs.Should().AllSatisfy(validate => validate.Should().NotThrow());
+    }
+
+    [Theory]
+    [InlineData("taxonomy-enum")]
+    [InlineData("global-regions")]
+    [InlineData("regional-regions")]
+    [InlineData("aggregation-level")]
+    [InlineData("aggregation-interval")]
+    [InlineData("tier-start")]
+    [InlineData("currency-conversion")]
+    [InlineData("effective-provenance")]
+    [InlineData("effective-time")]
+    [InlineData("base-factor")]
+    [InlineData("money-nanos-bound")]
+    [InlineData("money-sign")]
+    [InlineData("money-rate")]
+    public void GoogleCatalogValidatorRejectsParserImpossibleShapes(string mutation)
+    {
+        var date = new LocalDate(2026, 8, 24);
+        var valid = GoogleEntry(date);
+        var entry = mutation switch
+        {
+            "taxonomy-enum" => valid with { GeoTaxonomyType = "WORLD" },
+            "global-regions" => valid with
+            {
+                Region = "global",
+                GeoTaxonomyType = "GLOBAL",
+                ServiceRegions = ["global"],
+                GeoTaxonomyRegions = ["global"],
+            },
+            "regional-regions" => valid with { GeoTaxonomyRegions = [] },
+            "aggregation-level" => valid with { AggregationLevel = "TEAM" },
+            "aggregation-interval" => valid with { AggregationInterval = "HOURLY" },
+            "tier-start" => valid with { TierStartUsageAmount = -1m },
+            "currency-conversion" => valid with { CurrencyConversionRate = 0.9m },
+            "effective-provenance" => valid with { EffectiveDateIsProviderDeclared = false },
+            "effective-time" => valid with { EffectiveTime = valid.EffectiveTime + Duration.FromDays(1) },
+            "base-factor" => valid with { BaseUnitConversionFactor = 2m },
+            "money-nanos-bound" => valid with { UnitPriceNanos = 1_000_000_000 },
+            "money-sign" => valid with { UnitPriceUnits = 1, UnitPriceNanos = -1, Rate = 999_999.999m },
+            "money-rate" => valid with { Rate = 2m },
+            _ => throw new ArgumentOutOfRangeException(nameof(mutation)),
+        };
+        var catalog = new GooglePriceCatalog("USD", "https://example.com/pricing", RetrievedAt, [entry]);
+
+        ((Action)catalog.Validate).Should().Throw<InvalidDataException>();
     }
 
     [Fact]
@@ -632,23 +625,7 @@ public sealed class PricingSnapshotStoreTests : IAsyncLifetime
                     "USD",
                     "https://cloud.google.com/billing/catalog",
                     RetrievedAt,
-                    [
-                        new(
-                            "Gemini",
-                            "sku",
-                            ["gemini"],
-                            date,
-                            false,
-                            "us",
-                            "text",
-                            "standard",
-                            "none",
-                            0,
-                            "1M tokens",
-                            "ACCOUNT",
-                            1m
-                        ),
-                    ]
+                    [GoogleEntry(date) with { ContextThreshold = 0 }]
                 ),
                 "contextThreshold",
                 true
@@ -763,6 +740,41 @@ public sealed class PricingSnapshotStoreTests : IAsyncLifetime
 
     private static OpenAiPriceEntry OpenAiEntry(LocalDate effectiveFrom, decimal input) =>
         new("gpt-5.4", ["gpt-5.4"], effectiveFrom, false, "standard", "short", "global", input, 0.25m, 10m, null);
+
+    private static GooglePriceEntry GoogleEntry(LocalDate effectiveFrom) =>
+        new(
+            "Gemini",
+            "sku",
+            "services/test/skus/sku",
+            "Synthetic Google catalog test entry",
+            ["gemini"],
+            effectiveFrom,
+            true,
+            effectiveFrom.AtMidnight().InZoneStrictly(DateTimeZone.Utc).ToInstant(),
+            "us",
+            "REGIONAL",
+            ["us"],
+            ["us"],
+            "text",
+            "standard",
+            "none",
+            128_000,
+            "token",
+            "token",
+            "token",
+            "token",
+            1m,
+            1_000_000m,
+            0m,
+            "USD",
+            0,
+            1000,
+            "ACCOUNT",
+            "DAILY",
+            1,
+            1m,
+            1m
+        );
 
     private static PricingSnapshot Snapshot(char hash, bool active, string normalized) =>
         new()
