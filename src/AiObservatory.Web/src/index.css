@@ -117,7 +117,7 @@ body {
   white-space: nowrap;
 }
 /* Centred content columns (the nav spans full width above). */
-.summary-cards, .sub-panel, .main-grid, .bottom-grid {
+.summary-cards, .source-status, .sub-panel, .main-grid, .bottom-grid {
   max-width: 1200px;
   width: 100%;
   margin-inline: auto;
@@ -271,6 +271,60 @@ body {
   color: var(--text-muted);
 }
 
+/* ---- Source freshness evidence ledger ---- */
+.source-status {
+  margin-top: var(--space-4);
+  background: var(--card-bg);
+  border: 1px solid var(--border);
+  border-radius: var(--r-panel);
+  padding: var(--space-3) var(--space-4);
+}
+.source-status__header {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--space-3);
+  margin-bottom: var(--space-2);
+}
+.source-status__header h2 {
+  margin: 0;
+  font-size: 0.75rem;
+  font-weight: 600;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+}
+.source-status__header span { font-size: 0.68rem; color: var(--text-faint); }
+.source-status__list {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0 var(--space-4);
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+.source-status__row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-1) var(--space-2);
+  min-width: 0;
+  padding: var(--space-2) 0;
+  border-top: 1px solid var(--border);
+  font-size: 0.7rem;
+}
+.source-status__identity { min-width: 0; flex: 1; display: flex; align-items: baseline; gap: var(--space-2); }
+.source-status__name { color: var(--text); font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.source-status__provider { color: var(--text-faint); white-space: nowrap; }
+.source-status__success { min-width: 0; color: var(--text-muted); font-family: var(--font-mono); font-variant-numeric: tabular-nums; white-space: nowrap; }
+.source-status__failures { color: var(--text-faint); font-variant-numeric: tabular-nums; }
+.source-status__setup, .source-status__error summary { color: var(--brand); cursor: pointer; }
+.source-status__setup { margin-left: auto; }
+.source-status__error { margin-left: auto; }
+.source-status__error[open] { flex-basis: 100%; margin-left: 0; }
+.source-status__error summary { width: max-content; margin-left: auto; }
+.source-status__error p { margin: var(--space-2) 0 0; color: var(--bad-text); overflow-wrap: anywhere; }
+
 /* Page-level API-failure banner (bad/error family — tokens shared with insights). */
 .error-banner {
   max-width: 1200px;
@@ -351,6 +405,7 @@ body {
 .auth-gate__button:hover:not(:disabled) { border-color: var(--brand); }
 
 /* ---- Model breakdown table ---- */
+.model-table-wrap { overflow-x: auto; }
 .model-table { width: 100%; border-collapse: collapse; font-size: 0.8rem; }
 .model-table th {
   text-align: left;
@@ -381,6 +436,15 @@ body {
   border-radius: 50%;
   margin-right: var(--space-2);
   vertical-align: baseline;
+}
+.model-table__identity { display: flex; align-items: baseline; white-space: nowrap; }
+.model-table__provider, .model-table__qualification {
+  display: block;
+  margin-top: var(--space-1);
+  color: var(--text-faint);
+  font-family: var(--font-sans);
+  font-size: 0.65rem;
+  white-space: nowrap;
 }
 /* Decorative progress bar (no text) — --brand fill is fine here; it is NOT AA on
    white (~3.74:1), so do not reuse this token in a text/border role. */
@@ -456,6 +520,12 @@ body {
   color: var(--text);
   border-color: var(--border-strong);
   background: var(--app-bg);
+}
+.filter-chip[aria-pressed="true"] {
+  color: var(--text);
+  border-color: var(--brand);
+  background: var(--app-bg);
+  font-weight: 600;
 }
 .filter-chip__dot {
   display: inline-block;
@@ -547,7 +617,9 @@ body {
     overflow-y: auto;
   }
   .info-popover--summary .info-popover__caret { display: none; }
-  .main-grid, .bottom-grid { grid-template-columns: 1fr; }
+  .main-grid, .bottom-grid { grid-template-columns: minmax(0, 1fr); }
+  .source-status__list { grid-template-columns: 1fr; }
+  .source-status__success { flex-basis: 100%; }
 }
 
 /* ---- Insights feed ---- */
@@ -756,11 +828,35 @@ body {
   color: var(--text);
   font-weight: 600;
 }
+.chart-toggle-btn:focus-visible,
+.filter-chip:focus-visible,
+.sortable-header__content:focus-visible,
+.source-status__setup:focus-visible,
+.source-status__error summary:focus-visible {
+  outline: 2px solid var(--brand);
+  outline-offset: 2px;
+}
 
 /* ---- recharts chrome (chart-token contract — see system.md) ---- */
 .recharts-cartesian-axis-tick-value { fill: var(--text-muted); }
 .recharts-legend-item-text { color: var(--text-muted) !important; }
 .recharts-cartesian-axis-line, .recharts-cartesian-axis-tick-line { stroke: var(--border); }
+.usage-chart-plot { min-width: 0; height: 160px; }
+.usage-chart-legend {
+  display: grid;
+  gap: var(--space-1);
+  max-height: 6rem;
+  overflow-y: auto;
+  list-style: none;
+  margin: var(--space-2) 0 0;
+  padding: var(--space-2) 0 0;
+  border-top: 1px solid var(--border);
+  color: var(--text-muted);
+  font-size: 0.68rem;
+}
+.usage-chart-legend li { display: flex; align-items: baseline; gap: var(--space-2); min-width: 0; }
+.usage-chart-legend li > span:last-child { overflow-wrap: anywhere; }
+.usage-chart-legend__swatch { width: 7px; height: 7px; border-radius: 50%; flex: 0 0 auto; }
 
 /* ---- Subscription panel ---- */
 .sub-panel { margin-top: var(--space-6); }

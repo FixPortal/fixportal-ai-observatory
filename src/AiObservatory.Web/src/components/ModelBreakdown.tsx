@@ -1,15 +1,79 @@
-import { useState, useMemo } from 'react'
+import { useMemo, useState } from 'react'
+import type { DailyAggregate } from '../api/client'
 import { useAggregates } from '../api/queries'
-import { useUsdToGbp, formatGbp } from '../lib/currency'
-import { providerColor } from '../theme/providerColors'
-import { getProvider, PROVIDER_ORDER } from '../config/providers'
+import {
+  PROVIDER_ORDER,
+  costBasisDisplayName,
+  providerDisplayName,
+  sourceDisplayName,
+  usageScopeDisplayName,
+} from '../config/providers'
 import SearchIcon from '../design/SearchIcon'
+import { formatGbp, useUsdToGbp } from '../lib/currency'
+import { providerColor } from '../theme/providerColors'
+
+/* eslint-disable react-refresh/only-export-components -- focused tests exercise the table's pure evidence grouping */
 
 type SortField = 'model' | 'requests' | 'cost' | 'cpm'
 type SortDirection = 'asc' | 'desc'
 
-const formatProviderName = (p: string) =>
-  getProvider(p)?.displayName ?? (p.charAt(0).toUpperCase() + p.slice(1))
+export interface ModelRow {
+  key: string
+  provider: string
+  providerLabel: string
+  model: string
+  sourceId: string
+  sourceLabel: string
+  usageScope: string
+  scopeLabel: string
+  costBasis: string
+  basisLabel: string
+  cost: number
+  requests: number
+  inputTokens: number
+  outputTokens: number
+  unknownCostCount: number
+  costReported: boolean
+  cpm: number | null
+}
+
+const grainKey = (parts: string[]) => parts.map(part => `${part.length}:${part}`).join('')
+
+export function groupModelRows(aggregates: DailyAggregate[]): ModelRow[] {
+  const grouped = new Map<string, Omit<ModelRow, 'costReported' | 'cpm'>>()
+  for (const aggregate of aggregates) {
+    const key = grainKey([aggregate.provider, aggregate.model, aggregate.sourceId, aggregate.usageScope, aggregate.costBasis])
+    const row = grouped.get(key) ?? {
+      key,
+      provider: aggregate.provider,
+      providerLabel: providerDisplayName(aggregate.provider),
+      model: aggregate.model,
+      sourceId: aggregate.sourceId,
+      sourceLabel: sourceDisplayName(aggregate.sourceId),
+      usageScope: aggregate.usageScope,
+      scopeLabel: usageScopeDisplayName(aggregate.usageScope),
+      costBasis: aggregate.costBasis,
+      basisLabel: costBasisDisplayName(aggregate.costBasis),
+      cost: 0,
+      requests: 0,
+      inputTokens: 0,
+      outputTokens: 0,
+      unknownCostCount: 0,
+    }
+    row.cost += aggregate.costUsd
+    row.requests += aggregate.requestCount
+    row.inputTokens += aggregate.inputTokens ?? 0
+    row.outputTokens += aggregate.outputTokens ?? 0
+    row.unknownCostCount += aggregate.unknownCostCount
+    grouped.set(key, row)
+  }
+
+  return [...grouped.values()].map(row => {
+    const costReported = row.unknownCostCount < row.requests
+    const tokens = row.inputTokens + row.outputTokens
+    return { ...row, costReported, cpm: costReported && row.unknownCostCount === 0 && tokens > 0 ? (row.cost / tokens) * 1_000_000 : null }
+  })
+}
 
 interface SortableHeaderProps {
   field: SortField
@@ -20,127 +84,67 @@ interface SortableHeaderProps {
   onSort: (field: SortField) => void
 }
 
-const SortableHeader = ({
-  field,
-  label,
-  hint,
-  sortField,
-  sortDirection,
-  onSort,
-}: SortableHeaderProps) => {
+function SortableHeader({ field, label, hint, sortField, sortDirection, onSort }: SortableHeaderProps) {
   const isActive = sortField === field
-
-  // Determine aria-sort value
-  let ariaSort: 'ascending' | 'descending' | 'none' = 'none'
-  if (isActive) {
-    ariaSort = sortDirection === 'asc' ? 'ascending' : 'descending'
-  }
-
-  // Determine sort indicator character
-  let indicatorSymbol = '↕'
-  if (isActive) {
-    indicatorSymbol = sortDirection === 'asc' ? '▲' : '▼'
-  }
-
-  // Real <button> inside the <th>: native keyboard/focus semantics, header role intact.
+  const ariaSort = !isActive ? 'none' : sortDirection === 'asc' ? 'ascending' : 'descending'
+  const indicator = !isActive ? '↕' : sortDirection === 'asc' ? '▲' : '▼'
   return (
     <th className="sortable-header" aria-sort={ariaSort}>
-      <button type="button" className="sortable-header__content" onClick={() => onSort(field)} title={hint}>
-        {label}
-        <span className={`sort-indicator ${isActive ? 'sort-indicator--active' : ''}`} aria-hidden="true">
-          {indicatorSymbol}
-        </span>
+      <button
+        type="button"
+        className="sortable-header__content"
+        onClick={() => onSort(field)}
+        title={hint}
+        aria-label={`Sort by ${label}, currently ${ariaSort}`}
+      >
+        {label}<span className={`sort-indicator ${isActive ? 'sort-indicator--active' : ''}`} aria-hidden="true">{indicator}</span>
       </button>
     </th>
   )
 }
 
+const providerOrder = (provider: string) => {
+  const index = PROVIDER_ORDER.findIndex(known => known === provider)
+  return index < 0 ? Number.MAX_SAFE_INTEGER : index
+}
+
 export default function ModelBreakdown() {
   const aggregates = useAggregates()
   const rate = useUsdToGbp()
-
-  // State for sorting and filtering
   const [searchQuery, setSearchQuery] = useState('')
   const [selectedProvider, setSelectedProvider] = useState('all')
   const [sortField, setSortField] = useState<SortField>('cost')
   const [sortDirection, setSortDirection] = useState<SortDirection>('desc')
+  const rows = useMemo(() => groupModelRows(aggregates), [aggregates])
 
-  // Keyed by provider + model: the same model name can arrive from two
-  // providers (e.g. claude-sonnet served by Anthropic and by Copilot) and
-  // those are distinct series, not duplicates.
-  const rawByModel = useMemo(
-    () => Object.entries(
-      aggregates.reduce<Record<string, { provider: string; model: string; cost: number; requests: number; inputTokens: number; outputTokens: number }>>((acc, a) => {
-        const key = `${a.provider}|${a.model}`
-        acc[key] = acc[key] ?? { provider: a.provider, model: a.model, cost: 0, requests: 0, inputTokens: 0, outputTokens: 0 }
-        acc[key].cost += a.costUsd
-        acc[key].requests += a.requestCount
-        acc[key].inputTokens += (a.inputTokens ?? 0)
-        acc[key].outputTokens += (a.outputTokens ?? 0)
-        return acc
-      }, {})
-    ).map(([key, value]) => {
-      const totalTokens = value.inputTokens + value.outputTokens
-      const cpm = totalTokens > 0 ? (value.cost / totalTokens) * 1_000_000 : 0
-      return { key, ...value, cpm }
-    }),
-    [aggregates],
-  )
+  const providers = useMemo(() => [...new Set(rows.map(row => row.provider))].toSorted((a, b) =>
+    providerOrder(a) - providerOrder(b) || providerDisplayName(a).localeCompare(providerDisplayName(b))), [rows])
 
-  // Extract unique providers for filter buttons
-  const uniqueProviders = useMemo(() => {
-    const providers = new Set(rawByModel.map((item) => item.provider))
-    return Array.from(providers).sort((a, b) => {
-      const idxA = PROVIDER_ORDER.findIndex(provider => provider === a)
-      const idxB = PROVIDER_ORDER.findIndex(provider => provider === b)
-      if (idxA !== -1 && idxB !== -1) return idxA - idxB
-      if (idxA !== -1) return -1
-      if (idxB !== -1) return 1
-      return a.localeCompare(b)
-    })
-  }, [rawByModel])
+  const visibleRows = useMemo(() => {
+    const search = searchQuery.trim().toLowerCase()
+    return rows
+      .filter(row => selectedProvider === 'all' || row.provider === selectedProvider)
+      .filter(row => !search || [row.model, row.providerLabel, row.sourceLabel, row.scopeLabel, row.basisLabel]
+        .some(value => value.toLowerCase().includes(search)))
+      .toSorted((a, b) => {
+        const values: Record<SortField, [string | number, string | number]> = {
+          model: [a.model, b.model], requests: [a.requests, b.requests],
+          cost: [a.costReported ? a.cost : Number.NEGATIVE_INFINITY, b.costReported ? b.cost : Number.NEGATIVE_INFINITY],
+          cpm: [a.cpm ?? Number.NEGATIVE_INFINITY, b.cpm ?? Number.NEGATIVE_INFINITY],
+        }
+        const [left, right] = values[sortField]
+        const comparison = typeof left === 'string' ? left.localeCompare(String(right)) : left - Number(right)
+        return sortDirection === 'asc' ? comparison : -comparison
+      })
+  }, [rows, searchQuery, selectedProvider, sortDirection, sortField])
 
-  // Filter models
-  const filteredByModel = useMemo(() => {
-    return rawByModel.filter((item) => {
-      const matchesProvider = selectedProvider === 'all' || item.provider === selectedProvider
-      const matchesSearch = item.model.toLowerCase().includes(searchQuery.trim().toLowerCase())
-      return matchesProvider && matchesSearch
-    })
-  }, [rawByModel, selectedProvider, searchQuery])
+  const maxCost = useMemo(() => Math.max(...rows.filter(row => row.costReported).map(row => row.cost), Number.EPSILON), [rows])
 
-  // Sort models
-  const sortedAndFilteredByModel = useMemo(() => {
-    return filteredByModel.toSorted((a, b) => {
-      let comparison: number
-      if (sortField === 'model') {
-        comparison = a.model.localeCompare(b.model)
-      } else if (sortField === 'requests') {
-        comparison = a.requests - b.requests
-      } else if (sortField === 'cpm') {
-        comparison = a.cpm - b.cpm
-      } else {
-        comparison = a.cost - b.cost
-      }
-      return sortDirection === 'asc' ? comparison : -comparison
-    })
-  }, [filteredByModel, sortField, sortDirection])
+  if (rows.length === 0) return <p className="panel-empty">No usage data for this period.</p>
 
-  // Use maximum cost of unfiltered data to maintain a consistent visual scale for the
-  // progress bars. Seed with EPSILON (not 1): a "1" floor under-scales every bar when the
-  // top model costs < $1; EPSILON keeps the ratio true and avoids a divide-by-zero NaN
-  // when all costs are 0.
-  const maxCost = useMemo(() => Math.max(...rawByModel.map(item => item.cost), Number.EPSILON), [rawByModel])
-
-  if (rawByModel.length === 0) return <p className="panel-empty">No usage data for this period.</p>
-
-  const handleSort = (field: SortField) => {
-    if (sortField === field) {
-      setSortDirection((prev) => (prev === 'asc' ? 'desc' : 'asc'))
-    } else {
-      setSortField(field)
-      setSortDirection('desc') // default to desc for numeric, can change for model
-    }
+  const sort = (field: SortField) => {
+    if (sortField === field) setSortDirection(current => current === 'asc' ? 'desc' : 'asc')
+    else { setSortField(field); setSortDirection(field === 'model' ? 'asc' : 'desc') }
   }
 
   return (
@@ -150,113 +154,60 @@ export default function ModelBreakdown() {
           <SearchIcon />
           <input
             type="text"
-            placeholder="Search models..."
+            placeholder="Search evidence..."
             value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
+            onChange={event => setSearchQuery(event.target.value)}
             className="breakdown-search"
             aria-label="Search models"
           />
         </div>
-        <div className="breakdown-filters">
-          <button
-            type="button"
-            onClick={() => setSelectedProvider('all')}
-            className="filter-chip"
-            style={
-              selectedProvider === 'all'
-                ? {
-                    borderColor: 'var(--brand)',
-                    color: 'var(--text)',
-                    fontWeight: 600,
-                    background: 'var(--app-bg)',
-                  }
-                : undefined
-            }
-          >
-            All
-          </button>
-          {uniqueProviders.map((p) => (
+        <div className="breakdown-filters" aria-label="Filter by provider" role="group">
+          <button type="button" onClick={() => setSelectedProvider('all')} className="filter-chip" aria-pressed={selectedProvider === 'all'}>All</button>
+          {providers.map(provider => (
             <button
-              key={p}
+              key={provider}
               type="button"
-              onClick={() => setSelectedProvider(p)}
+              onClick={() => setSelectedProvider(provider)}
               className="filter-chip"
-              style={
-                selectedProvider === p
-                  ? {
-                      borderColor: providerColor(p),
-                      color: 'var(--text)',
-                      fontWeight: 600,
-                      background: 'var(--app-bg)',
-                    }
-                  : undefined
-              }
+              aria-pressed={selectedProvider === provider}
             >
-              <span className="filter-chip__dot" style={{ background: providerColor(p) }} />
-              {formatProviderName(p)}
+              <span className="filter-chip__dot" style={{ background: providerColor(provider) }} aria-hidden="true" />
+              {providerDisplayName(provider)}
             </button>
           ))}
         </div>
       </div>
 
-      {sortedAndFilteredByModel.length === 0 ? (
-        <p className="panel-empty">No matching models found.</p>
-      ) : (
-        <table className="model-table">
-          <thead>
-            <tr>
-              <SortableHeader
-                field="model"
-                label="Model"
-                sortField={sortField}
-                sortDirection={sortDirection}
-                onSort={handleSort}
-              />
-              <SortableHeader
-                field="requests"
-                label="Requests"
-                sortField={sortField}
-                sortDirection={sortDirection}
-                onSort={handleSort}
-              />
-              <SortableHeader
-                field="cost"
-                label="Cost"
-                sortField={sortField}
-                sortDirection={sortDirection}
-                onSort={handleSort}
-              />
-              <SortableHeader
-                field="cpm"
-                label="Cost / 1M"
-                hint="Cost per 1 million tokens (input + output) — the per-row second figure"
-                sortField={sortField}
-                sortDirection={sortDirection}
-                onSort={handleSort}
-              />
-            </tr>
-          </thead>
-          <tbody>
-            {sortedAndFilteredByModel.map(({ key, provider, model, cost, requests, cpm }) => (
-              <tr key={key}>
+      {visibleRows.length === 0 ? <p className="panel-empty">No matching models found.</p> : (
+        <div className="model-table-wrap">
+          <table className="model-table">
+            <thead><tr>
+              <SortableHeader field="model" label="Model" sortField={sortField} sortDirection={sortDirection} onSort={sort} />
+              <th>Source</th><th>Scope</th><th>Basis</th>
+              <SortableHeader field="requests" label="Requests" sortField={sortField} sortDirection={sortDirection} onSort={sort} />
+              <SortableHeader field="cost" label="Cost" sortField={sortField} sortDirection={sortDirection} onSort={sort} />
+              <SortableHeader field="cpm" label="Cost / 1M" hint="Cost per 1 million input and output tokens" sortField={sortField} sortDirection={sortDirection} onSort={sort} />
+            </tr></thead>
+            <tbody>{visibleRows.map(row => (
+              <tr key={row.key}>
                 <td>
-                  <span
-                    className="model-table__dot"
-                    style={{ background: providerColor(provider) }}
-                    title={provider}
-                  />
-                  {model}
+                  <span className="model-table__identity">
+                    <span className="model-table__dot" style={{ background: providerColor(row.provider) }} aria-hidden="true" />
+                    <span>{row.model}</span>
+                  </span>
+                  <span className="model-table__provider">{row.providerLabel}</span>
                 </td>
-                <td>{requests.toLocaleString()}</td>
+                <td>{row.sourceLabel}</td><td>{row.scopeLabel}</td><td>{row.basisLabel}</td>
+                <td>{row.requests.toLocaleString()}</td>
                 <td>
-                  {formatGbp(cost, rate)}
-                  <div className="bar-mini" style={{ width: `${(cost / maxCost) * 100}%` }} />
+                  {row.costReported ? <>{formatGbp(row.cost, rate)}<div className="bar-mini" style={{ width: `${(row.cost / maxCost) * 100}%` }} /></> : 'Not reported'}
+                  {row.costReported && row.unknownCostCount > 0 && <span className="model-table__qualification">{row.unknownCostCount.toLocaleString()} {row.unknownCostCount === 1 ? 'observation' : 'observations'} not reported</span>}
                 </td>
-                <td>{cpm === 0 ? '—' : formatGbp(cpm, rate)}</td>
+                <td>{row.cpm == null ? 'Not reported' : formatGbp(row.cpm, rate)}</td>
               </tr>
-            ))}
-          </tbody>
-        </table>
+            ))}</tbody>
+          </table>
+        </div>
       )}
     </>
   )

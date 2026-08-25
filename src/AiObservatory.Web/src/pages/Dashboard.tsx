@@ -1,5 +1,6 @@
 import { lazy, Suspense, useRef, useState, type KeyboardEvent } from 'react'
 import SummaryCards from '../components/SummaryCards'
+import SourceStatusPanel from '../components/SourceStatusPanel'
 import ModelBreakdown from '../components/ModelBreakdown'
 import InsightsFeed from '../components/InsightsFeed'
 import SubscriptionPanel from '../components/SubscriptionPanel'
@@ -113,24 +114,25 @@ export default function Dashboard() {
         {tab === 'overview' && (
           <>
             <SummaryCards />
-            <div className="collapsible-panel-zone">
-              <CavemanStatsPanel />
-            </div>
-            <SubscriptionPanel />
+            <SourceStatusPanel />
             <div className="main-grid">
               <div className="panel">
-                <div className="panel-title">Daily spend — last 31 days</div>
+                <div className="panel-title">Usage value · last 31 days</div>
                 <Suspense fallback={<div className="chart-skeleton" />}>
                   <SpendChart />
                 </Suspense>
               </div>
               <div className="panel">
-                <div className="panel-title">Provider split</div>
+                <div className="panel-title">Provider usage share</div>
                 <Suspense fallback={<div className="chart-skeleton" />}>
                   <ProviderSplit />
                 </Suspense>
               </div>
             </div>
+            <div className="collapsible-panel-zone">
+              <CavemanStatsPanel />
+            </div>
+            <SubscriptionPanel />
             <div className="bottom-grid">
               <div className="panel">
                 <div className="panel-title">Model breakdown</div>
