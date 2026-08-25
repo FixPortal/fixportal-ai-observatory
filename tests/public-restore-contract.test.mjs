@@ -51,6 +51,29 @@ function hasPrivatePackageReference(pathname, text) {
   })
 }
 
+async function runWithRecovery(operation, recovery, cleanup) {
+  let primaryFailure
+  try {
+    await operation()
+  } catch (error) {
+    primaryFailure = error
+  }
+
+  try {
+    await recovery()
+  } catch (recoveryFailure) {
+    if (primaryFailure) {
+      throw new AggregateError([primaryFailure, recoveryFailure], 'operation and recovery both failed')
+    }
+    throw recoveryFailure
+  }
+
+  await cleanup()
+  if (primaryFailure) {
+    throw primaryFailure
+  }
+}
+
 test('private plumbing scan includes test sources', () => {
   const token = ['GITHUB', 'PACKAGES', 'TOKEN'].join('_')
 
@@ -75,6 +98,45 @@ test('private package matcher detects supported MSBuild attribute forms', () => 
   }
 })
 
+test('failed recovery retains the isolated cache and reports both failures', async () => {
+  const primaryFailure = new Error('cold restore failed')
+  const recoveryFailure = new Error('live restore failed')
+  let cleaned = false
+
+  await assert.rejects(
+    runWithRecovery(
+      async () => { throw primaryFailure },
+      async () => {
+        assert.equal(cleaned, false)
+        throw recoveryFailure
+      },
+      async () => { cleaned = true },
+    ),
+    error => error instanceof AggregateError
+      && error.errors[0] === primaryFailure
+      && error.errors[1] === recoveryFailure,
+  )
+  assert.equal(cleaned, false)
+})
+
+test('successful recovery cleans the isolated cache without masking the primary failure', async () => {
+  const primaryFailure = new Error('cold restore failed')
+  const events = []
+
+  await assert.rejects(
+    runWithRecovery(
+      async () => {
+        events.push('primary')
+        throw primaryFailure
+      },
+      async () => { events.push('recovery') },
+      async () => { events.push('cleanup') },
+    ),
+    error => error === primaryFailure,
+  )
+  assert.deepEqual(events, ['primary', 'recovery', 'cleanup'])
+})
+
 test('public restore contract excludes private package plumbing and leaves live build assets usable', async () => {
   for (const pathname of trackedFiles().filter(isLive)) {
     const text = await readFile(path.join(root, pathname), 'utf8')
@@ -97,33 +159,36 @@ test('public restore contract excludes private package plumbing and leaves live 
   const packages = await mkdtemp(path.join(os.tmpdir(), 'aiobservatory-public-restore-'))
   const githubPackagesToken = ['GITHUB', 'PACKAGES', 'TOKEN'].join('_')
   const fixportalPackagesToken = ['FIXPORTAL', 'PACKAGES', 'TOKEN'].join('_')
-  try {
-    assert.deepEqual(await readdir(packages), [], 'isolated NuGet package directory must start empty')
-    const environment = { ...process.env, NUGET_PACKAGES: packages }
-    delete environment[githubPackagesToken]
-    delete environment[fixportalPackagesToken]
-    assert.equal(Object.hasOwn(environment, githubPackagesToken), false, `${githubPackagesToken} must be absent during restore`)
-    assert.equal(Object.hasOwn(environment, fixportalPackagesToken), false, `${fixportalPackagesToken} must be absent during restore`)
-    const restore = spawnSync('dotnet', ['restore', 'AiObservatory.slnx', '--configfile', 'nuget.config'], {
-      cwd: root,
-      encoding: 'utf8',
-      env: environment,
-      timeout: 300_000,
-    })
-    assert.equal(restore.status, 0, `dotnet restore failed:\n${restore.stdout}\n${restore.stderr}`)
-  } finally {
-    await rm(packages, { recursive: true, force: true })
-    const recoveryEnvironment = { ...process.env }
-    delete recoveryEnvironment[githubPackagesToken]
-    delete recoveryEnvironment[fixportalPackagesToken]
-    const recovery = spawnSync('dotnet', ['restore', 'AiObservatory.slnx', '--configfile', 'nuget.config', '--force'], {
-      cwd: root,
-      encoding: 'utf8',
-      env: recoveryEnvironment,
-      timeout: 300_000,
-    })
-    assert.equal(recovery.status, 0, `failed to restore live build assets:\n${recovery.stdout}\n${recovery.stderr}`)
-  }
+  await runWithRecovery(
+    async () => {
+      assert.deepEqual(await readdir(packages), [], 'isolated NuGet package directory must start empty')
+      const environment = { ...process.env, NUGET_PACKAGES: packages }
+      delete environment[githubPackagesToken]
+      delete environment[fixportalPackagesToken]
+      assert.equal(Object.hasOwn(environment, githubPackagesToken), false, `${githubPackagesToken} must be absent during restore`)
+      assert.equal(Object.hasOwn(environment, fixportalPackagesToken), false, `${fixportalPackagesToken} must be absent during restore`)
+      const restore = spawnSync('dotnet', ['restore', 'AiObservatory.slnx', '--configfile', 'nuget.config'], {
+        cwd: root,
+        encoding: 'utf8',
+        env: environment,
+        timeout: 300_000,
+      })
+      assert.equal(restore.status, 0, `dotnet restore failed:\n${restore.stdout}\n${restore.stderr}`)
+    },
+    async () => {
+      const recoveryEnvironment = { ...process.env }
+      delete recoveryEnvironment[githubPackagesToken]
+      delete recoveryEnvironment[fixportalPackagesToken]
+      const recovery = spawnSync('dotnet', ['restore', 'AiObservatory.slnx', '--configfile', 'nuget.config', '--force'], {
+        cwd: root,
+        encoding: 'utf8',
+        env: recoveryEnvironment,
+        timeout: 300_000,
+      })
+      assert.equal(recovery.status, 0, `failed to restore live build assets:\n${recovery.stdout}\n${recovery.stderr}`)
+    },
+    async () => rm(packages, { recursive: true, force: true }),
+  )
 
   const build = spawnSync('dotnet', ['build', 'AiObservatory.slnx', '--configuration', 'Release', '--no-restore'], {
     cwd: root,
