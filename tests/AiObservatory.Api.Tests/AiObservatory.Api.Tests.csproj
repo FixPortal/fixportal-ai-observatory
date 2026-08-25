@@ -15,7 +15,6 @@
 
   <ItemGroup>
     <PackageReference Include="AwesomeAssertions" />
-    <PackageReference Include="FixPortal.CodeStyle.ArchRules" />
     <PackageReference Include="MailKit" />
     <!-- Bare in-memory middleware pipelines only (ForwardedHeadersConfigTests). NOT
          Microsoft.AspNetCore.Mvc.Testing: WebApplicationFactory boots the real composition

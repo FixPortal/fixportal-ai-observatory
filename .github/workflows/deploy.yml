@@ -26,7 +26,6 @@ jobs:
     if: ${{ (github.event_name == 'workflow_run' && github.event.workflow_run.conclusion == 'success' && github.event.workflow_run.event == 'push' && github.event.workflow_run.head_branch == 'main') || (github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main') }}
     permissions:
       contents: read
-      packages: read
     steps:
       - uses: actions/checkout@v7
         with:
@@ -42,8 +41,6 @@ jobs:
           dotnet-version: '10.x'
       - name: Publish
         run: dotnet publish src/AiObservatory.Api -c Release -o ./publish/api
-        env:
-          GITHUB_PACKAGES_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       - uses: azure/login@f5d393ae46f8fde4be8b75f32e3fc50e654ad0ca # v3
         with:
           creds: ${{ secrets.AZURE_CREDENTIALS }}
@@ -105,7 +102,6 @@ jobs:
     if: ${{ (github.event_name == 'workflow_run' && github.event.workflow_run.conclusion == 'success' && github.event.workflow_run.event == 'push' && github.event.workflow_run.head_branch == 'main') || (github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main') }}
     permissions:
       contents: read
-      packages: read
     steps:
       - uses: actions/checkout@v7
         with:
@@ -121,8 +117,6 @@ jobs:
           dotnet-version: '10.x'
       - name: Publish
         run: dotnet publish src/AiObservatory.Ingest -c Release -o ./publish/ingest
-        env:
-          GITHUB_PACKAGES_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       - uses: azure/login@f5d393ae46f8fde4be8b75f32e3fc50e654ad0ca # v3
         with:
           creds: ${{ secrets.AZURE_CREDENTIALS }}
@@ -166,7 +160,6 @@ jobs:
     if: ${{ (github.event_name == 'workflow_run' && github.event.workflow_run.conclusion == 'success' && github.event.workflow_run.event == 'push' && github.event.workflow_run.head_branch == 'main') || (github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main') }}
     permissions:
       contents: read
-      packages: read
     steps:
       - uses: actions/checkout@v7
         with:
@@ -180,11 +173,8 @@ jobs:
       - uses: actions/setup-node@v7
         with:
           node-version: '24'
-          registry-url: 'https://npm.pkg.github.com'
       - run: npm ci
         working-directory: src/AiObservatory.Web
-        env:
-          NODE_AUTH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       - run: npm run build
         working-directory: src/AiObservatory.Web
         env:

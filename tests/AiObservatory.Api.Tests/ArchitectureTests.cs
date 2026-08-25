@@ -9,7 +9,6 @@ using ArchUnitNET.Domain;
 using ArchUnitNET.Loader;
 using ArchUnitNET.xUnitV3;
 using AwesomeAssertions;
-using FixPortal.CodeStyle.ArchRules;
 using static ArchUnitNET.Fluent.ArchRuleDefinition;
 
 namespace AiObservatory.Api.Tests;
@@ -53,25 +52,25 @@ public class ArchitectureTests
     [Fact]
     public void Interfaces_must_have_I_prefix()
     {
-        FixPortalArchRules.InterfacesMustHaveIPrefix().Check(Architecture);
+        Interfaces().Should().HaveNameStartingWith("I").Check(Architecture);
     }
 
     [Fact]
     public void Model_types_must_be_sealed()
     {
-        FixPortalArchRules.ModelTypesMustBeSealed("AiObservatory.Data.Entities").Check(Architecture);
+        Classes().That().ResideInNamespace("AiObservatory.Data.Entities").Should().BeSealed().Check(Architecture);
     }
 
     [Fact]
     public void Api_must_not_depend_on_Ingest()
     {
-        FixPortalArchRules.LayerMustNotDependOn(ApiTypes, IngestTypes).Check(Architecture);
+        Types().That().Are(ApiTypes).Should().NotDependOnAny(IngestTypes).Check(Architecture);
     }
 
     [Fact]
     public void Ingest_must_not_depend_on_Api()
     {
-        FixPortalArchRules.LayerMustNotDependOn(IngestTypes, ApiTypes).Check(Architecture);
+        Types().That().Are(IngestTypes).Should().NotDependOnAny(ApiTypes).Check(Architecture);
     }
 
     // The ledger deliberately holds no link back to a bank, card, invoice or

@@ -19,14 +19,7 @@ AI Observatory is a .NET 10 and React 19 dashboard with a PostgreSQL store. Prov
 
 ### Quick start
 
-> [!WARNING]
-> Restore depends on private FixPortal GitHub Packages. Only contributors explicitly granted package access can build; public users without it cannot complete this quick start. This is an unresolved OSS release blocker.
-
-Authorized contributors can set their package-read token before Docker or manual restore:
-
-```powershell
-$env:GITHUB_PACKAGES_TOKEN = '<github-packages-token>'
-```
+Restore uses public feeds; no GitHub Packages token is required.
 
 ```powershell
 docker compose up --build

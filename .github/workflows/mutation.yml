@@ -11,7 +11,6 @@ concurrency:
 
 permissions:
   contents: read
-  packages: read
 
 jobs:
   mutation:
@@ -48,8 +47,6 @@ jobs:
 
       - name: Restore
         run: dotnet restore AiObservatory.slnx
-        env:
-          GITHUB_PACKAGES_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Restore dotnet tools
         run: dotnet tool restore
