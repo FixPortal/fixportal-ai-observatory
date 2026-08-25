@@ -87,6 +87,23 @@ public sealed class BillingObservationWriterTests : IAsyncLifetime
     }
 
     [Fact]
+    public async Task ExactReplayRetainsFrozenFxAndRecordedAtWhenCurrentFxDiffers()
+    {
+        var ct = TestContext.Current.CancellationToken;
+        await Writer(_db, 0.75m).RecordAsync(Observation(), "openai", "api-usage", ct);
+        var replay = Observation(observedAt: ObservedAt.Plus(Duration.FromHours(1)));
+
+        var disposition = await Writer(_db, 0.79m, RecordedAt.Plus(Duration.FromDays(1)))
+            .RecordAsync(replay, "openai", "api-usage", ct);
+
+        disposition.Should().Be(BillingWriteDisposition.Unchanged);
+        var spend = await _db.SpendEntries.AsNoTracking().SingleAsync(ct);
+        spend.FxRate.Should().Be(0.75m);
+        spend.AmountGbp.Should().Be(6m);
+        spend.RecordedAt.Should().Be(RecordedAt);
+    }
+
+    [Fact]
     public async Task CorrectionUpdatesTheFactsAndFrozenFxButPreservesManualCategorisation()
     {
         var ct = TestContext.Current.CancellationToken;
@@ -402,11 +419,11 @@ public sealed class BillingObservationWriterTests : IAsyncLifetime
         rawType.Should().Be("jsonb");
     }
 
-    private BillingObservationWriter Writer(AiObservatoryDbContext db, decimal rate)
+    private BillingObservationWriter Writer(AiObservatoryDbContext db, decimal rate, Instant? recordedAt = null)
     {
         var fx = Substitute.For<FxRateProvider>(_http, _cache, NullLogger<FxRateProvider>.Instance);
         fx.GetGbpRateOnAsync(Arg.Any<string>(), Arg.Any<LocalDate>(), Arg.Any<CancellationToken>()).Returns(rate);
-        return new BillingObservationWriter(db, fx, new FakeClock(RecordedAt));
+        return new BillingObservationWriter(db, fx, new FakeClock(recordedAt ?? RecordedAt));
     }
 
     private static bool JsonEquals(string left, string right)

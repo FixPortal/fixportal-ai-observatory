@@ -191,7 +191,7 @@ public class BillingObservationWriter(AiObservatoryDbContext db, FxRateProvider 
             );
             return true;
         }
-        if (!observationChanged && HasSameProviderFacts(spend, observation, entryKey, resolvedRate, resolvedAmountGbp))
+        if (!observationChanged && HasSameProviderFacts(spend, observation, entryKey))
         {
             return false;
         }
@@ -270,18 +270,10 @@ public class BillingObservationWriter(AiObservatoryDbContext db, FxRateProvider 
         spend.ObservedAt = observation.ObservedAt;
     }
 
-    private static bool HasSameProviderFacts(
-        SpendEntry spend,
-        BillingObservation observation,
-        string entryKey,
-        decimal fxRate,
-        decimal amountGbp
-    ) =>
+    private static bool HasSameProviderFacts(SpendEntry spend, BillingObservation observation, string entryKey) =>
         spend.OccurredOn == observation.OccurredOn
         && spend.Amount == observation.NetAmount
         && spend.Currency == observation.Currency
-        && spend.AmountGbp == amountGbp
-        && spend.FxRate == fxRate
         && spend.Description == DescriptionFor(observation)
         && spend.EntryKey == entryKey
         && JsonEquals(spend.RawPayload, observation.RawPayload)
