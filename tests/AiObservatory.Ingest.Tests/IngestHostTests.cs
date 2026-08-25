@@ -1,5 +1,6 @@
 using AiObservatory.Data.Entities;
 using AiObservatory.Data.Pricing;
+using AiObservatory.Data.Spend;
 using AiObservatory.Ingest.Pricing;
 using AiObservatory.Ingest.Services.Anthropic;
 using AiObservatory.Ingest.Services.Copilot;
@@ -41,6 +42,7 @@ public class IngestHostTests
     [InlineData("COPILOT_ORG", UsageSourceIds.CopilotOrgReport)]
     [InlineData("GOOGLE_BILLING_ACCOUNT_ID", UsageSourceIds.GoogleCloudBillingExport)]
     [InlineData("OPENAI_ADMIN_KEY", UsageSourceIds.OpenAiUsageApi)]
+    [InlineData("OPENAI_ADMIN_KEY", UsageSourceIds.OpenAiCostsApi)]
     [InlineData("GITHUB_TOKEN", UsageSourceIds.GitHubActivityApi)]
     public async Task UnresolvedKeyVaultReferenceDoesNotEnableAProvider(string setting, string sourceId)
     {
@@ -80,6 +82,7 @@ public class IngestHostTests
                 UsageSourceIds.CopilotOrgReport,
                 UsageSourceIds.GoogleCloudBillingExport,
                 UsageSourceIds.OpenAiUsageApi,
+                UsageSourceIds.OpenAiCostsApi,
                 UsageSourceIds.GitHubActivityApi
             );
         definitions.Should().OnlyContain(x => !x.IsConfigured);
@@ -90,7 +93,6 @@ public class IngestHostTests
     [InlineData("ANTHROPIC_BILLING_KEY", typeof(AnthropicIngestionService), UsageSourceIds.AnthropicUsageApi)]
     [InlineData("COPILOT_ORG", typeof(CopilotIngestionService), UsageSourceIds.CopilotOrgReport)]
     [InlineData("GOOGLE_BILLING_ACCOUNT_ID", typeof(GoogleIngestionService), UsageSourceIds.GoogleCloudBillingExport)]
-    [InlineData("OPENAI_ADMIN_KEY", typeof(OpenAiIngestionService), UsageSourceIds.OpenAiUsageApi)]
     [InlineData("GITHUB_TOKEN", typeof(GitHubIngestionService), UsageSourceIds.GitHubActivityApi)]
     public async Task ConfiguredCredentialRegistersTheMatchingUsageSource(
         string setting,
@@ -115,6 +117,36 @@ public class IngestHostTests
 
         sources.Should().ContainSingle(x => x.GetType() == implementationType).Which.SourceId.Should().Be(sourceId);
         definitions.Should().ContainSingle(x => x.SourceId == sourceId).Which.IsConfigured.Should().BeTrue();
+    }
+
+    [Fact]
+    public async Task OpenAiAdminKeyRegistersTwoIndependentSourcesWithOneClientAndTheBillingWriter()
+    {
+        await using var factory = new IngestFactory();
+        factory.Settings["OPENAI_ADMIN_KEY"] = "configured-secret";
+
+        using var scope = factory.Services.CreateScope();
+        var openAiSources = scope
+            .ServiceProvider.GetServices<IUsageSource>()
+            .Where(source => source.SourceId is UsageSourceIds.OpenAiUsageApi or UsageSourceIds.OpenAiCostsApi)
+            .ToList();
+        var definitions = scope
+            .ServiceProvider.GetServices<SourceDefinition>()
+            .Where(definition => definition.SourceId is UsageSourceIds.OpenAiUsageApi or UsageSourceIds.OpenAiCostsApi)
+            .ToList();
+
+        openAiSources
+            .Select(source => source.GetType())
+            .Should()
+            .BeEquivalentTo([typeof(OpenAiUsageSource), typeof(OpenAiCostsSource)]);
+        definitions.Should().HaveCount(2).And.OnlyContain(definition => definition.IsConfigured);
+        scope.ServiceProvider.GetServices<IOpenAiAdminClient>().Should().ContainSingle();
+        scope.ServiceProvider.GetRequiredService<FxRateProvider>().Should().NotBeNull();
+        scope.ServiceProvider.GetRequiredService<BillingObservationWriter>().Should().NotBeNull();
+        definitions
+            .Select(definition => definition.ToString())
+            .Should()
+            .OnlyContain(value => !value.Contains("configured-secret", StringComparison.Ordinal));
     }
 
     [Fact]

@@ -3,6 +3,7 @@
 using AiObservatory.Data;
 using AiObservatory.Data.Entities;
 using AiObservatory.Data.Pricing;
+using AiObservatory.Data.Spend;
 using AiObservatory.Ingest;
 using AiObservatory.Ingest.Pricing;
 using AiObservatory.Ingest.Services.Anthropic;
@@ -121,14 +122,21 @@ var host = Host.CreateDefaultBuilder(args)
             services.AddSingleton(
                 new SourceDefinition(UsageSourceIds.OpenAiUsageApi, openAiConfigured, expectedRefreshInterval)
             );
+            services.AddSingleton(
+                new SourceDefinition(UsageSourceIds.OpenAiCostsApi, openAiConfigured, expectedRefreshInterval)
+            );
             if (openAiConfigured)
             {
-                services.AddHttpClient<IOpenAiUsageClient, OpenAiUsageClient>(c =>
+                services.AddHttpClient<IOpenAiAdminClient, OpenAiAdminClient>(c =>
                 {
                     c.BaseAddress = new Uri("https://api.openai.com");
                     c.DefaultRequestHeaders.Add("Authorization", $"Bearer {openAiAdminKey}");
                 });
-                services.TryAddEnumerable(ServiceDescriptor.Scoped<IUsageSource, OpenAiIngestionService>());
+                services.AddMemoryCache();
+                services.AddHttpClient<FxRateProvider>().ConfigureHttpClient(c => c.Timeout = TimeSpan.FromSeconds(10));
+                services.AddScoped<BillingObservationWriter>();
+                services.TryAddEnumerable(ServiceDescriptor.Scoped<IUsageSource, OpenAiUsageSource>());
+                services.TryAddEnumerable(ServiceDescriptor.Scoped<IUsageSource, OpenAiCostsSource>());
             }
 
             // GitHub Activity — enabled when GITHUB_TOKEN is set AND at least one repo is

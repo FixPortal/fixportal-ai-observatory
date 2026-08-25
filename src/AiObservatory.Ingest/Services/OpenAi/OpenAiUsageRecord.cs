@@ -6,11 +6,16 @@ namespace AiObservatory.Ingest.Services.OpenAi;
 // ReSharper disable NotAccessedPositionalProperty.Global
 
 public sealed record OpenAiUsageRecord(
-    LocalDate Date,
+    Instant BucketStart,
+    Instant BucketEnd,
     string Model,
-    long InputTokens,
+    bool? Batch,
+    string? ServiceTier,
+    string? Processing,
+    long InputUncachedTokens,
+    long InputCachedTokens,
+    long InputCacheWriteTokens,
     long OutputTokens,
-    long CachedInputTokens,
-    long CacheWriteTokens,
+    long ModelRequests,
     string RawJson
 );
