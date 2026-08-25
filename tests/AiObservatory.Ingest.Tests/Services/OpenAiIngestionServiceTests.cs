@@ -1,10 +1,7 @@
-using AiObservatory.Data;
 using AiObservatory.Data.Entities;
-using AiObservatory.Data.Pricing;
 using AiObservatory.Data.Repositories;
 using AiObservatory.Ingest.Services.OpenAi;
 using AwesomeAssertions;
-using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging.Abstractions;
 using NodaTime;
 using NodaTime.Testing;
@@ -13,7 +10,7 @@ using NSubstitute;
 namespace AiObservatory.Ingest.Tests.Services;
 
 [Collection("ProviderPollingWorker")]
-public class OpenAiIngestionServiceTests(ProviderPollingDatabase database)
+public class OpenAiIngestionServiceTests
 {
     [Fact]
     public async Task IngestAsyncGroupsAProviderDayByModelAndBuildsStableEventKeys()
@@ -33,18 +30,16 @@ public class OpenAiIngestionServiceTests(ProviderPollingDatabase database)
         var recorded = new List<UsageEvent>();
         var repository = Substitute.For<IUsageRepository>();
         repository
-            .RecordEventAsync(Arg.Any<UsageEvent>(), Arg.Any<CancellationToken>())
+            .RecordEstimatedEventAsync(Arg.Any<UsageEvent>(), Arg.Any<CancellationToken>())
             .Returns(call =>
             {
                 var evt = call.Arg<UsageEvent>()!;
                 recorded.Add(evt);
                 return new RecordEventResult(evt.Id, RecordEventDisposition.Created);
             });
-        await using var db = CreateDb();
         var sut = new OpenAiIngestionService(
             client,
             repository,
-            Resolver(db),
             new FakeClock(Instant.FromUtc(2026, 7, 30, 9, 0)),
             NullLogger<OpenAiIngestionService>.Instance
         );
@@ -93,11 +88,9 @@ public class OpenAiIngestionServiceTests(ProviderPollingDatabase database)
         var through = new LocalDate(2026, 7, 29);
         var client = Substitute.For<IOpenAiUsageClient>();
         client.GetDailyUsageAsync(Arg.Any<LocalDate>(), Arg.Any<CancellationToken>()).Returns([]);
-        await using var db = CreateDb();
         var sut = new OpenAiIngestionService(
             client,
             Substitute.For<IUsageRepository>(),
-            Resolver(db),
             new FakeClock(Instant.FromUtc(2026, 7, 30, 9, 0)),
             NullLogger<OpenAiIngestionService>.Instance
         );
@@ -108,14 +101,4 @@ public class OpenAiIngestionServiceTests(ProviderPollingDatabase database)
         await client.Received(1).GetDailyUsageAsync(through, Arg.Any<CancellationToken>());
         result.LatestObservationAt.Should().BeNull();
     }
-
-    private AiObservatoryDbContext CreateDb() =>
-        new(
-            new DbContextOptionsBuilder<AiObservatoryDbContext>()
-                .UseNpgsql(database.ConnectionString, npgsql => npgsql.UseNodaTime())
-                .Options
-        );
-
-    private static UsagePriceResolver Resolver(AiObservatoryDbContext db) =>
-        new(new PricingSnapshotStore(db), [new OpenAiPriceCalculator()], NullLogger<UsagePriceResolver>.Instance);
 }

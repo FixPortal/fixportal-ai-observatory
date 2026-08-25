@@ -1,7 +1,6 @@
 using System.Text.Json;
 using AiObservatory.Data;
 using AiObservatory.Data.Entities;
-using AiObservatory.Data.Pricing;
 using AiObservatory.Data.Repositories;
 using NodaTime;
 
@@ -33,7 +32,6 @@ public static class EventsEndpoints
         UsageEventRequest req,
         IUsageRepository repo,
         SourceSyncStateStore sourceSyncStateStore,
-        UsagePriceResolver priceResolver,
         IClock clock,
         HttpContext ctx
     )
@@ -105,14 +103,9 @@ public static class EventsEndpoints
             ObservedAt = observedAt,
             EventKey = eventKey,
         };
-        if (IsEstimated(costBasis))
-        {
-            var quote = await priceResolver.ResolveAsync(evt, ctx.RequestAborted);
-            evt.CostUsd = quote?.CostUsd;
-            evt.CacheSavingsUsd = quote?.CacheSavingsUsd;
-        }
-
-        var result = await repo.RecordEventAsync(evt, ctx.RequestAborted);
+        var result = IsEstimated(costBasis)
+            ? await repo.RecordEstimatedEventAsync(evt, ctx.RequestAborted)
+            : await repo.RecordEventAsync(evt, ctx.RequestAborted);
         if (sourceKind == SourceKind.LocalTelemetry)
         {
             await sourceSyncStateStore.MarkSuccessAsync(

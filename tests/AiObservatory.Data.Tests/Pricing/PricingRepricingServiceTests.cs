@@ -21,6 +21,7 @@ public sealed class PricingRepricingServiceTests : IAsyncLifetime
         JsonSerializerDefaults.Web
     ).ConfigureForNodaTime(DateTimeZoneProviders.Tzdb);
     private AiObservatoryDbContext _db = null!;
+    private string _connectionString = null!;
     private UsageRepository _repository = null!;
     private PricingSnapshotStore _store = null!;
     private PricingRepricingService _repricing = null!;
@@ -30,12 +31,12 @@ public sealed class PricingRepricingServiceTests : IAsyncLifetime
         var baseConnection =
             Environment.GetEnvironmentVariable("TEST_DB_CONNECTION")
             ?? "Host=localhost;Database=aiobs_test;Username=postgres;Password=postgres";
-        var connectionString = new NpgsqlConnectionStringBuilder(baseConnection)
+        _connectionString = new NpgsqlConnectionStringBuilder(baseConnection)
         {
             Database = $"aiobs_test_repricing_{Guid.NewGuid():N}",
         }.ConnectionString;
         var options = new DbContextOptionsBuilder<AiObservatoryDbContext>()
-            .UseNpgsql(connectionString, npgsql => npgsql.UseNodaTime())
+            .UseNpgsql(_connectionString, npgsql => npgsql.UseNodaTime())
             .Options;
         _db = new AiObservatoryDbContext(options);
         await _db.Database.MigrateAsync(TestContext.Current.CancellationToken);
@@ -125,6 +126,54 @@ public sealed class PricingRepricingServiceTests : IAsyncLifetime
         (await _store.GetActiveAsync(PricingSourceIds.OpenAi, ct))!.RawEvidence.Should().Be("windowed");
     }
 
+    [Fact]
+    public async Task EstimatedInsertPausedAcrossActivationCannotCommitTheOldPriceAfterActivation()
+    {
+        var ct = TestContext.Current.CancellationToken;
+        await _store.ActivateAsync(Candidate("old", 1m), ct);
+
+        await using var gateConnection = new NpgsqlConnection(_connectionString);
+        await gateConnection.OpenAsync(ct);
+        await using var gateTransaction = await gateConnection.BeginTransactionAsync(ct);
+        await using (var gateCommand = gateConnection.CreateCommand())
+        {
+            gateCommand.Transaction = gateTransaction;
+            gateCommand.CommandText = "LOCK TABLE \"DailyAggregates\" IN ACCESS EXCLUSIVE MODE";
+            await gateCommand.ExecuteNonQueryAsync(ct);
+        }
+
+        await using var writeDb = CreateContext();
+        var writeStore = new PricingSnapshotStore(writeDb);
+        var writeResolver = Resolver(writeStore);
+        var writer = new UsageRepository(writeDb, writeStore, writeResolver);
+        var record = writer.RecordEstimatedEventAsync(Event("overlap", CostBasis.ListPriceEstimate, 99m, 99m), ct);
+        await WaitForBlockedLockAsync("relation", ct);
+        record.IsCompleted.Should().BeFalse();
+
+        await using var activationDb = CreateContext();
+        var activationStore = new PricingSnapshotStore(activationDb);
+        var activationResolver = Resolver(activationStore);
+        var activationRepository = new UsageRepository(activationDb);
+        var activationRepricing = new PricingRepricingService(activationDb, activationRepository, activationResolver);
+        var activation = activationStore.ActivateAsync(
+            Candidate("new", 2m),
+            ct,
+            (_, callbackCt) => activationRepricing.RepriceProviderAsync(Provider.OpenAI, callbackCt)
+        );
+        await WaitForBlockedLockAsync("advisory", ct);
+        activation.IsCompleted.Should().BeFalse();
+
+        await gateTransaction.RollbackAsync(ct);
+        (await record).Disposition.Should().Be(RecordEventDisposition.Created);
+        (await activation).Should().Be(PricingActivationResult.Activated);
+
+        await using var verificationDb = CreateContext();
+        var saved = await verificationDb.UsageEvents.AsNoTracking().SingleAsync(row => row.EventKey == "overlap", ct);
+        saved.CostUsd.Should().Be(2m);
+        saved.CacheSavingsUsd.Should().Be(0m);
+        (await verificationDb.DailyAggregates.AsNoTracking().SingleAsync(ct)).CostUsd.Should().Be(2m);
+    }
+
     [Theory]
     [InlineData(false)]
     [InlineData(true)]
@@ -192,6 +241,43 @@ public sealed class PricingRepricingServiceTests : IAsyncLifetime
             EventKey = key,
             RawPayload = """{"processing":"standard","context":"short","region":"global"}""",
         };
+
+    private AiObservatoryDbContext CreateContext() =>
+        new(
+            new DbContextOptionsBuilder<AiObservatoryDbContext>()
+                .UseNpgsql(_connectionString, npgsql => npgsql.UseNodaTime())
+                .Options
+        );
+
+    private static UsagePriceResolver Resolver(PricingSnapshotStore store) =>
+        new(store, [new OpenAiPriceCalculator()], NullLogger<UsagePriceResolver>.Instance);
+
+    private async Task WaitForBlockedLockAsync(string lockType, CancellationToken cancellationToken)
+    {
+        using var timeout = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+        timeout.CancelAfter(TimeSpan.FromSeconds(30));
+        await using var connection = new NpgsqlConnection(_connectionString);
+        await connection.OpenAsync(timeout.Token);
+        while (true)
+        {
+            await using var command = connection.CreateCommand();
+            command.CommandText = """
+                SELECT count(*)
+                FROM pg_locks
+                WHERE locktype = @lockType
+                  AND NOT granted
+                  AND database = (SELECT oid FROM pg_database WHERE datname = current_database())
+                  AND (@lockType <> 'relation' OR relation = '"DailyAggregates"'::regclass)
+                """;
+            command.Parameters.AddWithValue("lockType", lockType);
+            if (Convert.ToInt32(await command.ExecuteScalarAsync(timeout.Token)) > 0)
+            {
+                return;
+            }
+
+            await Task.Delay(10, timeout.Token);
+        }
+    }
 
     private static PricingSnapshotCandidate Candidate(
         string evidence,

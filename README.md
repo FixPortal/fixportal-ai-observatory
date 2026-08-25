@@ -462,7 +462,12 @@ curl -X POST http://localhost:5039/api/events \
     "cacheReadTokens": 0,
     "cacheWriteTokens": 0,
     "cacheWrite1hTokens": 0,
-    "costUsd": 0.012,
+    "costUsd": null,
+    "sourceId": "manual-anthropic",
+    "sourceKind": "providerApi",
+    "usageScope": "api",
+    "costBasis": "listPriceEstimate",
+    "rawPayload": "{\"service_tier\":\"standard\",\"speed\":\"standard\",\"inference_geo\":\"global\",\"cache_creation\":{\"ephemeral_5m_input_tokens\":0,\"ephemeral_1h_input_tokens\":0}}",
     "eventKey": "my-first-event"
   }'
 ```
@@ -481,18 +486,29 @@ minutes; for a Claude Code transcript, whose writes are one-hour, that
 understates the cache line by around 60%. The value is in
 `usage.cache_creation.ephemeral_1h_input_tokens` on each assistant message.
 
-For `anthropic` events the API computes `costUsd` itself from its own rate table
-and **ignores whatever you send**, so a producer needs the token counts right,
-not the price.
+For an explicit `listPriceEstimate` or `notional` cost basis, the API computes
+`costUsd` itself from the active first-party catalog and **ignores whatever the
+producer sends**. Producers must supply the exact token lanes and every
+price-bearing raw dimension. Anthropic requires `service_tier`, `speed`, and
+`inference_geo`; a cache write also requires the exact five-minute/one-hour split
+under `cache_creation`. An unknown model, missing catalog/effective window, or
+missing required dimension stores both `costUsd` and `cacheSavingsUsd` as `null`
+rather than guessing or falling back.
+
+Requests that omit all provenance fields remain accepted for compatibility as
+legacy `unknown` cost-basis events; they retain a supplied `costUsd` and do not
+use server pricing. New producers should always send `sourceId`, `sourceKind`,
+`usageScope`, and either `listPriceEstimate` or `notional`. Explicit `billed`
+events belong on the spend/billing path and are rejected by `/events`.
 
 ### Subscription-billed providers (Copilot, Moonshot)
 
-Not every provider is metered. Copilot and Moonshot are flat-rate subscriptions,
-so their events carry `costUsd: 0` and their tokens measure **utilisation, not
-spend** — the money is the `Subscription` row, and the token stream shows how
-much of it is being used. Both declare `cacheSavingsPerToken: null` in
-`src/config/providers.ts` for the same reason: a cache read on a flat plan saves
-context, not money.
+Not every provider event has an attributable metered price. Ambiguous Copilot
+events and generic Kimi Code/Moonshot subscription telemetry carry
+`costUsd: null`, not zero: their tokens measure **utilisation, not spend**, while
+the money is represented by the `Subscription` row. They also have no monetary
+cache-savings estimate; a cache read on a flat plan saves context, not an
+attributable per-event charge.
 
 Moonshot usage comes from Kimi Code rather than a billing API. Kimi Code
 authenticates through the Allegretto OAuth subscription against

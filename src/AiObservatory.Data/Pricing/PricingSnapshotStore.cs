@@ -120,14 +120,7 @@ public sealed class PricingSnapshotStore(AiObservatoryDbContext db)
         CancellationToken cancellationToken = default
     )
     {
-        var sourceId = provider switch
-        {
-            Provider.OpenAI => PricingSourceIds.OpenAi,
-            Provider.Anthropic => PricingSourceIds.Claude,
-            Provider.Moonshot => PricingSourceIds.Kimi,
-            Provider.Google => PricingSourceIds.GoogleCloudCatalog,
-            _ => null,
-        };
+        var sourceId = GetSourceId(provider);
         if (sourceId is null)
         {
             return null;
@@ -140,6 +133,28 @@ public sealed class PricingSnapshotStore(AiObservatoryDbContext db)
             .ThenByDescending(candidate => candidate.IsActive)
             .ToListAsync(cancellationToken);
         return snapshots.FirstOrDefault(snapshot => Covers(snapshot, usageDate));
+    }
+
+    internal async Task AcquireSharedActivationLockAsync(
+        Provider provider,
+        CancellationToken cancellationToken = default
+    )
+    {
+        var sourceId = GetSourceId(provider);
+        if (sourceId is null)
+        {
+            return;
+        }
+
+        if (db.Database.CurrentTransaction is null)
+        {
+            throw new InvalidOperationException("A pricing read lock requires an active database transaction.");
+        }
+
+        await db.Database.ExecuteSqlInterpolatedAsync(
+            $"SELECT pg_advisory_xact_lock_shared(hashtextextended({sourceId}, 0))",
+            cancellationToken
+        );
     }
 
     private static bool Covers(PricingSnapshot snapshot, LocalDate usageDate) =>
@@ -156,17 +171,24 @@ public sealed class PricingSnapshotStore(AiObservatoryDbContext db)
             _ => false,
         };
 
-    private static void Validate(PricingSnapshotCandidate candidate)
-    {
-        ArgumentNullException.ThrowIfNull(candidate);
-        var expectedSourceId = candidate.Provider switch
+    private static string? GetSourceId(Provider provider) =>
+        provider switch
         {
             Provider.OpenAI => PricingSourceIds.OpenAi,
             Provider.Anthropic => PricingSourceIds.Claude,
             Provider.Moonshot => PricingSourceIds.Kimi,
             Provider.Google => PricingSourceIds.GoogleCloudCatalog,
-            _ => throw new ArgumentException("The provider has no first-party pricing source.", nameof(candidate)),
+            _ => null,
         };
+
+    private static void Validate(PricingSnapshotCandidate candidate)
+    {
+        ArgumentNullException.ThrowIfNull(candidate);
+        var expectedSourceId = GetSourceId(candidate.Provider);
+        if (expectedSourceId is null)
+        {
+            throw new ArgumentException("The provider has no first-party pricing source.", nameof(candidate));
+        }
         if (!string.Equals(candidate.SourceId, expectedSourceId, StringComparison.Ordinal))
         {
             throw new ArgumentException("The pricing source does not match the provider.", nameof(candidate));

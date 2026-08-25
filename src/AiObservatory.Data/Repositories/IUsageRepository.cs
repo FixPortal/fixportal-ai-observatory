@@ -73,6 +73,11 @@ public interface IUsageRepository
     Task<RecordEventResult> RecordEventAsync(UsageEvent evt, CancellationToken ct = default);
 
     /// <summary>
+    /// Resolves and records list-price or notional usage under the provider pricing activation lock.
+    /// </summary>
+    Task<RecordEventResult> RecordEstimatedEventAsync(UsageEvent evt, CancellationToken ct = default);
+
+    /// <summary>
     /// Replaces pricing on an eligible estimated event and applies the signed aggregate delta.
     /// Joins the current database transaction when activation is in progress.
     /// </summary>
