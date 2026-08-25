@@ -49,7 +49,8 @@ var host = Host.CreateDefaultBuilder(args)
             var anthropicConfigured = RegisterAnthropicSources(services, cfg, expectedRefreshInterval);
 
             // Copilot — enabled when GITHUB_TOKEN and COPILOT_ORG are both set.
-            // GITHUB_TOKEN requires the manage_billing:copilot scope.
+            // Classic tokens require read:org; fine-grained tokens require Organization
+            // Copilot metrics (read).
             var githubToken = cfg["GITHUB_TOKEN"];
             var copilotOrg = cfg["COPILOT_ORG"];
             var copilotConfigured = IsConfigured(githubToken) && IsConfigured(copilotOrg);
@@ -58,20 +59,28 @@ var host = Host.CreateDefaultBuilder(args)
             );
             if (copilotConfigured)
             {
-                services.AddHttpClient<ICopilotUsageClient, CopilotUsageClient>(c =>
-                {
-                    c.BaseAddress = new Uri("https://api.github.com");
-                    c.DefaultRequestHeaders.Add("Authorization", $"Bearer {githubToken}");
-                    c.DefaultRequestHeaders.Add("User-Agent", "fpaiobs-ingest");
-                    c.DefaultRequestHeaders.Add("X-GitHub-Api-Version", "2022-11-28");
-                });
-                services.AddScoped<ICopilotUsageClient>(sp =>
+                services.AddHttpClient(
+                    nameof(ICopilotReportClient),
+                    c =>
+                    {
+                        c.BaseAddress = new Uri("https://api.github.com");
+                        c.DefaultRequestHeaders.Add("Authorization", $"Bearer {githubToken}");
+                        c.DefaultRequestHeaders.Add("User-Agent", "fpaiobs-ingest");
+                        c.DefaultRequestHeaders.Add("Accept", "application/vnd.github+json");
+                        c.DefaultRequestHeaders.Add("X-GitHub-Api-Version", "2026-03-10");
+                    }
+                );
+                services.AddHttpClient("CopilotSignedDownloads").RemoveAllLoggers();
+                services.AddScoped<ICopilotReportClient>(sp =>
                 {
                     var factory = sp.GetRequiredService<IHttpClientFactory>();
-                    var http = factory.CreateClient(nameof(ICopilotUsageClient));
-                    return new CopilotUsageClient(http, copilotOrg!);
+                    return new CopilotReportClient(
+                        factory.CreateClient(nameof(ICopilotReportClient)),
+                        factory.CreateClient("CopilotSignedDownloads"),
+                        copilotOrg!
+                    );
                 });
-                services.TryAddEnumerable(ServiceDescriptor.Scoped<IUsageSource, CopilotIngestionService>());
+                services.TryAddEnumerable(ServiceDescriptor.Scoped<IUsageSource, CopilotReportSource>());
             }
 
             // Google — enabled when GOOGLE_BILLING_ACCOUNT_ID is set.
@@ -127,9 +136,8 @@ var host = Host.CreateDefaultBuilder(args)
             }
 
             // GitHub Activity — enabled when GITHUB_TOKEN is set AND at least one repo is
-            // allowlisted. Reuses the same GITHUB_TOKEN as Copilot metrics; this PAT now also
-            // needs contents:read, pull-requests:read, actions:read (in addition to
-            // manage_billing:copilot if Copilot metrics are also enabled).
+            // allowlisted. Reuses the same GITHUB_TOKEN as Copilot reports; this PAT also
+            // needs contents:read, pull-requests:read, and actions:read for activity.
             var githubConfigured = IsConfigured(githubToken) && githubRepoAllowlist.Length > 0;
             services.AddSingleton(
                 new SourceDefinition(UsageSourceIds.GitHubActivityApi, githubConfigured, expectedRefreshInterval)

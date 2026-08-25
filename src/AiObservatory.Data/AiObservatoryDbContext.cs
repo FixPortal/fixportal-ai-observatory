@@ -47,6 +47,7 @@ public class AiObservatoryDbContext(DbContextOptions<AiObservatoryDbContext> opt
     public DbSet<SourceSyncState> SourceSyncStates => Set<SourceSyncState>();
     public DbSet<PricingSnapshot> PricingSnapshots => Set<PricingSnapshot>();
     public DbSet<BillingObservation> BillingObservations => Set<BillingObservation>();
+    public DbSet<CopilotDailyReport> CopilotDailyReports => Set<CopilotDailyReport>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -550,6 +551,48 @@ public class AiObservatoryDbContext(DbContextOptions<AiObservatoryDbContext> opt
                     "CK_BillingObservation_Amounts_Balance",
                     "\"GrossAmount\" + \"CreditAmount\" = \"NetAmount\""
                 );
+            });
+        });
+
+        modelBuilder.Entity<CopilotDailyReport>(b =>
+        {
+            b.Property(report => report.SourceId).HasMaxLength(100).IsRequired();
+            b.Property(report => report.SourceKind).HasConversion<string>();
+            b.Property(report => report.UsageScope).HasConversion<string>();
+            b.Property(report => report.CostBasis).HasConversion<string>();
+            b.Property(report => report.ReportKey).HasMaxLength(200).IsRequired();
+            b.Property(report => report.RawPayload).HasColumnType("jsonb");
+            b.HasIndex(report => new { report.SourceId, report.ReportKey }).IsUnique();
+            b.HasIndex(report => report.Day);
+            b.ToTable(table =>
+            {
+                table.HasCheckConstraint(
+                    "CK_CopilotDailyReport_DailyActiveUsers_NonNegative",
+                    "\"DailyActiveUsers\" IS NULL OR \"DailyActiveUsers\" >= 0"
+                );
+                table.HasCheckConstraint(
+                    "CK_CopilotDailyReport_WeeklyActiveUsers_NonNegative",
+                    "\"WeeklyActiveUsers\" IS NULL OR \"WeeklyActiveUsers\" >= 0"
+                );
+                table.HasCheckConstraint(
+                    "CK_CopilotDailyReport_MonthlyActiveUsers_NonNegative",
+                    "\"MonthlyActiveUsers\" IS NULL OR \"MonthlyActiveUsers\" >= 0"
+                );
+                table.HasCheckConstraint(
+                    "CK_CopilotDailyReport_UserInitiatedInteractionCount_NonNegative",
+                    "\"UserInitiatedInteractionCount\" >= 0"
+                );
+                table.HasCheckConstraint(
+                    "CK_CopilotDailyReport_CodeGenerationActivityCount_NonNegative",
+                    "\"CodeGenerationActivityCount\" >= 0"
+                );
+                table.HasCheckConstraint(
+                    "CK_CopilotDailyReport_CodeAcceptanceActivityCount_NonNegative",
+                    "\"CodeAcceptanceActivityCount\" >= 0"
+                );
+                table.HasCheckConstraint("CK_CopilotDailyReport_ProviderApi", "\"SourceKind\" = 'ProviderApi'");
+                table.HasCheckConstraint("CK_CopilotDailyReport_Subscription", "\"UsageScope\" = 'Subscription'");
+                table.HasCheckConstraint("CK_CopilotDailyReport_NoCost", "\"CostBasis\" = 'None'");
             });
         });
     }

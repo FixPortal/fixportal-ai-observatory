@@ -93,7 +93,7 @@ public class IngestHostTests
     }
 
     [Theory]
-    [InlineData("COPILOT_ORG", typeof(CopilotIngestionService), UsageSourceIds.CopilotOrgReport)]
+    [InlineData("COPILOT_ORG", typeof(CopilotReportSource), UsageSourceIds.CopilotOrgReport)]
     [InlineData("GOOGLE_BILLING_ACCOUNT_ID", typeof(GoogleIngestionService), UsageSourceIds.GoogleCloudBillingExport)]
     [InlineData("GITHUB_TOKEN", typeof(GitHubIngestionService), UsageSourceIds.GitHubActivityApi)]
     public async Task ConfiguredCredentialRegistersTheMatchingUsageSource(
@@ -119,6 +119,122 @@ public class IngestHostTests
 
         sources.Should().ContainSingle(x => x.GetType() == implementationType).Which.SourceId.Should().Be(sourceId);
         definitions.Should().ContainSingle(x => x.SourceId == sourceId).Which.IsConfigured.Should().BeTrue();
+    }
+
+    [Theory]
+    [InlineData("GITHUB_TOKEN")]
+    [InlineData("COPILOT_ORG")]
+    public async Task CopilotReportRequiresBothConfiguredValues(string configuredSetting)
+    {
+        await using var factory = new IngestFactory();
+        factory.Settings[configuredSetting] = "configured";
+
+        using var scope = factory.Services.CreateScope();
+
+        scope
+            .ServiceProvider.GetServices<IUsageSource>()
+            .Should()
+            .NotContain(source => source.SourceId == UsageSourceIds.CopilotOrgReport);
+        scope
+            .ServiceProvider.GetServices<SourceDefinition>()
+            .Should()
+            .ContainSingle(definition => definition.SourceId == UsageSourceIds.CopilotOrgReport)
+            .Which.IsConfigured.Should()
+            .BeFalse();
+    }
+
+    [Theory]
+    [InlineData("GITHUB_TOKEN", " ")]
+    [InlineData("COPILOT_ORG", "\t")]
+    [InlineData("GITHUB_TOKEN", KeyVaultReference)]
+    [InlineData("COPILOT_ORG", KeyVaultReference)]
+    public async Task InvalidCopilotConfigurationFailsClosed(string invalidSetting, string invalidValue)
+    {
+        await using var factory = new IngestFactory();
+        factory.Settings["GITHUB_TOKEN"] = "configured-token";
+        factory.Settings["COPILOT_ORG"] = "FixPortal";
+        factory.Settings[invalidSetting] = invalidValue;
+
+        using var scope = factory.Services.CreateScope();
+
+        scope
+            .ServiceProvider.GetServices<IUsageSource>()
+            .Should()
+            .NotContain(source => source.SourceId == UsageSourceIds.CopilotOrgReport);
+    }
+
+    [Fact]
+    public async Task CopilotAndGitHubActivityKeepIndependentConfigurationGates()
+    {
+        await using var activityFactory = new IngestFactory();
+        activityFactory.Settings["GITHUB_TOKEN"] = "configured-token";
+        activityFactory.ConfigurationOverrides["Ingest:GitHubRepoAllowlist:0"] = "fix-portal/example";
+        using var activityScope = activityFactory.Services.CreateScope();
+        activityScope
+            .ServiceProvider.GetServices<IUsageSource>()
+            .Should()
+            .ContainSingle(source => source is GitHubIngestionService);
+        activityScope
+            .ServiceProvider.GetServices<IUsageSource>()
+            .Should()
+            .NotContain(source => source.SourceId == UsageSourceIds.CopilotOrgReport);
+
+        await using var copilotFactory = new IngestFactory();
+        copilotFactory.Settings["GITHUB_TOKEN"] = "configured-token";
+        copilotFactory.Settings["COPILOT_ORG"] = "FixPortal";
+        using var copilotScope = copilotFactory.Services.CreateScope();
+        copilotScope
+            .ServiceProvider.GetServices<IUsageSource>()
+            .Should()
+            .ContainSingle(source => source is CopilotReportSource);
+        copilotScope
+            .ServiceProvider.GetServices<IUsageSource>()
+            .Should()
+            .NotContain(source => source is GitHubIngestionService);
+    }
+
+    [Fact]
+    public async Task CopilotUsesAuthorizedDescriptorAndUnauthenticatedDownloadClients()
+    {
+        await using var factory = new IngestFactory();
+        factory.Settings["GITHUB_TOKEN"] = "github-secret";
+        factory.Settings["COPILOT_ORG"] = "FixPortal";
+
+        var clients = factory.Services.GetRequiredService<IHttpClientFactory>();
+        using var descriptor = clients.CreateClient(nameof(ICopilotReportClient));
+        using var download = clients.CreateClient("CopilotSignedDownloads");
+
+        descriptor.BaseAddress.Should().Be(new Uri("https://api.github.com"));
+        descriptor.DefaultRequestHeaders.Authorization.Should().NotBeNull();
+        descriptor.DefaultRequestHeaders.Authorization!.ToString().Should().Be("Bearer github-secret");
+        descriptor.DefaultRequestHeaders.Accept.Single().MediaType.Should().Be("application/vnd.github+json");
+        descriptor
+            .DefaultRequestHeaders.GetValues("X-GitHub-Api-Version")
+            .Should()
+            .ContainSingle()
+            .Which.Should()
+            .Be("2026-03-10");
+        download.DefaultRequestHeaders.Authorization.Should().BeNull();
+        download.DefaultRequestHeaders.Contains("X-GitHub-Api-Version").Should().BeFalse();
+        download.DefaultRequestHeaders.Accept.Should().BeEmpty();
+    }
+
+    [Fact]
+    public async Task CopilotSignedDownloadClientHasNoLoggingHandlers()
+    {
+        await using var factory = new IngestFactory();
+        factory.Settings["GITHUB_TOKEN"] = "github-secret";
+        factory.Settings["COPILOT_ORG"] = "FixPortal";
+
+        var handlers = HandlerChain(
+                factory
+                    .Services.GetRequiredService<IHttpMessageHandlerFactory>()
+                    .CreateHandler("CopilotSignedDownloads")
+            )
+            .Select(handler => handler.GetType().FullName ?? handler.GetType().Name)
+            .ToList();
+
+        handlers.Should().NotContain(name => name.Contains("Logging", StringComparison.OrdinalIgnoreCase));
     }
 
     [Fact]
@@ -333,6 +449,14 @@ public class IngestHostTests
             return aggregate.InnerExceptions.Any(e => ExceptionChainContains(e, fragment));
         }
         return ex.InnerException is not null && ExceptionChainContains(ex.InnerException, fragment);
+    }
+
+    private static IEnumerable<HttpMessageHandler> HandlerChain(HttpMessageHandler handler)
+    {
+        for (var current = handler; current is not null; current = (current as DelegatingHandler)?.InnerHandler)
+        {
+            yield return current;
+        }
     }
 
     private static Exception? CaptureServicesException(IngestFactory factory) =>
