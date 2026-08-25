@@ -302,13 +302,22 @@ public sealed class PricingRefreshWorkerServiceTests(ProviderPollingDatabase dat
     )
     {
         var services = new ServiceCollection();
+        services.AddLogging();
         services.AddDbContext<AiObservatoryDbContext>(options =>
             options.UseNpgsql(database.ConnectionString, npgsql => npgsql.UseNodaTime())
         );
         services.AddScoped<PricingSnapshotStore>();
         services.AddScoped<SourceSyncStateStore>();
+        services.AddScoped<IUsageRepository, UsageRepository>();
+        services.AddScoped<IProviderPriceCalculator, OpenAiPriceCalculator>();
+        services.AddScoped<IProviderPriceCalculator, AnthropicPriceCalculator>();
+        services.AddScoped<IProviderPriceCalculator, KimiPriceCalculator>();
+        services.AddScoped<IProviderPriceCalculator, GooglePriceCalculator>();
+        services.AddScoped<UsagePriceResolver>();
+        services.AddScoped<PricingRepricingService>();
         services.AddScoped(provider => new BundledPricingCatalogLoader(
             provider.GetRequiredService<PricingSnapshotStore>(),
+            provider.GetRequiredService<PricingRepricingService>(),
             bundleLogger ?? NullLogger<BundledPricingCatalogLoader>.Instance,
             bundleBaseDirectory ?? AppContext.BaseDirectory
         ));

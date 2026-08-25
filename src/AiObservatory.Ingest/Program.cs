@@ -18,17 +18,6 @@ using Microsoft.Extensions.DependencyInjection.Extensions;
 using NodaTime;
 
 var host = Host.CreateDefaultBuilder(args)
-    // Anthropic rates come from the shared table that ships with AiObservatory.Data, not
-    // from this worker's appsettings, so the worker and the API cannot drift apart.
-    // Resolved against AppContext.BaseDirectory (where the build drops it) rather than the
-    // content root, which a test host or a non-default working directory can move.
-    .ConfigureAppConfiguration(cfg =>
-        cfg.AddJsonFile(
-            Path.Combine(AppContext.BaseDirectory, "pricing.anthropic.json"),
-            optional: false,
-            reloadOnChange: false
-        )
-    )
     .ConfigureServices(
         (ctx, services) =>
         {
@@ -65,26 +54,6 @@ var host = Host.CreateDefaultBuilder(args)
             );
             if (anthropicConfigured)
             {
-                services
-                    .AddOptions<AnthropicPricingOptions>()
-                    .Bind(cfg.GetSection(AnthropicPricingOptions.SectionName))
-                    .ValidateDataAnnotations()
-                    .Validate(
-                        o => o.Pricing.Count > 0,
-                        $"{AnthropicPricingOptions.SectionName}:Pricing must have at least one entry"
-                    )
-                    // An unmatched model prices at FallbackPricing, so a zeroed fallback would
-                    // silently record every unknown model at $0 — the opposite of failing closed.
-                    .Validate(
-                        o => o.FallbackPricing is { Input: > 0, Output: > 0 },
-                        $"{AnthropicPricingOptions.SectionName}:FallbackPricing must have positive Input and Output rates"
-                    )
-                    .Validate(
-                        o => o.HasPositiveCacheWrite1HRates(),
-                        $"{AnthropicPricingOptions.SectionName}: every Pricing entry and FallbackPricing must set a positive CacheWrite1h"
-                    )
-                    .ValidateOnStart();
-
                 services.AddHttpClient<IAnthropicUsageClient, AnthropicUsageClient>(c =>
                 {
                     c.BaseAddress = new Uri("https://api.anthropic.com");
@@ -153,16 +122,6 @@ var host = Host.CreateDefaultBuilder(args)
             );
             if (openAiConfigured)
             {
-                services
-                    .AddOptions<OpenAiPricingOptions>()
-                    .Bind(cfg.GetSection(OpenAiPricingOptions.SectionName))
-                    .ValidateDataAnnotations()
-                    .Validate(
-                        o => o.Pricing.Count > 0,
-                        $"{OpenAiPricingOptions.SectionName}:Pricing must have at least one entry"
-                    )
-                    .ValidateOnStart();
-
                 services.AddHttpClient<IOpenAiUsageClient, OpenAiUsageClient>(c =>
                 {
                     c.BaseAddress = new Uri("https://api.openai.com");

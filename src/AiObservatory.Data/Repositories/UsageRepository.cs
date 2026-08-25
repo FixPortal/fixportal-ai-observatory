@@ -1,6 +1,8 @@
 using System.Text.Json;
 using AiObservatory.Data.Entities;
+using AiObservatory.Data.Pricing;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.Storage;
 using NodaTime;
 using Npgsql;
 
@@ -62,6 +64,56 @@ public class UsageRepository(AiObservatoryDbContext ctx) : IUsageRepository
         }
 
         throw new InvalidOperationException("Concurrent usage-event insert retry did not resolve the source key.");
+    }
+
+    public async Task UpdateEventPricingAsync(Guid eventId, UsagePriceQuote? quote, CancellationToken ct = default)
+    {
+        IDbContextTransaction? transaction = null;
+        if (ctx.Database.CurrentTransaction is null)
+        {
+            transaction = await ctx.Database.BeginTransactionAsync(ct);
+        }
+
+        await using (transaction)
+        {
+            try
+            {
+                var existing = await FindEventByIdForUpdateAsync(eventId, ct);
+                if (
+                    existing is null
+                    || existing.CostBasis is not (CostBasis.ListPriceEstimate or CostBasis.Notional)
+                    || existing.CostUsd == quote?.CostUsd && existing.CacheSavingsUsd == quote?.CacheSavingsUsd
+                )
+                {
+                    if (transaction is not null)
+                    {
+                        await transaction.CommitAsync(ct);
+                    }
+
+                    return;
+                }
+
+                await ApplyAggregateDeltaAsync(existing, -1, ct);
+                existing.CostUsd = quote?.CostUsd;
+                existing.CacheSavingsUsd = quote?.CacheSavingsUsd;
+                await ApplyAggregateDeltaAsync(existing, +1, ct);
+                await ctx.SaveChangesAsync(ct);
+                if (transaction is not null)
+                {
+                    await transaction.CommitAsync(ct);
+                }
+            }
+            catch
+            {
+                if (transaction is not null)
+                {
+                    await transaction.RollbackAsync(CancellationToken.None);
+                    ctx.ChangeTracker.Clear();
+                }
+
+                throw;
+            }
+        }
     }
 
     private async Task<RecordEventResult> ApplyLockedSnapshotAsync(
@@ -156,6 +208,19 @@ public class UsageRepository(AiObservatoryDbContext ctx) : IUsageRepository
             .UsageEvents.FromSqlInterpolated(
                 $"""SELECT * FROM "UsageEvents" WHERE "SourceId" = {sourceId} AND "EventKey" = {eventKey} FOR UPDATE"""
             )
+            .SingleOrDefaultAsync(ct);
+        if (existing is not null)
+        {
+            await ctx.Entry(existing).ReloadAsync(ct);
+        }
+
+        return existing;
+    }
+
+    private async Task<UsageEvent?> FindEventByIdForUpdateAsync(Guid eventId, CancellationToken ct)
+    {
+        var existing = await ctx
+            .UsageEvents.FromSqlInterpolated($"""SELECT * FROM "UsageEvents" WHERE "Id" = {eventId} FOR UPDATE""")
             .SingleOrDefaultAsync(ct);
         if (existing is not null)
         {

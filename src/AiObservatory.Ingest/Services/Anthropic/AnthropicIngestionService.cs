@@ -1,4 +1,5 @@
 using AiObservatory.Data.Entities;
+using AiObservatory.Data.Pricing;
 using AiObservatory.Data.Repositories;
 using AiObservatory.Ingest.Sources;
 using NodaTime;
@@ -8,6 +9,7 @@ namespace AiObservatory.Ingest.Services.Anthropic;
 public class AnthropicIngestionService(
     IAnthropicUsageClient client,
     IUsageRepository repository,
+    UsagePriceResolver priceResolver,
     IClock clock,
     ILogger<AnthropicIngestionService> logger
 ) : IUsageSource
@@ -46,7 +48,6 @@ public class AnthropicIngestionService(
             let output = g.Sum(x => x.OutputTokens)
             let cacheRead = g.Sum(x => x.CacheReadTokens)
             let cacheWrite = g.Sum(x => x.CacheWriteTokens)
-            let cost = g.Sum(x => x.CostUsd)
             let combinedPayload = "[" + string.Join(",", g.Select(x => x.RawJson)) + "]"
             let eventKey = $"anthropic:{rDate:yyyy-MM-dd}:{model}"
             select new UsageEvent
@@ -59,7 +60,7 @@ public class AnthropicIngestionService(
                 OutputTokens = output,
                 CacheReadTokens = cacheRead,
                 CacheWriteTokens = cacheWrite,
-                CostUsd = cost,
+                CostUsd = null,
                 EventKey = eventKey,
                 RawPayload = combinedPayload,
                 SourceId = SourceId,
@@ -71,6 +72,9 @@ public class AnthropicIngestionService(
 
         foreach (var evt in events)
         {
+            var quote = await priceResolver.ResolveAsync(evt, cancellationToken);
+            evt.CostUsd = quote?.CostUsd;
+            evt.CacheSavingsUsd = quote?.CacheSavingsUsd;
             await repository.RecordEventAsync(evt, cancellationToken);
         }
 

@@ -8,19 +8,26 @@ namespace AiObservatory.Ingest.Pricing;
 public sealed class BundledPricingCatalogLoader
 {
     private readonly PricingSnapshotStore _store;
+    private readonly PricingRepricingService _repricing;
     private readonly ILogger<BundledPricingCatalogLoader> _logger;
     private readonly string _baseDirectory;
 
-    public BundledPricingCatalogLoader(PricingSnapshotStore store, ILogger<BundledPricingCatalogLoader> logger)
-        : this(store, logger, AppContext.BaseDirectory) { }
+    public BundledPricingCatalogLoader(
+        PricingSnapshotStore store,
+        PricingRepricingService repricing,
+        ILogger<BundledPricingCatalogLoader> logger
+    )
+        : this(store, repricing, logger, AppContext.BaseDirectory) { }
 
     internal BundledPricingCatalogLoader(
         PricingSnapshotStore store,
+        PricingRepricingService repricing,
         ILogger<BundledPricingCatalogLoader> logger,
         string baseDirectory
     )
     {
         _store = store;
+        _repricing = repricing;
         _logger = logger;
         _baseDirectory = baseDirectory;
     }
@@ -81,8 +88,11 @@ public sealed class BundledPricingCatalogLoader
             var retrievedAt = getRetrievedAt(catalog);
             var candidate = PricingCandidate.Create(provider, sourceId, retrievedAt, sourceUrl, raw, catalog);
 
-            // Task 5 must supply the transaction-local repricing callback before this pricing plan is complete.
-            await _store.ActivateIfMissingAsync(candidate, cancellationToken);
+            await _store.ActivateIfMissingAsync(
+                candidate,
+                cancellationToken,
+                (_, callbackCt) => _repricing.RepriceProviderAsync(provider, callbackCt)
+            );
         }
         catch (OperationCanceledException)
         {

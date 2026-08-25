@@ -1,7 +1,5 @@
 using System.Net.Http.Json;
 using System.Text.Json;
-using AiObservatory.Data.Pricing;
-using Microsoft.Extensions.Options;
 using NodaTime;
 using NodaTime.Text;
 
@@ -12,11 +10,7 @@ namespace AiObservatory.Ingest.Services.Anthropic;
 // Calls GET https://api.anthropic.com/v1/organizations/usage_report/messages
 // Requires an API key with workspace admin access (ANTHROPIC_BILLING_KEY env var).
 // See https://docs.anthropic.com/en/api/usage for the current response schema.
-public class AnthropicUsageClient(
-    HttpClient http,
-    ILogger<AnthropicUsageClient> logger,
-    IOptions<AnthropicPricingOptions> pricingOptions
-) : IAnthropicUsageClient
+public class AnthropicUsageClient(HttpClient http, ILogger<AnthropicUsageClient> logger) : IAnthropicUsageClient
 {
     // Requesting more pages than this for a single day's usage indicates the pagination
     // token is not advancing (e.g. an API change) — bail rather than loop unbounded.
@@ -69,7 +63,7 @@ public class AnthropicUsageClient(
         return allRecords;
     }
 
-    private void AddBucketRecords(
+    private static void AddBucketRecords(
         AnthropicUsageBucket bucket,
         LocalDate fallbackDate,
         JsonSerializerOptions options,
@@ -88,15 +82,6 @@ public class AnthropicUsageClient(
             }
 
             var model = result.Model ?? "unknown";
-            var costUsd = ComputeCost(
-                model,
-                date,
-                result.InputTokens.Value,
-                result.OutputTokens.Value,
-                result.CacheReadInputTokens,
-                result.CacheCreationInputTokens
-            );
-
             records.Add(
                 new AnthropicUsageRecord(
                     Date: date,
@@ -105,7 +90,6 @@ public class AnthropicUsageClient(
                     OutputTokens: result.OutputTokens.Value,
                     CacheReadTokens: result.CacheReadInputTokens,
                     CacheWriteTokens: result.CacheCreationInputTokens,
-                    CostUsd: costUsd,
                     RawJson: JsonSerializer.Serialize(result, options)
                 )
             );
@@ -121,41 +105,6 @@ public class AnthropicUsageClient(
 
         var parsed = LocalDatePattern.Iso.Parse(startingAt[..10]);
         return parsed.Success ? parsed.Value : fallback;
-    }
-
-    private decimal ComputeCost(
-        string model,
-        LocalDate usageDate,
-        long input,
-        long output,
-        long cacheRead,
-        long cacheWrite
-    )
-    {
-        // Resolution (longest prefix, date-windowed, dated-beats-undated) lives in
-        // AiObservatory.Data.Pricing so that this arm and any historical re-cost cannot
-        // drift apart. Only the warning stays here, where there is a logger.
-        var options = pricingOptions.Value;
-        var match = options.Match(model, usageDate);
-
-        if (match is null)
-        {
-            // Unknown model — surface it instead of silently mis-costing at the fallback rate.
-            logger.LogWarning(
-                "No Anthropic pricing entry for model '{Model}'; using fallback rates. Add an explicit entry to keep cost accurate.",
-                model
-            );
-        }
-
-        var rates = match?.ToRates() ?? options.FallbackPricing;
-
-        // No cacheWrite1hTokens argument: the usage report returns a single
-        // cache_creation_input_tokens figure with no TTL breakdown, so this arm genuinely
-        // cannot tell five-minute writes from one-hour ones. The default (0) prices them all
-        // at the five-minute rate, which understates a one-hour-heavy workload — an accepted
-        // limit of the polled-API path, not of the pricing table. The local-transcript
-        // producer does have the breakdown and sends it.
-        return AnthropicPricingResolver.ComputeCost(rates, input, output, cacheRead, cacheWrite);
     }
 
     private sealed record AnthropicUsageApiResponse(List<AnthropicUsageBucket>? Data, bool? HasMore, string? NextPage);

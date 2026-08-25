@@ -1,10 +1,8 @@
 using System.Net;
 using System.Text.Json;
-using AiObservatory.Data.Pricing;
 using AiObservatory.Ingest.Services.Anthropic;
 using AwesomeAssertions;
 using Microsoft.Extensions.Logging.Abstractions;
-using Microsoft.Extensions.Options;
 using NodaTime;
 
 namespace AiObservatory.Ingest.Tests.Services;
@@ -63,32 +61,6 @@ public sealed class AnthropicUsageClientTests : IDisposable
         ) => Task.FromResult(CreateResponse(statusCode));
     }
 
-    private static readonly AnthropicPricingOptions TestPricing = new()
-    {
-        Pricing =
-        [
-            new AnthropicPricingEntry(
-                "claude-sonnet-5",
-                2.0m,
-                10.0m,
-                0.20m,
-                2.50m,
-                4.00m,
-                EffectiveTo: new LocalDate(2026, 8, 31)
-            ),
-            new AnthropicPricingEntry(
-                "claude-sonnet-5",
-                3.0m,
-                15.0m,
-                0.30m,
-                3.75m,
-                6.00m,
-                EffectiveFrom: new LocalDate(2026, 9, 1)
-            ),
-        ],
-        FallbackPricing = new PricingRates(3.0m, 15.0m, 0.30m, 3.75m, 6.00m),
-    };
-
     private AnthropicUsageClient CreateSut(LocalDate bucketDate, string model)
     {
         var json = $$"""
@@ -114,40 +86,19 @@ public sealed class AnthropicUsageClientTests : IDisposable
             """;
         var http = new HttpClient(new StubHandler(json)) { BaseAddress = new Uri("https://api.anthropic.com") };
         _httpClients.Add(http);
-        return new AnthropicUsageClient(http, NullLogger<AnthropicUsageClient>.Instance, Options.Create(TestPricing));
+        return new AnthropicUsageClient(http, NullLogger<AnthropicUsageClient>.Instance);
     }
 
     [Fact]
-    public async Task GetUsageAsync_applies_sonnet5_intro_rate_within_window()
+    public async Task GetUsageAsyncReturnsObservedUsageWithoutPricingIt()
     {
         var date = new LocalDate(2026, 8, 31);
         var sut = CreateSut(date, "claude-sonnet-5");
 
         var records = await sut.GetUsageAsync(date, TestContext.Current.CancellationToken);
 
-        records.Single().CostUsd.Should().Be(12.0m); // $2 input + $10 output per 1M tokens
-    }
-
-    [Fact]
-    public async Task GetUsageAsync_applies_standard_rate_after_intro_window()
-    {
-        var date = new LocalDate(2026, 9, 1);
-        var sut = CreateSut(date, "claude-sonnet-5");
-
-        var records = await sut.GetUsageAsync(date, TestContext.Current.CancellationToken);
-
-        records.Single().CostUsd.Should().Be(18.0m); // $3 input + $15 output per 1M tokens
-    }
-
-    [Fact]
-    public async Task GetUsageAsync_falls_back_to_fallback_pricing_for_unknown_model()
-    {
-        var date = new LocalDate(2026, 7, 1);
-        var sut = CreateSut(date, "claude-unknown-model");
-
-        var records = await sut.GetUsageAsync(date, TestContext.Current.CancellationToken);
-
-        records.Single().CostUsd.Should().Be(18.0m); // fallback: $3 input + $15 output per 1M tokens
+        records.Single().Model.Should().Be("claude-sonnet-5");
+        records.Single().Date.Should().Be(date);
     }
 
     [Fact]
@@ -156,11 +107,7 @@ public sealed class AnthropicUsageClientTests : IDisposable
         using var handler = new NeverResolvingHandler();
         using var http = new HttpClient(handler, disposeHandler: false);
         http.BaseAddress = new Uri("https://api.anthropic.com");
-        var sut = new AnthropicUsageClient(
-            http,
-            NullLogger<AnthropicUsageClient>.Instance,
-            Options.Create(TestPricing)
-        );
+        var sut = new AnthropicUsageClient(http, NullLogger<AnthropicUsageClient>.Instance);
 
         var records = await sut.GetUsageAsync(new LocalDate(2026, 7, 1), TestContext.Current.CancellationToken);
 
@@ -176,11 +123,7 @@ public sealed class AnthropicUsageClientTests : IDisposable
     {
         using var http = new HttpClient(new StatusHandler(statusCode));
         http.BaseAddress = new Uri("https://api.anthropic.com");
-        var sut = new AnthropicUsageClient(
-            http,
-            NullLogger<AnthropicUsageClient>.Instance,
-            Options.Create(TestPricing)
-        );
+        var sut = new AnthropicUsageClient(http, NullLogger<AnthropicUsageClient>.Instance);
 
         var act = () => sut.GetUsageAsync(new LocalDate(2026, 7, 1), TestContext.Current.CancellationToken);
 
@@ -212,11 +155,7 @@ public sealed class AnthropicUsageClientTests : IDisposable
             """;
         using var http = new HttpClient(new StubHandler(json));
         http.BaseAddress = new Uri("https://api.anthropic.com");
-        var sut = new AnthropicUsageClient(
-            http,
-            NullLogger<AnthropicUsageClient>.Instance,
-            Options.Create(TestPricing)
-        );
+        var sut = new AnthropicUsageClient(http, NullLogger<AnthropicUsageClient>.Instance);
 
         var act = () => sut.GetUsageAsync(new LocalDate(2026, 7, 1), TestContext.Current.CancellationToken);
 

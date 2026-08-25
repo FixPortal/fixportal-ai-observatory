@@ -554,23 +554,12 @@ public class EventsEndpointsWafTests(AiObservatoryApiFactory factory)
             .Be(2m);
     }
 
-    /// <summary>
-    /// Anthropic events are priced server-side from the shared rate table, and a
-    /// client-supplied CostUsd is discarded. Producers used to price their own events, which
-    /// put a second rate table in every producer — the drift that made months of recorded
-    /// spend wrong.
-    /// </summary>
     [Fact]
-    public async Task PostEvent_WhenAnthropic_PricesServerSideAndIgnoresSuppliedCost()
+    public async Task PostEvent_WhenProvenanceIsOmitted_PreservesLegacyClientCost()
     {
         using var client = factory.CreateAdminClient();
         var key = $"waf-test-cost-{Guid.NewGuid():N}";
 
-        // One million of each token class on a date inside the Sonnet-5 introductory window
-        // (2/10/0.20/2.50), so the expected cost is just the sum of the four rates.
-        // The date must also be in the PAST — the handler rejects an OccurredAtUtc more than
-        // five minutes ahead of now, so a fixed same-day timestamp fails whenever the suite
-        // happens to run earlier in the day than the literal.
         var body = new
         {
             Provider = "anthropic",
@@ -579,7 +568,7 @@ public class EventsEndpointsWafTests(AiObservatoryApiFactory factory)
             OutputTokens = 1_000_000,
             CacheReadTokens = 1_000_000,
             CacheWriteTokens = 1_000_000,
-            CostUsd = 999.99m, // deliberately absurd; must be ignored
+            CostUsd = 999.99m,
             RawPayload = "{}",
             EventKey = key,
             OccurredAtUtc = new DateTimeOffset(2026, 7, 20, 12, 0, 0, TimeSpan.Zero),
@@ -596,20 +585,12 @@ public class EventsEndpointsWafTests(AiObservatoryApiFactory factory)
             TestContext.Current.CancellationToken
         );
 
-        stored
-            .GetProperty("costUsd")
-            .GetDecimal()
-            .Should()
-            .Be(14.70m, "2.00 + 10.00 + 0.20 + 2.50 at one million tokens each");
+        stored.GetProperty("costUsd").GetDecimal().Should().Be(999.99m);
+        stored.GetProperty("costBasis").GetString().Should().Be("unknown");
     }
 
-    /// <summary>
-    /// The same event, now declaring its cache write as one-hour TTL, must cost more: 1h
-    /// writes bill at 2x base input against the five-minute rate's 1.25x. This is the whole
-    /// point of the split — a deployment writing exclusively one-hour entries was understated.
-    /// </summary>
     [Fact]
-    public async Task PostEvent_WhenCacheWriteIsOneHour_PricesAtTheOneHourRate()
+    public async Task PostEvent_WhenEstimateCannotBeResolved_IgnoresClientCostAndStoresUnknown()
     {
         using var client = factory.CreateAdminClient();
         var key = $"waf-test-cost-1h-{Guid.NewGuid():N}";
@@ -625,6 +606,7 @@ public class EventsEndpointsWafTests(AiObservatoryApiFactory factory)
             CacheWrite1hTokens = 1_000_000, // the entire write is one-hour TTL
             CostUsd = 0m,
             RawPayload = "{}",
+            CostBasis = "listPriceEstimate",
             EventKey = key,
             OccurredAtUtc = new DateTimeOffset(2026, 7, 20, 12, 0, 0, TimeSpan.Zero),
         };
@@ -640,11 +622,32 @@ public class EventsEndpointsWafTests(AiObservatoryApiFactory factory)
             TestContext.Current.CancellationToken
         );
 
-        stored
-            .GetProperty("costUsd")
-            .GetDecimal()
+        stored.GetProperty("costUsd").ValueKind.Should().Be(JsonValueKind.Null);
+        stored.GetProperty("cacheSavingsUsd").ValueKind.Should().Be(JsonValueKind.Null);
+        stored.GetProperty("costBasis").GetString().Should().Be("listPriceEstimate");
+    }
+
+    [Fact]
+    public async Task PostEvent_WhenExplicitlyBilled_RequiresTheSpendPath()
+    {
+        using var client = factory.CreateAdminClient();
+        var body = new
+        {
+            Provider = "openai",
+            Model = "gpt-5.4",
+            InputTokens = 1,
+            OutputTokens = 1,
+            CostUsd = 1m,
+            RawPayload = "{}",
+            CostBasis = "billed",
+        };
+
+        var response = await client.PostAsJsonAsync("/api/events", body, TestContext.Current.CancellationToken);
+
+        response.StatusCode.Should().Be(HttpStatusCode.BadRequest);
+        (await response.Content.ReadAsStringAsync(TestContext.Current.CancellationToken))
             .Should()
-            .Be(16.20m, "2.00 + 10.00 + 0.20 + 4.00 — the 4.00 one-hour rate replaces the 2.50 five-minute one");
+            .Contain("spend/billing path");
     }
 
     /// <summary>
@@ -677,9 +680,8 @@ public class EventsEndpointsWafTests(AiObservatoryApiFactory factory)
     }
 
     /// <summary>
-    /// The server-side override is Anthropic-only. Copilot and Moonshot are flat-rate
-    /// subscriptions with no per-token price, and Google/OpenAI report billed figures, so
-    /// their supplied cost has to survive untouched.
+    /// Legacy producers omitted provenance and supplied their own cost, so their value must
+    /// remain intact until they opt into an explicit estimate basis.
     /// </summary>
     [Fact]
     public async Task PostEvent_WhenNotAnthropic_KeepsSuppliedCost()
@@ -996,7 +998,7 @@ public class EventsEndpointsWafTests(AiObservatoryApiFactory factory)
         item.GetProperty("sourceId").GetString().Should().Be(UsageSourceIds.CodexLocal);
         item.GetProperty("sourceKind").GetString().Should().Be("localTelemetry");
         item.GetProperty("occurredAtUtc").GetDateTimeOffset().Should().Be(occurredAt);
-        item.GetProperty("costUsd").GetDecimal().Should().Be(0m);
+        item.GetProperty("costUsd").ValueKind.Should().Be(JsonValueKind.Null);
         item.TryGetProperty("inputTokens", out _).Should().BeFalse();
         item.TryGetProperty("rawPayload", out _).Should().BeFalse();
         inventory

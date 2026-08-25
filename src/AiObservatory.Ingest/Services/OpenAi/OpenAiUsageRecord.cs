@@ -11,6 +11,5 @@ public sealed record OpenAiUsageRecord(
     long InputTokens,
     long OutputTokens,
     long CachedInputTokens,
-    decimal CostUsd,
     string RawJson
 );

@@ -1,4 +1,5 @@
 using AiObservatory.Data.Entities;
+using AiObservatory.Data.Pricing;
 using AiObservatory.Data.Repositories;
 using AiObservatory.Ingest.Sources;
 using NodaTime;
@@ -8,6 +9,7 @@ namespace AiObservatory.Ingest.Services.OpenAi;
 public class OpenAiIngestionService(
     IOpenAiUsageClient client,
     IUsageRepository repository,
+    UsagePriceResolver priceResolver,
     IClock clock,
     ILogger<OpenAiIngestionService> logger
 ) : IUsageSource
@@ -44,7 +46,6 @@ public class OpenAiIngestionService(
             let inputTokens = g.Sum(x => x.InputTokens)
             let outputTokens = g.Sum(x => x.OutputTokens)
             let cachedTokens = g.Sum(x => x.CachedInputTokens)
-            let cost = g.Sum(x => x.CostUsd)
             let combinedPayload = "[" + string.Join(",", g.Select(x => x.RawJson)) + "]"
             let eventKey = $"openai:{date:yyyy-MM-dd}:{model}"
             select new UsageEvent
@@ -56,7 +57,7 @@ public class OpenAiIngestionService(
                 InputTokens = inputTokens,
                 OutputTokens = outputTokens,
                 CacheReadTokens = cachedTokens,
-                CostUsd = cost,
+                CostUsd = null,
                 EventKey = eventKey,
                 RawPayload = combinedPayload,
                 SourceId = SourceId,
@@ -68,6 +69,9 @@ public class OpenAiIngestionService(
 
         foreach (var evt in events)
         {
+            var quote = await priceResolver.ResolveAsync(evt, cancellationToken);
+            evt.CostUsd = quote?.CostUsd;
+            evt.CacheSavingsUsd = quote?.CacheSavingsUsd;
             await repository.RecordEventAsync(evt, cancellationToken);
         }
 
