@@ -86,11 +86,7 @@ public sealed class SourceSyncStateStore(AiObservatoryDbContext db)
                 ({sourceId}, TRUE, TRUE, {expectedSeconds}, {current}, {current}, {latestObservationAt}, 0, NULL)
             ON CONFLICT ("SourceId") DO UPDATE SET
                 "IsConfigured" = TRUE,
-                "IsAvailable" = CASE
-                    WHEN "SourceSyncStates"."LastAttemptAt" IS NULL
-                        OR EXCLUDED."LastAttemptAt" >= "SourceSyncStates"."LastAttemptAt" THEN TRUE
-                    ELSE "SourceSyncStates"."IsAvailable"
-                END,
+                "IsAvailable" = TRUE,
                 "ExpectedRefreshIntervalSeconds" = EXCLUDED."ExpectedRefreshIntervalSeconds",
                 "LastAttemptAt" = GREATEST("SourceSyncStates"."LastAttemptAt", EXCLUDED."LastAttemptAt"),
                 "LastSuccessAt" = GREATEST("SourceSyncStates"."LastSuccessAt", EXCLUDED."LastSuccessAt"),
@@ -98,21 +94,11 @@ public sealed class SourceSyncStateStore(AiObservatoryDbContext db)
                     "SourceSyncStates"."LatestObservationAt",
                     EXCLUDED."LatestObservationAt"
                 ),
-                "PendingFromDate" = CASE
-                    WHEN "SourceSyncStates"."LastAttemptAt" IS NULL
-                        OR EXCLUDED."LastAttemptAt" >= "SourceSyncStates"."LastAttemptAt" THEN NULL
-                    ELSE "SourceSyncStates"."PendingFromDate"
-                END,
-                "ConsecutiveFailureCount" = CASE
-                    WHEN "SourceSyncStates"."LastAttemptAt" IS NULL
-                        OR EXCLUDED."LastAttemptAt" >= "SourceSyncStates"."LastAttemptAt" THEN 0
-                    ELSE "SourceSyncStates"."ConsecutiveFailureCount"
-                END,
-                "LastError" = CASE
-                    WHEN "SourceSyncStates"."LastAttemptAt" IS NULL
-                        OR EXCLUDED."LastAttemptAt" >= "SourceSyncStates"."LastAttemptAt" THEN NULL
-                    ELSE "SourceSyncStates"."LastError"
-                END
+                "PendingFromDate" = NULL,
+                "ConsecutiveFailureCount" = 0,
+                "LastError" = NULL
+            WHERE "SourceSyncStates"."LastAttemptAt" IS NULL
+                OR EXCLUDED."LastAttemptAt" >= "SourceSyncStates"."LastAttemptAt"
             """,
             cancellationToken
         );
