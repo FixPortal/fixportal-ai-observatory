@@ -118,6 +118,20 @@ public class IngestHostTests
     }
 
     [Fact]
+    public async Task AnthropicUsageHttpClientOptsIntoFastModeForSpeedGrouping()
+    {
+        await using var factory = new IngestFactory();
+        factory.Settings["ANTHROPIC_BILLING_KEY"] = "configured";
+
+        using var client = factory
+            .Services.GetRequiredService<IHttpClientFactory>()
+            .CreateClient(nameof(IAnthropicUsageClient));
+
+        client.DefaultRequestHeaders.TryGetValues("anthropic-beta", out var values).Should().BeTrue();
+        values.Should().ContainSingle().Which.Should().Be("fast-mode-2026-02-01");
+    }
+
+    [Fact]
     public async Task RegistersExactlyOneDailyDefinitionAndSourceForEachPublicPricingDocument()
     {
         await using var factory = new IngestFactory();
