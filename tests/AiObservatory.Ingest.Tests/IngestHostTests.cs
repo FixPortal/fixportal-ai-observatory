@@ -1,4 +1,6 @@
 using AiObservatory.Data.Entities;
+using AiObservatory.Data.Pricing;
+using AiObservatory.Ingest.Pricing;
 using AiObservatory.Ingest.Services.Anthropic;
 using AiObservatory.Ingest.Services.Copilot;
 using AiObservatory.Ingest.Services.GitHub;
@@ -10,6 +12,7 @@ using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.DependencyInjection.Extensions;
 using Microsoft.Extensions.Hosting;
 
 namespace AiObservatory.Ingest.Tests;
@@ -127,6 +130,59 @@ public class IngestHostTests
         definitions.Should().ContainSingle(x => x.SourceId == sourceId).Which.IsConfigured.Should().BeTrue();
     }
 
+    [Fact]
+    public async Task RegistersExactlyOneDailyDefinitionAndSourceForEachPublicPricingDocument()
+    {
+        await using var factory = new IngestFactory();
+        using var scope = factory.Services.CreateScope();
+
+        var sources = scope.ServiceProvider.GetServices<IPricingSource>().ToList();
+        var definitions = scope.ServiceProvider.GetServices<PricingSourceDefinition>().ToList();
+
+        sources
+            .Select(source => source.SourceId)
+            .Should()
+            .BeEquivalentTo(PricingSourceIds.OpenAi, PricingSourceIds.Claude, PricingSourceIds.Kimi);
+        sources.Select(source => source.SourceId).Should().OnlyHaveUniqueItems();
+        definitions
+            .Select(definition => definition.SourceId)
+            .Should()
+            .BeEquivalentTo(
+                PricingSourceIds.OpenAi,
+                PricingSourceIds.Claude,
+                PricingSourceIds.Kimi,
+                PricingSourceIds.GoogleCloudCatalog
+            );
+        definitions.Select(definition => definition.SourceId).Should().OnlyHaveUniqueItems();
+        definitions
+            .Should()
+            .OnlyContain(definition => definition.ExpectedRefreshInterval == NodaTime.Duration.FromDays(1));
+        definitions
+            .Single(definition => definition.SourceId == PricingSourceIds.GoogleCloudCatalog)
+            .IsConfigured.Should()
+            .BeFalse();
+    }
+
+    [Fact]
+    public async Task DoesNotRegisterGooglePricingWithoutVerifiedMappingsEvenWhenCredentialsExist()
+    {
+        await using var factory = new IngestFactory();
+        factory.Settings["GOOGLE_CLOUD_CATALOG_API_KEY"] = "configured-key";
+        factory.Settings["GOOGLE_CLOUD_CATALOG_SERVICE_ID"] = "configured-service";
+        using var scope = factory.Services.CreateScope();
+
+        scope
+            .ServiceProvider.GetServices<IPricingSource>()
+            .Should()
+            .NotContain(source => source is GooglePricingSource);
+        scope
+            .ServiceProvider.GetServices<PricingSourceDefinition>()
+            .Should()
+            .ContainSingle(definition => definition.SourceId == PricingSourceIds.GoogleCloudCatalog)
+            .Which.IsConfigured.Should()
+            .BeFalse();
+    }
+
     private static bool ExceptionChainContains(Exception ex, string fragment)
     {
         if (ex.Message.Contains(fragment, StringComparison.Ordinal))
@@ -154,6 +210,8 @@ public class IngestHostTests
             "GOOGLE_BILLING_ACCOUNT_ID",
             "OPENAI_ADMIN_KEY",
             "APPLICATIONINSIGHTS_CONNECTION_STRING",
+            "GOOGLE_CLOUD_CATALOG_API_KEY",
+            "GOOGLE_CLOUD_CATALOG_SERVICE_ID",
         ];
 
         public string? DatabaseConnection { get; init; } = "Host=unused;Database=unused";
@@ -163,6 +221,7 @@ public class IngestHostTests
         protected override void ConfigureWebHost(IWebHostBuilder builder)
         {
             builder.ConfigureAppConfiguration(config => config.AddInMemoryCollection(ConfigurationOverrides));
+            builder.ConfigureServices(services => services.RemoveAll<IHostedService>());
         }
 
         protected override IHost CreateHost(IHostBuilder builder)

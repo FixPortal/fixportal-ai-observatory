@@ -19,6 +19,19 @@ public sealed class PricingSnapshotStore(AiObservatoryDbContext db)
         PricingSnapshotCandidate candidate,
         CancellationToken cancellationToken,
         Func<PricingSnapshot, CancellationToken, Task>? beforeCommit = null
+    ) => await ActivateAsync(candidate, onlyIfMissing: false, cancellationToken, beforeCommit);
+
+    public async Task<PricingActivationResult> ActivateIfMissingAsync(
+        PricingSnapshotCandidate candidate,
+        CancellationToken cancellationToken,
+        Func<PricingSnapshot, CancellationToken, Task>? beforeCommit = null
+    ) => await ActivateAsync(candidate, onlyIfMissing: true, cancellationToken, beforeCommit);
+
+    private async Task<PricingActivationResult> ActivateAsync(
+        PricingSnapshotCandidate candidate,
+        bool onlyIfMissing,
+        CancellationToken cancellationToken,
+        Func<PricingSnapshot, CancellationToken, Task>? beforeCommit
     )
     {
         Validate(candidate);
@@ -30,6 +43,18 @@ public sealed class PricingSnapshotStore(AiObservatoryDbContext db)
                 $"SELECT pg_advisory_xact_lock(hashtextextended({candidate.SourceId}, 0))",
                 cancellationToken
             );
+
+            if (
+                onlyIfMissing
+                && await db.PricingSnapshots.AnyAsync(
+                    snapshot => snapshot.SourceId == candidate.SourceId && snapshot.IsActive,
+                    cancellationToken
+                )
+            )
+            {
+                await transaction.CommitAsync(cancellationToken);
+                return PricingActivationResult.Unchanged;
+            }
 
             if (
                 await db.PricingSnapshots.AnyAsync(

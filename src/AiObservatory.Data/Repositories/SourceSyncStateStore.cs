@@ -1,3 +1,4 @@
+using AiObservatory.Data.Entities;
 using Microsoft.EntityFrameworkCore;
 using NodaTime;
 
@@ -5,6 +6,14 @@ namespace AiObservatory.Data.Repositories;
 
 public sealed class SourceSyncStateStore(AiObservatoryDbContext db)
 {
+    public Task<SourceSyncState?> GetAsync(string sourceId, CancellationToken cancellationToken = default)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(sourceId);
+        return db
+            .SourceSyncStates.AsNoTracking()
+            .SingleOrDefaultAsync(state => state.SourceId == sourceId, cancellationToken);
+    }
+
     public Task MarkUnconfiguredAsync(
         string sourceId,
         Duration expectedRefreshInterval,

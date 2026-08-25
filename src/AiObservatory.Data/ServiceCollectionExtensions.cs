@@ -1,3 +1,4 @@
+using AiObservatory.Data.Pricing;
 using AiObservatory.Data.Repositories;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
@@ -18,6 +19,7 @@ public static class ServiceCollectionExtensions
         services.AddScoped<IAdversarialReviewRepository, AdversarialReviewRepository>();
         services.AddScoped<IGitHubActivityRepository, GitHubActivityRepository>();
         services.AddScoped<SourceSyncStateStore>();
+        services.AddScoped<PricingSnapshotStore>();
         return services;
     }
 }
