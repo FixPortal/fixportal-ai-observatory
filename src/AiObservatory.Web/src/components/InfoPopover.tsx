@@ -4,11 +4,13 @@ interface Props {
   id: string
   title: string
   children: ReactNode
+  className?: string
 }
 
-export function InfoPopover({ id, title, children }: Props) {
+export function InfoPopover({ id, title, children, className }: Props) {
   const [open, setOpen] = useState(false)
   const ref = useRef<HTMLDivElement>(null)
+  const popoverClass = className ? `info-popover ${className}` : 'info-popover'
 
   useEffect(() => {
     if (!open) return undefined
@@ -39,7 +41,7 @@ export function InfoPopover({ id, title, children }: Props) {
         i
       </button>
       {open && (
-        <section id={id} aria-label={title} className="info-popover">
+        <section id={id} aria-label={title} className={popoverClass}>
           <div className="info-popover__title">{title}</div>
           {children}
           <div className="info-popover__caret" aria-hidden="true" />

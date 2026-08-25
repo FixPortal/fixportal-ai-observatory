@@ -8,10 +8,11 @@ const msalMock = vi.hoisted(() => ({
 vi.mock('../auth/msal', () => msalMock)
 
 import {
-  getAggregates, ApiError,
+  getAggregates, getSourceStatuses, ApiError,
   createSpendCategory, patchSpendCategory, createSpendVendor, patchSpendVendor,
   SPEND_SOURCE_VALUES,
 } from './client'
+import type { DailyAggregate } from './client'
 
 function mockFetchOnce(status: number, body: unknown = []) {
   const fetchMock = vi.fn().mockResolvedValue({
@@ -89,6 +90,26 @@ afterEach(() => {
 
 test('spend-source values match the backend enum wire contract', () => {
   expect(SPEND_SOURCE_VALUES).toEqual(['manual', 'csv', 'portal', 'api'])
+})
+
+test('gets the source-status wire response and preserves unknown source and aggregate strings', async () => {
+  const response = [{ sourceId: 'new-source', status: 'fresh', isConfigured: true, lastAttemptAt: null, lastSuccessAt: '2026-08-24T12:00:00Z', latestObservationAt: null, consecutiveFailureCount: 0, lastError: null }]
+  const fetchMock = mockFetchOnce(200, response)
+
+  await expect(getSourceStatuses()).resolves.toEqual(response)
+  expect(fetchMock.mock.calls[0][0]).toContain('/sources/status')
+})
+
+test('keeps unknown aggregate provenance strings and every source-aware field from the wire', async () => {
+  const response: DailyAggregate[] = [{
+    date: '2026-08-24', provider: 'new-oss-provider', model: 'model-x', sourceId: 'new-source',
+    sourceKind: 'futureSource', usageScope: 'futureScope', costBasis: 'futureBasis', inputTokens: 1,
+    outputTokens: 2, cacheReadTokens: 3, cacheWriteTokens: 4, cacheWrite1hTokens: 5, costUsd: 6,
+    unknownCostCount: 7, cacheSavingsUsd: 8, unknownCacheSavingsCount: 9, requestCount: 10,
+  }]
+  mockFetchOnce(200, response)
+
+  await expect(getAggregates()).resolves.toEqual(response)
 })
 
 describe('authHeaders precedence: Entra > URL viewer key > self-host key > none', () => {

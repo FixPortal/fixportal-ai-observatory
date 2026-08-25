@@ -1,6 +1,5 @@
 // Prod build calls the API cross-origin (VITE_API_BASE); dev uses the Vite proxy.
 import { getAccessToken, apiKey, urlApiKey } from '../auth/msal'
-import type { ProviderKey } from '../config/providers'
 
 const BASE = (import.meta.env.VITE_API_BASE ?? '') + '/api'
 
@@ -63,15 +62,27 @@ async function readErrorMessage(res: Response, path: string, method: string): Pr
   }
 }
 
+export type SourceKind = 'providerApi' | 'localTelemetry' | 'manual' | 'legacy' | string
+export type UsageScope = 'api' | 'subscription' | 'mixed' | 'unknown' | string
+export type CostBasis = 'billed' | 'providerEstimated' | 'listPriceEstimate' | 'notional' | 'none' | 'unknown' | string
+
 export interface DailyAggregate {
   date: string
-  provider: ProviderKey
+  provider: string
   model: string
+  sourceId: string
+  sourceKind: SourceKind
+  usageScope: UsageScope
+  costBasis: CostBasis
   inputTokens: number
   outputTokens: number
   cacheReadTokens: number
   cacheWriteTokens: number
+  cacheWrite1hTokens: number
   costUsd: number
+  unknownCostCount: number
+  cacheSavingsUsd: number
+  unknownCacheSavingsCount: number
   requestCount: number
 }
 
@@ -110,6 +121,19 @@ export const getAggregates = (from?: string, to?: string) =>
   getJson<DailyAggregate[]>('/aggregates', { from, to })
 
 export const getInsights = () => getJson<Insight[]>('/insights')
+
+export interface SourceStatusResponse {
+  sourceId: string
+  status: 'configured' | 'fresh' | 'stale' | 'failing' | 'unavailable' | 'notConfigured' | string
+  isConfigured: boolean
+  lastAttemptAt: string | null
+  lastSuccessAt: string | null
+  latestObservationAt: string | null
+  consecutiveFailureCount: number
+  lastError: string | null
+}
+
+export const getSourceStatuses = () => getJson<SourceStatusResponse[]>('/sources/status')
 
 export const getSubscriptions = () => getJson<Subscription[]>('/subscriptions')
 

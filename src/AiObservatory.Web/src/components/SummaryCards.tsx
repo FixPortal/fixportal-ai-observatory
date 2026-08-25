@@ -1,119 +1,95 @@
 import { useMemo } from 'react'
 import { Card } from '../design/Card'
-import { useAggregates, usePriorPeriodAggregates, useInsights, AGGREGATES_DAYS_RANGE } from '../api/queries'
+import { useAggregates, useInsights, useSpendEntries, AGGREGATES_DAYS_RANGE, dashboardDateRange } from '../api/queries'
 import { useUsdToGbp, formatGbp, gbp } from '../lib/currency'
 import { formatInt } from '../lib/format'
-import { getProvider, type ProviderConfig } from '../config/providers'
+import { summarizeCosts } from '../lib/costSummary'
 import { InfoPopover } from './InfoPopover'
 
-function getCacheSavingsRate(provider: ProviderConfig, model: string): number {
-  if (typeof provider.cacheSavingsPerToken === 'number') {
-    return provider.cacheSavingsPerToken
-  }
-  const modelLower = model.toLowerCase()
-  const savingsObj = provider.cacheSavingsPerToken as Record<string, number>
-  const matchKey = Object.keys(savingsObj)
-    .sort((x, y) => y.length - x.length)
-    .find(key => key !== 'default' && modelLower.includes(key))
-  return matchKey
-    ? savingsObj[matchKey]
-    : (savingsObj['default'] ?? 0)
-}
+const notReported = 'Not reported'
 
 export default function SummaryCards() {
-  const aggregates = useAggregates()
-  const priorAggregates = usePriorPeriodAggregates()
+  const range = useMemo(() => dashboardDateRange(), [])
+  const aggregates = useAggregates(range.from, range.to)
+  const { entries: spendEntries } = useSpendEntries(range.from, range.to)
   const insights = useInsights()
   const rate = useUsdToGbp()
+  const summary = summarizeCosts(aggregates, spendEntries)
 
-  // Single pass over aggregates for all four derived values.
-  const { totalSpend, totalInputTokens, totalOutputTokens, totalCacheRead, estimatedSavings, topModel } = useMemo(() => {
-    let totalSpend = 0
-    let totalInputTokens = 0
-    let totalOutputTokens = 0
-    let totalCacheRead = 0
-    let estimatedSavings = 0
-    const modelCosts: Record<string, number> = {}
-    const rateCache = new Map<string, number>()
+  const { totalInputTokens, totalOutputTokens, totalCacheRead } = useMemo(() => aggregates.reduce((total, aggregate) => ({
+    totalInputTokens: total.totalInputTokens + aggregate.inputTokens,
+    totalOutputTokens: total.totalOutputTokens + aggregate.outputTokens,
+    totalCacheRead: total.totalCacheRead + aggregate.cacheReadTokens,
+  }), { totalInputTokens: 0, totalOutputTokens: 0, totalCacheRead: 0 }), [aggregates])
 
-    for (const a of aggregates) {
-      totalSpend += a.costUsd
-      totalInputTokens += a.inputTokens
-      totalOutputTokens += a.outputTokens
-      totalCacheRead += (a.cacheReadTokens ?? 0)
-      
-      // Calculate estimated prompt cache savings in USD based on provider pricing
-      const provider = getProvider(a.provider)
-      if (provider?.cacheSavingsPerToken != null) {
-        const cacheKey = `${a.provider}:${a.model}`
-        let rate = rateCache.get(cacheKey)
-        if (rate === undefined) {
-          rate = getCacheSavingsRate(provider, a.model)
-          rateCache.set(cacheKey, rate)
-        }
-        estimatedSavings += (a.cacheReadTokens ?? 0) * rate
-      }
-      
-      modelCosts[a.model] = (modelCosts[a.model] ?? 0) + a.costUsd
-    }
-    const topModel = Object.entries(modelCosts).reduce<[string, number] | undefined>(
-      (best, entry) => best == null || entry[1] > best[1] ? entry : best,
-      undefined
-    )
-    return { totalSpend, totalInputTokens, totalOutputTokens, totalCacheRead, estimatedSavings, topModel }
-  }, [aggregates])
-
-  const priorTotalSpend = useMemo(() => priorAggregates.reduce((sum, a) => sum + a.costUsd, 0), [priorAggregates])
-  const deltaUsd = totalSpend - priorTotalSpend
-  const deltaGbpValue = deltaUsd * rate
-  const deltaPct = priorTotalSpend > 0 ? (deltaUsd / priorTotalSpend) * 100 : null
-
-  const unread = insights.filter(i => !i.acknowledged).length
+  const unread = insights.filter(insight => !insight.acknowledged).length
   const totalTokens = totalInputTokens + totalOutputTokens
-  // Share of prompt tokens served from cache = cacheRead / (cacheRead + fresh input).
-  // (input_tokens excludes cache reads, so the denominator is the whole prompt.)
   const promptTokens = totalCacheRead + totalInputTokens
-  const cacheHitRate = promptTokens > 0 ? (totalCacheRead / promptTokens) * 100 : 0
+  const cacheHitRate = promptTokens > 0 ? totalCacheRead / promptTokens : 0
 
   return (
     <div className="summary-cards">
       <Card>
         <div className="card-label card-label--row">
-          Spend · {AGGREGATES_DAYS_RANGE} days
-          <InfoPopover id="spend-info" title={`Spend · ${AGGREGATES_DAYS_RANGE} days`}>
-            <p>Rolling {AGGREGATES_DAYS_RANGE}-day window across all providers: Anthropic, Copilot, Google, and OpenAI.</p>
-            <p>Copilot and Google subscription usage is shown at notional API list rates — no real money changes hands on those providers.</p>
+          Billed spend · {AGGREGATES_DAYS_RANGE} days
+          <InfoPopover id="billed-spend-info" title="Billed spend" className="info-popover--summary">
+            <p>Financial ledger entries reported by a provider or recorded as spend. It does not include token-rate estimates or subscription notional value.</p>
+            <p>This uses the same rolling {AGGREGATES_DAYS_RANGE}-day window as every financial lane.</p>
           </InfoPopover>
         </div>
-        <div className="card-value card-value--lead">{formatGbp(totalSpend, rate)}</div>
-        {priorAggregates.length > 0 && (
-          <div className={`card-sub card-delta${deltaGbpValue > 0.005 ? ' card-delta--up' : deltaGbpValue < -0.005 ? ' card-delta--down' : ''}`}>
-            {deltaGbpValue > 0.005 ? '↑' : deltaGbpValue < -0.005 ? '↓' : '—'} {gbp(Math.abs(deltaGbpValue))}{deltaPct !== null ? ` (${Math.abs(deltaPct).toFixed(0)}%)` : ''} vs prior {AGGREGATES_DAYS_RANGE}d
-          </div>
-        )}
+        <div className="card-value card-value--lead">{summary.billedGbp === null ? notReported : gbp(summary.billedGbp)}</div>
+      </Card>
+      <Card>
+        <div className="card-label card-label--row">
+          List-price estimate
+          <InfoPopover id="list-price-info" title="List-price estimate" className="info-popover--summary">
+            <p>API usage rated from public list prices. USD is converted for display; this is not billed spend.</p>
+            <p>This uses the same rolling {AGGREGATES_DAYS_RANGE}-day window as every financial lane.</p>
+          </InfoPopover>
+        </div>
+        <div className="card-value">{summary.listPriceEstimateUsd === null ? notReported : formatGbp(summary.listPriceEstimateUsd, rate)}</div>
+        <div className="card-sub">USD basis; shown in GBP when reported</div>
+      </Card>
+      <Card>
+        <div className="card-label card-label--row">
+          Provider estimate
+          <InfoPopover id="provider-estimate-info" title="Provider estimate" className="info-popover--summary">
+            <p>A provider-produced estimate, not an invoice. USD is converted for display.</p>
+            <p>This uses the same rolling {AGGREGATES_DAYS_RANGE}-day window as every financial lane.</p>
+          </InfoPopover>
+        </div>
+        <div className="card-value">{summary.providerEstimateUsd === null ? notReported : formatGbp(summary.providerEstimateUsd, rate)}</div>
+        <div className="card-sub">USD basis; shown in GBP when reported</div>
+      </Card>
+      <Card>
+        <div className="card-label card-label--row">
+          Subscription notional
+          <InfoPopover id="subscription-notional-info" title="Subscription notional" className="info-popover--summary">
+            <p>API-list-price comparison for subscription or local activity. No corresponding money changed hands. USD is converted for display.</p>
+            <p>This uses the same rolling {AGGREGATES_DAYS_RANGE}-day window as every financial lane.</p>
+          </InfoPopover>
+        </div>
+        <div className="card-value">{summary.notionalUsd === null ? notReported : formatGbp(summary.notionalUsd, rate)}</div>
+        <div className="card-sub">USD basis; shown in GBP when reported</div>
       </Card>
       <Card>
         <div className="card-label">Tokens</div>
-        <div className="card-value">{totalTokens === 0 ? '—' : `${(totalTokens / 1_000_000).toFixed(1)}M`}</div>
+        <div className="card-value">{aggregates.length === 0 ? notReported : totalTokens === 0 ? '0' : `${(totalTokens / 1_000_000).toFixed(1)}M`}</div>
         {totalTokens > 0 && (
           <div className="card-sub">
             <div>{formatInt(totalInputTokens)} in / {formatInt(totalOutputTokens)} out</div>
             {totalCacheRead > 0 && (
-              <div style={{ marginTop: 'var(--space-1)', color: 'var(--ok-text)', fontWeight: 500, display: 'flex', alignItems: 'center', gap: 'var(--space-2)' }}>
-                {(cacheHitRate / 100).toLocaleString(undefined, { style: 'percent', maximumFractionDigits: 0 })} cache hit (saved {formatGbp(estimatedSavings, rate)})
-                <InfoPopover id="cache-info" title="Prompt cache">
-                  <p>Cache hit: the share of prompt tokens served from the provider's cache instead of being re-read at full price.</p>
-                  <p>Saved: the estimated value of those cached reads versus paying the full input list price. Notional for subscription providers — the saving is what it would be worth at API list rates.</p>
+              <div className="card-cache">
+                <div>{cacheHitRate.toLocaleString(undefined, { style: 'percent', maximumFractionDigits: 0 })} cache hit</div>
+                <div>Cache savings: {summary.cacheSavingsUsd === null ? notReported : `${formatGbp(summary.cacheSavingsUsd, rate)} (server-reported, USD-derived)`}</div>
+                {summary.unknownCacheSavingsObservations > 0 && <div>{summary.unknownCacheSavingsObservations} savings observation{summary.unknownCacheSavingsObservations === 1 ? '' : 's'} not reported</div>}
+                <InfoPopover id="cache-info" title="Prompt cache" className="info-popover--summary">
+                  <p>Cache hit is the share of observed prompt tokens served from cache. Savings are shown only when the server reported them.</p>
                 </InfoPopover>
               </div>
             )}
           </div>
         )}
-      </Card>
-      <Card>
-        <div className="card-label">Top model</div>
-        <div className="card-value card-value--model">{topModel?.[0] ?? '—'}</div>
-        <div className="card-sub">{topModel ? formatGbp(topModel[1], rate) : formatGbp(0, rate)}</div>
       </Card>
       <Card>
         <div className="card-label">New insights</div>

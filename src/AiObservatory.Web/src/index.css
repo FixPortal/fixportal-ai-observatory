@@ -152,8 +152,7 @@ body {
 .card-value--model { font-size: 0.95rem; }
 .card-value--lead { font-size: 2rem; } /* spend leads the summary row */
 .card-sub { font-size: 0.75rem; color: var(--text-muted); margin-top: var(--space-1); } /* >=12px, was 0.72rem/11.5px */
-.card-delta--up   { color: var(--bad-text); }
-.card-delta--down { color: var(--ok-text); }
+.card-cache { margin-top: var(--space-1); color: var(--ok-text); font-weight: 500; display: flex; align-items: center; gap: var(--space-2); flex-wrap: wrap; }
 
 /* ---- Info button + popover ---- */
 /* Wraps the button and the absolute-positioned popover; provides the
@@ -540,6 +539,14 @@ body {
   .app-header__descriptor { display: none; }
   .fpds-theme-toggle__btn { padding-inline: var(--space-2); }
   .summary-cards { grid-template-columns: repeat(2, 1fr); }
+  .info-popover--summary {
+    position: fixed;
+    inset: auto var(--space-3) var(--space-3);
+    width: auto;
+    max-height: min(50vh, 320px);
+    overflow-y: auto;
+  }
+  .info-popover--summary .info-popover__caret { display: none; }
   .main-grid, .bottom-grid { grid-template-columns: 1fr; }
 }
 

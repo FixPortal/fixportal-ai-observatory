@@ -150,7 +150,9 @@ public class AggregatesEndpointsWafTests(AiObservatoryApiFactory factory)
                     CacheWrite1hTokens = 1,
                     CostUsd = 0.01m,
                     UnknownCostCount = 0,
-                    RequestCount = 1,
+                    CacheSavingsUsd = 0.007m,
+                    UnknownCacheSavingsCount = 2,
+                    RequestCount = 3,
                 }
             );
             await db.SaveChangesAsync(TestContext.Current.CancellationToken);
@@ -168,7 +170,9 @@ public class AggregatesEndpointsWafTests(AiObservatoryApiFactory factory)
         row.GetProperty("usageScope").GetString().Should().Be("subscription");
         row.GetProperty("costBasis").GetString().Should().Be("notional");
         row.GetProperty("inputTokens").GetInt64().Should().Be(1);
-        row.GetProperty("requestCount").GetInt32().Should().Be(1);
+        row.GetProperty("cacheSavingsUsd").GetDecimal().Should().Be(0.007m);
+        row.GetProperty("unknownCacheSavingsCount").GetInt32().Should().Be(2);
+        row.GetProperty("requestCount").GetInt32().Should().Be(3);
     }
 
     [Fact]
