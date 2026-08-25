@@ -86,17 +86,18 @@ public sealed class OpenAiUsageSource(
         return new SourceIngestionResult(records.Count == 0 ? null : records.Max(record => record.BucketEnd));
     }
 
-    private static string EventKey(Instant start, Instant end, string model, bool? batch, string? serviceTier)
+    private static string EventKey(Instant start, Instant end, string? model, bool? batch, string? serviceTier)
     {
         var material = string.Concat(
             Part(start.ToUnixTimeTicks().ToString(CultureInfo.InvariantCulture)),
             Part(end.ToUnixTimeTicks().ToString(CultureInfo.InvariantCulture)),
             Part(model),
-            Part(batch?.ToString() ?? "null"),
-            Part(serviceTier ?? "null")
+            Part(batch?.ToString()),
+            Part(serviceTier)
         );
         return $"openai:{start.InUtc().Date:yyyy-MM-dd}:{Convert.ToHexStringLower(SHA256.HashData(Encoding.UTF8.GetBytes(material)))}";
     }
 
-    private static string Part(string value) => $"{value.Length.ToString(CultureInfo.InvariantCulture)}:{value}";
+    private static string Part(string? value) =>
+        value is null ? "-1:" : $"{value.Length.ToString(CultureInfo.InvariantCulture)}:{value}";
 }

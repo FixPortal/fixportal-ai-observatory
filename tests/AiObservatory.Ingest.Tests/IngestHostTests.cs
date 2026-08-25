@@ -150,6 +150,27 @@ public class IngestHostTests
     }
 
     [Fact]
+    public async Task WhitespaceOpenAiAdminKeyRegistersNeitherSource()
+    {
+        await using var factory = new IngestFactory();
+        factory.Settings["OPENAI_ADMIN_KEY"] = " \t ";
+
+        using var scope = factory.Services.CreateScope();
+        var sourceIds = new[] { UsageSourceIds.OpenAiUsageApi, UsageSourceIds.OpenAiCostsApi };
+
+        scope
+            .ServiceProvider.GetServices<IUsageSource>()
+            .Should()
+            .NotContain(source => sourceIds.Contains(source.SourceId));
+        scope
+            .ServiceProvider.GetServices<SourceDefinition>()
+            .Where(definition => sourceIds.Contains(definition.SourceId))
+            .Should()
+            .HaveCount(2)
+            .And.OnlyContain(definition => !definition.IsConfigured);
+    }
+
+    [Fact]
     public async Task AnthropicUsageHttpClientOptsIntoFastModeForSpeedGrouping()
     {
         await using var factory = new IngestFactory();

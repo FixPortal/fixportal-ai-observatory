@@ -8,7 +8,7 @@ namespace AiObservatory.Ingest.Services.OpenAi;
 public sealed record OpenAiUsageRecord(
     Instant BucketStart,
     Instant BucketEnd,
-    string Model,
+    string? Model,
     bool? Batch,
     string? ServiceTier,
     string? Processing,
