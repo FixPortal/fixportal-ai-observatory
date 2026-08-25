@@ -67,7 +67,15 @@ public sealed class CopilotReportSource(
             persistedObservationTimes.Add(observedAt);
         }
 
-        await db.SaveChangesAsync(cancellationToken);
+        try
+        {
+            await db.SaveChangesAsync(cancellationToken);
+        }
+        catch
+        {
+            db.ChangeTracker.Clear();
+            throw;
+        }
         logger.LogInformation("Copilot: retained {Count} organization report days", inRange.Length);
         return new SourceIngestionResult(persistedObservationTimes.Max());
     }

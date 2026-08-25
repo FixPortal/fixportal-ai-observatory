@@ -220,7 +220,7 @@ public sealed class CopilotReportSourceTests : IAsyncLifetime
         var act = () => Source(new FakeClock(AcquisitionAt)).IngestAsync(first, first.PlusDays(1), ct);
 
         await act.Should().ThrowAsync<DbUpdateException>();
-        _db.ChangeTracker.Clear();
+        _db.ChangeTracker.Entries().Should().BeEmpty();
         (await _db.CopilotDailyReports.AsNoTracking().CountAsync(ct)).Should().Be(0);
     }
 

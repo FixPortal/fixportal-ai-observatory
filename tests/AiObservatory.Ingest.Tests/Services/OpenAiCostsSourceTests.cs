@@ -151,6 +151,42 @@ public sealed class OpenAiCostsSourceTests(ProviderPollingDatabase database)
     }
 
     [Fact]
+    public async Task IngestAsync_DistinguishesAbsentProjectIdFromLiteralNull()
+    {
+        var suffix = Guid.NewGuid().ToString("N");
+        var line = $"identity-{suffix}";
+        var client = Substitute.For<IOpenAiAdminClient>();
+        client
+            .GetCostsAsync(Arg.Any<LocalDate>(), Arg.Any<LocalDate>(), Arg.Any<CancellationToken>())
+            .Returns([Cost(12m, line, null), Cost(12m, line, "null")]);
+        await using var db = CreateDb();
+        using var resources = new WriterResources(db);
+        var sut = new OpenAiCostsSource(
+            client,
+            resources.Writer,
+            new FakeClock(Instant.FromUtc(2026, 8, 3, 9, 0)),
+            NullLogger<OpenAiCostsSource>.Instance
+        );
+
+        await sut.IngestAsync(Start.InUtc().Date, Start.InUtc().Date, TestContext.Current.CancellationToken);
+
+        var ct = TestContext.Current.CancellationToken;
+        var observations = await db
+            .BillingObservations.AsNoTracking()
+            .Where(row => row.SourceId == UsageSourceIds.OpenAiCostsApi && row.Sku == line)
+            .ToListAsync(ct);
+        observations.Should().HaveCount(2);
+        observations.Select(row => row.ObservationKey).Should().OnlyHaveUniqueItems();
+        (
+            await db
+                .SpendEntries.AsNoTracking()
+                .CountAsync(row => row.SourceId == UsageSourceIds.OpenAiCostsApi && row.Description == line, ct)
+        )
+            .Should()
+            .Be(2);
+    }
+
+    [Fact]
     public async Task IngestAsync_WhenAnyUpstreamPageFails_WritesNothing()
     {
         var client = Substitute.For<IOpenAiAdminClient>();
@@ -182,8 +218,8 @@ public sealed class OpenAiCostsSourceTests(ProviderPollingDatabase database)
 
     private static OpenAiCostRecord Cost(
         decimal amount,
-        string lineItem,
-        string projectId,
+        string? lineItem,
+        string? projectId,
         string? quantityUnit = "tokens"
     ) =>
         new(
