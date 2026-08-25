@@ -1,5 +1,4 @@
 using AiObservatory.Data.Entities;
-using AiObservatory.Data.Pricing;
 using AiObservatory.Data.Repositories;
 using AiObservatory.Ingest.Sources;
 using NodaTime;
@@ -9,7 +8,6 @@ namespace AiObservatory.Ingest.Services.OpenAi;
 public class OpenAiIngestionService(
     IOpenAiUsageClient client,
     IUsageRepository repository,
-    UsagePriceResolver priceResolver,
     IClock clock,
     ILogger<OpenAiIngestionService> logger
 ) : IUsageSource
@@ -71,10 +69,7 @@ public class OpenAiIngestionService(
 
         foreach (var evt in events)
         {
-            var quote = await priceResolver.ResolveAsync(evt, cancellationToken);
-            evt.CostUsd = quote?.CostUsd;
-            evt.CacheSavingsUsd = quote?.CacheSavingsUsd;
-            await repository.RecordEventAsync(evt, cancellationToken);
+            await repository.RecordEstimatedEventAsync(evt, cancellationToken);
         }
 
         logger.LogInformation(

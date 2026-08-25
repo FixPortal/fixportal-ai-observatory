@@ -8,30 +8,62 @@ using Npgsql;
 
 namespace AiObservatory.Data.Repositories;
 
-public class UsageRepository(AiObservatoryDbContext ctx) : IUsageRepository
+public class UsageRepository(
+    AiObservatoryDbContext ctx,
+    PricingSnapshotStore? pricingStore = null,
+    UsagePriceResolver? priceResolver = null
+) : IUsageRepository
 {
     private static readonly JsonDocumentOptions RawPayloadJsonOptions = new() { AllowDuplicateProperties = false };
 
     public async Task<RecordEventResult> RecordEventAsync(UsageEvent evt, CancellationToken ct = default)
     {
-        ArgumentNullException.ThrowIfNull(evt);
-        JsonDocument.Parse(evt.RawPayload, RawPayloadJsonOptions).Dispose();
-        if (evt.ObservedAt == default)
+        evt = PrepareEvent(evt);
+        return await RecordPreparedEventAsync(evt, beforeWrite: null, ct);
+    }
+
+    public async Task<RecordEventResult> RecordEstimatedEventAsync(UsageEvent evt, CancellationToken ct = default)
+    {
+        evt = PrepareEvent(evt);
+        if (evt.CostBasis is not (CostBasis.ListPriceEstimate or CostBasis.Notional))
         {
-            evt.ObservedAt = evt.IngestedAt;
+            throw new ArgumentException("Only estimated usage can use atomic price resolution.", nameof(evt));
         }
 
-        var canonicalEventKey = ToStoredEventKey(evt.Provider, evt.SourceId, evt.EventKey);
-        if (canonicalEventKey != evt.EventKey)
+        if (pricingStore is null || priceResolver is null)
         {
-            evt = CopyWithEventKey(evt, canonicalEventKey);
+            throw new InvalidOperationException("Estimated usage pricing services are not configured.");
         }
 
+        return await RecordPreparedEventAsync(
+            evt,
+            async (usage, cancellationToken) =>
+            {
+                await pricingStore.AcquireSharedActivationLockAsync(usage.Provider, cancellationToken);
+                var quote = await priceResolver.ResolveAsync(usage, cancellationToken);
+                usage.CostUsd = quote?.CostUsd;
+                usage.CacheSavingsUsd = quote?.CacheSavingsUsd;
+            },
+            ct
+        );
+    }
+
+    private async Task<RecordEventResult> RecordPreparedEventAsync(
+        UsageEvent evt,
+        Func<UsageEvent, CancellationToken, Task>? beforeWrite,
+        CancellationToken ct
+    )
+    {
         for (var attempt = 0; attempt < 2; attempt++)
         {
             await using var tx = await ctx.Database.BeginTransactionAsync(ct);
             try
             {
+                if (beforeWrite is not null)
+                {
+                    await beforeWrite(evt, ct);
+                }
+
                 var existing = evt.EventKey is null
                     ? null
                     : await FindEventForUpdateAsync(evt.SourceId, evt.EventKey, ct);
@@ -64,6 +96,19 @@ public class UsageRepository(AiObservatoryDbContext ctx) : IUsageRepository
         }
 
         throw new InvalidOperationException("Concurrent usage-event insert retry did not resolve the source key.");
+    }
+
+    private static UsageEvent PrepareEvent(UsageEvent evt)
+    {
+        ArgumentNullException.ThrowIfNull(evt);
+        JsonDocument.Parse(evt.RawPayload, RawPayloadJsonOptions).Dispose();
+        if (evt.ObservedAt == default)
+        {
+            evt.ObservedAt = evt.IngestedAt;
+        }
+
+        var canonicalEventKey = ToStoredEventKey(evt.Provider, evt.SourceId, evt.EventKey);
+        return canonicalEventKey == evt.EventKey ? evt : CopyWithEventKey(evt, canonicalEventKey);
     }
 
     public async Task UpdateEventPricingAsync(Guid eventId, UsagePriceQuote? quote, CancellationToken ct = default)

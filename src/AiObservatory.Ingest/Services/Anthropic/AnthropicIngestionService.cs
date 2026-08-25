@@ -1,6 +1,5 @@
 using System.Text.Json;
 using AiObservatory.Data.Entities;
-using AiObservatory.Data.Pricing;
 using AiObservatory.Data.Repositories;
 using AiObservatory.Ingest.Sources;
 using NodaTime;
@@ -10,7 +9,6 @@ namespace AiObservatory.Ingest.Services.Anthropic;
 public class AnthropicIngestionService(
     IAnthropicUsageClient client,
     IUsageRepository repository,
-    UsagePriceResolver priceResolver,
     IClock clock,
     ILogger<AnthropicIngestionService> logger
 ) : IUsageSource
@@ -88,10 +86,7 @@ public class AnthropicIngestionService(
 
         foreach (var evt in events)
         {
-            var quote = await priceResolver.ResolveAsync(evt, cancellationToken);
-            evt.CostUsd = quote?.CostUsd;
-            evt.CacheSavingsUsd = quote?.CacheSavingsUsd;
-            await repository.RecordEventAsync(evt, cancellationToken);
+            await repository.RecordEstimatedEventAsync(evt, cancellationToken);
         }
 
         logger.LogInformation(
