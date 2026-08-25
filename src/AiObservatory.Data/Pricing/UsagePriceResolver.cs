@@ -7,10 +7,12 @@ namespace AiObservatory.Data.Pricing;
 
 public sealed class UsagePriceResolver
 {
+    private const int MaximumWarningKeys = 4096;
+    private static readonly ConcurrentDictionary<(Provider Provider, string Model, string Missing), byte> Warnings =
+        new();
     private readonly PricingSnapshotStore _store;
     private readonly IReadOnlyDictionary<Provider, IProviderPriceCalculator> _calculators;
     private readonly ILogger<UsagePriceResolver> _logger;
-    private readonly ConcurrentDictionary<(Provider Provider, string Model, string Missing), byte> _warnings = new();
 
     public UsagePriceResolver(
         PricingSnapshotStore store,
@@ -55,7 +57,7 @@ public sealed class UsagePriceResolver
     private void WarnOnce(UsageEvent usage, string missing)
     {
         var model = usage.Model ?? "<missing>";
-        if (_warnings.TryAdd((usage.Provider, model, missing), 0))
+        if (Warnings.Count < MaximumWarningKeys && Warnings.TryAdd((usage.Provider, model, missing), 0))
         {
             _logger.LogWarning(
                 "No exact {Provider} price for model '{Model}'; missing or unmatched dimensions: {MissingDimensions}.",
