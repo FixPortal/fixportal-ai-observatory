@@ -27,6 +27,7 @@ beforeEach(() => {
 
 afterEach(() => {
   vi.useRealTimers()
+  vi.unstubAllEnvs()
   vi.clearAllMocks()
 })
 
@@ -61,6 +62,7 @@ describe('dashboard queries', () => {
   })
 
   test('keeps all 31 local calendar dates across the BST spring transition', () => {
+    vi.stubEnv('TZ', 'Europe/London')
     const range = dashboardDateRange(new Date('2026-03-30T00:30:00+01:00'))
     expect(localDate(range.from)).toBe('2026-02-28')
     expect(localDate(range.to)).toBe('2026-03-30')
