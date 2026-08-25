@@ -280,7 +280,7 @@ present, so an unconfigured worker is a no-op rather than an error:
 | `CLAUDE_CODE_USAGE_ENABLED=true` | Claude Code daily usage | Opt-in; also requires `ANTHROPIC_BILLING_KEY` and an organization with Admin API access |
 | `OPENAI_ADMIN_KEY` | OpenAI usage | Admin key with `openai.usage.read` |
 | `GOOGLE_BILLING_ACCOUNT_ID` | Google billing | Also needs `GOOGLE_APPLICATION_CREDENTIALS` |
-| `GITHUB_TOKEN` + `COPILOT_ORG` | Copilot seat metrics | Token needs `manage_billing:copilot` |
+| `GITHUB_TOKEN` + `COPILOT_ORG` | Copilot organization 28-day engagement report | Classic token needs `read:org`; fine-grained token needs Organization Copilot metrics (read) |
 | `GITHUB_TOKEN` + `Ingest__GitHubRepoAllowlist` | GitHub PR/commit/CI activity | Token additionally needs `contents:read`, `pull-requests:read`, `actions:read` |
 
 `Ingest__GitHubRepoAllowlist` is the repo scope for GitHub activity ingestion, and
@@ -348,13 +348,13 @@ that would take the whole daily cycle (insights, budget alerts) down with it.
 `ANTHROPIC_BILLING_KEY` and `COPILOT_ORG` have no Key Vault secret in this
 deployment, so inspecting the running app's Key Vault references reports
 `SecretNotFound` for both. **The absent secret is the designed state, not a
-fault** — which is a separate question from whether the arm behind it still
-works (for Copilot, it does not; see below).
+fault.** Both integrations are supported but remain opt-in.
 `Program.cs` treats an unresolved `@Microsoft.KeyVault(...)` literal as unset
 precisely so that an absent optional secret leaves the arm unregistered, rather
 than enabling it with a garbage credential and 401-ing every hour.
 
-They are inert for **different** reasons, and only one of them is sound code:
+They are inert because this deployment does not have the required upstream
+organization credentials:
 
 - **Anthropic — supported, but this deployment has no organization Admin key.**
   With `ANTHROPIC_BILLING_KEY`, the worker reads complete paginated Platform
@@ -372,15 +372,20 @@ They are inert for **different** reasons, and only one of them is sound code:
   explicit provider ineligibility response marks only this source unavailable,
   while authentication and transient failures remain visible failures.
 
-- **Copilot — the endpoint no longer exists.**
-  `CopilotUsageClient.cs:23` calls `/orgs/{org}/copilot/metrics`, which GitHub
-  [retired on 2 April 2026](https://github.blog/changelog/2026-01-29-closing-down-notice-of-legacy-copilot-metrics-apis/).
-  The current REST API exposes organization metrics only under
-  [`/orgs/{org}/copilot/metrics/reports/*`](https://docs.github.com/en/rest/copilot/copilot-usage-metrics).
-  Enabling `COPILOT_ORG` today produces failed requests, not ingestion. This arm
-  needs retargeting before it could be used, and even then the reports endpoints
-  return engagement metrics — active users, suggestions, acceptances — never
-  token-level data.
+- **Copilot — supported signed organization reports.**
+  The worker requests the current
+  [`organization-28-day/latest`](https://docs.github.com/en/rest/copilot/copilot-usage-metrics)
+  descriptor, validates its complete 28-day window, and downloads every NDJSON
+  part through separate unauthenticated HTTPS clients so GitHub credentials are
+  never forwarded to signed URLs. It validates the complete report before one
+  atomic correction/upsert into `CopilotDailyReports`.
+
+  These are engagement facts — daily/weekly/monthly active users, user-initiated
+  interactions, generations, and acceptances — with the provider wrapper retained
+  as raw evidence. They create no `UsageEvent`, token, cost, billing, or spend row.
+  The local Copilot sweeper remains the separate
+  `copilot-local/Subscription/Notional` token-utilisation lane; it is not an
+  organization-report substitute or an invoice.
 
 Anthropic usage here comes from the local sweeper reading
 `~/.claude/projects/**/*.jsonl` instead.

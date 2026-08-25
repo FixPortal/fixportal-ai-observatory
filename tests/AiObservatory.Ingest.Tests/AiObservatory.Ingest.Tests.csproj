@@ -33,4 +33,8 @@
     <ProjectReference Include="..\..\src\AiObservatory.Ingest\AiObservatory.Ingest.csproj" />
   </ItemGroup>
 
+  <ItemGroup>
+    <Compile Include="..\PostgresTestAssemblyFixture.cs" Link="PostgresTestAssemblyFixture.cs" />
+  </ItemGroup>
+
 </Project>
