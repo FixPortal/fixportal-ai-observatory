@@ -1,7 +1,7 @@
 using System.Globalization;
-using AiObservatory.Api.Services.Fx;
 using AiObservatory.Data;
 using AiObservatory.Data.Entities;
+using AiObservatory.Data.Spend;
 using Microsoft.EntityFrameworkCore;
 using NodaTime;
 using Npgsql;

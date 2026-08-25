@@ -1,9 +1,9 @@
 using System.Net;
-using AiObservatory.Api.Services.Fx;
 using AiObservatory.Api.Services.GitHub;
 using AiObservatory.Api.Tests.Services;
 using AiObservatory.Data;
 using AiObservatory.Data.Entities;
+using AiObservatory.Data.Spend;
 using AwesomeAssertions;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Caching.Memory;
@@ -59,8 +59,11 @@ public class GitHubBillingSyncServiceTests(AiObservatoryApiFactory factory) : IC
 
         var sut = new GitHubBillingSyncService(
             new StubBillingClient(items),
-            db,
-            new FxRateProvider(fxHttp, fxCache, NullLogger<FxRateProvider>.Instance),
+            new BillingObservationWriter(
+                db,
+                new FxRateProvider(fxHttp, fxCache, NullLogger<FxRateProvider>.Instance),
+                new FakeClock(now)
+            ),
             new FakeClock(now),
             NullLogger<GitHubBillingSyncService>.Instance
         );
@@ -105,13 +108,13 @@ public class GitHubBillingSyncServiceTests(AiObservatoryApiFactory factory) : IC
         entry.Source.Should().Be(SpendSource.Api);
         entry.SourceId.Should().Be(UsageSourceIds.GitHubBillingApi);
         entry.SourceKind.Should().Be(SourceKind.ProviderApi);
-        entry.UsageScope.Should().Be(UsageScope.Unknown);
+        entry.UsageScope.Should().Be(UsageScope.Mixed);
         entry.CostBasis.Should().Be(CostBasis.Billed);
         entry.ObservedAt.Should().Be(Now);
     }
 
     [Fact]
-    public async Task SkipsFullyDiscountedLines()
+    public async Task RetainsFullyDiscountedLinesWithoutCreatingSpend()
     {
         var billed = UniqueSku("Actions Linux");
         var free = UniqueSku("Actions Windows");
@@ -125,7 +128,12 @@ public class GitHubBillingSyncServiceTests(AiObservatoryApiFactory factory) : IC
         written.Should().Be(1);
         (await FindAsync(db, free, TestContext.Current.CancellationToken))
             .Should()
-            .BeNull("a zero net line was never billed, and CK_SpendEntry_Amount_NonZero would reject it anyway");
+            .BeNull("a zero net line is evidence but not spend");
+        var observation = await db
+            .BillingObservations.AsNoTracking()
+            .SingleAsync(row => row.Sku == free, TestContext.Current.CancellationToken);
+        observation.NetAmount.Should().Be(0m);
+        observation.SourceId.Should().Be(UsageSourceIds.GitHubBillingApi);
     }
 
     [Fact]

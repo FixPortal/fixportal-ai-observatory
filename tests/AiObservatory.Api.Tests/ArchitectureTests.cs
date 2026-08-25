@@ -32,8 +32,6 @@ public class ArchitectureTests
         .Or()
         .ResideInNamespace("AiObservatory.Api.Services")
         .Or()
-        .ResideInNamespace("AiObservatory.Api.Services.Fx")
-        .Or()
         .ResideInNamespace("AiObservatory.Api.Services.GitHub")
         .Or()
         .ResideInNamespace("AiObservatory.Api.Services.Intelligence")

@@ -14,6 +14,7 @@ public class AiObservatoryDbContext(DbContextOptions<AiObservatoryDbContext> opt
     private static readonly Guid CiCategoryId = Guid.Parse("11111111-1111-1111-1111-111111111103");
     private static readonly Guid SubscriptionCategoryId = Guid.Parse("11111111-1111-1111-1111-111111111104");
     private static readonly Guid CloudCategoryId = Guid.Parse("11111111-1111-1111-1111-111111111105");
+    private static readonly Guid ApiUsageCategoryId = Guid.Parse("11111111-1111-1111-1111-111111111106");
 
     private static readonly Guid AnthropicVendorId = Guid.Parse("22222222-2222-2222-2222-222222222201");
     private static readonly Guid GitHubActionsVendorId = Guid.Parse("22222222-2222-2222-2222-222222222202");
@@ -45,6 +46,7 @@ public class AiObservatoryDbContext(DbContextOptions<AiObservatoryDbContext> opt
     public DbSet<IdeEvent> IdeEvents => Set<IdeEvent>();
     public DbSet<SourceSyncState> SourceSyncStates => Set<SourceSyncState>();
     public DbSet<PricingSnapshot> PricingSnapshots => Set<PricingSnapshot>();
+    public DbSet<BillingObservation> BillingObservations => Set<BillingObservation>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -181,6 +183,14 @@ public class AiObservatoryDbContext(DbContextOptions<AiObservatoryDbContext> opt
                     DisplayName = "Cloud",
                     ColorVar = "--spend-cloud",
                     SortOrder = 50,
+                },
+                new SpendCategory
+                {
+                    Id = ApiUsageCategoryId,
+                    Key = "api-usage",
+                    DisplayName = "API Usage",
+                    ColorVar = "--spend-api-usage",
+                    SortOrder = 60,
                 }
             );
         });
@@ -326,7 +336,7 @@ public class AiObservatoryDbContext(DbContextOptions<AiObservatoryDbContext> opt
             b.Property(e => e.EntryKey).HasMaxLength(200);
             b.Property(e => e.Source).HasConversion<string>();
             b.Property(e => e.RawPayload).HasColumnType("jsonb");
-            b.Property(e => e.SourceId).HasMaxLength(100);
+            b.Property(e => e.SourceId).HasMaxLength(200);
             b.Property(e => e.SourceKind).HasConversion<string>();
             b.Property(e => e.UsageScope).HasConversion<string>();
             b.Property(e => e.CostBasis).HasConversion<string>();
@@ -505,6 +515,42 @@ public class AiObservatoryDbContext(DbContextOptions<AiObservatoryDbContext> opt
             b.ToTable(table =>
                 table.HasCheckConstraint("CK_PricingSnapshot_ContentHash_Length", "char_length(\"ContentHash\") = 64")
             );
+        });
+
+        modelBuilder.Entity<BillingObservation>(b =>
+        {
+            b.Property(observation => observation.ProviderKey).HasMaxLength(200);
+            b.Property(observation => observation.SourceId).HasMaxLength(200);
+            b.Property(observation => observation.SourceKind).HasConversion<string>();
+            b.Property(observation => observation.UsageScope).HasConversion<string>();
+            b.Property(observation => observation.CostBasis).HasConversion<string>();
+            b.Property(observation => observation.ObservationKey).HasMaxLength(200);
+            b.Property(observation => observation.Currency).HasMaxLength(3);
+            b.Property(observation => observation.RawPayload).HasColumnType("jsonb");
+            b.HasIndex(observation => new { observation.SourceId, observation.ObservationKey }).IsUnique();
+            b.HasIndex(observation => observation.OccurredOn);
+            b.ToTable(table =>
+            {
+                table.HasCheckConstraint(
+                    "CK_BillingObservation_ProviderKey_Normalized",
+                    "btrim(\"ProviderKey\") <> '' AND \"ProviderKey\" = btrim(\"ProviderKey\") AND \"ProviderKey\" = lower(\"ProviderKey\")"
+                );
+                table.HasCheckConstraint(
+                    "CK_BillingObservation_SourceId_NonBlank",
+                    "btrim(\"SourceId\") <> '' AND \"SourceId\" = btrim(\"SourceId\")"
+                );
+                table.HasCheckConstraint(
+                    "CK_BillingObservation_ObservationKey_NonBlank",
+                    "btrim(\"ObservationKey\") <> '' AND \"ObservationKey\" = btrim(\"ObservationKey\")"
+                );
+                table.HasCheckConstraint("CK_BillingObservation_Currency_Normalized", "\"Currency\" ~ '^[A-Z]{3}$'");
+                table.HasCheckConstraint("CK_BillingObservation_ProviderApi", "\"SourceKind\" = 'ProviderApi'");
+                table.HasCheckConstraint("CK_BillingObservation_Billed", "\"CostBasis\" = 'Billed'");
+                table.HasCheckConstraint(
+                    "CK_BillingObservation_Amounts_Balance",
+                    "\"GrossAmount\" + \"CreditAmount\" = \"NetAmount\""
+                );
+            });
         });
     }
 }

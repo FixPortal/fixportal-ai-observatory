@@ -1,5 +1,5 @@
 using System.Net;
-using AiObservatory.Api.Services.Fx;
+using AiObservatory.Data.Spend;
 using AwesomeAssertions;
 using Microsoft.Extensions.Caching.Memory;
 using Microsoft.Extensions.Logging.Abstractions;
