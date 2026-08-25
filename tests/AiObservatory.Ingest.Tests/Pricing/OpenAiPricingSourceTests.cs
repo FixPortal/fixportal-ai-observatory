@@ -189,7 +189,7 @@ public sealed class OpenAiPricingSourceTests
                 "| Model | Currency | Short context input |",
                 StringComparison.Ordinal
             ),
-            "missing-unit" => document.Replace("Prices per 1M tokens.\n", "", StringComparison.Ordinal),
+            "missing-unit" => document.Replace("Prices per 1M tokens.", "", StringComparison.Ordinal),
             "duplicate-unit" => document.Replace(
                 "Prices per 1M tokens.",
                 "Prices per 1M tokens.\nPrices per 1M tokens.",
