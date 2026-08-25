@@ -75,7 +75,7 @@ test('private package matcher detects supported MSBuild attribute forms', () => 
   }
 })
 
-test('public restore contract excludes private package plumbing and restores from a cold cache', async () => {
+test('public restore contract excludes private package plumbing and leaves live build assets usable', async () => {
   for (const pathname of trackedFiles().filter(isLive)) {
     const text = await readFile(path.join(root, pathname), 'utf8')
     assertNoPrivatePlumbing(pathname, text)
@@ -95,11 +95,11 @@ test('public restore contract excludes private package plumbing and restores fro
   assert.match(attributes.stdout, /eng\/analysis\/CodeStyle\.globalconfig: eol: lf/, attributes.stdout)
 
   const packages = await mkdtemp(path.join(os.tmpdir(), 'aiobservatory-public-restore-'))
+  const githubPackagesToken = ['GITHUB', 'PACKAGES', 'TOKEN'].join('_')
+  const fixportalPackagesToken = ['FIXPORTAL', 'PACKAGES', 'TOKEN'].join('_')
   try {
     assert.deepEqual(await readdir(packages), [], 'isolated NuGet package directory must start empty')
     const environment = { ...process.env, NUGET_PACKAGES: packages }
-    const githubPackagesToken = ['GITHUB', 'PACKAGES', 'TOKEN'].join('_')
-    const fixportalPackagesToken = ['FIXPORTAL', 'PACKAGES', 'TOKEN'].join('_')
     delete environment[githubPackagesToken]
     delete environment[fixportalPackagesToken]
     assert.equal(Object.hasOwn(environment, githubPackagesToken), false, `${githubPackagesToken} must be absent during restore`)
@@ -113,5 +113,22 @@ test('public restore contract excludes private package plumbing and restores fro
     assert.equal(restore.status, 0, `dotnet restore failed:\n${restore.stdout}\n${restore.stderr}`)
   } finally {
     await rm(packages, { recursive: true, force: true })
+    const recoveryEnvironment = { ...process.env }
+    delete recoveryEnvironment[githubPackagesToken]
+    delete recoveryEnvironment[fixportalPackagesToken]
+    const recovery = spawnSync('dotnet', ['restore', 'AiObservatory.slnx', '--configfile', 'nuget.config', '--force'], {
+      cwd: root,
+      encoding: 'utf8',
+      env: recoveryEnvironment,
+      timeout: 300_000,
+    })
+    assert.equal(recovery.status, 0, `failed to restore live build assets:\n${recovery.stdout}\n${recovery.stderr}`)
   }
+
+  const build = spawnSync('dotnet', ['build', 'AiObservatory.slnx', '--configuration', 'Release', '--no-restore'], {
+    cwd: root,
+    encoding: 'utf8',
+    timeout: 300_000,
+  })
+  assert.equal(build.status, 0, `isolated restore contaminated live build assets:\n${build.stdout}\n${build.stderr}`)
 })
