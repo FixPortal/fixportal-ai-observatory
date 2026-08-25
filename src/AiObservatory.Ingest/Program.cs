@@ -59,6 +59,7 @@ var host = Host.CreateDefaultBuilder(args)
                     c.BaseAddress = new Uri("https://api.anthropic.com");
                     c.DefaultRequestHeaders.Add("x-api-key", anthropicKey);
                     c.DefaultRequestHeaders.Add("anthropic-version", "2023-06-01");
+                    c.DefaultRequestHeaders.Add("anthropic-beta", "fast-mode-2026-02-01");
                 });
                 services.TryAddEnumerable(ServiceDescriptor.Scoped<IUsageSource, AnthropicIngestionService>());
             }
