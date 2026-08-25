@@ -4,6 +4,7 @@ using AiObservatory.Data;
 using AiObservatory.Data.Entities;
 using AiObservatory.Data.Pricing;
 using AiObservatory.Ingest;
+using AiObservatory.Ingest.Pricing;
 using AiObservatory.Ingest.Services.Anthropic;
 using AiObservatory.Ingest.Services.Copilot;
 using AiObservatory.Ingest.Services.GitHub;
@@ -37,16 +38,13 @@ var host = Host.CreateDefaultBuilder(args)
             // access) is left by App Service as the literal "@Microsoft.KeyVault(...)" string.
             // That is non-empty, so a plain IsNullOrEmpty gate would enable the provider with a
             // garbage credential and 401 hourly forever. Treat such a value as unset.
-            static bool IsConfigured(string? value) =>
-                !string.IsNullOrEmpty(value)
-                && !value.StartsWith("@Microsoft.KeyVault(", StringComparison.OrdinalIgnoreCase);
-
             var connectionString =
                 cfg["DB_CONNECTION"] ?? throw new InvalidOperationException("DB_CONNECTION is required");
             services.AddDataLayer(connectionString);
             services.AddSingleton<IClock>(SystemClock.Instance);
 
             services.Configure<IngestOptions>(cfg.GetSection(IngestOptions.SectionName));
+            services.PostConfigure<IngestOptions>(options => IngestOptions.BindGoogleCloudCatalog(cfg, options));
             var expectedRefreshInterval = Duration.FromMinutes(
                 Math.Max(1, cfg.GetValue<int?>($"{IngestOptions.SectionName}:PollingIntervalMinutes") ?? 60)
             );
@@ -193,6 +191,8 @@ var host = Host.CreateDefaultBuilder(args)
                 services.TryAddEnumerable(ServiceDescriptor.Scoped<IUsageSource, GitHubIngestionService>());
             }
 
+            RegisterPricingSources(services, cfg);
+
             // Telemetry, gated on the connection string exactly as the API gates it. Worth
             // having for its own sake, but specifically: this worker spent its entire deployed
             // life failing to start, and the absence of telemetry made that read as a quiet
@@ -207,6 +207,8 @@ var host = Host.CreateDefaultBuilder(args)
             // construct a second, unrelated one.
             services.AddSingleton<ProviderPollingWorkerService>();
             services.AddHostedService(sp => sp.GetRequiredService<ProviderPollingWorkerService>());
+            services.AddSingleton<PricingRefreshWorkerService>();
+            services.AddHostedService(sp => sp.GetRequiredService<PricingRefreshWorkerService>());
         }
     )
     // Minimal web host so the process answers Linux App Service's startup probe. The
@@ -254,6 +256,34 @@ static IResult ReportHealth(ProviderPollingWorkerService worker)
     };
 
     return running ? Results.Ok(body) : Results.Json(body, statusCode: 503);
+}
+
+static bool IsConfigured(string? value) =>
+    !string.IsNullOrEmpty(value) && !value.StartsWith("@Microsoft.KeyVault(", StringComparison.OrdinalIgnoreCase);
+
+static void RegisterPricingSources(IServiceCollection services, IConfiguration configuration)
+{
+    var refreshInterval = Duration.FromDays(1);
+    services.AddSingleton(new PricingSourceDefinition(PricingSourceIds.OpenAi, true, refreshInterval));
+    services.AddSingleton(new PricingSourceDefinition(PricingSourceIds.Claude, true, refreshInterval));
+    services.AddSingleton(new PricingSourceDefinition(PricingSourceIds.Kimi, true, refreshInterval));
+    services.TryAddEnumerable(ServiceDescriptor.Scoped<IPricingSource, OpenAiPricingSource>());
+    services.TryAddEnumerable(ServiceDescriptor.Scoped<IPricingSource, ClaudePricingSource>());
+    services.TryAddEnumerable(ServiceDescriptor.Scoped<IPricingSource, KimiPricingSource>());
+
+    var googleConfigured =
+        IsConfigured(configuration["GOOGLE_CLOUD_CATALOG_API_KEY"])
+        && IsConfigured(configuration["GOOGLE_CLOUD_CATALOG_SERVICE_ID"])
+        && GooglePricingSource.HasVerifiedMappings;
+    services.AddSingleton(
+        new PricingSourceDefinition(PricingSourceIds.GoogleCloudCatalog, googleConfigured, refreshInterval)
+    );
+    if (googleConfigured)
+    {
+        services.TryAddEnumerable(ServiceDescriptor.Scoped<IPricingSource, GooglePricingSource>());
+    }
+
+    services.AddScoped<BundledPricingCatalogLoader>();
 }
 
 // Required as the WebApplicationFactory<TEntryPoint> marker for composition-root tests.

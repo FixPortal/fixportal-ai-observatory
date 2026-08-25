@@ -16,6 +16,8 @@ public interface IPricingSource
     Task<PricingSnapshotCandidate?> FetchAsync(CancellationToken cancellationToken);
 }
 
+public sealed record PricingSourceDefinition(string SourceId, bool IsConfigured, Duration ExpectedRefreshInterval);
+
 public static class PricingCatalogJson
 {
     private static readonly JsonSerializerOptions Options = CreateOptions();
