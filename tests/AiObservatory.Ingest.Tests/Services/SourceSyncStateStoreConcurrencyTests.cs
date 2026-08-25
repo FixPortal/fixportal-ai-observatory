@@ -162,6 +162,8 @@ public sealed class SourceSyncStateStoreConcurrencyTests(ProviderPollingDatabase
         var state = await LoadStateAsync(services, sourceId);
         state.PendingFromDate.Should().Be(pendingFrom);
         state.LastError.Should().Be("newer attempt failed");
+        state.IsAvailable.Should().BeNull();
+        state.ConsecutiveFailureCount.Should().Be(1);
     }
 
     private ServiceProvider CreateServices()
