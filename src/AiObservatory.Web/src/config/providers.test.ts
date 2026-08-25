@@ -23,6 +23,10 @@ test.each(BACKEND_PROVIDERS)('%s declares a display name and badge style', key =
   expect(provider?.badgeStyle.color).toBe(`var(--provider-${key})`)
 })
 
+test.each(BACKEND_PROVIDERS)('%s has no frontend cache-pricing rate', key => {
+  expect(getProvider(key)).not.toHaveProperty('cacheSavingsPerToken')
+})
+
 test('an unknown provider still falls back to the neutral colour', () => {
   expect(providerColor('not-a-provider')).toBe('var(--provider-other)')
 })

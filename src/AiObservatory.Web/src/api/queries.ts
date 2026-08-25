@@ -6,12 +6,12 @@ import {
   getBudgetRules, getEmailStatus,
   getActivityDaily, getActivityByProject,
   getGitHubPrs, getGitHubCommitSummary, getGitHubCi,
-  getSpendCategories, getSpendVendors, getSpendEntries,
+  getSpendCategories, getSpendVendors, getSpendEntries, getSourceStatuses,
   type DailyAggregate, type Insight, type Subscription,
   type AdversarialReviewRun, type AdversarialReviewStats, type CavemanStats,
   type BudgetRule, type DailyActivity, type ProjectActivity,
   type GitHubPr, type GitHubCommitSummary, type GitHubCiSummary,
-  type SpendCategory, type SpendVendor, type SpendEntry,
+  type SpendCategory, type SpendVendor, type SpendEntry, type SourceStatusResponse,
 } from './client'
 
 // Shared query hooks. Components subscribe directly (react-query deduplicates by
@@ -33,9 +33,14 @@ export const localDate = (d: Date) => {
   return `${y}-${m}-${day}`
 }
 
+export const dashboardDateRange = (to = new Date()) => {
+  const from = new Date(to)
+  from.setDate(from.getDate() - (AGGREGATES_DAYS_RANGE - 1))
+  return { from, to: new Date(to) }
+}
+
 const aggregatesQueryFn = () => {
-  const to = new Date()
-  const from = new Date(to.getTime() - (AGGREGATES_DAYS_RANGE - 1) * 24 * 60 * 60 * 1000)
+  const { from, to } = dashboardDateRange()
   return getAggregates(localDate(from), localDate(to))
 }
 
@@ -109,6 +114,11 @@ export function useSubscriptions(): { subscriptions: Subscription[]; isError: bo
   return { isError, subscriptions: data, isLoading: isPending }
 }
 
+export function useSourceStatuses(): { statuses: SourceStatusResponse[]; isError: boolean; isLoading: boolean } {
+  const { data = [], isError, isPending } = useQuery({ queryKey: ['source-statuses'], queryFn: getSourceStatuses })
+  return { statuses: data, isError, isLoading: isPending }
+}
+
 export function useAdversarialReviewRuns(): { runs: AdversarialReviewRun[]; isError: boolean; isLoading: boolean } {
   const { data = [], isError, isPending } = useQuery({ queryKey: ['adversarial-review-runs'], queryFn: getAdversarialReviewRuns })
   return { runs: data, isError, isLoading: isPending }
@@ -127,19 +137,6 @@ export function useCavemanStats(): { stats: CavemanStats | undefined; isError: b
 export function useBudgetRules(): { rules: BudgetRule[]; isLoading: boolean; isError: boolean } {
   const { data = [], isPending, isError } = useQuery({ queryKey: ['budget-rules'], queryFn: getBudgetRules })
   return { rules: data, isLoading: isPending, isError }
-}
-
-export function usePriorPeriodAggregates(): DailyAggregate[] {
-  // Compute the window once per mount, not in the render body — keeps render pure
-  // and the date objects stable. (The query key is day-granular via localDate, so
-  // this never churns mid-day regardless.)
-  const { priorFrom, priorTo } = useMemo(() => {
-    const now = new Date()
-    const to = new Date(now.getTime() - AGGREGATES_DAYS_RANGE * 24 * 60 * 60 * 1000)
-    const from = new Date(to.getTime() - (AGGREGATES_DAYS_RANGE - 1) * 24 * 60 * 60 * 1000)
-    return { priorFrom: from, priorTo: to }
-  }, [])
-  return useAggregates(priorFrom, priorTo)
 }
 
 export function useEmailStatus(): { configured: boolean | undefined } {
@@ -185,12 +182,24 @@ export function useSpendEntries(from: Date, to: Date): {
 }
 
 export function useDashboardStatus(): { isError: boolean; isLoading: boolean; error: unknown } {
-  const { isError: aIsError, isPending: aIsPending, error: aError } = useQuery({ queryKey: ['aggregates'], queryFn: aggregatesQueryFn })
+  const range = useMemo(() => dashboardDateRange(), [])
+  const from = localDate(range.from)
+  const to = localDate(range.to)
+  const { isError: aIsError, isPending: aIsPending, error: aError } = useQuery({ queryKey: ['aggregates', from, to], queryFn: () => getAggregates(from, to) })
+  const { isError: pIsError, isPending: pIsPending, error: pError } = useQuery({ queryKey: ['spend-entries', from, to], queryFn: () => getSpendEntries(from, to) })
   const { isError: iIsError, isPending: iIsPending, error: iError } = useQuery({ queryKey: ['insights'], queryFn: getInsights })
   const { isError: sIsError, isPending: sIsPending, error: sError } = useQuery({ queryKey: ['subscriptions'], queryFn: getSubscriptions })
+  const { isError: ssIsError, isPending: ssIsPending, error: ssError } = useQuery({ queryKey: ['source-statuses'], queryFn: getSourceStatuses })
+  const states = [
+    { isError: aIsError, isPending: aIsPending, error: aError },
+    { isError: pIsError, isPending: pIsPending, error: pError },
+    { isError: iIsError, isPending: iIsPending, error: iError },
+    { isError: sIsError, isPending: sIsPending, error: sError },
+    { isError: ssIsError, isPending: ssIsPending, error: ssError },
+  ]
   return {
-    isError: aIsError || iIsError || sIsError,
-    isLoading: aIsPending || iIsPending || sIsPending,
-    error: aError ?? iError ?? sError,
+    isError: states.some(state => state.isError),
+    isLoading: states.some(state => state.isPending),
+    error: states.find(state => state.error != null)?.error,
   }
 }

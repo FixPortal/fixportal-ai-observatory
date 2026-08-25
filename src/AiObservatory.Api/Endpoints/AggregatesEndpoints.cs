@@ -115,6 +115,8 @@ public static class AggregatesEndpoints
                 a.CacheWrite1hTokens,
                 a.CostUsd,
                 a.UnknownCostCount,
+                a.CacheSavingsUsd,
+                a.UnknownCacheSavingsCount,
                 a.RequestCount,
             })
             .ToListAsync(ct);

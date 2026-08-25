@@ -3,8 +3,13 @@ import { computeBurnRate } from './velocity'
 import type { DailyAggregate } from '../api/client'
 
 function makeAgg(date: string, costUsd: number): DailyAggregate {
-  return { date, provider: 'anthropic', model: 'claude', inputTokens: 0, outputTokens: 0,
-    cacheReadTokens: 0, cacheWriteTokens: 0, costUsd, requestCount: 1 }
+  return {
+    date, provider: 'anthropic', model: 'claude', sourceId: 'anthropic-usage-api',
+    sourceKind: 'providerApi', usageScope: 'api', costBasis: 'listPriceEstimate',
+    inputTokens: 0, outputTokens: 0, cacheReadTokens: 0, cacheWriteTokens: 0,
+    cacheWrite1hTokens: 0, costUsd, unknownCostCount: 0, cacheSavingsUsd: 0,
+    unknownCacheSavingsCount: 0, requestCount: 1,
+  }
 }
 
 describe('computeBurnRate', () => {
