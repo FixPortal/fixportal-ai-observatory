@@ -170,6 +170,28 @@ public sealed class GooglePricingSourceTests
         await act.Should().ThrowAsync<InvalidDataException>();
     }
 
+    [Theory]
+    [InlineData("REGIONAL", "us", "europe-west1")]
+    [InlineData("MULTI_REGIONAL", "us", null)]
+    public async Task FetchRejectsImpossibleGeographyCardinality(
+        string taxonomyType,
+        string firstRegion,
+        string? secondRegion
+    )
+    {
+        var page = JsonNode.Parse(Page1())!.AsObject();
+        page.Remove("nextPageToken");
+        var taxonomy = page["skus"]![0]!["geoTaxonomy"]!.AsObject();
+        taxonomy["type"] = taxonomyType;
+        taxonomy["regions"] = new JsonArray(secondRegion is null ? [firstRegion] : [firstRegion, secondRegion]);
+        var mapping = Mappings[0] with { GeoTaxonomyType = taxonomyType };
+        var source = Source(Pages(page.ToJsonString()), mappings: [mapping]);
+
+        var act = () => source.FetchAsync(TestContext.Current.CancellationToken);
+
+        await act.Should().ThrowAsync<InvalidDataException>();
+    }
+
     [Fact]
     public async Task FetchPreservesTheExactMappedExpressionAndConvertsNanosWithoutFloatingPoint()
     {
@@ -267,6 +289,14 @@ public sealed class GooglePricingSourceTests
 
         await act.Should().ThrowAsync<HttpRequestException>();
         handler.Requests.Should().ContainSingle();
+    }
+
+    [Fact]
+    public void ProductionHandlerFactoryDisablesAutomaticRedirects()
+    {
+        using var handler = GooglePricingSource.CreateHttpMessageHandler();
+
+        handler.AllowAutoRedirect.Should().BeFalse();
     }
 
     [Fact]
