@@ -100,6 +100,68 @@ public class ProviderPollingWorkerServiceTests(ProviderPollingDatabase database)
     }
 
     [Fact]
+    public async Task RunPollAsync_AfterExtendedOutage_ResumesFromLastSuccessfulRun()
+    {
+        var source = Source("extended-outage-source", new SourceIngestionResult(null));
+        await using var harness = CreateWorker(
+            current: Instant.FromUtc(2026, 8, 20, 12, 0),
+            sources: [source],
+            definitions: [Definition(source.SourceId)]
+        );
+        await harness.Worker.RunPollAsync(
+            new LocalDate(2026, 8, 19),
+            new LocalDate(2026, 8, 19),
+            TestContext.Current.CancellationToken
+        );
+        source.ClearReceivedCalls();
+
+        await harness.Worker.RunPollAsync(
+            new LocalDate(2026, 8, 26),
+            new LocalDate(2026, 8, 28),
+            TestContext.Current.CancellationToken
+        );
+
+        await source
+            .Received(1)
+            .IngestAsync(new LocalDate(2026, 8, 20), new LocalDate(2026, 8, 28), Arg.Any<CancellationToken>());
+    }
+
+    [Fact]
+    public async Task RunPollAsync_WhenFirstAttemptFails_RetriesItsOriginalWindowAfterExtendedOutage()
+    {
+        var source = Substitute.For<IUsageSource>();
+        source.SourceId.Returns("first-attempt-outage-source");
+        source
+            .IngestAsync(Arg.Any<LocalDate>(), Arg.Any<LocalDate>(), Arg.Any<CancellationToken>())
+            .Returns(
+                Task.FromException<SourceIngestionResult>(new InvalidOperationException("partial failure")),
+                Task.FromResult(new SourceIngestionResult(null))
+            );
+        await using var harness = CreateWorker(
+            current: Instant.FromUtc(2026, 8, 20, 12, 0),
+            sources: [source],
+            definitions: [Definition(source.SourceId)]
+        );
+        await harness.Worker.RunPollAsync(
+            new LocalDate(2026, 8, 17),
+            new LocalDate(2026, 8, 19),
+            TestContext.Current.CancellationToken
+        );
+        source.ClearReceivedCalls();
+
+        await harness.Worker.RunPollAsync(
+            new LocalDate(2026, 8, 26),
+            new LocalDate(2026, 8, 28),
+            TestContext.Current.CancellationToken
+        );
+
+        await source
+            .Received(1)
+            .IngestAsync(new LocalDate(2026, 8, 17), new LocalDate(2026, 8, 28), Arg.Any<CancellationToken>());
+        (await harness.LoadStateAsync(source.SourceId)).PendingFromDate.Should().BeNull();
+    }
+
+    [Fact]
     public async Task RunPollAsync_IsolatesFailuresAndPersistsOnlySanitizedErrorText()
     {
         var failed = Substitute.For<IUsageSource>();

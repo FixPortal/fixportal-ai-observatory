@@ -11,6 +11,7 @@ public sealed class SourceSyncState
     public Instant? LastAttemptAt { get; set; }
     public Instant? LastSuccessAt { get; set; }
     public Instant? LatestObservationAt { get; set; }
+    public LocalDate? PendingFromDate { get; set; }
     public int ConsecutiveFailureCount { get; set; }
     public string? LastError { get; set; }
 }

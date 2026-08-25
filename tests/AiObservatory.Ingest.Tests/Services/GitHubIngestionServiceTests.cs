@@ -240,7 +240,7 @@ public class GitHubIngestionServiceTests
     }
 
     [Fact]
-    public async Task IngestAsync_WhenOneRepoThrows403_SkipsItAndContinuesWithNextRepo()
+    public async Task IngestAsync_WhenOneRepoThrows403_ContinuesButRejectsTheSourceAttempt()
     {
         var client = Substitute.For<IGitHubActivityClient>();
         var repo = Substitute.For<IGitHubActivityRepository>();
@@ -261,15 +261,18 @@ public class GitHubIngestionServiceTests
         );
 
         var pollDate = new LocalDate(2026, 7, 1);
-        await sut.IngestAsync(pollDate, pollDate, TestContext.Current.CancellationToken);
+        var act = () => sut.IngestAsync(pollDate, pollDate, TestContext.Current.CancellationToken);
 
+        await act.Should()
+            .ThrowAsync<InvalidOperationException>()
+            .WithMessage("1 of 2 configured GitHub repos failed*");
         await client
             .Received(1)
             .GetPullRequestsAsync("fix-portal/ok", Arg.Any<LocalDate>(), Arg.Any<CancellationToken>());
     }
 
     [Fact]
-    public async Task IngestAsync_WhenOneRepoTimesOut_SkipsItAndContinuesWithNextRepo()
+    public async Task IngestAsync_WhenOneRepoTimesOut_ContinuesButRejectsTheSourceAttempt()
     {
         var client = Substitute.For<IGitHubActivityClient>();
         var repo = Substitute.For<IGitHubActivityRepository>();
@@ -292,8 +295,11 @@ public class GitHubIngestionServiceTests
         );
 
         var pollDate = new LocalDate(2026, 7, 1);
-        await sut.IngestAsync(pollDate, pollDate, TestContext.Current.CancellationToken);
+        var act = () => sut.IngestAsync(pollDate, pollDate, TestContext.Current.CancellationToken);
 
+        await act.Should()
+            .ThrowAsync<InvalidOperationException>()
+            .WithMessage("1 of 2 configured GitHub repos failed*");
         await client
             .Received(1)
             .GetPullRequestsAsync("fix-portal/ok", Arg.Any<LocalDate>(), Arg.Any<CancellationToken>());
@@ -413,7 +419,9 @@ public class GitHubIngestionServiceTests
                 TestContext.Current.CancellationToken
             );
 
-        await act.Should().ThrowAsync<InvalidOperationException>().WithMessage("All 2 configured GitHub repos failed*");
+        await act.Should()
+            .ThrowAsync<InvalidOperationException>()
+            .WithMessage("2 of 2 configured GitHub repos failed*");
     }
 
     [Fact]
