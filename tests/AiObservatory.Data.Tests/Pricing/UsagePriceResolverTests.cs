@@ -295,11 +295,10 @@ public sealed class UsagePriceResolverTests : IAsyncLifetime
         var ct = TestContext.Current.CancellationToken;
         await _store.ActivateAsync(Candidate(OpenAiCatalog()), ct);
         var logger = new CapturingLogger<UsagePriceResolver>();
-        var resolver = Resolver(logger);
         var usage = Event(Provider.OpenAI, "gpt-5.4", "{}");
 
-        (await resolver.ResolveAsync(usage, ct)).Should().BeNull();
-        (await resolver.ResolveAsync(usage, ct)).Should().BeNull();
+        (await Resolver(logger).ResolveAsync(usage, ct)).Should().BeNull();
+        (await Resolver(logger).ResolveAsync(usage, ct)).Should().BeNull();
 
         logger.Warnings.Should().ContainSingle().Which.Should().Contain("context,processing,region");
     }
