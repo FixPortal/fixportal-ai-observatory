@@ -62,7 +62,7 @@ node clients/observatory-sweep.mjs --dry-run --verbose
 | Variable | Default | Purpose |
 | --- | --- | --- |
 | `OBSERVATORY_API_KEY` | Required | Sent as `X-Observatory-Key`; absent means no post. |
-| `OBSERVATORY_URL` | `http://localhost:5039` | API origin; use `http://localhost:4173` for Compose's frontend proxy. |
+| `OBSERVATORY_URL` | `http://localhost:5039` | API origin; HTTPS is required except for loopback development. Use `http://localhost:4173` for Compose's frontend proxy. |
 | `OBSERVATORY_STATE` | `~/.ai-observatory/sweep-state.json` | Safe-to-delete parse cache. |
 | `OBSERVATORY_LOCAL_SOURCES` | `codex,copilot,claude,kimi` | Comma-separated collector allowlist. |
 | `CODEX_HOME`, `COPILOT_HOME`, `CLAUDE_HOME`, `KIMI_HOME` | Tool homes above | Optional home overrides. |
