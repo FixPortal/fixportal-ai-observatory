@@ -20,7 +20,10 @@ public sealed class GooglePricingSource : IPricingSource
     private readonly IClock _clock;
     private readonly ILogger<GooglePricingSource> _logger;
     private readonly IReadOnlyDictionary<string, GoogleSkuMapping> _mappings;
+    private readonly TimeSpan _requestTimeout;
     private readonly string _sourceUrl;
+
+    internal static bool HasVerifiedMappings => VerifiedMappings.Count != 0;
 
     public GooglePricingSource(IClock clock, ILogger<GooglePricingSource> logger, IOptions<IngestOptions> options)
         : this(clock, logger, options, VerifiedMappings, null) { }
@@ -29,8 +32,17 @@ public sealed class GooglePricingSource : IPricingSource
         IClock clock,
         ILogger<GooglePricingSource> logger,
         IOptions<IngestOptions> options,
+        HttpMessageHandler handler
+    )
+        : this(clock, logger, options, VerifiedMappings, handler, null) { }
+
+    internal GooglePricingSource(
+        IClock clock,
+        ILogger<GooglePricingSource> logger,
+        IOptions<IngestOptions> options,
         IReadOnlyList<GoogleSkuMapping> mappings,
-        HttpMessageHandler? handler
+        HttpMessageHandler? handler,
+        TimeSpan? requestTimeout = null
     )
     {
         ArgumentNullException.ThrowIfNull(clock);
@@ -59,6 +71,12 @@ public sealed class GooglePricingSource : IPricingSource
 
         _clock = clock;
         _logger = logger;
+        _requestTimeout = requestTimeout ?? RequestTimeout;
+        if (_requestTimeout <= TimeSpan.Zero)
+        {
+            throw new ArgumentOutOfRangeException(nameof(requestTimeout));
+        }
+
         _sourceUrl = $"https://cloudbilling.googleapis.com/v1/services/{serviceId}/skus";
         _client = new HttpClient(handler ?? new HttpClientHandler { AllowAutoRedirect = false }, handler is null)
         {
@@ -71,12 +89,18 @@ public sealed class GooglePricingSource : IPricingSource
 
     public async Task<PricingSnapshotCandidate?> FetchAsync(CancellationToken cancellationToken)
     {
+        if (_mappings.Count == 0)
+        {
+            throw new InvalidOperationException("Google catalog has no verified SKU mappings.");
+        }
+
         using var timeout = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
-        timeout.CancelAfter(RequestTimeout);
+        timeout.CancelAfter(_requestTimeout);
         var pageToken = string.Empty;
         var seenTokens = new HashSet<string>(StringComparer.Ordinal);
         var evidence = new List<string>();
         var entries = new List<GooglePriceEntry>();
+        var mappedSkuIds = new HashSet<string>(StringComparer.Ordinal);
         var unknownSkuCount = 0;
 
         do
@@ -102,18 +126,7 @@ public sealed class GooglePricingSource : IPricingSource
 
             var raw = await ReadUtf8Async(response.Content, timeout.Token);
             using var page = ParsePage(raw);
-            foreach (var sku in page.RootElement.GetProperty("skus").EnumerateArray())
-            {
-                var skuId = RequiredString(sku, "skuId");
-                if (!_mappings.TryGetValue(skuId, out var mapping))
-                {
-                    unknownSkuCount++;
-                    continue;
-                }
-
-                evidence.Add(sku.GetRawText());
-                entries.AddRange(ParseMappedSku(sku, mapping));
-            }
+            unknownSkuCount += CollectPageSkus(page.RootElement, mappedSkuIds, evidence, entries);
 
             pageToken = OptionalString(page.RootElement, "nextPageToken");
             if (pageToken.Length != 0 && !seenTokens.Add(pageToken))
@@ -121,6 +134,11 @@ public sealed class GooglePricingSource : IPricingSource
                 throw new InvalidDataException("Google catalog pagination repeated a page token.");
             }
         } while (pageToken.Length != 0);
+
+        if (mappedSkuIds.Count != _mappings.Count)
+        {
+            throw new InvalidDataException("Google catalog did not return every configured SKU exactly once.");
+        }
 
         var retrievedAt = _clock.GetCurrentInstant();
         var catalog = new GooglePriceCatalog("USD", _sourceUrl, retrievedAt, entries);
@@ -140,6 +158,35 @@ public sealed class GooglePricingSource : IPricingSource
         return candidate;
     }
 
+    private int CollectPageSkus(
+        JsonElement page,
+        HashSet<string> mappedSkuIds,
+        List<string> evidence,
+        List<GooglePriceEntry> entries
+    )
+    {
+        var unknownSkuCount = 0;
+        foreach (var sku in page.GetProperty("skus").EnumerateArray())
+        {
+            var skuId = RequiredString(sku, "skuId");
+            if (!_mappings.TryGetValue(skuId, out var mapping))
+            {
+                unknownSkuCount++;
+                continue;
+            }
+
+            if (!mappedSkuIds.Add(skuId))
+            {
+                throw new InvalidDataException("Google catalog returned a configured SKU more than once.");
+            }
+
+            evidence.Add(sku.GetRawText());
+            entries.AddRange(ParseMappedSku(sku, mapping));
+        }
+
+        return unknownSkuCount;
+    }
+
     private static IEnumerable<GooglePriceEntry> ParseMappedSku(JsonElement sku, GoogleSkuMapping mapping)
     {
         var skuName = RequiredString(sku, "name");
@@ -154,11 +201,11 @@ public sealed class GooglePricingSource : IPricingSource
         var provider = RequiredString(sku, "serviceProviderName");
         var geoTaxonomy = RequiredObject(sku, "geoTaxonomy");
         var geoType = RequiredString(geoTaxonomy, "type");
-        var geoRegions = RequiredStrings(geoTaxonomy, "regions");
+        var geoRegions = RequiredStrings(geoTaxonomy, "regions", allowEmpty: geoType == "GLOBAL");
         if (
             provider != "Google"
-            || !serviceRegions.Contains(mapping.Region, StringComparer.Ordinal)
-            || !geoRegions.Contains(mapping.Region, StringComparer.Ordinal)
+            || geoType != mapping.GeoTaxonomyType
+            || !HasExpectedRegionShape(mapping, serviceRegions, geoRegions)
         )
         {
             throw new InvalidDataException("A mapped Google SKU changed provider or region taxonomy.");
@@ -250,6 +297,21 @@ public sealed class GooglePricingSource : IPricingSource
         }
     }
 
+    private static bool HasExpectedRegionShape(
+        GoogleSkuMapping mapping,
+        IReadOnlyCollection<string> serviceRegions,
+        IReadOnlyCollection<string> geoRegions
+    ) =>
+        mapping.GeoTaxonomyType switch
+        {
+            "GLOBAL" => mapping.Region == "global"
+                && geoRegions.Count == 0
+                && serviceRegions.Contains("global", StringComparer.Ordinal),
+            "REGIONAL" or "MULTI_REGIONAL" => serviceRegions.Contains(mapping.Region, StringComparer.Ordinal)
+                && geoRegions.Contains(mapping.Region, StringComparer.Ordinal),
+            _ => false,
+        };
+
     private static JsonDocument ParsePage(string raw)
     {
         try
@@ -320,7 +382,7 @@ public sealed class GooglePricingSource : IPricingSource
             : throw new InvalidDataException("Google catalog returned an invalid page token.");
     }
 
-    private static string[] RequiredStrings(JsonElement parent, string name)
+    private static string[] RequiredStrings(JsonElement parent, string name, bool allowEmpty = false)
     {
         var elements = RequiredArray(parent, name).EnumerateArray().ToArray();
         if (elements.Any(value => value.ValueKind != JsonValueKind.String))
@@ -329,7 +391,7 @@ public sealed class GooglePricingSource : IPricingSource
         }
 
         var values = elements.Select(value => value.GetString()).ToArray();
-        if (values.Length == 0 || values.Any(string.IsNullOrWhiteSpace))
+        if (!allowEmpty && values.Length == 0 || values.Any(string.IsNullOrWhiteSpace))
         {
             throw new InvalidDataException("A mapped Google SKU is missing required catalog data.");
         }
@@ -451,6 +513,7 @@ internal sealed record GoogleSkuMapping(
     string Service,
     IReadOnlyList<string> Aliases,
     string Region,
+    string GeoTaxonomyType,
     string Modality,
     string Tier,
     string CacheLane,

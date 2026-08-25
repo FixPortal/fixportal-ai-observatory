@@ -1,4 +1,3 @@
-using System.Text.Json.Serialization;
 using NodaTime;
 
 namespace AiObservatory.Data.Pricing.Catalogs;
@@ -53,19 +52,26 @@ public sealed record GooglePriceCatalog(
                 || entry.ServiceRegions is null
                 || entry.ServiceRegions.Count == 0
                 || entry.ServiceRegions.Any(string.IsNullOrWhiteSpace)
+                || entry.ServiceRegions.Distinct(StringComparer.Ordinal).Count() != entry.ServiceRegions.Count
                 || entry.GeoTaxonomyRegions is null
-                || entry.GeoTaxonomyRegions.Count == 0
                 || entry.GeoTaxonomyRegions.Any(string.IsNullOrWhiteSpace)
+                || entry.GeoTaxonomyRegions.Distinct(StringComparer.Ordinal).Count() != entry.GeoTaxonomyRegions.Count
                 || string.IsNullOrWhiteSpace(entry.UnitPriceCurrencyCode)
                 || string.IsNullOrWhiteSpace(entry.AggregationLevel)
                 || string.IsNullOrWhiteSpace(entry.AggregationInterval)
                 || entry.AggregationCount <= 0
+                || entry.TierStartUsageAmount < 0
                 || entry.Rate <= 0
+                || !entry.EffectiveDateIsProviderDeclared
                 || entry.EffectiveTime.InUtc().Date != entry.EffectiveFrom
                 || entry.UnitPriceCurrencyCode != Currency
+                || entry.CurrencyConversionRate != 1m
                 || entry.UnitPriceNanos is < -999_999_999 or > 999_999_999
                 || Math.Sign(entry.UnitPriceUnits) * Math.Sign(entry.UnitPriceNanos) < 0
                 || entry.Rate != (entry.UnitPriceUnits + entry.UnitPriceNanos / 1_000_000_000m) * 1_000_000m
+                || entry.PricingUnit == entry.BaseUnit && entry.BaseUnitConversionFactor != 1m
+                || !HasValidGeography(entry)
+                || !HasValidAggregation(entry)
             )
             {
                 throw new InvalidDataException("Google pricing contains an incomplete or non-positive entry.");
@@ -93,6 +99,22 @@ public sealed record GooglePriceCatalog(
         }
     }
 
+    private static bool HasValidGeography(GooglePriceEntry entry) =>
+        entry.GeoTaxonomyType switch
+        {
+            "GLOBAL" => entry.Region == "global"
+                && entry.GeoTaxonomyRegions.Count == 0
+                && entry.ServiceRegions.Contains("global", StringComparer.Ordinal),
+            "REGIONAL" or "MULTI_REGIONAL" => entry.Region != "global"
+                && entry.GeoTaxonomyRegions.Count > 0
+                && entry.GeoTaxonomyRegions.Contains(entry.Region, StringComparer.Ordinal)
+                && entry.ServiceRegions.Contains(entry.Region, StringComparer.Ordinal),
+            _ => false,
+        };
+
+    private static bool HasValidAggregation(GooglePriceEntry entry) =>
+        entry.AggregationLevel is "ACCOUNT" or "PROJECT" && entry.AggregationInterval is "DAILY" or "MONTHLY";
+
     public GooglePriceEntry? Resolve(
         string service,
         string skuId,
@@ -110,7 +132,7 @@ public sealed record GooglePriceCatalog(
                 && entry
                     .Aliases.Prepend(entry.Service)
                     .Any(alias => string.Equals(alias, service, StringComparison.OrdinalIgnoreCase))
-                && string.Equals(entry.SkuId, skuId, StringComparison.OrdinalIgnoreCase)
+                && string.Equals(entry.SkuId, skuId, StringComparison.Ordinal)
                 && string.Equals(entry.Region, region, StringComparison.OrdinalIgnoreCase)
                 && string.Equals(entry.Modality, modality, StringComparison.OrdinalIgnoreCase)
                 && string.Equals(entry.Tier, tier, StringComparison.OrdinalIgnoreCase)
@@ -122,7 +144,6 @@ public sealed record GooglePriceCatalog(
     }
 }
 
-[method: JsonConstructor]
 public sealed record GooglePriceEntry(
     string Service,
     string SkuId,
@@ -155,54 +176,4 @@ public sealed record GooglePriceEntry(
     int AggregationCount,
     decimal CurrencyConversionRate,
     decimal Rate
-)
-{
-    public GooglePriceEntry(
-        string service,
-        string skuId,
-        IReadOnlyList<string> aliases,
-        LocalDate effectiveFrom,
-        bool effectiveDateIsProviderDeclared,
-        string region,
-        string modality,
-        string tier,
-        string cacheLane,
-        long contextThreshold,
-        string pricingUnit,
-        string aggregationLevel,
-        decimal rate
-    )
-        : this(
-            service,
-            skuId,
-            $"services/legacy/skus/{skuId}",
-            service,
-            aliases,
-            effectiveFrom,
-            effectiveDateIsProviderDeclared,
-            effectiveFrom.AtMidnight().InZoneStrictly(DateTimeZone.Utc).ToInstant(),
-            region,
-            "REGIONAL",
-            [region],
-            [region],
-            modality,
-            tier,
-            cacheLane,
-            contextThreshold,
-            pricingUnit,
-            pricingUnit,
-            pricingUnit,
-            pricingUnit,
-            1m,
-            1m,
-            0m,
-            "USD",
-            0,
-            checked((int)(rate * 1000m)),
-            aggregationLevel,
-            "DAILY",
-            1,
-            1m,
-            rate
-        ) { }
-}
+);

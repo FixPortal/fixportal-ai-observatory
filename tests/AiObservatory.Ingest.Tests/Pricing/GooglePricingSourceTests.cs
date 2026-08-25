@@ -1,4 +1,6 @@
 using System.Net;
+using System.Text;
+using System.Text.Json.Nodes;
 using AiObservatory.Data.Entities;
 using AiObservatory.Data.Pricing;
 using AiObservatory.Data.Pricing.Catalogs;
@@ -25,6 +27,7 @@ public sealed class GooglePricingSourceTests
             "Gemini Enterprise Agent Platform",
             ["Gemini Enterprise Agent Platform"],
             "us",
+            "REGIONAL",
             "text",
             "standard",
             "none",
@@ -37,6 +40,7 @@ public sealed class GooglePricingSourceTests
             "Gemini Enterprise Agent Platform",
             ["Gemini Enterprise Agent Platform"],
             "global",
+            "GLOBAL",
             "text-output",
             "standard",
             "none",
@@ -90,6 +94,32 @@ public sealed class GooglePricingSourceTests
             )
             .Should()
             .BeNull();
+        catalog
+            .Resolve(
+                "Gemini Enterprise Agent Platform",
+                "SKU-INPUT-US",
+                "us",
+                "text",
+                "standard",
+                "none",
+                128_000,
+                UsageDate
+            )
+            .Should()
+            .BeNull();
+        var global = catalog.Resolve(
+            "Gemini Enterprise Agent Platform",
+            "sku-output-global",
+            "global",
+            "text-output",
+            "standard",
+            "none",
+            128_000,
+            UsageDate
+        );
+        global.Should().NotBeNull();
+        global!.GeoTaxonomyType.Should().Be("GLOBAL");
+        global.GeoTaxonomyRegions.Should().BeEmpty();
 
         handler.Requests.Should().HaveCount(2);
         handler
@@ -104,6 +134,40 @@ public sealed class GooglePricingSourceTests
             .ContainSingle()
             .Which.Should()
             .Be("Google catalog fetched: 2 mapped SKU(s), 1 unknown SKU(s).");
+    }
+
+    [Fact]
+    public async Task FetchWithNoVerifiedProductionMappingsRejectsBeforeNetworkAccess()
+    {
+        var handler = Pages(Page1());
+        var source = new GooglePricingSource(
+            new FakeClock(RetrievedAt),
+            new CapturingLogger(),
+            Options.Create(
+                new IngestOptions { GoogleCloudCatalogApiKey = ApiKey, GoogleCloudCatalogServiceId = ServiceId }
+            ),
+            handler
+        );
+
+        var act = () => source.FetchAsync(TestContext.Current.CancellationToken);
+
+        await act.Should().ThrowAsync<InvalidOperationException>();
+        handler.Requests.Should().BeEmpty();
+    }
+
+    [Theory]
+    [InlineData("duplicate")]
+    [InlineData("missing")]
+    [InlineData("all-unknown")]
+    [InlineData("zero")]
+    public async Task FetchRejectsIncompleteOrDuplicateConfiguredSkuCoverage(string mutation)
+    {
+        var pages = CoveragePages(mutation);
+        var source = Source(Pages(pages));
+
+        var act = () => source.FetchAsync(TestContext.Current.CancellationToken);
+
+        await act.Should().ThrowAsync<InvalidDataException>();
     }
 
     [Fact]
@@ -162,6 +226,11 @@ public sealed class GooglePricingSourceTests
     [InlineData("ambiguous-tier")]
     [InlineData("usage-unit")]
     [InlineData("missing-pricing")]
+    [InlineData("nanos-bound")]
+    [InlineData("nanos-sign")]
+    [InlineData("service")]
+    [InlineData("taxonomy")]
+    [InlineData("aggregation-enum")]
     public async Task FetchRejectsMappedSkusWithUnrecognizedPricingExpressions(string mutation)
     {
         var firstPage = Mutate(Page1(), mutation);
@@ -170,6 +239,106 @@ public sealed class GooglePricingSourceTests
         var act = () => source.FetchAsync(TestContext.Current.CancellationToken);
 
         await act.Should().ThrowAsync<InvalidDataException>();
+    }
+
+    [Fact]
+    public async Task FetchConvertsNonzeroMoneyUnitsAndNanosExactly()
+    {
+        var page = Page1().Replace("\"units\": \"0\"", "\"units\": \"1\"", StringComparison.Ordinal);
+        var source = Source(Pages(page, Page2()));
+
+        var candidate = await source.FetchAsync(TestContext.Current.CancellationToken);
+        var entry = PricingCatalogJson
+            .Deserialize<GooglePriceCatalog>(candidate!.NormalizedCatalog)
+            .Entries.Single(x => x.SkuId == "sku-input-us");
+
+        entry.Rate.Should().Be(1_000_001.25m);
+    }
+
+    [Fact]
+    public async Task FetchRejectsRedirectsWithoutFollowingThem()
+    {
+        var response = new HttpResponseMessage(HttpStatusCode.Found);
+        response.Headers.Location = new Uri("https://evil.example/skus");
+        var handler = new RecordingHandler((_, _) => response);
+        var source = Source(handler);
+
+        var act = () => source.FetchAsync(TestContext.Current.CancellationToken);
+
+        await act.Should().ThrowAsync<HttpRequestException>();
+        handler.Requests.Should().ContainSingle();
+    }
+
+    [Fact]
+    public async Task FetchAppliesTheLinkedTimeoutToABlockedHandler()
+    {
+        var handler = new RecordingHandler(
+            async (_, _, token) =>
+            {
+                await Task.Delay(Timeout.InfiniteTimeSpan, token);
+                return Json("unreachable");
+            }
+        );
+        var source = Source(handler, requestTimeout: TimeSpan.FromMilliseconds(20));
+        var started = TimeProvider.System.GetTimestamp();
+
+        var act = () => source.FetchAsync(TestContext.Current.CancellationToken);
+
+        await act.Should().ThrowAsync<OperationCanceledException>();
+        TimeProvider.System.GetElapsedTime(started).Should().BeLessThan(TimeSpan.FromSeconds(1));
+    }
+
+    [Fact]
+    public async Task FetchPropagatesCallerCancellation()
+    {
+        using var cancellation = new CancellationTokenSource();
+        await cancellation.CancelAsync();
+        var source = Source(
+            new RecordingHandler(
+                async (_, _, token) =>
+                {
+                    await Task.Delay(Timeout.InfiniteTimeSpan, token);
+                    return Json("unreachable");
+                }
+            )
+        );
+
+        var act = () => source.FetchAsync(cancellation.Token);
+
+        await act.Should().ThrowAsync<OperationCanceledException>();
+    }
+
+    [Fact]
+    public async Task FetchRejectsInvalidUtf8()
+    {
+        var source = Source(Pages(Bytes([0xC3, 0x28])));
+
+        var act = () => source.FetchAsync(TestContext.Current.CancellationToken);
+
+        await act.Should().ThrowAsync<DecoderFallbackException>();
+    }
+
+    [Fact]
+    public async Task FetchStopsAnUndeclaredStreamOverTwoMebibytes()
+    {
+        var content = new StreamContent(new MemoryStream(new byte[2 * 1024 * 1024 + 1]));
+        content.Headers.ContentLength = null;
+        var source = Source(Pages(new HttpResponseMessage(HttpStatusCode.OK) { Content = content }));
+
+        var act = () => source.FetchAsync(TestContext.Current.CancellationToken);
+
+        await act.Should().ThrowAsync<InvalidDataException>();
+    }
+
+    [Fact]
+    public async Task FetchAcceptsAValidPageOfExactlyTwoMebibytes()
+    {
+        var page = ExactLimitPage();
+        var source = Source(Pages(Bytes(page)), mappings: [Mappings[0]]);
+
+        var candidate = await source.FetchAsync(TestContext.Current.CancellationToken);
+
+        candidate.Should().NotBeNull();
     }
 
     [Fact]
@@ -197,19 +366,28 @@ public sealed class GooglePricingSourceTests
         catalog.Entries.Should().BeEmpty();
     }
 
-    private static GooglePricingSource Source(RecordingHandler handler, CapturingLogger? logger = null) =>
+    private static GooglePricingSource Source(
+        RecordingHandler handler,
+        CapturingLogger? logger = null,
+        IReadOnlyList<GoogleSkuMapping>? mappings = null,
+        TimeSpan? requestTimeout = null
+    ) =>
         new(
             new FakeClock(RetrievedAt),
             logger ?? new CapturingLogger(),
             Options.Create(
                 new IngestOptions { GoogleCloudCatalogApiKey = ApiKey, GoogleCloudCatalogServiceId = ServiceId }
             ),
-            Mappings,
-            handler
+            mappings ?? Mappings,
+            handler,
+            requestTimeout
         );
 
     private static RecordingHandler Pages(params string[] pages) =>
         new((_, call) => call <= pages.Length ? Json(pages[call - 1]) : throw new InvalidOperationException());
+
+    private static RecordingHandler Pages(params HttpResponseMessage[] pages) =>
+        new((_, call) => call <= pages.Length ? pages[call - 1] : throw new InvalidOperationException());
 
     private static HttpResponseMessage Json(string content) =>
         new(HttpStatusCode.OK) { Content = new StringContent(content, System.Text.Encoding.UTF8, "application/json") };
@@ -237,8 +415,78 @@ public sealed class GooglePricingSourceTests
                 "\"pricingInfoMissing\": [",
                 StringComparison.Ordinal
             ),
+            "nanos-bound" => json.Replace("\"nanos\": 1250", "\"nanos\": 1000000000", StringComparison.Ordinal),
+            "nanos-sign" => json.Replace("\"units\": \"0\"", "\"units\": \"1\"", StringComparison.Ordinal)
+                .Replace("\"nanos\": 1250", "\"nanos\": -1", StringComparison.Ordinal),
+            "service" => json.Replace(
+                "\"serviceDisplayName\": \"Gemini Enterprise Agent Platform\"",
+                "\"serviceDisplayName\": \"Changed Service\"",
+                StringComparison.Ordinal
+            ),
+            "taxonomy" => json.Replace("\"type\": \"REGIONAL\"", "\"type\": \"GLOBAL\"", StringComparison.Ordinal),
+            "aggregation-enum" => json.Replace(
+                "\"aggregationLevel\": \"PROJECT\"",
+                "\"aggregationLevel\": \"TEAM\"",
+                StringComparison.Ordinal
+            ),
             _ => throw new ArgumentOutOfRangeException(nameof(mutation)),
         };
+
+    private static string[] CoveragePages(string mutation)
+    {
+        if (mutation == "zero")
+        {
+            return ["{\"skus\":[]}"];
+        }
+
+        var first = JsonNode.Parse(Page1())!.AsObject();
+        var second = JsonNode.Parse(Page2())!.AsObject();
+        if (mutation == "missing")
+        {
+            first.Remove("nextPageToken");
+            return [first.ToJsonString()];
+        }
+
+        if (mutation == "all-unknown")
+        {
+            foreach (var sku in first["skus"]!.AsArray().Concat(second["skus"]!.AsArray()))
+            {
+                sku!["skuId"] = $"unknown-{sku["skuId"]}";
+            }
+
+            return [first.ToJsonString(), second.ToJsonString()];
+        }
+
+        if (mutation == "duplicate")
+        {
+            second["skus"]!.AsArray().Insert(0, first["skus"]![0]!.DeepClone());
+            return [first.ToJsonString(), second.ToJsonString()];
+        }
+
+        throw new ArgumentOutOfRangeException(nameof(mutation));
+    }
+
+    private static HttpResponseMessage Bytes(byte[] bytes) =>
+        new(HttpStatusCode.OK) { Content = new ByteArrayContent(bytes) };
+
+    private static byte[] ExactLimitPage()
+    {
+        const int limit = 2 * 1024 * 1024;
+        var page = JsonNode.Parse(Page1())!.AsObject();
+        page["skus"]!.AsArray().RemoveAt(1);
+        page.Remove("nextPageToken");
+        var body = page.ToJsonString();
+        var prefix = body[..^1] + ",\"padding\":\"";
+        const string suffix = "\"}";
+        var paddingLength = limit - Encoding.UTF8.GetByteCount(prefix + suffix);
+        var bytes = Encoding.UTF8.GetBytes(prefix + new string('a', paddingLength) + suffix);
+        if (bytes.Length != limit)
+        {
+            throw new InvalidOperationException("The exact-limit fixture has the wrong byte length.");
+        }
+
+        return bytes;
+    }
 
     private static string Page1() => Fixture("google-skus-page-1.json");
 
@@ -250,19 +498,26 @@ public sealed class GooglePricingSourceTests
     private static string Bundle() =>
         File.ReadAllText(Path.Combine(AppContext.BaseDirectory, "Pricing", "Bundled", "google.json"));
 
-    internal sealed class RecordingHandler(Func<HttpRequestMessage, int, HttpResponseMessage> response)
-        : HttpMessageHandler
+    internal sealed class RecordingHandler : HttpMessageHandler
     {
+        private readonly Func<HttpRequestMessage, int, CancellationToken, Task<HttpResponseMessage>> _response;
         private int _calls;
+
+        public RecordingHandler(Func<HttpRequestMessage, int, HttpResponseMessage> response)
+            : this((request, call, _) => Task.FromResult(response(request, call))) { }
+
+        public RecordingHandler(Func<HttpRequestMessage, int, CancellationToken, Task<HttpResponseMessage>> response) =>
+            _response = response;
+
         public List<HttpRequestMessage> Requests { get; } = [];
 
-        protected override Task<HttpResponseMessage> SendAsync(
+        protected override async Task<HttpResponseMessage> SendAsync(
             HttpRequestMessage request,
             CancellationToken cancellationToken
         )
         {
             Requests.Add(request);
-            return Task.FromResult(response(request, Interlocked.Increment(ref _calls)));
+            return await _response(request, Interlocked.Increment(ref _calls), cancellationToken);
         }
     }
 

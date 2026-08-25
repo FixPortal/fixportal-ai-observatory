@@ -44,7 +44,7 @@
       "serviceProviderName": "Google",
       "geoTaxonomy": {
         "type": "GLOBAL",
-        "regions": ["global"]
+        "regions": []
       }
     }
   ]
