@@ -99,11 +99,13 @@ var host = Host.CreateDefaultBuilder(args)
             );
             if (openAiConfigured)
             {
-                services.AddHttpClient<IOpenAiAdminClient, OpenAiAdminClient>(c =>
-                {
-                    c.BaseAddress = new Uri("https://api.openai.com");
-                    c.DefaultRequestHeaders.Add("Authorization", $"Bearer {openAiAdminKey}");
-                });
+                services
+                    .AddHttpClient<IOpenAiAdminClient, OpenAiAdminClient>(c =>
+                    {
+                        c.BaseAddress = new Uri("https://api.openai.com");
+                        c.DefaultRequestHeaders.Add("Authorization", $"Bearer {openAiAdminKey}");
+                    })
+                    .RemoveAllLoggers();
                 services.TryAddEnumerable(ServiceDescriptor.Scoped<IUsageSource, OpenAiUsageSource>());
                 services.TryAddEnumerable(ServiceDescriptor.Scoped<IUsageSource, OpenAiCostsSource>());
             }
@@ -240,16 +242,18 @@ static bool RegisterAnthropicSources(
         return false;
     }
 
-    services.AddHttpClient<IAnthropicAdminClient, AnthropicAdminClient>(client =>
-    {
-        client.BaseAddress = new Uri("https://api.anthropic.com");
-        client.DefaultRequestHeaders.Add("x-api-key", key);
-        client.DefaultRequestHeaders.Add("anthropic-version", "2023-06-01");
-        client.DefaultRequestHeaders.Add("anthropic-beta", "fast-mode-2026-02-01");
-        client.DefaultRequestHeaders.UserAgent.ParseAdd(
-            "AiObservatory.Ingest/1.0 (+https://github.com/FixPortal/fixportal-ai-observatory)"
-        );
-    });
+    services
+        .AddHttpClient<IAnthropicAdminClient, AnthropicAdminClient>(client =>
+        {
+            client.BaseAddress = new Uri("https://api.anthropic.com");
+            client.DefaultRequestHeaders.Add("x-api-key", key);
+            client.DefaultRequestHeaders.Add("anthropic-version", "2023-06-01");
+            client.DefaultRequestHeaders.Add("anthropic-beta", "fast-mode-2026-02-01");
+            client.DefaultRequestHeaders.UserAgent.ParseAdd(
+                "AiObservatory.Ingest/1.0 (+https://github.com/FixPortal/fixportal-ai-observatory)"
+            );
+        })
+        .RemoveAllLoggers();
     services.TryAddEnumerable(ServiceDescriptor.Scoped<IUsageSource, AnthropicUsageSource>());
     services.TryAddEnumerable(ServiceDescriptor.Scoped<IUsageSource, AnthropicCostsSource>());
     if (claudeCodeEnabled)

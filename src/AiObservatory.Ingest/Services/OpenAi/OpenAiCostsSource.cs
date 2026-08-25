@@ -63,11 +63,12 @@ public sealed class OpenAiCostsSource(
         var material = string.Concat(
             Part(record.BucketStart.ToUnixTimeTicks().ToString(CultureInfo.InvariantCulture)),
             Part(record.BucketEnd.ToUnixTimeTicks().ToString(CultureInfo.InvariantCulture)),
-            Part(record.ProjectId ?? "null"),
-            Part(record.LineItem ?? "null")
+            Part(record.ProjectId),
+            Part(record.LineItem)
         );
         return $"openai:{record.BucketStart.InUtc().Date:yyyy-MM-dd}:{Convert.ToHexStringLower(SHA256.HashData(Encoding.UTF8.GetBytes(material)))}";
     }
 
-    private static string Part(string value) => $"{value.Length.ToString(CultureInfo.InvariantCulture)}:{value}";
+    private static string Part(string? value) =>
+        value is null ? "-1:" : $"{value.Length.ToString(CultureInfo.InvariantCulture)}:{value}";
 }

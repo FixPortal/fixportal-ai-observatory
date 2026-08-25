@@ -2,11 +2,16 @@ using System.Collections.Concurrent;
 using AiObservatory.Data;
 using AiObservatory.Data.Entities;
 using AiObservatory.Data.Repositories;
+using AiObservatory.Data.Spend;
+using AiObservatory.Ingest.Services.Copilot;
+using AiObservatory.Ingest.Services.OpenAi;
 using AiObservatory.Ingest.Sources;
 using AwesomeAssertions;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Caching.Memory;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Options;
 using NodaTime;
 using NodaTime.Testing;
@@ -132,6 +137,120 @@ public class ProviderPollingWorkerServiceTests(ProviderPollingDatabase database)
             .And.NotContain("\r")
             .And.NotContain("\n");
         state.IsAvailable.Should().BeNull();
+    }
+
+    [Fact]
+    public async Task RunPollAsync_WhenCopilotSaveFails_LaterBillingSourcePersistsWithoutCopilotRows()
+    {
+        var billingLine = $"copilot-recovery-{Guid.NewGuid():N}";
+        var copilotClient = Substitute.For<ICopilotReportClient>();
+        copilotClient
+            .GetLatestOrganizationReportAsync(Arg.Any<CancellationToken>())
+            .Returns([
+                new CopilotDailyReportRecord(
+                    new LocalDate(2026, 8, 22),
+                    "org",
+                    1,
+                    1,
+                    1,
+                    1,
+                    1,
+                    1,
+                    "{}",
+                    Instant.FromUtc(2026, 8, 24, 12, 0)
+                ),
+                new CopilotDailyReportRecord(
+                    new LocalDate(2026, 8, 23),
+                    "org",
+                    1,
+                    1,
+                    1,
+                    1,
+                    1,
+                    1,
+                    "not-json",
+                    Instant.FromUtc(2026, 8, 24, 12, 0)
+                ),
+            ]);
+        TrackerRecordingSource? copilot = null;
+        var billingClient = Substitute.For<IOpenAiAdminClient>();
+        billingClient
+            .GetCostsAsync(Arg.Any<LocalDate>(), Arg.Any<LocalDate>(), Arg.Any<CancellationToken>())
+            .Returns([
+                new OpenAiCostRecord(
+                    Instant.FromUtc(2026, 8, 23, 0, 0),
+                    Instant.FromUtc(2026, 8, 24, 0, 0),
+                    12m,
+                    "USD",
+                    billingLine,
+                    "project",
+                    1m,
+                    "tokens",
+                    "{}"
+                ),
+            ]);
+        using var http = new HttpClient();
+        using var cache = new MemoryCache(new MemoryCacheOptions());
+        var fx = Substitute.For<FxRateProvider>(http, cache, NullLogger<FxRateProvider>.Instance);
+        fx.GetGbpRateOnAsync(Arg.Any<string>(), Arg.Any<LocalDate>(), Arg.Any<CancellationToken>()).Returns(0.8m);
+        await using var harness = CreateWorker(
+            definitions: [Definition(UsageSourceIds.CopilotOrgReport), Definition(UsageSourceIds.OpenAiCostsApi)],
+            configureServices: services =>
+            {
+                services.AddScoped<FxRateProvider>(_ => fx);
+                services.AddScoped<BillingObservationWriter>();
+                services.AddScoped<IUsageSource>(sp =>
+                {
+                    var db = sp.GetRequiredService<AiObservatoryDbContext>();
+                    copilot = new TrackerRecordingSource(
+                        new CopilotReportSource(
+                            copilotClient,
+                            db,
+                            sp.GetRequiredService<IClock>(),
+                            NullLogger<CopilotReportSource>.Instance
+                        ),
+                        db
+                    );
+                    return copilot;
+                });
+                services.AddScoped<IUsageSource>(sp => new OpenAiCostsSource(
+                    billingClient,
+                    sp.GetRequiredService<BillingObservationWriter>(),
+                    sp.GetRequiredService<IClock>(),
+                    NullLogger<OpenAiCostsSource>.Instance
+                ));
+            }
+        );
+
+        await harness.Worker.RunPollAsync(
+            new LocalDate(2026, 8, 22),
+            new LocalDate(2026, 8, 23),
+            TestContext.Current.CancellationToken
+        );
+
+        await using var db = CreateDb();
+        copilot!.FailureTrackerWasEmpty.Should().BeTrue();
+        (await db.CopilotDailyReports.AsNoTracking().CountAsync(TestContext.Current.CancellationToken)).Should().Be(0);
+        (
+            await db
+                .BillingObservations.AsNoTracking()
+                .CountAsync(
+                    row => row.SourceId == UsageSourceIds.OpenAiCostsApi && row.Sku == billingLine,
+                    TestContext.Current.CancellationToken
+                )
+        )
+            .Should()
+            .Be(1);
+        (
+            await db
+                .SpendEntries.AsNoTracking()
+                .CountAsync(
+                    row => row.SourceId == UsageSourceIds.OpenAiCostsApi && row.Description == billingLine,
+                    TestContext.Current.CancellationToken
+                )
+        )
+            .Should()
+            .Be(1);
     }
 
     [Fact]
@@ -367,12 +486,20 @@ public class ProviderPollingWorkerServiceTests(ProviderPollingDatabase database)
     private static SourceDefinition Definition(string sourceId, bool isConfigured = true) =>
         new(sourceId, isConfigured, Duration.FromHours(1));
 
+    private AiObservatoryDbContext CreateDb() =>
+        new(
+            new DbContextOptionsBuilder<AiObservatoryDbContext>()
+                .UseNpgsql(database.ConnectionString, options => options.UseNodaTime())
+                .Options
+        );
+
     private WorkerHarness CreateWorker(
         Instant? current = null,
         IReadOnlyList<IUsageSource>? sources = null,
         IReadOnlyList<SourceDefinition>? definitions = null,
         CapturingLogger? logger = null,
-        int pollingIntervalMinutes = 60
+        int pollingIntervalMinutes = 60,
+        Action<IServiceCollection>? configureServices = null
     )
     {
         var services = new ServiceCollection();
@@ -380,6 +507,9 @@ public class ProviderPollingWorkerServiceTests(ProviderPollingDatabase database)
             options.UseNpgsql(database.ConnectionString, npgsql => npgsql.UseNodaTime())
         );
         services.AddScoped<SourceSyncStateStore>();
+        var clock = new FakeClock(current ?? Instant.FromUtc(2026, 8, 24, 12, 0));
+        services.AddSingleton<IClock>(clock);
+        configureServices?.Invoke(services);
         foreach (var source in sources ?? [])
         {
             services.AddScoped<IUsageSource>(_ => source);
@@ -391,7 +521,7 @@ public class ProviderPollingWorkerServiceTests(ProviderPollingDatabase database)
         var provider = services.BuildServiceProvider();
         var worker = new ProviderPollingWorkerService(
             provider.GetRequiredService<IServiceScopeFactory>(),
-            new FakeClock(current ?? Instant.FromUtc(2026, 8, 24, 12, 0)),
+            clock,
             logger ?? new CapturingLogger(),
             Options.Create(new IngestOptions { LookbackDays = 1, PollingIntervalMinutes = pollingIntervalMinutes })
         );
@@ -421,6 +551,30 @@ public class ProviderPollingWorkerServiceTests(ProviderPollingDatabase database)
         }
 
         public ValueTask DisposeAsync() => services.DisposeAsync();
+    }
+
+    private sealed class TrackerRecordingSource(IUsageSource inner, AiObservatoryDbContext db) : IUsageSource
+    {
+        public string SourceId => inner.SourceId;
+
+        public bool? FailureTrackerWasEmpty { get; private set; }
+
+        public async Task<SourceIngestionResult> IngestAsync(
+            LocalDate from,
+            LocalDate through,
+            CancellationToken cancellationToken
+        )
+        {
+            try
+            {
+                return await inner.IngestAsync(from, through, cancellationToken);
+            }
+            catch
+            {
+                FailureTrackerWasEmpty = !db.ChangeTracker.Entries().Any();
+                throw;
+            }
+        }
     }
 
     private sealed class CapturingLogger : ILogger<ProviderPollingWorkerService>

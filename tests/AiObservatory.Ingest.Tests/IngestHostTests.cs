@@ -300,6 +300,23 @@ public class IngestHostTests
         handlers.Should().NotContain(name => name.Contains("Logging", StringComparison.OrdinalIgnoreCase));
     }
 
+    [Theory]
+    [InlineData(nameof(IOpenAiAdminClient), "OPENAI_ADMIN_KEY")]
+    [InlineData(nameof(IAnthropicAdminClient), "ANTHROPIC_BILLING_KEY")]
+    public async Task ProviderAdminClientsHaveNoLoggingHandlers(string clientName, string setting)
+    {
+        await using var factory = new IngestFactory();
+        factory.Settings[setting] = "configured-secret";
+
+        var handlers = HandlerChain(
+                factory.Services.GetRequiredService<IHttpMessageHandlerFactory>().CreateHandler(clientName)
+            )
+            .Select(handler => handler.GetType().FullName ?? handler.GetType().Name)
+            .ToList();
+
+        handlers.Should().NotContain(name => name.Contains("Logging", StringComparison.OrdinalIgnoreCase));
+    }
+
     [Fact]
     public async Task OpenAiAdminKeyRegistersTwoIndependentSourcesWithOneClientAndTheBillingWriter()
     {
