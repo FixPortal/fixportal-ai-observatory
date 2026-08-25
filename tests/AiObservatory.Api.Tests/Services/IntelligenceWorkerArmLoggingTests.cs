@@ -1,7 +1,7 @@
-using AiObservatory.Api.Services.Fx;
 using AiObservatory.Api.Services.GitHub;
 using AiObservatory.Api.Services.Intelligence;
 using AiObservatory.Data;
+using AiObservatory.Data.Spend;
 using AwesomeAssertions;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Caching.Memory;
@@ -38,16 +38,20 @@ public sealed class IntelligenceWorkerArmLoggingTests : IDisposable
             var billingHttp = new HttpClient();
             var fxHttp = new HttpClient();
             var fxCache = new MemoryCache(new MemoryCacheOptions());
-            _owned.AddRange([billingHttp, fxHttp, fxCache]);
+            var db = new AiObservatoryDbContext(
+                new DbContextOptionsBuilder<AiObservatoryDbContext>()
+                    .UseInMemoryDatabase(Guid.NewGuid().ToString())
+                    .Options
+            );
+            _owned.AddRange([billingHttp, fxHttp, fxCache, db]);
             services.AddSingleton(
                 new GitHubBillingSyncService(
                     new GitHubBillingClient(billingHttp, "FixPortal", NullLogger<GitHubBillingClient>.Instance),
-                    new AiObservatoryDbContext(
-                        new DbContextOptionsBuilder<AiObservatoryDbContext>()
-                            .UseInMemoryDatabase(Guid.NewGuid().ToString())
-                            .Options
+                    new BillingObservationWriter(
+                        db,
+                        new FxRateProvider(fxHttp, fxCache, NullLogger<FxRateProvider>.Instance),
+                        new FakeClock(Instant.FromUtc(2026, 7, 30, 9, 0))
                     ),
-                    new FxRateProvider(fxHttp, fxCache, NullLogger<FxRateProvider>.Instance),
                     new FakeClock(Instant.FromUtc(2026, 7, 30, 9, 0)),
                     NullLogger<GitHubBillingSyncService>.Instance
                 )

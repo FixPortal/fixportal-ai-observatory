@@ -3,12 +3,12 @@ using AiObservatory.Api;
 using AiObservatory.Api.Endpoints;
 using AiObservatory.Api.Routing;
 using AiObservatory.Api.Services;
-using AiObservatory.Api.Services.Fx;
 using AiObservatory.Api.Services.GitHub;
 using AiObservatory.Api.Services.Intelligence;
 using AiObservatory.Data;
 using AiObservatory.Data.Entities;
 using AiObservatory.Data.Pricing;
+using AiObservatory.Data.Spend;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.AspNetCore.HttpOverrides;
 using Microsoft.EntityFrameworkCore;
@@ -58,6 +58,7 @@ builder.Services.AddMemoryCache();
 // write for that long, and a large batch pays this per row (see FetchGbpRateAsync's
 // cancellation-vs-timeout handling for why a timeout here does not abort the whole batch).
 builder.Services.AddHttpClient<FxRateProvider>().ConfigureHttpClient(c => c.Timeout = TimeSpan.FromSeconds(10));
+builder.Services.AddScoped<BillingObservationWriter>();
 
 // GitHub billing — the org bill is not paid from the account the spend CSV exports, so
 // without this arm the ledger silently omits every penny of GitHub spend. No-ops unless

@@ -1,4 +1,5 @@
 using AiObservatory.Data.Repositories;
+using AiObservatory.Data.Spend;
 using NodaTime;
 
 namespace AiObservatory.Api.Services.Intelligence;
@@ -20,7 +21,7 @@ public sealed class InsightGenerator(
     AnthropicIntelligenceClient client,
     PromptBuilder promptBuilder,
     InsightResponseParser parser,
-    Fx.FxRateProvider fx,
+    FxRateProvider fx,
     BudgetAlertService budgetAlertService,
     IClock clock
 ) : IInsightGenerator

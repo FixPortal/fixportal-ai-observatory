@@ -1,11 +1,13 @@
 using System.Globalization;
+using System.Net.Http.Json;
 using Microsoft.Extensions.Caching.Memory;
+using Microsoft.Extensions.Logging;
 using NodaTime;
 
-namespace AiObservatory.Api.Services.Fx;
+namespace AiObservatory.Data.Spend;
 
 /// <summary>
-/// USD->GBP rate from frankfurter.dev (ECB reference rates, free, no key), cached ~12h.
+/// USD-&gt;GBP rate from frankfurter.dev (ECB reference rates, free, no key), cached ~12h.
 /// Costs are stored USD-native; this converts them for GBP presentation. An FX outage
 /// must never break insight generation, so failures fall back to a static rate.
 /// </summary>
@@ -14,6 +16,7 @@ public class FxRateProvider(HttpClient http, IMemoryCache cache, ILogger<FxRateP
     // Static fallback (~ recent USD->GBP) used only when the FX service is unreachable.
     private const decimal Fallback = 0.79m;
     private const string CacheKey = "fx:usd-gbp";
+    private static readonly Uri FrankfurterBaseUri = new("https://api.frankfurter.dev");
 
     public virtual async Task<decimal> GetUsdToGbpAsync(CancellationToken ct = default)
     {
@@ -22,7 +25,11 @@ public class FxRateProvider(HttpClient http, IMemoryCache cache, ILogger<FxRateP
             return cached;
         }
 
-        var rate = await FetchGbpRateAsync("https://api.frankfurter.dev/v1/latest?from=USD&to=GBP", "USD->GBP", ct);
+        var rate = await FetchGbpRateAsync(
+            new Uri(FrankfurterBaseUri, "/v1/latest?from=USD&to=GBP").AbsoluteUri,
+            "USD->GBP",
+            ct
+        );
 
         if (rate <= 0m)
         {
@@ -65,7 +72,7 @@ public class FxRateProvider(HttpClient http, IMemoryCache cache, ILogger<FxRateP
         }
 
         var rate = await FetchGbpRateAsync(
-            $"https://api.frankfurter.dev/v1/{dateStr}?from={code}&to=GBP",
+            new Uri(FrankfurterBaseUri, $"/v1/{dateStr}?from={code}&to=GBP").AbsoluteUri,
             $"{code}->GBP on {dateStr}",
             ct
         );
