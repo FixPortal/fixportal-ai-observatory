@@ -23,7 +23,7 @@ public sealed class GooglePriceCalculator : IProviderPriceCalculator
             return null;
         }
 
-        var catalog = ProviderPricingJson.Catalog<GooglePriceCatalog>(normalizedCatalog);
+        var catalog = PricingCatalogJson.Deserialize<GooglePriceCatalog>(normalizedCatalog);
         var usageDate = usage.OccurredAt.InUtc().Date;
         var entry = catalog.Resolve(service, skuId, region, modality, tier, cacheLane, contextThreshold, usageDate);
         if (entry is null || !TryGetTokens(usage, modality, cacheLane, out var tokens))

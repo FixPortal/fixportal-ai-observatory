@@ -2,19 +2,15 @@ using System.Diagnostics;
 using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
-using System.Text.Json.Serialization;
 using AiObservatory.Data.Entities;
 using AiObservatory.Data.Pricing.Catalogs;
 using Microsoft.EntityFrameworkCore;
 using NodaTime;
-using NodaTime.Serialization.SystemTextJson;
 
 namespace AiObservatory.Data.Pricing;
 
 public sealed class PricingSnapshotStore(AiObservatoryDbContext db)
 {
-    private static readonly JsonSerializerOptions JsonOptions = CreateJsonOptions();
-
     public async Task<PricingActivationResult> ActivateAsync(
         PricingSnapshotCandidate candidate,
         CancellationToken cancellationToken,
@@ -160,13 +156,17 @@ public sealed class PricingSnapshotStore(AiObservatoryDbContext db)
     private static bool Covers(PricingSnapshot snapshot, LocalDate usageDate) =>
         snapshot.Provider switch
         {
-            Provider.OpenAI => Deserialize<OpenAiPriceCatalog>(snapshot.NormalizedCatalog)
+            Provider.OpenAI => PricingCatalogJson
+                .Deserialize<OpenAiPriceCatalog>(snapshot.NormalizedCatalog)
                 .Entries.Any(entry => entry.EffectiveFrom <= usageDate),
-            Provider.Anthropic => Deserialize<AnthropicPriceCatalog>(snapshot.NormalizedCatalog)
+            Provider.Anthropic => PricingCatalogJson
+                .Deserialize<AnthropicPriceCatalog>(snapshot.NormalizedCatalog)
                 .Entries.Any(entry => entry.EffectiveFrom <= usageDate),
-            Provider.Moonshot => Deserialize<KimiPriceCatalog>(snapshot.NormalizedCatalog)
+            Provider.Moonshot => PricingCatalogJson
+                .Deserialize<KimiPriceCatalog>(snapshot.NormalizedCatalog)
                 .Entries.Any(entry => entry.EffectiveFrom <= usageDate),
-            Provider.Google => Deserialize<GooglePriceCatalog>(snapshot.NormalizedCatalog)
+            Provider.Google => PricingCatalogJson
+                .Deserialize<GooglePriceCatalog>(snapshot.NormalizedCatalog)
                 .Entries.Any(entry => entry.EffectiveFrom <= usageDate),
             _ => false,
         };
@@ -224,12 +224,18 @@ public sealed class PricingSnapshotStore(AiObservatoryDbContext db)
         {
             var catalogSourceUrl = candidate.Provider switch
             {
-                Provider.OpenAI => ValidateAndGetSource(Deserialize<OpenAiPriceCatalog>(candidate.NormalizedCatalog)),
-                Provider.Anthropic => ValidateAndGetSource(
-                    Deserialize<AnthropicPriceCatalog>(candidate.NormalizedCatalog)
+                Provider.OpenAI => ValidateAndGetSource(
+                    PricingCatalogJson.Deserialize<OpenAiPriceCatalog>(candidate.NormalizedCatalog)
                 ),
-                Provider.Moonshot => ValidateAndGetSource(Deserialize<KimiPriceCatalog>(candidate.NormalizedCatalog)),
-                Provider.Google => ValidateAndGetSource(Deserialize<GooglePriceCatalog>(candidate.NormalizedCatalog)),
+                Provider.Anthropic => ValidateAndGetSource(
+                    PricingCatalogJson.Deserialize<AnthropicPriceCatalog>(candidate.NormalizedCatalog)
+                ),
+                Provider.Moonshot => ValidateAndGetSource(
+                    PricingCatalogJson.Deserialize<KimiPriceCatalog>(candidate.NormalizedCatalog)
+                ),
+                Provider.Google => ValidateAndGetSource(
+                    PricingCatalogJson.Deserialize<GooglePriceCatalog>(candidate.NormalizedCatalog)
+                ),
                 _ => throw new UnreachableException(),
             };
             if (!string.Equals(catalogSourceUrl, candidate.SourceUrl, StringComparison.Ordinal))
@@ -265,19 +271,5 @@ public sealed class PricingSnapshotStore(AiObservatoryDbContext db)
     {
         catalog.Validate();
         return catalog.SourceUrl;
-    }
-
-    private static T Deserialize<T>(string json) =>
-        JsonSerializer.Deserialize<T>(json, JsonOptions)
-        ?? throw new InvalidDataException("The normalized pricing catalog is null.");
-
-    private static JsonSerializerOptions CreateJsonOptions()
-    {
-        var options = new JsonSerializerOptions(JsonSerializerDefaults.Web)
-        {
-            RespectRequiredConstructorParameters = true,
-            UnmappedMemberHandling = JsonUnmappedMemberHandling.Disallow,
-        };
-        return options.ConfigureForNodaTime(DateTimeZoneProviders.Tzdb);
     }
 }

@@ -1,8 +1,5 @@
 using System.Text.Json;
-using System.Text.Json.Serialization;
 using AiObservatory.Data.Entities;
-using NodaTime;
-using NodaTime.Serialization.SystemTextJson;
 
 namespace AiObservatory.Data.Pricing;
 
@@ -16,17 +13,7 @@ public interface IProviderPriceCalculator
 
 internal static class ProviderPricingJson
 {
-    private static readonly JsonSerializerOptions CatalogOptions = new JsonSerializerOptions(JsonSerializerDefaults.Web)
-    {
-        RespectRequiredConstructorParameters = true,
-        UnmappedMemberHandling = JsonUnmappedMemberHandling.Disallow,
-    }.ConfigureForNodaTime(DateTimeZoneProviders.Tzdb);
-
     private static readonly JsonDocumentOptions EvidenceOptions = new() { AllowDuplicateProperties = false };
-
-    public static T Catalog<T>(string json) =>
-        JsonSerializer.Deserialize<T>(json, CatalogOptions)
-        ?? throw new InvalidDataException("The normalized pricing catalog is null.");
 
     public static JsonDocument Evidence(string json) => JsonDocument.Parse(json, EvidenceOptions);
 

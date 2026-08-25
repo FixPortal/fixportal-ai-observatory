@@ -23,8 +23,8 @@ public sealed class KimiPriceCalculator : IProviderPriceCalculator
             return null;
         }
 
-        var entry = ProviderPricingJson
-            .Catalog<KimiPriceCatalog>(normalizedCatalog)
+        var entry = PricingCatalogJson
+            .Deserialize<KimiPriceCatalog>(normalizedCatalog)
             .Resolve(usage.Model, highSpeed, usage.OccurredAt.InUtc().Date);
         if (entry is null || batch && entry.BatchMultiplier is null)
         {
