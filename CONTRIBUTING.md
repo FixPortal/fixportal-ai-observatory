@@ -20,11 +20,12 @@ environment variables, and EF Core migration steps.
 ```bash
 git clone https://github.com/FixPortal/fixportal-ai-observatory.git
 cd fixportal-ai-observatory
-# backend
-cd src/AiObservatory.Api && dotnet run
-# frontend (separate shell)
-cd src/AiObservatory.Web && npm install && npm run dev
+docker compose up --build
 ```
+
+This is the shortest complete setup and includes PostgreSQL, migrations, sample
+data, the API, ingest worker, and frontend. To run the backend or frontend
+directly while developing, follow the README's manual-run commands.
 
 ## Before you open a PR
 
