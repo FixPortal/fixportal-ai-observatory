@@ -117,6 +117,53 @@ public sealed class SourceSyncStateStoreConcurrencyTests(ProviderPollingDatabase
         state.LastAttemptAt.Should().Be(Instant.FromUtc(2026, 8, 24, 12, 23));
     }
 
+    [Fact]
+    public async Task OlderSuccess_DoesNotClearNewerFailedAttemptsPendingWindow()
+    {
+        await using var services = CreateServices();
+        var sourceId = $"overlapping-attempts-{Guid.NewGuid():N}";
+        var olderAttempt = Instant.FromUtc(2026, 8, 24, 12, 0);
+        var newerAttempt = olderAttempt.Plus(Duration.FromMinutes(1));
+        var pendingFrom = new LocalDate(2026, 8, 1);
+
+        await using (var scope = services.CreateAsyncScope())
+        {
+            var states = scope.ServiceProvider.GetRequiredService<SourceSyncStateStore>();
+            await states.MarkAttemptAsync(
+                sourceId,
+                Duration.FromHours(1),
+                olderAttempt,
+                TestContext.Current.CancellationToken,
+                pendingFrom
+            );
+            await states.MarkAttemptAsync(
+                sourceId,
+                Duration.FromHours(1),
+                newerAttempt,
+                TestContext.Current.CancellationToken,
+                pendingFrom.PlusDays(1)
+            );
+            await states.MarkSuccessAsync(
+                sourceId,
+                Duration.FromHours(1),
+                olderAttempt,
+                olderAttempt,
+                TestContext.Current.CancellationToken
+            );
+            await states.MarkFailureAsync(
+                sourceId,
+                Duration.FromHours(1),
+                newerAttempt,
+                "newer attempt failed",
+                TestContext.Current.CancellationToken
+            );
+        }
+
+        var state = await LoadStateAsync(services, sourceId);
+        state.PendingFromDate.Should().Be(pendingFrom);
+        state.LastError.Should().Be("newer attempt failed");
+    }
+
     private ServiceProvider CreateServices()
     {
         var services = new ServiceCollection();
