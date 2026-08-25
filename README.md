@@ -27,7 +27,19 @@ docker compose up --build
 
 This starts PostgreSQL, the API, provider/pricing ingest, and the frontend at [http://localhost:4173](http://localhost:4173). The compose seed populates synthetic sample data; it is labelled `demo-seed` and is not a representation of provider billing. Optional GitHub billing uses `GITHUB_TOKEN` plus `GITHUB_BILLING_ORG`; the token needs the broader access listed in [provider setup](docs/provider-setup.md#non-provider-sources).
 
-For a manual run, install .NET SDK 10, Node `^22.22.2`, `^24.15.0`, or `>=26.0.0`, and PostgreSQL 16. Configure `DB_CONNECTION` and `OBSERVATORY_API_KEY` through user secrets or environment variables, then start the API and web app:
+For a manual run, install .NET SDK 10, Node `^22.22.2`, `^24.15.0`, or `>=26.0.0`, and PostgreSQL 16. The commands below reuse the Compose database and its local development credentials:
+
+```powershell
+docker compose up -d --wait db
+```
+
+```powershell
+$env:DB_CONNECTION = 'Host=localhost;Port=5433;Database=aiobservatory;Username=aiobs;Password=aiobs'
+```
+
+```powershell
+$env:OBSERVATORY_API_KEY = 'change-me'
+```
 
 ```powershell
 dotnet restore AiObservatory.slnx
@@ -41,11 +53,21 @@ npm --prefix src/AiObservatory.Web ci
 dotnet run --project src/AiObservatory.Api
 ```
 
+The API applies pending EF Core migrations when it starts. In a separate shell, give the frontend the same local development key, then start it:
+
+```powershell
+$env:VITE_API_KEY = 'change-me'
+```
+
 ```powershell
 npm --prefix src/AiObservatory.Web run dev
 ```
 
-For a manual run, start the ingest worker separately; it only activates sources whose required settings are present:
+For a manual run, start the ingest worker in another shell; it only activates sources whose required settings are present:
+
+```powershell
+$env:DB_CONNECTION = 'Host=localhost;Port=5433;Database=aiobservatory;Username=aiobs;Password=aiobs'
+```
 
 ```powershell
 dotnet run --project src/AiObservatory.Ingest
