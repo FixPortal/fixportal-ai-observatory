@@ -1,4 +1,5 @@
 using AiObservatory.Data.Entities;
+using AiObservatory.Data.Pricing;
 using NodaTime;
 
 namespace AiObservatory.Data.Repositories;
@@ -70,6 +71,12 @@ public sealed record LocalSnapshotRecord(
 public interface IUsageRepository
 {
     Task<RecordEventResult> RecordEventAsync(UsageEvent evt, CancellationToken ct = default);
+
+    /// <summary>
+    /// Replaces pricing on an eligible estimated event and applies the signed aggregate delta.
+    /// Joins the current database transaction when activation is in progress.
+    /// </summary>
+    Task UpdateEventPricingAsync(Guid eventId, UsagePriceQuote? quote, CancellationToken ct = default);
 
     /// <summary>
     /// Deletes ALL usage data for one provider — both the raw <c>UsageEvents</c> and the

@@ -3,7 +3,6 @@ using AiObservatory.Data;
 using AiObservatory.Data.Entities;
 using AiObservatory.Data.Pricing;
 using AiObservatory.Data.Repositories;
-using Microsoft.Extensions.Options;
 using NodaTime;
 
 namespace AiObservatory.Api.Endpoints;
@@ -34,9 +33,8 @@ public static class EventsEndpoints
         UsageEventRequest req,
         IUsageRepository repo,
         SourceSyncStateStore sourceSyncStateStore,
+        UsagePriceResolver priceResolver,
         IClock clock,
-        IOptions<AnthropicPricingOptions> anthropicPricing,
-        ILoggerFactory loggerFactory,
         HttpContext ctx
     )
     {
@@ -55,6 +53,10 @@ public static class EventsEndpoints
         if (provenanceError is not null)
         {
             return Results.BadRequest(provenanceError);
+        }
+        if (req.CostBasis is not null && costBasis == CostBasis.Billed)
+        {
+            return Results.BadRequest("Explicit Billed events must use the spend/billing path.");
         }
 
         var requestError = ValidateUsageRequest(req, out var rawPayload, out var eventKey);
@@ -79,47 +81,6 @@ public static class EventsEndpoints
             return Results.BadRequest("OccurredAtUtc must not be in the future");
         }
 
-        // Anthropic events are priced HERE, from the shared rate table, and the caller's
-        // CostUsd is ignored. Clients used to price their own events, which put a second
-        // rate table (and a second copy of the resolution rules) in every producer — the
-        // drift that made months of recorded spend wrong. Every other provider still
-        // supplies its own cost: Copilot and Moonshot are flat-rate subscriptions with no
-        // per-token price to apply, and Google/OpenAI report billed figures directly.
-        var costUsd = req.CostUsd;
-        if (provider == Provider.Anthropic)
-        {
-            var usageDate = occurredAt.InUtc().Date;
-            var options = anthropicPricing.Value;
-            // Model is optional on the wire; an absent one matches no prefix and prices at
-            // the fallback, which the warning below makes visible rather than silent.
-            var model = req.Model ?? string.Empty;
-
-            // Resolved once and reused for both the warning and the rates — ResolveRates
-            // would repeat the same prefix/date scan.
-            var match = options.Match(model, usageDate);
-            if (match is null)
-            {
-                // Fallback rates are a guess. Say so, with the model, rather than letting a
-                // renamed model quietly accrue cost at Sonnet prices.
-                loggerFactory
-                    .CreateLogger("AiObservatory.Api.Pricing")
-                    .LogWarning(
-                        "No Anthropic pricing entry for model '{Model}' on {UsageDate}; using fallback rates. Add an entry to pricing.anthropic.json.",
-                        SanitizeLogValue(model),
-                        usageDate
-                    );
-            }
-
-            costUsd = AnthropicPricingResolver.ComputeCost(
-                match?.ToRates() ?? options.FallbackPricing,
-                req.InputTokens,
-                req.OutputTokens,
-                req.CacheReadTokens ?? 0,
-                req.CacheWriteTokens ?? 0,
-                req.CacheWrite1hTokens ?? 0
-            );
-        }
-
         var evt = new UsageEvent
         {
             Provider = provider,
@@ -132,7 +93,7 @@ public static class EventsEndpoints
             CacheWriteTokens = req.CacheWriteTokens,
             CacheWrite1hTokens = req.CacheWrite1hTokens,
             ThoughtTokens = req.ThoughtTokens,
-            CostUsd = costUsd,
+            CostUsd = IsEstimated(costBasis) ? null : req.CostUsd,
             Runtime = req.Runtime,
             SessionId = req.SessionId,
             AgentId = req.AgentId,
@@ -144,6 +105,12 @@ public static class EventsEndpoints
             ObservedAt = observedAt,
             EventKey = eventKey,
         };
+        if (IsEstimated(costBasis))
+        {
+            var quote = await priceResolver.ResolveAsync(evt, ctx.RequestAborted);
+            evt.CostUsd = quote?.CostUsd;
+            evt.CacheSavingsUsd = quote?.CacheSavingsUsd;
+        }
 
         var result = await repo.RecordEventAsync(evt, ctx.RequestAborted);
         if (sourceKind == SourceKind.LocalTelemetry)
@@ -252,8 +219,6 @@ public static class EventsEndpoints
         return Results.Ok(await repo.GetLocalSnapshotsAsync(normalizedSourceId, ct));
     }
 
-    internal static string SanitizeLogValue(string value) => value.Replace('\r', ' ').Replace('\n', ' ');
-
     internal static bool TryParseOrDefault<TEnum>(string? value, TEnum defaultValue, out TEnum parsed)
         where TEnum : struct, Enum
     {
@@ -345,6 +310,9 @@ public static class EventsEndpoints
         || req.CacheWrite1hTokens is < 0
         || req.ThoughtTokens is < 0
         || req.CostUsd < 0;
+
+    private static bool IsEstimated(CostBasis costBasis) =>
+        costBasis is CostBasis.ListPriceEstimate or CostBasis.Notional;
 
     private static bool HasOversizedIdentity(UsageEventRequest req) =>
         req.Runtime is { Length: > 100 } || req.SessionId is { Length: > 200 } || req.AgentId is { Length: > 200 };

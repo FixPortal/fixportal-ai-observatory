@@ -32,6 +32,7 @@ public sealed class PricingRefreshWorkerService(
         var definitions = services.GetServices<PricingSourceDefinition>().ToList();
         var states = services.GetRequiredService<SourceSyncStateStore>();
         var store = services.GetRequiredService<PricingSnapshotStore>();
+        var repricing = services.GetRequiredService<PricingRepricingService>();
         var now = clock.GetCurrentInstant();
 
         foreach (var definition in definitions)
@@ -48,7 +49,7 @@ public sealed class PricingRefreshWorkerService(
                 continue;
             }
 
-            await RefreshAsync(source, definition, states, store, now, cancellationToken);
+            await RefreshAsync(source, definition, states, store, repricing, now, cancellationToken);
         }
     }
 
@@ -83,6 +84,7 @@ public sealed class PricingRefreshWorkerService(
         PricingSourceDefinition definition,
         SourceSyncStateStore states,
         PricingSnapshotStore store,
+        PricingRepricingService repricing,
         Instant now,
         CancellationToken cancellationToken
     )
@@ -93,8 +95,11 @@ public sealed class PricingRefreshWorkerService(
             var candidate = await source.FetchAsync(cancellationToken);
             if (candidate is not null)
             {
-                // Task 5 must supply the transaction-local repricing callback before this pricing plan is complete.
-                await store.ActivateAsync(candidate, cancellationToken);
+                await store.ActivateAsync(
+                    candidate,
+                    cancellationToken,
+                    (_, callbackCt) => repricing.RepriceProviderAsync(candidate.Provider, callbackCt)
+                );
             }
             await states.MarkSuccessAsync(
                 source.SourceId,

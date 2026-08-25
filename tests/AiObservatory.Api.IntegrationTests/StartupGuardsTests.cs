@@ -138,27 +138,6 @@ public class StartupGuardsTests
             .BeTrue($"the exception chain should mention DB_CONNECTION; got: {thrown}");
     }
 
-    [Theory]
-    [InlineData("Ingest:Anthropic:Pricing:0:CacheWrite1h", "0", "CacheWrite1h")]
-    [InlineData("Ingest:Anthropic:FallbackPricing:Input", "0", "positive Input")]
-    [InlineData("Ingest:Anthropic:FallbackPricing:CacheWrite1h", "0", "CacheWrite1h")]
-    public async Task Startup_WhenAnthropicPricingIsInvalid_ThrowsDuringHostStart(
-        string key,
-        string value,
-        string expectedMessage
-    )
-    {
-        await using var factory = new AiObservatoryApiFactory();
-        factory.ConfigurationOverrides[key] = value;
-
-        var thrown = CaptureServicesException(factory);
-
-        thrown.Should().NotBeNull();
-        ExceptionChainContains(thrown!, expectedMessage)
-            .Should()
-            .BeTrue($"the exception chain should mention {expectedMessage}; got: {thrown}");
-    }
-
     /// <summary>Walks Exception/InnerException (and AggregateException.InnerExceptions) looking
     /// for any message containing <paramref name="fragment"/> — the exact wrapper type
     /// HostFactoryResolver uses to surface a Program.cs startup throw isn't a stable contract

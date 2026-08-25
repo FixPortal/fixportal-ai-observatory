@@ -10,23 +10,10 @@ import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { promisify } from 'node:util'
 import {
-  pickRates, costUsd, parseCodex, parseCopilot, parseClaude, parseKimi,
+  parseCodex, parseCopilot, parseClaude, parseKimi,
   buildDailySnapshots, updateFileCache, parseLocalSources, listJsonl,
   planSnapshotSubmissions, scanRecords,
 } from './observatory-sweep.mjs'
-
-test('pickRates resolves the longest matching prefix, not the first', () => {
-  const table = { 'gpt-4o': [1, 1, 1, 1], 'gpt-4o-mini': [9, 9, 9, 9] }
-  assert.deepEqual(pickRates(table, 'gpt-4o-mini-2024-07-18', [0, 0, 0, 0]), [9, 9, 9, 9])
-  assert.deepEqual(pickRates(table, 'gpt-4o-2024', [0, 0, 0, 0]), [1, 1, 1, 1])
-  assert.deepEqual(pickRates(table, 'unknown', [0, 0, 0, 0]), [0, 0, 0, 0])
-})
-
-test('costUsd applies each rate to its own token bucket', () => {
-  // 1M input @2, 1M output @8, 1M cacheRead @0.5, 0 write => 2 + 8 + 0.5 = 10.5
-  const c = costUsd([2, 8, 0.5, 0], { input: 1e6, output: 1e6, cacheRead: 1e6, cacheWrite: 0 })
-  assert.equal(c, 10.5)
-})
 
 test('parseCodex takes the last token_count and splits cached input out', () => {
   const lines = [
@@ -208,6 +195,23 @@ test('buildDailySnapshots sums sessions into one stable cumulative day/model key
   assert.equal(snapshots[0].sourceId, 'codex-local')
   assert.equal(snapshots[0].usageScope, 'subscription')
   assert.equal(snapshots[0].costBasis, 'notional')
+  assert.equal(snapshots[0].costUsd, null)
+  assert.deepEqual(JSON.parse(snapshots[0].rawPayload), {
+    source: 'observatory-sweep', tool: 'codex', processing: 'standard', context: 'short', region: 'global', thinking_tokens: 0,
+  })
+})
+
+test('buildDailySnapshots maps only exact known Copilot model prefixes without inventing dimensions', () => {
+  const snapshot = model => buildDailySnapshots([{
+    tool: 'copilot', date: '2026-08-24', model, occurredAtUtc: '2026-08-24T12:00:00Z',
+    inputTokens: 1, outputTokens: 1, cacheReadTokens: 0, cacheWriteTokens: 0,
+  }])[0]
+
+  assert.equal(snapshot('gpt-5.4-2026-08-24').provider, 'OpenAI')
+  assert.equal(snapshot('claude-opus-5-20260824').provider, 'Anthropic')
+  assert.equal(snapshot('gpt-4o').provider, 'Copilot')
+  assert.equal(snapshot('gpt-4o').costUsd, null)
+  assert.equal(JSON.parse(snapshot('gpt-4o').rawPayload).region, undefined)
 })
 
 test('buildDailySnapshots replaces a changed transcript under the same key', () => {
@@ -398,7 +402,7 @@ test('server inventory clears a deleted final snapshot after local state loss', 
     cacheReadTokens: 0,
     cacheWriteTokens: 0,
     thoughtTokens: 0,
-    costUsd: 0,
+    costUsd: null,
   })
   assert.equal(JSON.parse(submissions[0].snapshot.rawPayload).tombstone, true)
 })

@@ -1,7 +1,10 @@
+using AiObservatory.Data;
 using AiObservatory.Data.Entities;
+using AiObservatory.Data.Pricing;
 using AiObservatory.Data.Repositories;
 using AiObservatory.Ingest.Services.Anthropic;
 using AwesomeAssertions;
+using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging.Abstractions;
 using NodaTime;
 using NodaTime.Testing;
@@ -9,7 +12,8 @@ using NSubstitute;
 
 namespace AiObservatory.Ingest.Tests.Services;
 
-public class AnthropicIngestionServiceTests
+[Collection("ProviderPollingWorker")]
+public class AnthropicIngestionServiceTests(ProviderPollingDatabase database)
 {
     private readonly IAnthropicUsageClient _client = Substitute.For<IAnthropicUsageClient>();
     private readonly IUsageRepository _repo = Substitute.For<IUsageRepository>();
@@ -29,12 +33,18 @@ public class AnthropicIngestionServiceTests
                     OutputTokens: 2_000,
                     CacheReadTokens: 3_000,
                     CacheWriteTokens: 500,
-                    CostUsd: 0.045m,
                     RawJson: "{}"
                 ),
             ]);
 
-        var sut = new AnthropicIngestionService(_client, _repo, _clock, NullLogger<AnthropicIngestionService>.Instance);
+        await using var db = CreateDb();
+        var sut = new AnthropicIngestionService(
+            _client,
+            _repo,
+            Resolver(db),
+            _clock,
+            NullLogger<AnthropicIngestionService>.Instance
+        );
         var result = await sut.IngestAsync(date, date, TestContext.Current.CancellationToken);
 
         await _repo
@@ -51,6 +61,7 @@ public class AnthropicIngestionServiceTests
                     && e.SourceKind == SourceKind.ProviderApi
                     && e.UsageScope == UsageScope.Api
                     && e.CostBasis == CostBasis.ListPriceEstimate
+                    && e.CostUsd == null
                     && e.ObservedAt == _clock.GetCurrentInstant()
                     && e.EventKey == "anthropic:2026-06-01:claude-sonnet-4-6"
                 ),
@@ -65,7 +76,14 @@ public class AnthropicIngestionServiceTests
         var date = new LocalDate(2026, 6, 1);
         _client.GetUsageAsync(Arg.Any<LocalDate>(), Arg.Any<CancellationToken>()).Returns([]);
 
-        var sut = new AnthropicIngestionService(_client, _repo, _clock, NullLogger<AnthropicIngestionService>.Instance);
+        await using var db = CreateDb();
+        var sut = new AnthropicIngestionService(
+            _client,
+            _repo,
+            Resolver(db),
+            _clock,
+            NullLogger<AnthropicIngestionService>.Instance
+        );
         var result = await sut.IngestAsync(date, date.PlusDays(1), TestContext.Current.CancellationToken);
 
         await _repo.DidNotReceive().RecordEventAsync(Arg.Any<UsageEvent>(), Arg.Any<CancellationToken>());
@@ -73,4 +91,14 @@ public class AnthropicIngestionServiceTests
         await _client.Received(1).GetUsageAsync(date.PlusDays(1), Arg.Any<CancellationToken>());
         result.LatestObservationAt.Should().BeNull();
     }
+
+    private AiObservatoryDbContext CreateDb() =>
+        new(
+            new DbContextOptionsBuilder<AiObservatoryDbContext>()
+                .UseNpgsql(database.ConnectionString, npgsql => npgsql.UseNodaTime())
+                .Options
+        );
+
+    private static UsagePriceResolver Resolver(AiObservatoryDbContext db) =>
+        new(new PricingSnapshotStore(db), [new AnthropicPriceCalculator()], NullLogger<UsagePriceResolver>.Instance);
 }

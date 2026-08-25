@@ -66,19 +66,6 @@ public class IngestHostTests
     }
 
     [Fact]
-    public async Task StartupRejectsAnAnthropicRateWithoutCacheWrite1HPricing()
-    {
-        await using var factory = new IngestFactory();
-        factory.Settings["ANTHROPIC_BILLING_KEY"] = "configured-key";
-        factory.ConfigurationOverrides["Ingest:Anthropic:Pricing:0:CacheWrite1h"] = "0";
-
-        var thrown = CaptureServicesException(factory);
-
-        thrown.Should().NotBeNull();
-        ExceptionChainContains(thrown!, "CacheWrite1h").Should().BeTrue();
-    }
-
-    [Fact]
     public async Task RegistersExactlyOneDefinitionForEveryKnownSourceWhenUnconfigured()
     {
         await using var factory = new IngestFactory();

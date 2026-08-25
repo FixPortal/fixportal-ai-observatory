@@ -18,20 +18,6 @@ using NodaTime.Serialization.SystemTextJson;
 
 var builder = WebApplication.CreateBuilder(args);
 
-// The shared Anthropic rate table that ships with AiObservatory.Data. The API prices
-// Anthropic events at ingest (see EventsEndpoints.RecordEventAsync), so it needs the same
-// rates as the Ingest worker — from the same physical file, so they cannot drift.
-//
-// Resolved against AppContext.BaseDirectory (where the build drops it), NOT the content
-// root: WebApplicationFactory points the content root at the project's SOURCE directory,
-// so a relative path resolves somewhere the file has never existed and every WAF test
-// fails at host construction. Absolute-from-the-assembly works for both.
-builder.Configuration.AddJsonFile(
-    Path.Combine(AppContext.BaseDirectory, "pricing.anthropic.json"),
-    optional: false,
-    reloadOnChange: false
-);
-
 Program.AddApplicationInsightsIfConfigured(builder);
 builder.Services.AddOpenApi();
 
@@ -56,27 +42,6 @@ builder.Services.AddSingleton<IClock>(SystemClock.Instance);
 builder.Services.AddSingleton(
     RoutingCatalogService.Load(Path.Combine(AppContext.BaseDirectory, "Routing", "routing-catalog.json"))
 );
-
-// Bound unconditionally: Anthropic events are priced server-side at ingest, so a missing
-// or empty table is a boot-time failure rather than a silent fallback to wrong rates.
-builder
-    .Services.AddOptions<AnthropicPricingOptions>()
-    .Bind(builder.Configuration.GetSection(AnthropicPricingOptions.SectionName))
-    .Validate(o => o.Pricing.Count > 0, $"{AnthropicPricingOptions.SectionName}:Pricing must have at least one entry")
-    // An unmatched model prices at FallbackPricing, so a zeroed fallback would silently
-    // record every unknown model at $0 — the opposite of failing closed.
-    .Validate(
-        o => o.FallbackPricing is { Input: > 0, Output: > 0 },
-        $"{AnthropicPricingOptions.SectionName}:FallbackPricing must have positive Input and Output rates"
-    )
-    // CacheWrite1h binds to 0 when a row omits it, which would bill one-hour cache writes as
-    // free. Since this deployment's cache writes are ~100% one-hour, that failure would be
-    // both silent and total — so an incomplete row must stop the app, not start it.
-    .Validate(
-        o => o.HasPositiveCacheWrite1HRates(),
-        $"{AnthropicPricingOptions.SectionName}: every Pricing entry and FallbackPricing must set a positive CacheWrite1h"
-    )
-    .ValidateOnStart();
 
 builder.Services.AddTransient<MailKit.Net.Smtp.ISmtpClient, MailKit.Net.Smtp.SmtpClient>();
 builder.Services.AddTransient<IAlertNotifier, EmailAlertNotifier>();

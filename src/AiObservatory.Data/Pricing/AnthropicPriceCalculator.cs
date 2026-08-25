@@ -1,0 +1,112 @@
+using System.Text.Json;
+using AiObservatory.Data.Entities;
+using AiObservatory.Data.Pricing.Catalogs;
+
+namespace AiObservatory.Data.Pricing;
+
+public sealed class AnthropicPriceCalculator : IProviderPriceCalculator
+{
+    public Provider Provider => Provider.Anthropic;
+
+    public UsagePriceQuote? Calculate(UsageEvent usage, string normalizedCatalog)
+    {
+        if (string.IsNullOrWhiteSpace(usage.Model))
+        {
+            return null;
+        }
+
+        using var evidence = ProviderPricingJson.Evidence(usage.RawPayload);
+        if (!TryDimensions(evidence.RootElement, out var tier, out var speed, out var geography))
+        {
+            return null;
+        }
+
+        var entry = ProviderPricingJson
+            .Catalog<AnthropicPriceCatalog>(normalizedCatalog)
+            .Resolve(usage.Model, usage.OccurredAt.InUtc().Date);
+        if (entry is null)
+        {
+            return null;
+        }
+
+        decimal? inputRate = entry.Input;
+        decimal? outputRate = entry.Output;
+        if (tier == "batch")
+        {
+            inputRate = entry.BatchInput;
+            outputRate = entry.BatchOutput;
+        }
+        else if (speed == "fast")
+        {
+            inputRate = entry.FastInput;
+            outputRate = entry.FastOutput;
+        }
+        var multiplier = geography == "us" ? entry.UsInferenceMultiplier : 1m;
+        if (inputRate is null || outputRate is null || multiplier is null)
+        {
+            return null;
+        }
+
+        var cacheWrite = usage.CacheWriteTokens ?? 0;
+        var cacheWrite1h = usage.CacheWrite1hTokens ?? 0;
+        var cacheWrite5m = cacheWrite - cacheWrite1h;
+        if (cacheWrite > 0 && !HasExactCacheDurations(evidence.RootElement, cacheWrite5m, cacheWrite1h))
+        {
+            return null;
+        }
+
+        var cacheRead = usage.CacheReadTokens ?? 0;
+        var cost =
+            (
+                PerMillion(usage.InputTokens, inputRate.Value)
+                + PerMillion(usage.OutputTokens, outputRate.Value)
+                + PerMillion(cacheRead, entry.CacheRead)
+                + PerMillion(cacheWrite5m, entry.CacheWrite5m)
+                + PerMillion(cacheWrite1h, entry.CacheWrite1h)
+            ) * multiplier.Value;
+        var cacheSavings =
+            (
+                PerMillion(cacheRead + cacheWrite, inputRate.Value)
+                - PerMillion(cacheRead, entry.CacheRead)
+                - PerMillion(cacheWrite5m, entry.CacheWrite5m)
+                - PerMillion(cacheWrite1h, entry.CacheWrite1h)
+            ) * multiplier.Value;
+        return new UsagePriceQuote(cost, cacheSavings);
+    }
+
+    private static bool TryDimensions(JsonElement evidence, out string tier, out string speed, out string geography)
+    {
+        tier = string.Empty;
+        speed = string.Empty;
+        geography = string.Empty;
+        if (
+            !ProviderPricingJson.TryString(evidence, "service_tier", out tier)
+            || !ProviderPricingJson.TryString(evidence, "speed", out speed)
+            || !ProviderPricingJson.TryString(evidence, "inference_geo", out geography)
+        )
+        {
+            return false;
+        }
+
+        tier = tier.ToLowerInvariant();
+        speed = speed.ToLowerInvariant();
+        geography = geography.ToLowerInvariant();
+        return tier is "standard" or "batch"
+            && speed is "standard" or "fast"
+            && geography is "global" or "us"
+            && (tier != "batch" || speed != "fast");
+    }
+
+    private static bool HasExactCacheDurations(JsonElement evidence, long expected5m, long expected1h) =>
+        ProviderPricingJson.TryNestedInt64(evidence, "cache_creation", "ephemeral_5m_input_tokens", out var observed5m)
+        && ProviderPricingJson.TryNestedInt64(
+            evidence,
+            "cache_creation",
+            "ephemeral_1h_input_tokens",
+            out var observed1h
+        )
+        && observed5m == expected5m
+        && observed1h == expected1h;
+
+    private static decimal PerMillion(long tokens, decimal rate) => tokens / 1_000_000m * rate;
+}

@@ -3,7 +3,6 @@ using System.Text.Json;
 using AiObservatory.Ingest.Services.OpenAi;
 using AwesomeAssertions;
 using Microsoft.Extensions.Logging.Abstractions;
-using Microsoft.Extensions.Options;
 using NodaTime;
 
 namespace AiObservatory.Ingest.Tests.Services;
@@ -66,16 +65,6 @@ public sealed class OpenAiUsageClientTests : IDisposable
         ) => Task.FromResult(CreateResponse(statusCode));
     }
 
-    private static readonly OpenAiPricingOptions TestPricing = new()
-    {
-        Pricing =
-        [
-            new OpenAiPricingEntry("gpt-4.1", 2.00m, 8.00m, 0.50m),
-            new OpenAiPricingEntry("gpt-4.1-mini", 0.40m, 1.60m, 0.10m),
-        ],
-        FallbackPricing = new PricingRates3(2.50m, 10.00m, 1.25m),
-    };
-
     private OpenAiUsageClient CreateSut(LocalDate bucketDate, string model)
     {
         var startTime = bucketDate.AtStartOfDayInZone(DateTimeZone.Utc).ToInstant().ToUnixTimeSeconds();
@@ -91,7 +80,7 @@ public sealed class OpenAiUsageClientTests : IDisposable
                       "model": "{{model}}",
                       "input_tokens": 1000000,
                       "output_tokens": 1000000,
-                      "input_cached_tokens": 0,
+                      "input_cached_tokens": 250000,
                       "num_model_requests": 1
                     }
                   ]
@@ -103,29 +92,20 @@ public sealed class OpenAiUsageClientTests : IDisposable
             """;
         var http = new HttpClient(new StubHandler(json)) { BaseAddress = new Uri("https://api.openai.com") };
         _httpClients.Add(http);
-        return new OpenAiUsageClient(http, NullLogger<OpenAiUsageClient>.Instance, Options.Create(TestPricing));
+        return new OpenAiUsageClient(http, NullLogger<OpenAiUsageClient>.Instance);
     }
 
     [Fact]
-    public async Task GetDailyUsageAsync_resolves_longest_matching_prefix()
+    public async Task GetDailyUsageAsyncReturnsObservedUsageWithoutPricingIt()
     {
         var date = new LocalDate(2026, 7, 1);
         var sut = CreateSut(date, "gpt-4.1-mini-2025-04-14");
 
         var records = await sut.GetDailyUsageAsync(date, TestContext.Current.CancellationToken);
 
-        records.Single().CostUsd.Should().Be(2.0m); // $0.40 input + $1.60 output per 1M tokens (gpt-4.1-mini, not gpt-4.1)
-    }
-
-    [Fact]
-    public async Task GetDailyUsageAsync_falls_back_to_fallback_pricing_for_unknown_model()
-    {
-        var date = new LocalDate(2026, 7, 1);
-        var sut = CreateSut(date, "gpt-unknown-model");
-
-        var records = await sut.GetDailyUsageAsync(date, TestContext.Current.CancellationToken);
-
-        records.Single().CostUsd.Should().Be(12.5m); // fallback: $2.50 input + $10 output per 1M tokens
+        records.Single().Model.Should().Be("gpt-4.1-mini-2025-04-14");
+        records.Single().InputTokens.Should().Be(750_000);
+        records.Single().CachedInputTokens.Should().Be(250_000);
     }
 
     [Fact]
@@ -138,7 +118,7 @@ public sealed class OpenAiUsageClientTests : IDisposable
         using var handler = new NeverResolvingHandler();
         using var http = new HttpClient(handler, disposeHandler: false);
         http.BaseAddress = new Uri("https://api.openai.com");
-        var sut = new OpenAiUsageClient(http, NullLogger<OpenAiUsageClient>.Instance, Options.Create(TestPricing));
+        var sut = new OpenAiUsageClient(http, NullLogger<OpenAiUsageClient>.Instance);
 
         var records = await sut.GetDailyUsageAsync(new LocalDate(2026, 7, 1), TestContext.Current.CancellationToken);
 
@@ -154,7 +134,7 @@ public sealed class OpenAiUsageClientTests : IDisposable
     {
         using var http = new HttpClient(new StatusHandler(statusCode));
         http.BaseAddress = new Uri("https://api.openai.com");
-        var sut = new OpenAiUsageClient(http, NullLogger<OpenAiUsageClient>.Instance, Options.Create(TestPricing));
+        var sut = new OpenAiUsageClient(http, NullLogger<OpenAiUsageClient>.Instance);
 
         var act = () => sut.GetDailyUsageAsync(new LocalDate(2026, 7, 1), TestContext.Current.CancellationToken);
 
@@ -186,7 +166,7 @@ public sealed class OpenAiUsageClientTests : IDisposable
             """;
         using var http = new HttpClient(new StubHandler(json));
         http.BaseAddress = new Uri("https://api.openai.com");
-        var sut = new OpenAiUsageClient(http, NullLogger<OpenAiUsageClient>.Instance, Options.Create(TestPricing));
+        var sut = new OpenAiUsageClient(http, NullLogger<OpenAiUsageClient>.Instance);
 
         var act = () => sut.GetDailyUsageAsync(new LocalDate(2026, 7, 1), TestContext.Current.CancellationToken);
 

@@ -4,6 +4,7 @@ using AiObservatory.Data;
 using AiObservatory.Data.Entities;
 using AiObservatory.Data.Pricing;
 using AiObservatory.Data.Pricing.Catalogs;
+using AiObservatory.Data.Repositories;
 using AiObservatory.Ingest.Pricing;
 using AiObservatory.Ingest.Sources;
 using AiObservatory.Ingest.Tests.Services;
@@ -119,6 +120,7 @@ public sealed class BundledPricingCatalogLoaderTests(ProviderPollingDatabase dat
             );
             var loader = new BundledPricingCatalogLoader(
                 harness.Store,
+                harness.Repricing,
                 NullLogger<BundledPricingCatalogLoader>.Instance,
                 directory.FullName
             );
@@ -149,11 +151,11 @@ public sealed class BundledPricingCatalogLoaderTests(ProviderPollingDatabase dat
         await remoteDb.PricingSnapshots.ExecuteDeleteAsync(TestContext.Current.CancellationToken);
         await remoteDb.SourceSyncStates.ExecuteDeleteAsync(TestContext.Current.CancellationToken);
         var remoteStore = new PricingSnapshotStore(remoteDb);
-        var bundleStore = new PricingSnapshotStore(
-            bundleScope.ServiceProvider.GetRequiredService<AiObservatoryDbContext>()
-        );
+        var bundleDb = bundleScope.ServiceProvider.GetRequiredService<AiObservatoryDbContext>();
+        var bundleStore = new PricingSnapshotStore(bundleDb);
         var loader = new BundledPricingCatalogLoader(
             bundleStore,
+            CreateRepricing(bundleDb, bundleStore),
             NullLogger<BundledPricingCatalogLoader>.Instance,
             AppContext.BaseDirectory
         );
@@ -233,25 +235,45 @@ public sealed class BundledPricingCatalogLoaderTests(ProviderPollingDatabase dat
         await db.PricingSnapshots.ExecuteDeleteAsync(TestContext.Current.CancellationToken);
         await db.SourceSyncStates.ExecuteDeleteAsync(TestContext.Current.CancellationToken);
         var store = new PricingSnapshotStore(db);
+        var repricing = CreateRepricing(db, store);
         return new LoaderHarness(
             provider,
             scope,
             db,
             store,
-            new BundledPricingCatalogLoader(store, NullLogger<BundledPricingCatalogLoader>.Instance)
+            repricing,
+            new BundledPricingCatalogLoader(store, repricing, NullLogger<BundledPricingCatalogLoader>.Instance)
         );
     }
+
+    private static PricingRepricingService CreateRepricing(AiObservatoryDbContext db, PricingSnapshotStore store) =>
+        new(
+            db,
+            new UsageRepository(db),
+            new UsagePriceResolver(
+                store,
+                [
+                    new OpenAiPriceCalculator(),
+                    new AnthropicPriceCalculator(),
+                    new KimiPriceCalculator(),
+                    new GooglePriceCalculator(),
+                ],
+                NullLogger<UsagePriceResolver>.Instance
+            )
+        );
 
     private sealed class LoaderHarness(
         ServiceProvider services,
         AsyncServiceScope scope,
         AiObservatoryDbContext db,
         PricingSnapshotStore store,
+        PricingRepricingService repricing,
         BundledPricingCatalogLoader loader
     ) : IAsyncDisposable
     {
         public AiObservatoryDbContext Db { get; } = db;
         public PricingSnapshotStore Store { get; } = store;
+        public PricingRepricingService Repricing { get; } = repricing;
         public BundledPricingCatalogLoader Loader { get; } = loader;
 
         public async ValueTask DisposeAsync()

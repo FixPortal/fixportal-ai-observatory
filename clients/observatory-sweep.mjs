@@ -12,52 +12,11 @@ import { homedir } from 'node:os'
 import { join, dirname, basename } from 'node:path'
 import { pathToFileURL } from 'node:url'
 
-// Subscription-billed tools have no real per-token price. These rates preserve
-// the existing notional comparison until first-party pricing renewal replaces it.
-const OPENAI_PRICING = {
-  'gpt-5.5': [1.25, 10.00, 0.125, 0],
-  'gpt-5.4': [1.25, 10.00, 0.125, 0],
-  'gpt-5': [1.25, 10.00, 0.125, 0],
-  'o3': [10.00, 40.00, 2.50, 0],
-  'o4-mini': [1.10, 4.40, 0.275, 0],
-  'gpt-4.1-mini': [0.40, 1.60, 0.10, 0],
-  'gpt-4.1': [2.00, 8.00, 0.50, 0],
-  'gpt-4o-mini': [0.15, 0.60, 0.075, 0],
-  'gpt-4o': [2.50, 10.00, 1.25, 0],
-}
-const OPENAI_DEFAULT = [1.25, 10.00, 0.125, 0]
-
-const COPILOT_PRICING = {
-  'gpt-5.4': [1.25, 10.00, 0.125, 0],
-  'gpt-5': [1.25, 10.00, 0.125, 0],
-  'gpt-4.1': [2.00, 8.00, 0.50, 0],
-  'gpt-4o': [2.50, 10.00, 1.25, 0],
-  'claude-opus-4': [15.00, 75.00, 1.50, 3.75],
-  'claude-sonnet-4': [3.00, 15.00, 0.30, 0.75],
-  'claude-haiku-4': [0.80, 4.00, 0.08, 0.20],
-}
-const COPILOT_DEFAULT = [2.00, 8.00, 0.50, 0]
 const ALL_LOCAL_SOURCES = ['codex', 'copilot', 'claude', 'kimi']
 const ALL_LOCAL_SOURCE_IDS = ALL_LOCAL_SOURCES.map(source => `${source}-local`)
 const PARSE_CACHE_VERSION = 1
 
 // --- Pure helpers -----------------------------------------------------------
-
-/** Longest-prefix model match so gpt-4o-mini resolves before gpt-4o. */
-export function pickRates(table, model, fallback) {
-  const m = (model ?? '').toLowerCase()
-  let best = null
-  for (const key of Object.keys(table)) {
-    if (m.startsWith(key) && (best === null || key.length > best.length)) { best = key }
-  }
-  return best ? table[best] : fallback
-}
-
-/** Cost in USD from token totals and a [input, output, cacheRead, cacheWrite] rate row. */
-export function costUsd(rates, d) {
-  const c = (d.input * rates[0] + d.output * rates[1] + d.cacheRead * rates[2] + d.cacheWrite * rates[3]) / 1e6
-  return Math.round(c * 1e8) / 1e8
-}
 
 function token(value) {
   return Math.max(0, Number.isFinite(Number(value)) ? Number(value) : 0)
@@ -171,9 +130,9 @@ export function parseClaude(content) {
       ...(Object.hasOwn(usage, 'thinking_tokens') || Object.hasOwn(usage, 'thinking_output_tokens')
         ? { thoughtTokens: token(usage.thinking_tokens ?? usage.thinking_output_tokens) }
         : {}),
-      ...(Object.hasOwn(usage, 'service_tier') ? { serviceTier: usage.service_tier ?? 'unknown' } : {}),
-      ...(Object.hasOwn(usage, 'speed') ? { speed: usage.speed ?? 'unknown' } : {}),
-      ...(Object.hasOwn(usage, 'inference_geo') ? { inferenceGeo: usage.inference_geo ?? 'unknown' } : {}),
+      ...(typeof usage.service_tier === 'string' && usage.service_tier ? { serviceTier: usage.service_tier } : {}),
+      ...(typeof usage.speed === 'string' && usage.speed ? { speed: usage.speed } : {}),
+      ...(typeof usage.inference_geo === 'string' && usage.inference_geo ? { inferenceGeo: usage.inference_geo } : {}),
     })
   }
   return records
@@ -204,10 +163,19 @@ export function parseKimi(content) {
   return records
 }
 
-function sourceMetadata(tool) {
+function sourceMetadata(tool, model) {
   switch (tool) {
     case 'codex': return { provider: 'OpenAI', sourceId: 'codex-local', runtime: 'codex' }
-    case 'copilot': return { provider: 'Copilot', sourceId: 'copilot-local', runtime: 'copilot' }
+    case 'copilot': {
+      const normalized = model.toLowerCase()
+      const provider = ['gpt-5.6-sol', 'gpt-5.4'].some(prefix => normalized.startsWith(prefix))
+        ? 'OpenAI'
+        : ['claude-opus-4-5', 'claude-opus-4-8', 'claude-sonnet-5', 'claude-opus-5']
+            .some(prefix => normalized.startsWith(prefix))
+          ? 'Anthropic'
+          : 'Copilot'
+      return { provider, sourceId: 'copilot-local', runtime: 'copilot' }
+    }
     case 'claude': return { provider: 'Anthropic', sourceId: 'claude-local', runtime: 'claude' }
     case 'kimi': return { provider: 'Moonshot', sourceId: 'kimi-local', runtime: 'kimi' }
     default: return null
@@ -259,7 +227,7 @@ function deduplicateClaudeRecords(records) {
 export function buildDailySnapshots(records) {
   const groups = new Map()
   for (const record of deduplicateClaudeRecords(records)) {
-    const metadata = sourceMetadata(record.tool)
+    const metadata = sourceMetadata(record.tool, record.model)
     if (!metadata || !record.date || !record.model) { continue }
 
     const tier = record.serviceTier ?? 'unknown'
@@ -276,9 +244,9 @@ export function buildDailySnapshots(records) {
         date: record.date,
         model: record.model,
         eventKey,
-        serviceTier: tier,
-        speed,
-        inferenceGeo: geo,
+        serviceTier: record.serviceTier,
+        speed: record.speed,
+        inferenceGeo: record.inferenceGeo,
         input: 0,
         output: 0,
         cacheRead: 0,
@@ -286,6 +254,7 @@ export function buildDailySnapshots(records) {
         cacheWrite1h: 0,
         cacheWrite5m: 0,
         thought: 0,
+        cacheDurationsObserved: true,
         occurredAtUtc: `${record.date}T00:00:00.000Z`,
       }
       groups.set(eventKey, group)
@@ -298,6 +267,9 @@ export function buildDailySnapshots(records) {
     group.cacheWrite += usage.cacheWrite
     group.cacheWrite1h += usage.cacheWrite1h
     group.cacheWrite5m += token(record.cacheWrite5mTokens)
+    if (usage.cacheWrite > 0 && !(Object.hasOwn(record, 'cacheWrite1hTokens') && Object.hasOwn(record, 'cacheWrite5mTokens'))) {
+      group.cacheDurationsObserved = false
+    }
     group.thought += usage.thought
     const occurredAtUtc = isoTimestamp(record.occurredAtUtc)
     if (occurredAtUtc && occurredAtUtc > group.occurredAtUtc) { group.occurredAtUtc = occurredAtUtc }
@@ -307,17 +279,6 @@ export function buildDailySnapshots(records) {
     .filter(group => group.input + group.output + group.cacheRead + group.cacheWrite + group.thought > 0)
     .sort((a, b) => a.eventKey.localeCompare(b.eventKey))
     .map(group => {
-      const totals = {
-        input: group.input,
-        output: group.output,
-        cacheRead: group.cacheRead,
-        cacheWrite: group.cacheWrite,
-      }
-      const notionalCost = group.tool === 'codex'
-        ? costUsd(pickRates(OPENAI_PRICING, group.model, OPENAI_DEFAULT), totals)
-        : group.tool === 'copilot'
-          ? costUsd(pickRates(COPILOT_PRICING, group.model, COPILOT_DEFAULT), totals)
-          : null
       return {
         provider: group.provider,
         model: group.model,
@@ -327,7 +288,7 @@ export function buildDailySnapshots(records) {
         cacheWriteTokens: group.cacheWrite,
         cacheWrite1hTokens: group.cacheWrite1h,
         thoughtTokens: group.thought,
-        costUsd: notionalCost,
+        costUsd: null,
         eventKey: group.eventKey,
         occurredAtUtc: group.occurredAtUtc,
         sourceId: group.sourceId,
@@ -338,17 +299,15 @@ export function buildDailySnapshots(records) {
         rawPayload: JSON.stringify({
           source: 'observatory-sweep',
           tool: group.tool,
-          service_tier: group.serviceTier,
-          speed: group.speed,
-          inference_geo: group.inferenceGeo,
+          ...(group.tool === 'codex' ? { processing: 'standard', context: 'short', region: 'global' } : {}),
+          ...(group.serviceTier ? { service_tier: group.serviceTier } : {}),
+          ...(group.speed ? { speed: group.speed } : {}),
+          ...(group.inferenceGeo ? { inference_geo: group.inferenceGeo } : {}),
           thinking_tokens: group.thought,
-          cache_creation: {
+          ...(group.cacheWrite > 0 && group.cacheDurationsObserved ? { cache_creation: {
             ephemeral_5m_input_tokens: group.cacheWrite5m,
             ephemeral_1h_input_tokens: group.cacheWrite1h,
-          },
-          ...(notionalCost === null ? {} : {
-            note: 'costUsd is notional - local coding telemetry is subscription-billed',
-          }),
+          } } : {}),
         }),
       }
     })
@@ -363,7 +322,7 @@ function zeroSnapshot(snapshot) {
     cacheWriteTokens: 0,
     cacheWrite1hTokens: 0,
     thoughtTokens: 0,
-    costUsd: snapshot.costUsd === null ? null : 0,
+    costUsd: null,
     rawPayload: JSON.stringify({
       source: 'observatory-sweep',
       tool: snapshot.runtime,
