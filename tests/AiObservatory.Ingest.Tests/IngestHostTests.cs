@@ -41,7 +41,6 @@ public class IngestHostTests
     [InlineData("ANTHROPIC_BILLING_KEY", UsageSourceIds.AnthropicUsageApi)]
     [InlineData("ANTHROPIC_BILLING_KEY", UsageSourceIds.AnthropicCostReport)]
     [InlineData("COPILOT_ORG", UsageSourceIds.CopilotOrgReport)]
-    [InlineData("GOOGLE_BILLING_ACCOUNT_ID", UsageSourceIds.GoogleCloudBillingExport)]
     [InlineData("OPENAI_ADMIN_KEY", UsageSourceIds.OpenAiUsageApi)]
     [InlineData("OPENAI_ADMIN_KEY", UsageSourceIds.OpenAiCostsApi)]
     [InlineData("GITHUB_TOKEN", UsageSourceIds.GitHubActivityApi)]
@@ -94,7 +93,6 @@ public class IngestHostTests
 
     [Theory]
     [InlineData("COPILOT_ORG", typeof(CopilotReportSource), UsageSourceIds.CopilotOrgReport)]
-    [InlineData("GOOGLE_BILLING_ACCOUNT_ID", typeof(GoogleIngestionService), UsageSourceIds.GoogleCloudBillingExport)]
     [InlineData("GITHUB_TOKEN", typeof(GitHubIngestionService), UsageSourceIds.GitHubActivityApi)]
     public async Task ConfiguredCredentialRegistersTheMatchingUsageSource(
         string setting,
@@ -119,6 +117,71 @@ public class IngestHostTests
 
         sources.Should().ContainSingle(x => x.GetType() == implementationType).Which.SourceId.Should().Be(sourceId);
         definitions.Should().ContainSingle(x => x.SourceId == sourceId).Which.IsConfigured.Should().BeTrue();
+    }
+
+    [Theory]
+    [InlineData("GOOGLE_CLOUD_PROJECT_ID", "configured-project")]
+    [InlineData("GOOGLE_BILLING_EXPORT_TABLE", "configured_project.billing_export.gcp_billing_export_v1")]
+    public async Task GoogleBillingExport_requires_both_project_and_safe_table(string setting, string value)
+    {
+        await using var factory = new IngestFactory();
+        factory.Settings[setting] = value;
+
+        var thrown = CaptureServicesException(factory);
+
+        thrown.Should().NotBeNull();
+        ExceptionChainContains(thrown!, "GOOGLE_CLOUD_PROJECT_ID and GOOGLE_BILLING_EXPORT_TABLE").Should().BeTrue();
+    }
+
+    [Fact]
+    public async Task GoogleBillingExport_registers_lazily_with_shared_billing_services_when_project_and_table_are_valid()
+    {
+        await using var factory = new IngestFactory();
+        factory.Settings["GOOGLE_CLOUD_PROJECT_ID"] = "configured-project";
+        factory.Settings["GOOGLE_BILLING_EXPORT_TABLE"] = "configured_project.billing_export.gcp_billing_export_v1";
+
+        using var scope = factory.Services.CreateScope();
+        scope
+            .ServiceProvider.GetServices<IUsageSource>()
+            .Should()
+            .ContainSingle(source => source is GoogleBillingExportSource);
+        scope
+            .ServiceProvider.GetServices<SourceDefinition>()
+            .Single(x => x.SourceId == UsageSourceIds.GoogleCloudBillingExport)
+            .IsConfigured.Should()
+            .BeTrue();
+        scope.ServiceProvider.GetRequiredService<BillingObservationWriter>().Should().NotBeNull();
+        scope.ServiceProvider.GetRequiredService<FxRateProvider>().Should().NotBeNull();
+    }
+
+    [Fact]
+    public async Task GoogleBillingExport_reuses_one_lazy_client_registration_across_scopes()
+    {
+        await using var factory = new IngestFactory();
+        factory.Settings["GOOGLE_CLOUD_PROJECT_ID"] = "configured-project";
+        factory.Settings["GOOGLE_BILLING_EXPORT_TABLE"] = "configured_project.billing_export.gcp_billing_export_v1";
+
+        using var first = factory.Services.CreateScope();
+        using var second = factory.Services.CreateScope();
+
+        first
+            .ServiceProvider.GetRequiredService<IGoogleBillingExportClient>()
+            .Should()
+            .BeSameAs(second.ServiceProvider.GetRequiredService<IGoogleBillingExportClient>());
+    }
+
+    [Fact]
+    public async Task LegacyBillingAccountSetting_does_not_enable_the_removed_reports_route()
+    {
+        await using var factory = new IngestFactory();
+        factory.Settings["GOOGLE_BILLING_ACCOUNT_ID"] = "billingAccounts/123456-123456-123456";
+
+        using var scope = factory.Services.CreateScope();
+
+        scope
+            .ServiceProvider.GetServices<IUsageSource>()
+            .Should()
+            .NotContain(source => source.SourceId == UsageSourceIds.GoogleCloudBillingExport);
     }
 
     [Theory]
@@ -471,6 +534,8 @@ public class IngestHostTests
             "CLAUDE_CODE_USAGE_ENABLED",
             "GITHUB_TOKEN",
             "COPILOT_ORG",
+            "GOOGLE_CLOUD_PROJECT_ID",
+            "GOOGLE_BILLING_EXPORT_TABLE",
             "GOOGLE_BILLING_ACCOUNT_ID",
             "OPENAI_ADMIN_KEY",
             "APPLICATIONINSIGHTS_CONNECTION_STRING",

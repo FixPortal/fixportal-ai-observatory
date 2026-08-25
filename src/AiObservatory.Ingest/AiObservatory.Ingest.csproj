@@ -23,7 +23,7 @@
       This keeps the generated Program internal and invisible across the assembly boundary.
     -->
     <FrameworkReference Include="Microsoft.AspNetCore.App" />
-    <PackageReference Include="Google.Apis.Auth" />
+    <PackageReference Include="Google.Cloud.BigQuery.V2" />
     <PackageReference Include="Microsoft.ApplicationInsights.AspNetCore" />
     <PackageReference Include="Microsoft.EntityFrameworkCore.Relational" />
     <!--
