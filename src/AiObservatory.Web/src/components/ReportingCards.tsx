@@ -1,16 +1,13 @@
 import { Card } from '../design/Card'
 import { gbp } from '../lib/currency'
-import { summarizeBilledReporting, type BilledReportingEntry, type BilledReportingVendor } from '../lib/billedReporting'
+import type { BilledReporting } from '../api/client'
 
 interface Props {
-  entries: BilledReportingEntry[]
-  vendors: BilledReportingVendor[]
-  daysInRange: number
+  report: BilledReporting | undefined
 }
 
-export default function ReportingCards({ entries, vendors, daysInRange }: Props) {
-  const summary = summarizeBilledReporting(entries, vendors, daysInRange)
-
+export default function ReportingCards({ report }: Props) {
+  const summary = report?.entryCount ? report : undefined
   return (
     <div className="summary-cards">
       <Card>
@@ -29,7 +26,7 @@ export default function ReportingCards({ entries, vendors, daysInRange }: Props)
       <Card>
         <div className="card-label">Top vendor</div>
         <div className="card-value card-value--model">{summary?.topVendorName ?? '—'}</div>
-        {summary && <div className="card-sub">{gbp(summary.topVendorGbp)}</div>}
+        {summary && <div className="card-sub">{summary.topVendorGbp === null ? '—' : gbp(summary.topVendorGbp)}</div>}
       </Card>
     </div>
   )

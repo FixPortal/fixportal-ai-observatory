@@ -22,6 +22,7 @@ public static class SpendEntriesEndpoints
     public static IEndpointRouteBuilder MapSpendEntriesEndpoints(this IEndpointRouteBuilder app)
     {
         app.MapGet("/spend/entries", GetEntriesAsync);
+        app.MapGet("/spend/reporting", GetReportingAsync);
         app.MapPost("/spend/entries", RecordEntriesAsync);
         app.MapPatch("/spend/entries/{id:guid}", PatchEntryAsync);
         app.MapDelete("/spend/entries/{id:guid}", DeleteEntryAsync);
@@ -297,6 +298,92 @@ public static class SpendEntriesEndpoints
         return Results.Ok(rows);
     }
 
+    private static async Task<IResult> GetReportingAsync(
+        AiObservatoryDbContext db,
+        CancellationToken ct,
+        string? from = null,
+        string? to = null
+    )
+    {
+        if (ParseDate(from, out var fromDate) is { } fromError)
+        {
+            return Results.BadRequest(fromError);
+        }
+        if (ParseDate(to, out var toDate) is { } toError)
+        {
+            return Results.BadRequest(toError);
+        }
+        if (fromDate is null || toDate is null)
+        {
+            return Results.BadRequest("from and to are required");
+        }
+        if (fromDate > toDate)
+        {
+            return Results.BadRequest("from must be on or before to");
+        }
+
+        // One grouped statement gives every card and series the same PostgreSQL statement
+        // snapshot. Only date/vendor aggregates cross the wire; the capped ledger endpoint is
+        // intentionally not involved in financial reporting.
+        var aggregateRows = await db
+            .SpendEntries.AsNoTracking()
+            .Where(entry => entry.OccurredOn >= fromDate && entry.OccurredOn <= toDate)
+            .Join(
+                db.SpendVendors.AsNoTracking(),
+                entry => entry.VendorId,
+                vendor => vendor.Id,
+                (entry, vendor) => new { Entry = entry, Vendor = vendor }
+            )
+            .GroupBy(row => new
+            {
+                row.Entry.OccurredOn,
+                row.Vendor.Id,
+                row.Vendor.DisplayName,
+            })
+            .Select(group => new
+            {
+                Date = group.Key.OccurredOn,
+                VendorId = group.Key.Id,
+                Name = group.Key.DisplayName,
+                AmountGbp = group.Sum(row => row.Entry.AmountGbp),
+                EntryCount = group.Count(),
+            })
+            .ToListAsync(ct);
+
+        var entryCount = aggregateRows.Sum(point => point.EntryCount);
+        var totalGbp = aggregateRows.Sum(point => point.AmountGbp);
+        var dailySeries = aggregateRows
+            .GroupBy(point => point.Date)
+            .OrderBy(group => group.Key)
+            .Select(group => new BilledDailyPoint(group.Key, group.Sum(point => point.AmountGbp)))
+            .ToList();
+        var vendorSeries = aggregateRows
+            .GroupBy(point => new { point.VendorId, point.Name })
+            .Select(group => new BilledVendorPoint(
+                group.Key.VendorId,
+                group.Key.Name,
+                group.Sum(point => point.AmountGbp)
+            ))
+            .OrderByDescending(point => point.AmountGbp)
+            .ThenBy(point => point.Name)
+            .ToList();
+        var daysInRange = Period.Between(fromDate.Value, toDate.Value, PeriodUnits.Days).Days + 1;
+        var topVendor = vendorSeries.FirstOrDefault();
+
+        return Results.Ok(
+            new BilledReportingResponse(
+                entryCount,
+                totalGbp,
+                entryCount == 0 ? 0m : totalGbp / daysInRange,
+                entryCount == 0 ? 0m : totalGbp / daysInRange * 30,
+                topVendor?.Name,
+                topVendor?.AmountGbp,
+                dailySeries,
+                vendorSeries
+            )
+        );
+    }
+
     /// <summary>Parses an optional yyyy-MM-dd query value, returning an error message on failure.</summary>
     private static string? ParseDate(string? raw, out LocalDate? parsed)
     {
@@ -481,4 +568,19 @@ public sealed record SpendEntryPatchRequest(
 // Serialized as the per-row API response; reflection-based JSON use is invisible to InspectCode.
 // ReSharper disable NotAccessedPositionalProperty.Global
 public sealed record SpendEntryResult(Guid? Id, string Status, string? Reason);
+
+public sealed record BilledReportingResponse(
+    int EntryCount,
+    decimal TotalGbp,
+    decimal DailyAverageGbp,
+    decimal ProjectedMonthlyGbp,
+    string? TopVendorName,
+    decimal? TopVendorGbp,
+    IReadOnlyList<BilledDailyPoint> DailySeries,
+    IReadOnlyList<BilledVendorPoint> VendorSeries
+);
+
+public sealed record BilledDailyPoint(LocalDate Date, decimal AmountGbp);
+
+public sealed record BilledVendorPoint(Guid VendorId, string Name, decimal AmountGbp);
 // ReSharper restore NotAccessedPositionalProperty.Global

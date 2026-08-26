@@ -1,6 +1,6 @@
 import { useMemo } from 'react'
 import { Card } from '../design/Card'
-import { useAggregates, useInsights, useSpendEntries, AGGREGATES_DAYS_RANGE, dashboardDateRange } from '../api/queries'
+import { useAggregates, useBilledReporting, useInsights, AGGREGATES_DAYS_RANGE, dashboardDateRange } from '../api/queries'
 import { useUsdToGbp, formatGbp, gbp } from '../lib/currency'
 import { formatInt } from '../lib/format'
 import { summarizeCosts } from '../lib/costSummary'
@@ -11,10 +11,11 @@ const notReported = 'Not reported'
 export default function SummaryCards() {
   const range = useMemo(() => dashboardDateRange(), [])
   const aggregates = useAggregates(range.from, range.to)
-  const { entries: spendEntries } = useSpendEntries(range.from, range.to)
+  const { report: billedReporting } = useBilledReporting(range.from, range.to)
   const insights = useInsights()
   const rate = useUsdToGbp()
-  const summary = summarizeCosts(aggregates, spendEntries)
+  const summary = summarizeCosts(aggregates, [])
+  const billedGbp = billedReporting?.entryCount ? billedReporting.totalGbp : null
 
   const { totalInputTokens, totalOutputTokens, totalCacheRead } = useMemo(() => aggregates.reduce((total, aggregate) => ({
     totalInputTokens: total.totalInputTokens + aggregate.inputTokens,
@@ -37,7 +38,7 @@ export default function SummaryCards() {
             <p>This uses the same rolling {AGGREGATES_DAYS_RANGE}-day window as every financial lane.</p>
           </InfoPopover>
         </div>
-        <div className="card-value card-value--lead">{summary.billedGbp === null ? notReported : gbp(summary.billedGbp)}</div>
+        <div className="card-value card-value--lead">{billedGbp === null ? notReported : gbp(billedGbp)}</div>
       </Card>
       <Card>
         <div className="card-label card-label--row">

@@ -46,3 +46,11 @@ test('does not add an older-insights disclosure when there are five unread insig
 
   expect(container.querySelector('summary')).not.toBeInTheDocument()
 })
+
+test('renders recommendations with the neutral insight label instead of deprecated info status', () => {
+  data.insights = [{ ...insight(1), insightType: 'recommendation' }]
+  const { container } = renderFeed()
+
+  expect(screen.getByText('Recommendation')).toHaveClass('insight-type')
+  expect(container.querySelector('.fpds-badge--info')).not.toBeInTheDocument()
+})

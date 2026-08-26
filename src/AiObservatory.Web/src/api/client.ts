@@ -423,6 +423,20 @@ export const patchSpendVendor = async (id: string, body: SpendVendorPatch): Prom
 export const getSpendEntries = (from: string, to: string) =>
   getJson<SpendEntry[]>('/spend/entries', { from, to })
 
+export interface BilledReporting {
+  entryCount: number
+  totalGbp: number
+  dailyAverageGbp: number
+  projectedMonthlyGbp: number
+  topVendorName: string | null
+  topVendorGbp: number | null
+  dailySeries: { date: string; amountGbp: number }[]
+  vendorSeries: { vendorId: string; name: string; amountGbp: number }[]
+}
+
+export const getBilledReporting = (from: string, to: string) =>
+  getJson<BilledReporting>('/spend/reporting', { from, to })
+
 /** Always an array — the manual form sends one. */
 export const postSpendEntries = async (entries: NewSpendEntry[]): Promise<SpendEntryResult[]> => {
   const res = await request('/spend/entries', {

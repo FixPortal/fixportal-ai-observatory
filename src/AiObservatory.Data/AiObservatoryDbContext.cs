@@ -34,6 +34,7 @@ public class AiObservatoryDbContext(DbContextOptions<AiObservatoryDbContext> opt
     public DbSet<Subscription> Subscriptions => Set<Subscription>();
     public DbSet<Insight> Insights => Set<Insight>();
     public DbSet<BudgetRule> BudgetRules => Set<BudgetRule>();
+    public DbSet<BudgetAlertClaim> BudgetAlertClaims => Set<BudgetAlertClaim>();
     public DbSet<AdversarialReviewRun> AdversarialReviewRuns => Set<AdversarialReviewRun>();
     public DbSet<CavemanSession> CavemanSessions => Set<CavemanSession>();
     public DbSet<ClaudeActivitySession> ClaudeActivitySessions => Set<ClaudeActivitySession>();
@@ -396,6 +397,27 @@ public class AiObservatoryDbContext(DbContextOptions<AiObservatoryDbContext> opt
         {
             b.Property(r => r.Provider).HasConversion<string>();
             b.Property(r => r.Period).HasConversion<string>();
+        });
+
+        modelBuilder.Entity<BudgetAlertClaim>(b =>
+        {
+            b.HasIndex(claim => new
+                {
+                    claim.BudgetRuleId,
+                    claim.PeriodStart,
+                    claim.PeriodEnd,
+                })
+                .IsUnique()
+                .HasDatabaseName("UX_BudgetAlertClaims_RulePeriod");
+            b.HasIndex(claim => claim.InsightId).IsUnique();
+            b.HasOne<BudgetRule>()
+                .WithMany()
+                .HasForeignKey(claim => claim.BudgetRuleId)
+                .OnDelete(DeleteBehavior.Cascade);
+            b.HasOne<Insight>().WithMany().HasForeignKey(claim => claim.InsightId).OnDelete(DeleteBehavior.Restrict);
+            b.ToTable(table =>
+                table.HasCheckConstraint("CK_BudgetAlertClaim_Period", "\"PeriodEnd\" >= \"PeriodStart\"")
+            );
         });
 
         modelBuilder.Entity<CavemanSession>(b =>

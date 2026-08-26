@@ -714,7 +714,7 @@ td.budget-rules__actions { display: table-cell; padding: 6px 0 6px 8px; text-ali
 
 .insight-anomaly { border-left-color: var(--bad-border); background: var(--bad-bg); }
 .insight-efficiency { border-left-color: var(--ok-border); background: var(--ok-bg); }
-.insight-recommendation { border-left-color: var(--info-border); background: var(--info-bg); }
+.insight-recommendation { border-left-color: var(--brand); background: var(--brand-tint); }
 .insight-summary { border-left-color: var(--border-strong); }
 .insight-summary .insight-type { color: var(--text-muted); }
 

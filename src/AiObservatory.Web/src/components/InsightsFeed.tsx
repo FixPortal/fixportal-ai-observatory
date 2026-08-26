@@ -16,7 +16,6 @@ const TYPE_LABELS: Record<string, string> = {
 const INSIGHT_VARIANTS: Record<string, 'ok' | 'warn' | 'bad' | 'info'> = {
   anomaly: 'bad',
   efficiency: 'ok',
-  recommendation: 'info',
   budgetalert: 'warn',
 }
 

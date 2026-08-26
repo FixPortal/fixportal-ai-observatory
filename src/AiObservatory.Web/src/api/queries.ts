@@ -6,12 +6,12 @@ import {
   getBudgetRules, getEmailStatus,
   getActivityDaily, getActivityByProject,
   getGitHubPrs, getGitHubCommitSummary, getGitHubCi,
-  getSpendCategories, getSpendVendors, getSpendEntries, getSourceStatuses,
+  getSpendCategories, getSpendVendors, getSpendEntries, getBilledReporting, getSourceStatuses,
   type DailyAggregate, type Insight, type Subscription,
   type AdversarialReviewRun, type AdversarialReviewStats, type CavemanStats,
   type BudgetRule, type DailyActivity, type ProjectActivity,
   type GitHubPr, type GitHubCommitSummary, type GitHubCiSummary,
-  type SpendCategory, type SpendVendor, type SpendEntry, type SourceStatusResponse,
+  type SpendCategory, type SpendVendor, type SpendEntry, type BilledReporting, type SourceStatusResponse,
 } from './client'
 
 // Shared query hooks. Components subscribe directly (react-query deduplicates by
@@ -181,12 +181,24 @@ export function useSpendEntries(from: Date, to: Date): {
   return { entries: data, isLoading: isPending, isError }
 }
 
+export function useBilledReporting(from: Date, to: Date): {
+  report: BilledReporting | undefined
+  isLoading: boolean
+  isError: boolean
+} {
+  const { data, isPending, isError } = useQuery({
+    queryKey: ['billed-reporting', localDate(from), localDate(to)],
+    queryFn: () => getBilledReporting(localDate(from), localDate(to)),
+  })
+  return { report: data, isLoading: isPending, isError }
+}
+
 export function useDashboardStatus(): { isError: boolean; isLoading: boolean; error: unknown } {
   const range = useMemo(() => dashboardDateRange(), [])
   const from = localDate(range.from)
   const to = localDate(range.to)
   const { isError: aIsError, isPending: aIsPending, error: aError } = useQuery({ queryKey: ['aggregates', from, to], queryFn: () => getAggregates(from, to) })
-  const { isError: pIsError, isPending: pIsPending, error: pError } = useQuery({ queryKey: ['spend-entries', from, to], queryFn: () => getSpendEntries(from, to) })
+  const { isError: pIsError, isPending: pIsPending, error: pError } = useQuery({ queryKey: ['billed-reporting', from, to], queryFn: () => getBilledReporting(from, to) })
   const { isError: iIsError, isPending: iIsPending, error: iError } = useQuery({ queryKey: ['insights'], queryFn: getInsights })
   const { isError: sIsError, isPending: sIsPending, error: sError } = useQuery({ queryKey: ['subscriptions'], queryFn: getSubscriptions })
   const { isError: ssIsError, isPending: ssIsPending, error: ssError } = useQuery({ queryKey: ['source-statuses'], queryFn: getSourceStatuses })
