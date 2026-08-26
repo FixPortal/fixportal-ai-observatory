@@ -256,6 +256,33 @@ body {
   border-bottom: 1px solid var(--border);
 }
 
+/* ---- Budget rules ---- */
+.budget-rules__header { display: flex; align-items: center; justify-content: space-between; gap: var(--space-3); flex-wrap: wrap; }
+.budget-rules__title-row { display: flex; align-items: center; gap: var(--space-3); flex-wrap: wrap; }
+.budget-rules__title-row .panel-title { margin-bottom: 0; padding-bottom: 0; border-bottom: none; }
+.budget-rules__channel { font-size: 0.75rem; font-weight: 500; padding: 2px 8px; border-radius: 4px; }
+.budget-rules__body { margin-top: var(--space-3); border-top: 1px solid var(--border); padding-top: var(--space-3); }
+.budget-rules__table { width: 100%; border-collapse: collapse; font-size: 0.82rem; }
+.budget-rules__table tr { border-bottom: 1px solid var(--border); }
+.budget-rules__table th { padding: 4px 8px; color: var(--text-muted); font-weight: 600; text-align: left; }
+.budget-rules__table th:first-child { padding-left: 0; }
+.budget-rules__table th:nth-child(3) { text-align: right; }
+.budget-rules__table th:last-child { width: 32px; }
+.budget-rules__table td { padding: 6px 8px; color: var(--text); }
+.budget-rules__table td:first-child { padding-left: 0; }
+.budget-rules__table td:nth-child(3) { text-align: right; }
+.budget-rules__table td:nth-child(4) { color: var(--text-muted); }
+.budget-rules__actions { display: inline-flex; gap: var(--space-2); justify-content: flex-end; }
+td.budget-rules__actions { display: table-cell; padding: 6px 0 6px 8px; text-align: center; }
+.budget-rules__form-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: var(--space-3); margin-bottom: var(--space-4); }
+.budget-rules__field { display: flex; flex-direction: column; gap: 4px; font-size: 0.8rem; color: var(--text-muted); }
+.budget-rules__control { font: inherit; font-size: 0.85rem; padding: 5px 8px; border-radius: 4px; border: 1px solid var(--border); background: var(--card-bg); color: var(--text); }
+.budget-rules__history { margin-top: var(--space-3); }
+.budget-rules__history .budget-rules__history { margin-top: 0; display: flex; flex-direction: column; gap: var(--space-2); }
+.budget-rules__history .insight { padding: var(--space-3); }
+.budget-rules__history .insight-body { margin-top: var(--space-1); }
+.budget-rules__history-time { font-size: 0.75rem; color: var(--text-muted); margin-top: var(--space-1); }
+
 /* Empty-state copy shown in a panel when there is no data / no unread insights. */
 .panel-empty {
   margin: 0;
