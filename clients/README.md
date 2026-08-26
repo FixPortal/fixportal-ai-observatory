@@ -1,8 +1,8 @@
 # Local usage producers
 
-> Machine-local Codex, Copilot, Claude, and Kimi telemetry guide as of 2026-08-25. These are best-effort subscription/notional facts, not invoices.
+> Machine-local Codex, Copilot, Claude, Kimi, Gemini review, and Antigravity telemetry guide as of 2026-08-26.
 
-`observatory-sweep.mjs` reads installed CLI logs and posts cumulative daily/model snapshots to `POST /api/events`. It has no dependencies beyond Node 18+.
+`observatory-sweep.mjs` reads installed CLI logs and posts cumulative daily/model snapshots to `POST /api/events`. It has no dependencies beyond Node 24+.
 
 Each posted snapshot carries explicit provenance so the API preserves its subscription/notional meaning:
 
@@ -37,6 +37,8 @@ Each posted snapshot carries explicit provenance so the API preserves its subscr
 | Copilot | `~/.copilot/session-state/**/events.jsonl`; final `session.shutdown` per-model totals | `copilot-local` / subscription / notional; final cumulative totals win |
 | Claude | `~/.claude/projects/**/*.jsonl`; assistant usage | `claude-local` / subscription / notional; global `message.id` dedupe retains the richest copy |
 | Kimi | `~/.kimi-code/sessions/**/wire.jsonl`; `usage.record` only | `kimi-local` / subscription / notional; mirrored `step.end` rows do not count; turn and session scopes count |
+| Gemini review | `~/.gemini/tmp/gem-review-*/chats/session-*.jsonl`; response usage | `gemini-review-local` / API / list-price estimate; only the review wrapper's API-key-isolated sessions are included |
+| Antigravity | `~/.gemini/antigravity-cli/conversations/*.db` plus matching transcript | `antigravity-local` / subscription / notional; SQLite step totals are attributed to the transcript's selected model |
 
 Stable source-scoped keys make resubmission safe. Before posting, the sweeper reads server inventory and emits zero corrections for removed or disabled snapshots. Its state file is only a parse cache; losing it causes a safe full rescan, not a loss of server truth.
 
@@ -64,8 +66,8 @@ node clients/observatory-sweep.mjs --dry-run --verbose
 | `OBSERVATORY_API_KEY` | Required | Sent as `X-Observatory-Key`; absent means no post. |
 | `OBSERVATORY_URL` | `http://localhost:5039` | API origin; HTTPS is required except for loopback development. Use `http://localhost:4173` for Compose's frontend proxy. |
 | `OBSERVATORY_STATE` | `~/.ai-observatory/sweep-state.json` | Safe-to-delete parse cache. |
-| `OBSERVATORY_LOCAL_SOURCES` | `codex,copilot,claude,kimi` | Comma-separated collector allowlist. |
-| `CODEX_HOME`, `COPILOT_HOME`, `CLAUDE_HOME`, `KIMI_HOME` | Tool homes above | Optional home overrides. |
+| `OBSERVATORY_LOCAL_SOURCES` | `codex,copilot,claude,kimi,gemini,antigravity` | Comma-separated collector allowlist. |
+| `CODEX_HOME`, `COPILOT_HOME`, `CLAUDE_HOME`, `KIMI_HOME`, `GEMINI_HOME` | Tool homes above | Optional home overrides. |
 
 Schedule the same one-line command with your platform's scheduler. Re-running is safe and idempotent; there is no throttle or separate server-side sweeper state to maintain.
 

@@ -157,6 +157,7 @@ public sealed class PricingRefreshWorkerServiceTests(ProviderPollingDatabase dat
                     .Be(healthyCandidate.ContentHash);
                 (await harness.LoadActiveAsync(PricingSourceIds.Kimi)).Should().NotBeNull();
                 (await harness.LoadActiveAsync(PricingSourceIds.GoogleCloudCatalog)).Should().NotBeNull();
+                (await harness.LoadActiveAsync(PricingSourceIds.GeminiDeveloperApi)).Should().NotBeNull();
                 (await harness.LoadActiveAsync(PricingSourceIds.OpenAi)).Should().BeNull();
                 (await harness.FindStateAsync(PricingSourceIds.OpenAi)).Should().BeNull();
             }
@@ -275,7 +276,7 @@ public sealed class PricingRefreshWorkerServiceTests(ProviderPollingDatabase dat
     {
         var directory = Directory.CreateTempSubdirectory();
         var bundleDirectory = Directory.CreateDirectory(Path.Combine(directory.FullName, "Pricing", "Bundled"));
-        foreach (var fileName in new[] { "claude.json", "kimi.json", "google.json" })
+        foreach (var fileName in new[] { "claude.json", "kimi.json", "google.json", "gemini-developer-api.json" })
         {
             File.Copy(
                 Path.Combine(AppContext.BaseDirectory, "Pricing", "Bundled", fileName),

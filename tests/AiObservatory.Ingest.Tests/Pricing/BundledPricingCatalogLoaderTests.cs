@@ -20,7 +20,7 @@ namespace AiObservatory.Ingest.Tests.Pricing;
 public sealed class BundledPricingCatalogLoaderTests(ProviderPollingDatabase database)
 {
     [Fact]
-    public async Task ActivatesAllFourStrictlyValidatedBundlesOnColdStart()
+    public async Task ActivatesAllStrictlyValidatedBundlesOnColdStart()
     {
         await using var harness = await CreateHarnessAsync();
 
@@ -36,11 +36,17 @@ public sealed class BundledPricingCatalogLoaderTests(ProviderPollingDatabase dat
                 PricingSourceIds.OpenAi,
                 PricingSourceIds.Claude,
                 PricingSourceIds.Kimi,
-                PricingSourceIds.GoogleCloudCatalog
+                PricingSourceIds.GoogleCloudCatalog,
+                PricingSourceIds.GeminiDeveloperApi
             );
         snapshots.Should().OnlyContain(snapshot => snapshot.IsActive);
         var google = snapshots.Single(snapshot => snapshot.SourceId == PricingSourceIds.GoogleCloudCatalog);
         PricingCatalogJson.Deserialize<GooglePriceCatalog>(google.NormalizedCatalog).Entries.Should().BeEmpty();
+        var gemini = snapshots.Single(snapshot => snapshot.SourceId == PricingSourceIds.GeminiDeveloperApi);
+        PricingCatalogJson
+            .Deserialize<GeminiDeveloperPriceCatalog>(gemini.NormalizedCatalog)
+            .Entries.Should()
+            .HaveCount(4);
     }
 
     [Fact]
@@ -95,6 +101,37 @@ public sealed class BundledPricingCatalogLoaderTests(ProviderPollingDatabase dat
         )
             .Should()
             .Be(1);
+    }
+
+    [Fact]
+    public async Task ReplacesTheBundledOnlyGeminiCatalogWhenTheShippedEvidenceChanges()
+    {
+        await using var harness = await CreateHarnessAsync();
+        var raw = await File.ReadAllTextAsync(
+            Path.Combine(AppContext.BaseDirectory, "Pricing", "Bundled", "gemini-developer-api.json"),
+            TestContext.Current.CancellationToken
+        );
+        var bundled = PricingCatalogJson.Deserialize<GeminiDeveloperPriceCatalog>(raw);
+        var stale = bundled with { Entries = [bundled.Entries[0] with { Input = 99m }, .. bundled.Entries.Skip(1)] };
+        await harness.Store.ActivateAsync(
+            PricingCandidate.Create(
+                Provider.Google,
+                PricingSourceIds.GeminiDeveloperApi,
+                bundled.RetrievedAt,
+                bundled.SourceUrl,
+                "stale Gemini evidence",
+                stale
+            ),
+            TestContext.Current.CancellationToken
+        );
+
+        await harness.Loader.LoadAsync(TestContext.Current.CancellationToken);
+
+        var active = await harness.Store.GetActiveAsync(
+            PricingSourceIds.GeminiDeveloperApi,
+            TestContext.Current.CancellationToken
+        );
+        active!.ContentHash.Should().Be(Convert.ToHexStringLower(SHA256.HashData(Encoding.UTF8.GetBytes(raw))));
     }
 
     [Fact]

@@ -110,13 +110,23 @@ public sealed class PricingSnapshotStore(AiObservatoryDbContext db)
             .SingleOrDefaultAsync(snapshot => snapshot.SourceId == sourceId && snapshot.IsActive, cancellationToken);
     }
 
-    public async Task<PricingSnapshot?> GetCatalogForDateAsync(
+    public Task<PricingSnapshot?> GetCatalogForDateAsync(
         Provider provider,
         LocalDate usageDate,
         CancellationToken cancellationToken = default
+    ) => GetCatalogForDateAsync(GetSourceId(provider), usageDate, cancellationToken);
+
+    public Task<PricingSnapshot?> GetCatalogForDateAsync(
+        UsageEvent usage,
+        CancellationToken cancellationToken = default
+    ) => GetCatalogForDateAsync(GetSourceId(usage), usage.OccurredAt.InUtc().Date, cancellationToken);
+
+    private async Task<PricingSnapshot?> GetCatalogForDateAsync(
+        string? sourceId,
+        LocalDate usageDate,
+        CancellationToken cancellationToken
     )
     {
-        var sourceId = GetSourceId(provider);
         if (sourceId is null)
         {
             return null;
@@ -131,12 +141,14 @@ public sealed class PricingSnapshotStore(AiObservatoryDbContext db)
         return snapshots.FirstOrDefault(snapshot => Covers(snapshot, usageDate));
     }
 
-    internal async Task AcquireSharedActivationLockAsync(
-        Provider provider,
-        CancellationToken cancellationToken = default
-    )
+    internal Task AcquireSharedActivationLockAsync(Provider provider, CancellationToken cancellationToken = default) =>
+        AcquireSharedActivationLockAsync(GetSourceId(provider), cancellationToken);
+
+    internal Task AcquireSharedActivationLockAsync(UsageEvent usage, CancellationToken cancellationToken = default) =>
+        AcquireSharedActivationLockAsync(GetSourceId(usage), cancellationToken);
+
+    private async Task AcquireSharedActivationLockAsync(string? sourceId, CancellationToken cancellationToken)
     {
-        var sourceId = GetSourceId(provider);
         if (sourceId is null)
         {
             return;
@@ -165,6 +177,9 @@ public sealed class PricingSnapshotStore(AiObservatoryDbContext db)
             Provider.Moonshot => PricingCatalogJson
                 .Deserialize<KimiPriceCatalog>(snapshot.NormalizedCatalog)
                 .Entries.Any(entry => entry.EffectiveFrom <= usageDate),
+            Provider.Google when snapshot.SourceId == PricingSourceIds.GeminiDeveloperApi => PricingCatalogJson
+                .Deserialize<GeminiDeveloperPriceCatalog>(snapshot.NormalizedCatalog)
+                .Entries.Any(entry => entry.EffectiveFrom <= usageDate),
             Provider.Google => PricingCatalogJson
                 .Deserialize<GooglePriceCatalog>(snapshot.NormalizedCatalog)
                 .Entries.Any(entry => entry.EffectiveFrom <= usageDate),
@@ -181,6 +196,21 @@ public sealed class PricingSnapshotStore(AiObservatoryDbContext db)
             _ => null,
         };
 
+    private static string? GetSourceId(UsageEvent usage)
+    {
+        if (usage.Provider != Provider.Google)
+        {
+            return GetSourceId(usage.Provider);
+        }
+
+        using var evidence = ProviderPricingJson.Evidence(usage.RawPayload);
+        return
+            ProviderPricingJson.TryString(evidence.RootElement, "service", out var service)
+            && service.Equals("Gemini Developer API", StringComparison.OrdinalIgnoreCase)
+            ? PricingSourceIds.GeminiDeveloperApi
+            : PricingSourceIds.GoogleCloudCatalog;
+    }
+
     private static void Validate(PricingSnapshotCandidate candidate)
     {
         ArgumentNullException.ThrowIfNull(candidate);
@@ -189,7 +219,10 @@ public sealed class PricingSnapshotStore(AiObservatoryDbContext db)
         {
             throw new ArgumentException("The provider has no first-party pricing source.", nameof(candidate));
         }
-        if (!string.Equals(candidate.SourceId, expectedSourceId, StringComparison.Ordinal))
+        if (
+            !string.Equals(candidate.SourceId, expectedSourceId, StringComparison.Ordinal)
+            && !(candidate.Provider == Provider.Google && candidate.SourceId == PricingSourceIds.GeminiDeveloperApi)
+        )
         {
             throw new ArgumentException("The pricing source does not match the provider.", nameof(candidate));
         }
@@ -233,6 +266,9 @@ public sealed class PricingSnapshotStore(AiObservatoryDbContext db)
                 Provider.Moonshot => ValidateAndGetSource(
                     PricingCatalogJson.Deserialize<KimiPriceCatalog>(candidate.NormalizedCatalog)
                 ),
+                Provider.Google when candidate.SourceId == PricingSourceIds.GeminiDeveloperApi => ValidateAndGetSource(
+                    PricingCatalogJson.Deserialize<GeminiDeveloperPriceCatalog>(candidate.NormalizedCatalog)
+                ),
                 Provider.Google => ValidateAndGetSource(
                     PricingCatalogJson.Deserialize<GooglePriceCatalog>(candidate.NormalizedCatalog)
                 ),
@@ -268,6 +304,12 @@ public sealed class PricingSnapshotStore(AiObservatoryDbContext db)
     }
 
     private static string ValidateAndGetSource(GooglePriceCatalog catalog)
+    {
+        catalog.Validate();
+        return catalog.SourceUrl;
+    }
+
+    private static string ValidateAndGetSource(GeminiDeveloperPriceCatalog catalog)
     {
         catalog.Validate();
         return catalog.SourceUrl;

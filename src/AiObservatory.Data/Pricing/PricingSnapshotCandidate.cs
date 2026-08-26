@@ -19,6 +19,7 @@ public static class PricingSourceIds
     public const string Claude = "claude-pricing";
     public const string Kimi = "kimi-pricing";
     public const string GoogleCloudCatalog = "google-cloud-catalog";
+    public const string GeminiDeveloperApi = "gemini-developer-api-pricing";
 }
 
 public enum PricingActivationResult

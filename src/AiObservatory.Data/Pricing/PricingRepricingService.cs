@@ -19,6 +19,7 @@ public sealed class PricingRepricingService(
                 usage.Provider == provider
                 && (usage.CostBasis == CostBasis.ListPriceEstimate || usage.CostBasis == CostBasis.Notional)
             )
+            .OrderBy(usage => usage.Id)
             .ToListAsync(cancellationToken);
         foreach (var usage in events)
         {

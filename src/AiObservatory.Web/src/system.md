@@ -6,6 +6,12 @@ Canonical base: `@fixportal/design` 0.8.1 at tag `v0.8.1` / commit `6b3e3e0`, ve
 
 AI Observatory is evidence-first: values carry source, scope, basis, freshness, and observation time. Billed GBP, estimates, and subscription notional value never share a total or visual claim.
 
+## Overview hierarchy
+
+Keep headline usage and valuation followed by analytical evidence as the primary flow. Put operational collection mechanics at the bottom in a quiet, collapsed `Data sources` panel; do not create a settings area for a single panel. Its summary counts reporting and not-connected sources, plus attention only when non-zero. Use `Not connected`, never `Not configured`. Explain that collection health covers optional APIs and local telemetry and does not indicate missing subscription usage.
+
+Collapsed disclosures containing controls use native `inert` alongside `aria-hidden` so hidden controls are not keyboard-focusable. Reuse the existing `CollapsiblePanel`, canonical tokens, border-only depth, and 4 px spacing.
+
 ## App-local palettes
 
 Provider colours identify providers in charts, swatches, and provider badges only. Project colours identify project series only. Neither palette communicates status, selection, progress, or interaction. The canonical blue accent is interaction; green, amber, and red are status.

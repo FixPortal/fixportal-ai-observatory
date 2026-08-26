@@ -40,7 +40,7 @@ public class UsageRepository(
             evt,
             async (usage, cancellationToken) =>
             {
-                await pricingStore.AcquireSharedActivationLockAsync(usage.Provider, cancellationToken);
+                await pricingStore.AcquireSharedActivationLockAsync(usage, cancellationToken);
                 var quote = await priceResolver.ResolveAsync(usage, cancellationToken);
                 usage.CostUsd = quote?.CostUsd;
                 usage.CacheSavingsUsd = quote?.CacheSavingsUsd;

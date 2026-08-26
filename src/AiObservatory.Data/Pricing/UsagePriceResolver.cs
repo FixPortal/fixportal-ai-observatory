@@ -41,11 +41,7 @@ public sealed class UsagePriceResolver
             return null;
         }
 
-        var snapshot = await _store.GetCatalogForDateAsync(
-            usage.Provider,
-            usage.OccurredAt.InUtc().Date,
-            cancellationToken
-        );
+        var snapshot = await _store.GetCatalogForDateAsync(usage, cancellationToken);
         if (snapshot is null)
         {
             WarnOnce(usage, "catalog");
@@ -124,14 +120,7 @@ public sealed class UsagePriceResolver
                     RequireBoolean(root, "batch", missing);
                     break;
                 case Provider.Google:
-                    foreach (var dimension in new[] { "service", "sku_id", "region", "modality", "tier", "cache_lane" })
-                    {
-                        RequireString(root, dimension, missing);
-                    }
-                    if (!ProviderPricingJson.TryInt64(root, "context_threshold", out _))
-                    {
-                        missing.Add("context_threshold");
-                    }
+                    RequireGoogleDimensions(root, missing);
                     break;
             }
         }
@@ -146,6 +135,29 @@ public sealed class UsagePriceResolver
         }
 
         return missing.Count == 0 ? "catalog-entry" : string.Join(',', missing.Order(StringComparer.Ordinal));
+    }
+
+    private static void RequireGoogleDimensions(JsonElement root, ICollection<string> missing)
+    {
+        RequireString(root, "service", missing);
+        if (
+            ProviderPricingJson.TryString(root, "service", out var service)
+            && service.Equals("Gemini Developer API", StringComparison.OrdinalIgnoreCase)
+        )
+        {
+            RequireString(root, "tier", missing);
+            RequireString(root, "context", missing);
+            return;
+        }
+
+        foreach (var dimension in new[] { "sku_id", "region", "modality", "tier", "cache_lane" })
+        {
+            RequireString(root, dimension, missing);
+        }
+        if (!ProviderPricingJson.TryInt64(root, "context_threshold", out _))
+        {
+            missing.Add("context_threshold");
+        }
     }
 
     private static void RequireString(JsonElement root, string name, ICollection<string> missing)
