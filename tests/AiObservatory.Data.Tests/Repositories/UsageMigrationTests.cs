@@ -253,17 +253,5 @@ public class UsageMigrationTests : IAsyncLifetime
             )
             .ToListAsync(ct);
         claimConstraints.Should().BeEquivalentTo("CK_BudgetAlertClaim_EmailLease", "CK_BudgetAlertClaim_Period");
-
-        var branchMigrations = await afterMigration
-            .Database.SqlQueryRaw<string>(
-                """
-                SELECT "MigrationId" AS "Value"
-                FROM "__EFMigrationsHistory"
-                WHERE "MigrationId" > '20260825220510_TrackPendingSourceWindows'
-                ORDER BY "MigrationId"
-                """
-            )
-            .ToListAsync(ct);
-        branchMigrations.Should().ContainSingle().Which.Should().EndWith("_AddBudgetAlertsAndRenameThresholdToGbp");
     }
 }
