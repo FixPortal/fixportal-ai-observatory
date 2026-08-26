@@ -733,7 +733,14 @@ public class UsageRepositoryTests : IAsyncLifetime
         (await _repo.GetBilledSpendGbpAsync(new LocalDate(2026, 8, 1), new LocalDate(2026, 8, 2), null, ct))
             .Should()
             .Be(25m);
-        (await _repo.GetBilledSpendGbpAsync(new LocalDate(2026, 8, 1), new LocalDate(2026, 8, 2), Provider.Anthropic, ct))
+        (
+            await _repo.GetBilledSpendGbpAsync(
+                new LocalDate(2026, 8, 1),
+                new LocalDate(2026, 8, 2),
+                Provider.Anthropic,
+                ct
+            )
+        )
             .Should()
             .Be(15m);
     }

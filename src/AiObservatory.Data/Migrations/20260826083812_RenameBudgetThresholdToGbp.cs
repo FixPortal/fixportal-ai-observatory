@@ -10,19 +10,13 @@ namespace AiObservatory.Data.Migrations
         /// <inheritdoc />
         protected override void Up(MigrationBuilder migrationBuilder)
         {
-            migrationBuilder.RenameColumn(
-                name: "ThresholdUsd",
-                table: "BudgetRules",
-                newName: "ThresholdGbp");
+            migrationBuilder.RenameColumn(name: "ThresholdUsd", table: "BudgetRules", newName: "ThresholdGbp");
         }
 
         /// <inheritdoc />
         protected override void Down(MigrationBuilder migrationBuilder)
         {
-            migrationBuilder.RenameColumn(
-                name: "ThresholdGbp",
-                table: "BudgetRules",
-                newName: "ThresholdUsd");
+            migrationBuilder.RenameColumn(name: "ThresholdGbp", table: "BudgetRules", newName: "ThresholdUsd");
         }
     }
 }
