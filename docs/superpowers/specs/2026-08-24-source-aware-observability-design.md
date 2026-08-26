@@ -357,10 +357,9 @@ The database migration is additive and lossless:
 7. Preserve every historical aggregate. Split one only where exact source reconstruction is
    possible; never invent a distribution.
 
-Existing ingest request fields remain accepted during transition. A request without provenance
-maps to `legacy-api`, `Legacy`, `Unknown`, and `Unknown`. Updated shipped clients send explicit
-metadata. This keeps old installed sweepers functioning without allowing their data to masquerade
-as a better source.
+> **Superseded 2026-08-26:** production evidence showed that accepting provenance-free writes
+> silently recreated misleading legacy aggregates. `POST /api/events` now requires `sourceId`,
+> `sourceKind`, `usageScope`, and `costBasis`; historical legacy rows remain migration-compatible.
 
 Historical estimates are not bulk-repriced unless their source and pricing dimensions are
 complete. Billed history is immutable through this path.

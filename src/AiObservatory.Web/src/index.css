@@ -330,29 +330,8 @@ td.budget-rules__actions { display: table-cell; padding: 6px 0 6px 8px; text-ali
 }
 
 /* ---- Source freshness evidence ledger ---- */
-.source-status {
-  margin-top: var(--space-4);
-  background: var(--card-bg);
-  border: 1px solid var(--border);
-  border-radius: var(--r-panel);
-  padding: var(--space-3) var(--space-4);
-}
-.source-status__header {
-  display: flex;
-  align-items: baseline;
-  justify-content: space-between;
-  gap: var(--space-3);
-  margin-bottom: var(--space-2);
-}
-.source-status__header h2 {
-  margin: 0;
-  font-size: 12px;
-  font-weight: 600;
-  letter-spacing: 0.05em;
-  text-transform: uppercase;
-  color: var(--text-muted);
-}
-.source-status__header span { font-size: 11px; color: var(--text-faint); }
+.source-status-zone { margin-top: 0; margin-bottom: var(--space-6); }
+.source-status__intro { margin: 0 0 var(--space-3); color: var(--text-muted); font-size: 12px; }
 .source-status__list {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));

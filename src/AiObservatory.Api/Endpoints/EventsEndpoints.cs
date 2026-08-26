@@ -31,7 +31,6 @@ public static class EventsEndpoints
     private static async Task<IResult> RecordEventAsync(
         UsageEventRequest req,
         IUsageRepository repo,
-        SourceSyncStateStore sourceSyncStateStore,
         IClock clock,
         HttpContext ctx
     )
@@ -106,16 +105,6 @@ public static class EventsEndpoints
         var result = IsEstimated(costBasis)
             ? await repo.RecordEstimatedEventAsync(evt, ctx.RequestAborted)
             : await repo.RecordEventAsync(evt, ctx.RequestAborted);
-        if (sourceKind == SourceKind.LocalTelemetry)
-        {
-            await sourceSyncStateStore.MarkSuccessAsync(
-                sourceId,
-                Duration.FromDays(1),
-                now,
-                observedAt,
-                ctx.RequestAborted
-            );
-        }
 
         return result.Disposition == RecordEventDisposition.Created
             ? Results.CreatedAtRoute("GetEventById", new { id = result.EventId }, new { Id = result.EventId })
@@ -238,6 +227,20 @@ public static class EventsEndpoints
         out CostBasis costBasis
     )
     {
+        if (
+            string.IsNullOrWhiteSpace(req.SourceId)
+            || string.IsNullOrWhiteSpace(req.SourceKind)
+            || string.IsNullOrWhiteSpace(req.UsageScope)
+            || string.IsNullOrWhiteSpace(req.CostBasis)
+        )
+        {
+            sourceId = UsageSourceIds.LegacyApi;
+            sourceKind = SourceKind.Legacy;
+            usageScope = UsageScope.Unknown;
+            costBasis = CostBasis.Unknown;
+            return "SourceId, SourceKind, UsageScope, and CostBasis provenance are required.";
+        }
+
         sourceId = NormalizeSourceId(req.SourceId);
         sourceKind = SourceKind.Legacy;
         usageScope = UsageScope.Unknown;

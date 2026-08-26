@@ -44,12 +44,29 @@ export function observatoryUrl(value) {
   return url.href.replace(/\/+$/, '')
 }
 
-export function observatoryFetch(url, apiKey, options = {}) {
-  return fetch(url, {
-    ...options,
-    headers: { ...options.headers, 'X-Observatory-Key': apiKey },
-    redirect: 'error',
-  })
+export async function observatoryFetch(url, apiKey, options = {}) {
+  for (let attempt = 1; attempt <= 3; attempt++) {
+    let response
+    try {
+      response = await fetch(url, {
+        ...options,
+        headers: { ...options.headers, 'X-Observatory-Key': apiKey },
+        redirect: 'error',
+        signal: AbortSignal.timeout(10_000),
+      })
+    } catch (error) {
+      if (attempt === 3) { throw error }
+      await new Promise(resolve => setTimeout(resolve, 1_000))
+      continue
+    }
+    const retryable = response.status === 429 || response.status >= 500
+    if (!retryable || attempt === 3) { return response }
+    const retryAfter = response.headers.get('Retry-After')
+    const fallbackDelayMs = response.status === 429 ? 61_000 : 1_000
+    const delayMs = retryAfter && /^\d+$/.test(retryAfter) ? Number(retryAfter) * 1_000 : fallbackDelayMs
+    await response.body?.cancel()
+    await new Promise(resolve => setTimeout(resolve, delayMs))
+  }
 }
 
 /**
@@ -386,7 +403,7 @@ export async function updateFileCache(files, cache, parse, read = path => readFi
       const parsed = await parse(await read(file.path), file)
       next[file.path] = { mtimeMs: file.mtimeMs, records: parsed ?? [] }
     }
-    records.push(...next[file.path].records)
+    for (const record of next[file.path].records) { records.push(record) }
   }
   return { cache: next, records }
 }
@@ -422,7 +439,6 @@ async function postEvent(url, apiKey, body) {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(body),
-      signal: AbortSignal.timeout(10_000),
     })
     if (!response.ok) { log(`POST ${response.status} for ${body.eventKey}`); return false }
     return true
@@ -438,9 +454,6 @@ async function fetchSnapshotInventory(url, apiKey) {
     const response = await observatoryFetch(
       `${url}/api/events/local-snapshots?sourceId=${encodeURIComponent(sourceId)}`,
       apiKey,
-      {
-        signal: AbortSignal.timeout(10_000),
-      },
     )
     if (!response.ok) { throw new Error(`Inventory GET ${response.status} for ${sourceId}`) }
     const snapshots = await response.json()
@@ -496,7 +509,7 @@ export async function scanRecords(cfg, state, enabled, discover = listJsonl) {
       }]
     })
     state.files.codex = result.cache
-    records.push(...result.records)
+    for (const record of result.records) { records.push(record) }
   }
 
   if (enabled.has('copilot')) {
@@ -516,14 +529,14 @@ export async function scanRecords(cfg, state, enabled, discover = listJsonl) {
       }))
     })
     state.files.copilot = result.cache
-    records.push(...result.records)
+    for (const record of result.records) { records.push(record) }
   }
 
   if (enabled.has('claude')) {
     const files = await discover(join(cfg.claudeHome, 'projects'))
     const result = await updateFileCache(files, state.files.claude, content => parseClaude(content))
     state.files.claude = result.cache
-    records.push(...result.records)
+    for (const record of result.records) { records.push(record) }
   }
 
   if (enabled.has('kimi')) {
@@ -531,7 +544,7 @@ export async function scanRecords(cfg, state, enabled, discover = listJsonl) {
       .filter(file => basename(file.path) === 'wire.jsonl')
     const result = await updateFileCache(files, state.files.kimi, content => parseKimi(content))
     state.files.kimi = result.cache
-    records.push(...result.records)
+    for (const record of result.records) { records.push(record) }
   }
 
   return records

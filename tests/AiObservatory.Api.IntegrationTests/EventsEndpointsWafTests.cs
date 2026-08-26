@@ -33,6 +33,10 @@ public class EventsEndpointsWafTests(AiObservatoryApiFactory factory)
             RawPayload = "{}",
             EventKey = eventKey,
             OccurredAtUtc = occurredAtUtc,
+            SourceId = UsageSourceIds.AnthropicUsageApi,
+            SourceKind = "providerApi",
+            UsageScope = "api",
+            CostBasis = "unknown",
         };
 
     [Fact]
@@ -51,7 +55,7 @@ public class EventsEndpointsWafTests(AiObservatoryApiFactory factory)
     {
         using var client = factory.CreateAdminClient();
         var raw =
-            """{"Provider":"anthropic","Model":"m","InputTokens":1,"OutputTokens":1,"CacheReadTokens":0,"CacheWriteTokens":0,"CostUsd":0.01,"RawPayload":"not json"}""";
+            """{"Provider":"anthropic","Model":"m","InputTokens":1,"OutputTokens":1,"CacheReadTokens":0,"CacheWriteTokens":0,"CostUsd":0.01,"RawPayload":"not json","SourceId":"anthropic-usage-api","SourceKind":"providerApi","UsageScope":"api","CostBasis":"unknown"}""";
 
         using var content = new StringContent(raw, Encoding.UTF8, "application/json");
         var response = await client.PostAsync("/api/events", content, TestContext.Current.CancellationToken);
@@ -71,6 +75,10 @@ public class EventsEndpointsWafTests(AiObservatoryApiFactory factory)
             OutputTokens = 1,
             CostUsd = 0.01m,
             RawPayload = """{"request":"first","request":"last"}""",
+            SourceId = UsageSourceIds.OpenAiUsageApi,
+            SourceKind = "providerApi",
+            UsageScope = "api",
+            CostBasis = "unknown",
         };
 
         var response = await client.PostAsJsonAsync("/api/events", body, TestContext.Current.CancellationToken);
@@ -107,6 +115,10 @@ public class EventsEndpointsWafTests(AiObservatoryApiFactory factory)
             CacheWriteTokens = 0,
             CostUsd = 0.01m,
             RawPayload = "{}",
+            SourceId = UsageSourceIds.AnthropicUsageApi,
+            SourceKind = "providerApi",
+            UsageScope = "api",
+            CostBasis = "unknown",
         };
 
         var response = await client.PostAsJsonAsync("/api/events", body, TestContext.Current.CancellationToken);
@@ -145,7 +157,7 @@ public class EventsEndpointsWafTests(AiObservatoryApiFactory factory)
     }
 
     [Fact]
-    public async Task PostEvent_with_maximum_legacy_key_preserves_the_provider_namespace()
+    public async Task PostEvent_with_maximum_key_preserves_the_provider_namespace()
     {
         using var client = factory.CreateAdminClient();
         var key = new string('x', 200);
@@ -160,6 +172,10 @@ public class EventsEndpointsWafTests(AiObservatoryApiFactory factory)
                 CostUsd = 1m,
                 RawPayload = "{}",
                 EventKey = key,
+                SourceId = UsageSourceIds.LegacyApi,
+                SourceKind = "legacy",
+                UsageScope = "unknown",
+                CostBasis = "unknown",
             },
             TestContext.Current.CancellationToken
         );
@@ -197,6 +213,10 @@ public class EventsEndpointsWafTests(AiObservatoryApiFactory factory)
                     RawPayload = "{}",
                     EventKey = eventKey,
                     OccurredAtUtc = occurredAtUtc,
+                    SourceId = UsageSourceIds.LegacyApi,
+                    SourceKind = "legacy",
+                    UsageScope = "unknown",
+                    CostBasis = "unknown",
                 },
                 TestContext.Current.CancellationToken
             );
@@ -259,33 +279,28 @@ public class EventsEndpointsWafTests(AiObservatoryApiFactory factory)
     }
 
     [Fact]
-    public async Task PostEvent_WhenProvenanceIsOmitted_PersistsExactLegacyDefaults()
+    public async Task PostEvent_WhenProvenanceIsOmitted_RejectsTheWrite()
     {
         using var client = factory.CreateAdminClient();
         var response = await client.PostAsJsonAsync(
             "/api/events",
-            NewEventBody(eventKey: $"waf-legacy-provenance-{Guid.NewGuid():N}"),
+            new
+            {
+                Provider = "anthropic",
+                Model = "claude-sonnet-4-6",
+                InputTokens = 100,
+                OutputTokens = 50,
+                CostUsd = 0.01m,
+                RawPayload = "{}",
+                EventKey = $"waf-legacy-provenance-{Guid.NewGuid():N}",
+            },
             TestContext.Current.CancellationToken
         );
 
-        response.StatusCode.Should().Be(HttpStatusCode.Created);
-        var id = (await response.Content.ReadFromJsonAsync<JsonElement>(TestContext.Current.CancellationToken))
-            .GetProperty("id")
-            .GetGuid();
-        var stored = await client.GetFromJsonAsync<JsonElement>(
-            $"/api/events/{id}",
-            TestContext.Current.CancellationToken
-        );
-
-        stored.GetProperty("sourceId").GetString().Should().Be(UsageSourceIds.LegacyApi);
-        stored.GetProperty("sourceKind").GetString().Should().Be("legacy");
-        stored.GetProperty("usageScope").GetString().Should().Be("unknown");
-        stored.GetProperty("costBasis").GetString().Should().Be("unknown");
-        stored
-            .GetProperty("observedAt")
-            .GetDateTimeOffset()
+        response.StatusCode.Should().Be(HttpStatusCode.BadRequest);
+        (await response.Content.ReadAsStringAsync(TestContext.Current.CancellationToken))
             .Should()
-            .Be(stored.GetProperty("ingestedAt").GetDateTimeOffset());
+            .Contain("provenance");
     }
 
     [Fact]
@@ -393,6 +408,10 @@ public class EventsEndpointsWafTests(AiObservatoryApiFactory factory)
             ["InputTokens"] = 1,
             ["OutputTokens"] = 1,
             ["RawPayload"] = "{}",
+            ["SourceId"] = UsageSourceIds.OpenAiUsageApi,
+            ["SourceKind"] = "providerApi",
+            ["UsageScope"] = "api",
+            ["CostBasis"] = "unknown",
             [field] = value,
         };
 
@@ -413,6 +432,9 @@ public class EventsEndpointsWafTests(AiObservatoryApiFactory factory)
             OutputTokens = 1,
             RawPayload = "{}",
             SourceId = new string('s', 101),
+            SourceKind = "providerApi",
+            UsageScope = "api",
+            CostBasis = "unknown",
         };
 
         var response = await client.PostAsJsonAsync("/api/events", body, TestContext.Current.CancellationToken);
@@ -433,6 +455,10 @@ public class EventsEndpointsWafTests(AiObservatoryApiFactory factory)
             OutputTokens = 1,
             RawPayload = "{}",
             ObservedAtUtc = now.Plus(NodaTime.Duration.FromHours(1)).ToDateTimeOffset(),
+            SourceId = UsageSourceIds.OpenAiUsageApi,
+            SourceKind = "providerApi",
+            UsageScope = "api",
+            CostBasis = "unknown",
         };
 
         var response = await client.PostAsJsonAsync("/api/events", body, TestContext.Current.CancellationToken);
@@ -576,7 +602,10 @@ public class EventsEndpointsWafTests(AiObservatoryApiFactory factory)
                 CostUsd = 1m,
                 RawPayload = "{}",
                 EventKey = key,
-                SourceId = sourceId,
+                SourceId = sourceId ?? UsageSourceIds.LegacyApi,
+                SourceKind = sourceId is null ? "legacy" : "localTelemetry",
+                UsageScope = sourceId is null ? "unknown" : "subscription",
+                CostBasis = sourceId is null ? "unknown" : "notional",
             };
             var created = await client.PostAsJsonAsync("/api/events", body, TestContext.Current.CancellationToken);
             created.StatusCode.Should().Be(HttpStatusCode.Created);
@@ -607,7 +636,7 @@ public class EventsEndpointsWafTests(AiObservatoryApiFactory factory)
     }
 
     [Fact]
-    public async Task PostEvent_WhenProvenanceIsOmitted_PreservesLegacyClientCost()
+    public async Task PostEvent_WhenLegacyProvenanceIsExplicit_PreservesClientCost()
     {
         using var client = factory.CreateAdminClient();
         var key = $"waf-test-cost-{Guid.NewGuid():N}";
@@ -624,6 +653,10 @@ public class EventsEndpointsWafTests(AiObservatoryApiFactory factory)
             RawPayload = "{}",
             EventKey = key,
             OccurredAtUtc = new DateTimeOffset(2026, 7, 20, 12, 0, 0, TimeSpan.Zero),
+            SourceId = UsageSourceIds.LegacyApi,
+            SourceKind = "legacy",
+            UsageScope = "unknown",
+            CostBasis = "unknown",
         };
 
         var created = await client.PostAsJsonAsync("/api/events", body, TestContext.Current.CancellationToken);
@@ -658,6 +691,9 @@ public class EventsEndpointsWafTests(AiObservatoryApiFactory factory)
             CacheWrite1hTokens = 1_000_000, // the entire write is one-hour TTL
             CostUsd = 0m,
             RawPayload = "{}",
+            SourceId = UsageSourceIds.AnthropicUsageApi,
+            SourceKind = "providerApi",
+            UsageScope = "api",
             CostBasis = "listPriceEstimate",
             EventKey = key,
             OccurredAtUtc = new DateTimeOffset(2026, 7, 20, 12, 0, 0, TimeSpan.Zero),
@@ -691,6 +727,9 @@ public class EventsEndpointsWafTests(AiObservatoryApiFactory factory)
             OutputTokens = 1,
             CostUsd = 1m,
             RawPayload = "{}",
+            SourceId = UsageSourceIds.OpenAiUsageApi,
+            SourceKind = "providerApi",
+            UsageScope = "api",
             CostBasis = "billed",
         };
 
@@ -724,6 +763,10 @@ public class EventsEndpointsWafTests(AiObservatoryApiFactory factory)
             RawPayload = "{}",
             EventKey = $"waf-test-cost-1h-bad-{Guid.NewGuid():N}",
             OccurredAtUtc = new DateTimeOffset(2026, 7, 20, 12, 0, 0, TimeSpan.Zero),
+            SourceId = UsageSourceIds.AnthropicUsageApi,
+            SourceKind = "providerApi",
+            UsageScope = "api",
+            CostBasis = "unknown",
         };
 
         var response = await client.PostAsJsonAsync("/api/events", body, TestContext.Current.CancellationToken);
@@ -732,11 +775,11 @@ public class EventsEndpointsWafTests(AiObservatoryApiFactory factory)
     }
 
     /// <summary>
-    /// Legacy producers omitted provenance and supplied their own cost, so their value must
-    /// remain intact until they opt into an explicit estimate basis.
+    /// Explicit unknown-basis events retain their supplied cost because the API cannot
+    /// legitimately reprice evidence with no declared estimate basis.
     /// </summary>
     [Fact]
-    public async Task PostEvent_WhenNotAnthropic_KeepsSuppliedCost()
+    public async Task PostEvent_WhenCostBasisIsUnknown_KeepsSuppliedCost()
     {
         using var client = factory.CreateAdminClient();
         var key = $"waf-test-cost-other-{Guid.NewGuid():N}";
@@ -752,6 +795,10 @@ public class EventsEndpointsWafTests(AiObservatoryApiFactory factory)
             CostUsd = 42.5m,
             RawPayload = "{}",
             EventKey = key,
+            SourceId = UsageSourceIds.LegacyApi,
+            SourceKind = "legacy",
+            UsageScope = "unknown",
+            CostBasis = "unknown",
         };
 
         var created = await client.PostAsJsonAsync("/api/events", body, TestContext.Current.CancellationToken);
@@ -788,6 +835,10 @@ public class EventsEndpointsWafTests(AiObservatoryApiFactory factory)
             CostUsd = (decimal?)null,
             RawPayload = "{}",
             EventKey = "openai:codex:session-42:main:gpt-5.4:100:50:20:10:0:30",
+            SourceId = UsageSourceIds.CodexLocal,
+            SourceKind = "localTelemetry",
+            UsageScope = "subscription",
+            CostBasis = "notional",
         };
 
         var created = await client.PostAsJsonAsync("/api/events", body, TestContext.Current.CancellationToken);
@@ -837,6 +888,10 @@ public class EventsEndpointsWafTests(AiObservatoryApiFactory factory)
             ThoughtTokens = -1,
             CostUsd = 0.01m,
             RawPayload = "{}",
+            SourceId = UsageSourceIds.CodexLocal,
+            SourceKind = "localTelemetry",
+            UsageScope = "subscription",
+            CostBasis = "notional",
         };
 
         var response = await client.PostAsJsonAsync("/api/events", body, TestContext.Current.CancellationToken);
@@ -865,6 +920,10 @@ public class EventsEndpointsWafTests(AiObservatoryApiFactory factory)
             ThoughtTokens = (long?)null,
             CostUsd = 0.01m,
             RawPayload = "{}",
+            SourceId = UsageSourceIds.CodexLocal,
+            SourceKind = "localTelemetry",
+            UsageScope = "subscription",
+            CostBasis = "notional",
         };
 
         var response = await client.PostAsJsonAsync("/api/events", body, TestContext.Current.CancellationToken);
@@ -887,6 +946,10 @@ public class EventsEndpointsWafTests(AiObservatoryApiFactory factory)
             CacheWrite1hTokens = 1L,
             CostUsd = 0m,
             RawPayload = "{}",
+            SourceId = UsageSourceIds.AnthropicUsageApi,
+            SourceKind = "providerApi",
+            UsageScope = "api",
+            CostBasis = "unknown",
         };
 
         var response = await client.PostAsJsonAsync("/api/events", body, TestContext.Current.CancellationToken);

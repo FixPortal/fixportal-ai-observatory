@@ -6,7 +6,7 @@ vi.mock('../api/queries', () => ({ useDashboardStatus: () => ({ isError: false, 
 vi.mock('../theme/useTheme', () => ({ useTheme: () => ({ mode: 'dark', setMode: vi.fn() }) }))
 vi.mock('../auth/msal', () => ({ authEnabled: false, isReadonly: false, signIn: vi.fn() }))
 vi.mock('../components/SummaryCards', () => ({ default: () => <section aria-label="Summary evidence">Summary</section> }))
-vi.mock('../components/SourceStatusPanel', () => ({ default: () => <section aria-label="Source freshness">Sources</section> }))
+vi.mock('../components/SourceStatusPanel', () => ({ default: () => <div className="source-status-zone"><section aria-label="Source freshness">Sources</section></div> }))
 vi.mock('../components/CavemanStatsPanel', () => ({ default: () => <section aria-label="Caveman statistics" /> }))
 vi.mock('../components/SubscriptionPanel', () => ({ default: () => <section aria-label="Subscriptions" /> }))
 vi.mock('../components/ModelBreakdown', () => ({ default: () => null }))
@@ -14,24 +14,26 @@ vi.mock('../components/InsightsFeed', () => ({ default: () => null }))
 vi.mock('../components/SpendChart', () => ({ default: () => null }))
 vi.mock('../components/ProviderSplit', () => ({ default: () => null }))
 
-test('places source freshness immediately after summary and communicates usage-only chart truth', async () => {
+test('keeps source freshness out of the focal overview and communicates usage-only chart truth', async () => {
   render(<Dashboard />)
   const summary = screen.getByRole('region', { name: 'Summary evidence' })
   const sources = await screen.findByRole('region', { name: 'Source freshness' })
   expect(summary.compareDocumentPosition(sources) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
-  expect(summary.nextElementSibling).toBe(sources)
+  expect(summary.nextElementSibling).not.toContainElement(sources)
   expect(screen.getByText('Usage value · last 31 days')).toBeInTheDocument()
   expect(screen.getByText('Provider usage share')).toBeInTheDocument()
 })
 
-test('places the focal usage grid before secondary Caveman and subscription panels', async () => {
+test('places data-source operations after the overview evidence', async () => {
   render(<Dashboard />)
   const sources = await screen.findByRole('region', { name: 'Source freshness' })
   const usageGrid = screen.getByText('Usage value · last 31 days').closest('.main-grid')!
   const caveman = screen.getByRole('region', { name: 'Caveman statistics' }).closest('.collapsible-panel-zone')!
   const subscriptions = screen.getByRole('region', { name: 'Subscriptions' })
+  const bottomGrid = screen.getByText('Model breakdown').closest('.bottom-grid')!
+  const sourceZone = sources.closest('.source-status-zone')!
 
-  expect(sources.nextElementSibling).toBe(usageGrid)
   expect(usageGrid.nextElementSibling).toBe(caveman)
   expect(caveman.nextElementSibling).toBe(subscriptions)
+  expect(bottomGrid.nextElementSibling).toBe(sourceZone)
 })

@@ -193,6 +193,10 @@ public class AggregatesEndpointsWafTests(AiObservatoryApiFactory factory)
             CostUsd = (decimal?)null,
             RawPayload = "{}",
             EventKey = key,
+            SourceId = UsageSourceIds.LegacyApi,
+            SourceKind = "legacy",
+            UsageScope = "unknown",
+            CostBasis = "unknown",
         };
         (await client.PostAsJsonAsync("/api/events", body, TestContext.Current.CancellationToken))
             .StatusCode.Should()

@@ -83,7 +83,7 @@ test('no summary span rendered when summary prop omitted', () => {
   expect(screen.getByRole('button').querySelector('.collapsible-panel__summary')).toBeNull()
 })
 
-test('body div aria-hidden true when collapsed, false when expanded', () => {
+test('body is hidden and inert when collapsed, then exposed when expanded', () => {
   render(
     <CollapsiblePanel id="test" title="Test panel">
       <p>body content</p>
@@ -91,6 +91,8 @@ test('body div aria-hidden true when collapsed, false when expanded', () => {
   )
   const body = document.getElementById('panel-test-body')!
   expect(body).toHaveAttribute('aria-hidden', 'true')
+  expect(body).toHaveAttribute('inert')
   fireEvent.click(screen.getByRole('button'))
   expect(body).toHaveAttribute('aria-hidden', 'false')
+  expect(body).not.toHaveAttribute('inert')
 })

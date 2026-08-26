@@ -69,13 +69,28 @@ public class UsageRepository(
                     ? null
                     : await FindEventForUpdateAsync(evt.SourceId, evt.EventKey, ct);
                 var result = await ApplyLockedSnapshotAsync(existing, evt, ct);
-                if (result.Disposition == RecordEventDisposition.Unchanged)
+                if (result.Disposition != RecordEventDisposition.Unchanged)
+                {
+                    await ctx.SaveChangesAsync(ct);
+                }
+
+                if (evt.SourceKind == SourceKind.LocalTelemetry)
+                {
+                    await SourceSyncStateStore.MarkSuccessAsync(
+                        ctx,
+                        evt.SourceId,
+                        Duration.FromDays(1),
+                        evt.IngestedAt,
+                        evt.ObservedAt,
+                        ct
+                    );
+                }
+                else if (result.Disposition == RecordEventDisposition.Unchanged)
                 {
                     await tx.RollbackAsync(ct);
                     return result;
                 }
 
-                await ctx.SaveChangesAsync(ct);
                 await tx.CommitAsync(ct);
                 return result;
             }
@@ -173,6 +188,11 @@ public class UsageRepository(
             ctx.UsageEvents.Add(evt);
             await ApplyAggregateDeltaAsync(evt, +1, ct);
             return new RecordEventResult(evt.Id, RecordEventDisposition.Created);
+        }
+
+        if (evt.ObservedAt < existing.ObservedAt)
+        {
+            return new RecordEventResult(existing.Id, RecordEventDisposition.Unchanged);
         }
 
         if (CanonicalEquals(existing, evt))
