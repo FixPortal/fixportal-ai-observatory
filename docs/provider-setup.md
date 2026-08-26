@@ -38,6 +38,24 @@ Provider polling sources start in the immediate loop and then run every 60 minut
 > [!IMPORTANT]
 > `anthropic-usage-api`, `anthropic-cost-report`, and `claude-code-usage-api` are shipped adapters for Claude Platform organization Admin APIs and use `ANTHROPIC_BILLING_KEY`. Claude Enterprise Analytics uses a different API/key and is not supported by these adapters.
 
+### Optional Key Vault references
+
+The default FixPortal Bicep deployment omits `ANTHROPIC_BILLING_KEY` and `COPILOT_ORG` so an unconfigured provider does not create a broken Key Vault reference. After creating the corresponding Key Vault secret, enable either setting by passing its secret name:
+
+```powershell
+az deployment group create -g fpaiobs-rg -f infra/main.bicep -p anthropicBillingSecretName=anthropic-billing-key
+```
+
+```powershell
+az deployment group create -g fpaiobs-rg -f infra/main.bicep -p copilotOrgSecretName=copilot-org
+```
+
+To enable both, pass both names in the same deployment because omitted optional parameters return to their empty defaults:
+
+```powershell
+az deployment group create -g fpaiobs-rg -f infra/main.bicep -p anthropicBillingSecretName=anthropic-billing-key copilotOrgSecretName=copilot-org
+```
+
 Google export rows preserve native export currency and credits. `export_time` advances when late corrections arrive, so affected stable groups are reaggregated. This is billed evidence, not token telemetry or an invoice clone; GBP display follows the existing historical FX path.
 
 > [!WARNING]

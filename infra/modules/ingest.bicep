@@ -3,8 +3,30 @@ param planName string
 param appName string
 param kvName string
 param aiConnectionString string
+param anthropicBillingSecretName string = ''
+param copilotOrgSecretName string = ''
 
 var keyVaultSecretsUserRoleId = '4633458b-17de-408a-b874-0445c86b69e6'
+
+var requiredAppSettings = [
+  { name: 'DB_CONNECTION', value: '@Microsoft.KeyVault(VaultName=${kvName};SecretName=db-connection)' }
+  { name: 'GITHUB_TOKEN', value: '@Microsoft.KeyVault(VaultName=${kvName};SecretName=github-token)' }
+  // Comma-delimited owner/repo list for GitHub Activity ingestion. Held in Key Vault
+  // rather than appsettings.json because most of the repos are private and this repo
+  // is public. Absent secret => empty => GitHub Activity stays disabled.
+  { name: 'Ingest__GitHubRepoAllowlist', value: '@Microsoft.KeyVault(VaultName=${kvName};SecretName=github-repo-allowlist)' }
+  { name: 'GOOGLE_BILLING_ACCOUNT_ID', value: '@Microsoft.KeyVault(VaultName=${kvName};SecretName=google-billing-account-id)' }
+  { name: 'APPLICATIONINSIGHTS_CONNECTION_STRING', value: aiConnectionString }
+]
+
+var optionalAppSettings = concat(
+  empty(anthropicBillingSecretName) ? [] : [
+    { name: 'ANTHROPIC_BILLING_KEY', value: '@Microsoft.KeyVault(VaultName=${kvName};SecretName=${anthropicBillingSecretName})' }
+  ],
+  empty(copilotOrgSecretName) ? [] : [
+    { name: 'COPILOT_ORG', value: '@Microsoft.KeyVault(VaultName=${kvName};SecretName=${copilotOrgSecretName})' }
+  ]
+)
 
 resource kv 'Microsoft.KeyVault/vaults@2023-07-01' existing = {
   name: kvName
@@ -31,19 +53,7 @@ resource app 'Microsoft.Web/sites@2023-01-01' = {
       // decorative: App Service then reports an unhealthy instance instead of a container
       // that is technically running while doing nothing.
       healthCheckPath: '/healthz'
-      appSettings: [
-        { name: 'DB_CONNECTION', value: '@Microsoft.KeyVault(VaultName=${kvName};SecretName=db-connection)' }
-        // Optional provider keys — referenced from Key Vault. Set these secrets in Key Vault to enable each provider.
-        { name: 'ANTHROPIC_BILLING_KEY', value: '@Microsoft.KeyVault(VaultName=${kvName};SecretName=anthropic-billing-key)' }
-        { name: 'GITHUB_TOKEN', value: '@Microsoft.KeyVault(VaultName=${kvName};SecretName=github-token)' }
-        { name: 'COPILOT_ORG', value: '@Microsoft.KeyVault(VaultName=${kvName};SecretName=copilot-org)' }
-        // Comma-delimited owner/repo list for GitHub Activity ingestion. Held in Key Vault
-        // rather than appsettings.json because most of the repos are private and this repo
-        // is public. Absent secret => empty => GitHub Activity stays disabled.
-        { name: 'Ingest__GitHubRepoAllowlist', value: '@Microsoft.KeyVault(VaultName=${kvName};SecretName=github-repo-allowlist)' }
-        { name: 'GOOGLE_BILLING_ACCOUNT_ID', value: '@Microsoft.KeyVault(VaultName=${kvName};SecretName=google-billing-account-id)' }
-        { name: 'APPLICATIONINSIGHTS_CONNECTION_STRING', value: aiConnectionString }
-      ]
+      appSettings: concat(requiredAppSettings, optionalAppSettings)
     }
   }
 }
