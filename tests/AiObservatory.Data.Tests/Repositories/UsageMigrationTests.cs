@@ -221,6 +221,7 @@ public class UsageMigrationTests : IAsyncLifetime
 
         await using var afterRename = new AiObservatoryDbContext(_options);
         (await afterRename.BudgetRules.SingleAsync(r => r.Id == Guid.Parse("30000000-0000-0000-0000-000000000001"), ct))
-            .ThresholdGbp.Should().Be(123.45m);
+            .ThresholdGbp.Should()
+            .Be(123.45m);
     }
 }
