@@ -38,7 +38,7 @@ redesign into a generic SaaS dashboard.
 
 ## Canonical visual source
 
-The source of truth is `@fixportal/design` 0.7.0 in the FixPortal assets repository. Its design
+The source of truth is `@fixportal/design` 0.8.0 at tag `v0.8.0` / commit `16691f2` in the FixPortal assets repository. Its design
 sentence remains:
 
 > trading-floor precise — terminal aesthetic, dense readouts, monospace where data lives,
@@ -63,7 +63,7 @@ and Spend in both themes and at desktop and mobile widths.
 
 ### Colour
 
-- Brand teal is the interaction colour.
+- The approved canonical blue accent is the interaction colour.
 - Green, amber, and red are the only status colours.
 - The orange identity accent is reserved for the FixPortal wordmark.
 - Provider colours may distinguish provider series, badges, and identities, but never imply
@@ -80,6 +80,9 @@ and Spend in both themes and at desktop and mobile widths.
   documented destructive halo.
 - Focus, hover, active, disabled, loading, empty, and error states use canonical tokens and are
   visibly distinct in both themes.
+- Dedicated header/footer surfaces, brand contrast/background/ring roles, canonical radius
+  tokens, and the 80 ms interaction duration come from the 0.8.0 snapshot rather than local
+  values.
 
 ### Typography and density
 
@@ -98,6 +101,8 @@ and Spend in both themes and at desktop and mobile widths.
   disclosure uses `<details>`/`<summary>` rather than new state machinery.
 - Existing accessibility behaviour is preserved or improved: keyboard reachability, visible
   focus, labelled controls, semantic headings, table semantics, and reduced-motion support.
+- Newly exported primitives are vendored only when an existing Observatory control can adopt
+  them without losing behaviour; unused package primitives remain outside the vendored layer.
 
 ## Financial truth
 

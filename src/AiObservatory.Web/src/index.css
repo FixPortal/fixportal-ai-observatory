@@ -28,18 +28,19 @@
   --space-6: 1.5rem;
   --space-8: 2rem;
 
-  /* Motion. */
-  --transition-fast: 0.15s ease;
+  /* Motion. Canonical 0.8.0 owns the snappy duration; the local alias includes
+     easing because existing declarations consume the complete transition value. */
+  --transition-fast: var(--transition-base) ease;
   --transition-normal: 0.25s ease;
 
-  /* Radius vocabulary (4px base radius scale: 4/6/8px). */
-  --r-control: 4px;
-  --r-chip: 6px;
-  --r-panel: 8px;
+  /* App role aliases over the canonical 4/6/8px radius ladder. */
+  --r-control: var(--radius);
+  --r-chip: var(--radius-md);
+  --r-panel: var(--radius-lg);
 
-  /* Categorical provider palette — distinct from the semantic hues (brand teal,
-     ok green, bad red, warn amber, info indigo). Used as recharts fills + legend
-     swatches, never as text. Direction A (violet/sky/rose). */
+  /* Categorical provider palette — independent of the canonical interaction and
+     status roles. Used as Recharts fills + legend swatches, never as status,
+     selection, progress, or affordance. */
   --provider-anthropic: #7c3aed;
   --provider-google: #0284c7;
   --provider-copilot: #db2777;
@@ -169,7 +170,7 @@ body {
   color: var(--brand-text);
 }
 .info-btn:focus-visible {
-  outline: 2px solid var(--brand-strong);
+  outline: 2px solid var(--brand-ring);
   outline-offset: 2px;
 }
 .info-popover {
@@ -305,7 +306,7 @@ td.budget-rules__actions { display: table-cell; padding: 6px 0 6px 8px; text-ali
   background: var(--brand-strong);
   border: 1px solid var(--brand-strong);
   border-radius: var(--r-control);
-  color: #fff;
+  color: var(--brand-contrast);
   font: inherit;
   font-size: 12px;
   font-weight: 600;
@@ -637,7 +638,7 @@ td.budget-rules__actions { display: table-cell; padding: 6px 0 6px 8px; text-ali
   outline: none;
 }
 .sortable-header:focus-visible {
-  outline: 2px solid var(--brand-strong);
+  outline: 2px solid var(--brand-ring);
   outline-offset: -2px;
 }
 .sortable-header:hover {
@@ -778,7 +779,7 @@ td.budget-rules__actions { display: table-cell; padding: 6px 0 6px 8px; text-ali
   cursor: pointer;
 }
 .insights-older > summary:hover { color: var(--brand-text); }
-.insights-older > summary:focus-visible { outline: 2px solid var(--brand-strong); outline-offset: 2px; color: var(--brand-text); }
+.insights-older > summary:focus-visible { outline: 2px solid var(--brand-ring); outline-offset: 2px; color: var(--brand-text); }
 
 /* Dismiss button — replaced by @fixportal/design Button variant="ghost" size="sm" */
 
@@ -816,13 +817,13 @@ td.budget-rules__actions { display: table-cell; padding: 6px 0 6px 8px; text-ali
   font-size: 14px;
   font-weight: 500;
   cursor: pointer;
-  transition: color 0.15s;
+  transition: color var(--transition-fast);
   margin-bottom: -1px;  /* overlap container border */
   white-space: nowrap;
 }
 
 .page-nav__tab:hover { color: var(--brand-text); }
-.page-nav__tab:focus-visible { outline: 2px solid var(--brand-strong); outline-offset: -2px; }
+.page-nav__tab:focus-visible { outline: 2px solid var(--brand-ring); outline-offset: -2px; }
 
 .page-nav__tab--active {
   color: var(--brand-text);
@@ -879,7 +880,7 @@ td.budget-rules__actions { display: table-cell; padding: 6px 0 6px 8px; text-ali
 .sortable-header__content:focus-visible,
 .source-status__setup:focus-visible,
 .source-status__error summary:focus-visible {
-  outline: 2px solid var(--brand-strong);
+  outline: 2px solid var(--brand-ring);
   outline-offset: 2px;
 }
 
@@ -898,7 +899,7 @@ td.budget-rules__actions { display: table-cell; padding: 6px 0 6px 8px; text-ali
 .sub-form__input:focus-visible,
 .sub-form__select:focus-visible,
 .sub-form__btn:focus-visible {
-  outline: 2px solid var(--brand-strong);
+  outline: 2px solid var(--brand-ring);
   outline-offset: 2px;
 }
 
@@ -1106,7 +1107,7 @@ td.budget-rules__actions { display: table-cell; padding: 6px 0 6px 8px; text-ali
   padding: var(--space-1);
 }
 .modal__close:hover { color: var(--text); }
-.modal__close:focus-visible { outline: 2px solid var(--brand-strong); outline-offset: 2px; }
+.modal__close:focus-visible { outline: 2px solid var(--brand-ring); outline-offset: 2px; }
 .modal__body { padding: var(--space-3) var(--space-4) var(--space-4); }
 .modal__error {
   margin: 0 0 var(--space-3);
@@ -1159,7 +1160,7 @@ td.budget-rules__actions { display: table-cell; padding: 6px 0 6px 8px; text-ali
   color: var(--text);
 }
 .sub-list__select:focus-visible {
-  outline: 2px solid var(--brand-strong);
+  outline: 2px solid var(--brand-ring);
   outline-offset: 1px;
 }
 .sub-list__select:disabled { cursor: default; opacity: 0.6; }
@@ -1266,7 +1267,7 @@ td.budget-rules__actions { display: table-cell; padding: 6px 0 6px 8px; text-ali
 .sub-form__btn--primary {
   background: var(--brand-strong);
   border: 1px solid var(--brand-strong);
-  color: #fff;
+  color: var(--brand-contrast);
 }
 .sub-form__btn--primary:hover { filter: brightness(1.1); }
 .sub-form__btn:disabled { opacity: 0.5; cursor: not-allowed; }
@@ -1346,7 +1347,7 @@ td.budget-rules__actions { display: table-cell; padding: 6px 0 6px 8px; text-ali
 }
 .collapsible-panel__header:hover { background: var(--app-bg); }
 .collapsible-panel__header:focus-visible {
-  outline: 2px solid var(--brand-strong);
+  outline: 2px solid var(--brand-ring);
   outline-offset: -2px;
 }
 .collapsible-panel__dot {
@@ -1426,7 +1427,7 @@ td.budget-rules__actions { display: table-cell; padding: 6px 0 6px 8px; text-ali
   cursor: pointer;
 }
 .project-table__select:hover { text-decoration: underline; text-underline-offset: 2px; }
-.project-table__select:focus-visible { outline: 2px solid var(--brand-strong); outline-offset: 2px; }
+.project-table__select:focus-visible { outline: 2px solid var(--brand-ring); outline-offset: 2px; }
 .project-table__row--selected { background: var(--brand-tint); }
 .project-table__share { display: flex; align-items: center; gap: var(--space-2); }
 .project-table__bar-track {
@@ -1465,7 +1466,7 @@ td.budget-rules__actions { display: table-cell; padding: 6px 0 6px 8px; text-ali
   transition: filter var(--transition-fast);
 }
 .activity-treemap__block:hover:not(:disabled) { filter: brightness(1.1); }
-.activity-treemap__block:focus-visible { outline: 2px solid var(--brand-strong); outline-offset: -2px; }
+.activity-treemap__block:focus-visible { outline: 2px solid var(--brand-ring); outline-offset: -2px; }
 .activity-treemap__block:disabled { cursor: default; }
 .activity-treemap__block--selected { outline: 2px solid var(--brand-strong); outline-offset: -2px; }
 .activity-treemap__label {
@@ -1526,7 +1527,7 @@ td.budget-rules__actions { display: table-cell; padding: 6px 0 6px 8px; text-ali
   background: var(--brand-strong);
   border: 1px solid var(--brand-strong);
   border-radius: var(--r-control);
-  color: #fff;
+  color: var(--brand-contrast);
   cursor: pointer;
 }
 .spend-filters__add:hover { filter: brightness(1.1); }
