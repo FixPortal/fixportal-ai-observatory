@@ -1,10 +1,13 @@
-import { useRef, type KeyboardEvent } from 'react'
+import type { KeyboardEvent } from 'react'
 
 export type ThemeMode = 'light' | 'dark' | 'system'
 
 interface ThemeToggleProps {
   value: ThemeMode
   onChange: (mode: ThemeMode) => void
+  /** 'sidebar' reads the theme-invariant sidebar palette — use when the
+      toggle mounts inside the always-dark sidebar rail (A11Y-SFE-004). */
+  variant?: 'default' | 'sidebar'
 }
 
 const OPTIONS: { value: ThemeMode; label: string }[] = [
@@ -13,35 +16,43 @@ const OPTIONS: { value: ThemeMode; label: string }[] = [
   { value: 'system', label: 'System' },
 ]
 
-export function ThemeToggle({ value, onChange }: ThemeToggleProps) {
-  const btnRefs = useRef<(HTMLButtonElement | null)[]>([])
+const ARROW_DELTAS: Record<string, number> = {
+  ArrowRight: 1,
+  ArrowDown: 1,
+  ArrowLeft: -1,
+  ArrowUp: -1,
+}
 
-  // Radiogroup keyboard semantics: arrow keys move selection AND focus between the
-  // non-selected options (which carry tabIndex=-1), so the control is fully keyboard
-  // operable, not just clickable.
-  const handleKeyDown = (e: KeyboardEvent, index: number) => {
-    let next: number | null = null
-    if (e.key === 'ArrowRight' || e.key === 'ArrowDown') next = (index + 1) % OPTIONS.length
-    else if (e.key === 'ArrowLeft' || e.key === 'ArrowUp') next = (index - 1 + OPTIONS.length) % OPTIONS.length
-    if (next !== null) {
-      e.preventDefault()
-      onChange(OPTIONS[next].value)
-      btnRefs.current[next]?.focus()
-    }
+export function ThemeToggle({ value, onChange, variant = 'default' }: ThemeToggleProps) {
+  // Roving tabindex's other half: without this, the inactive options have
+  // tabIndex -1 and no keyboard path to them. Per the WAI-ARIA radiogroup
+  // pattern an arrow key both moves focus and selects, wrapping at the ends.
+  const onKeyDown = (e: KeyboardEvent<HTMLDivElement>) => {
+    const delta = ARROW_DELTAS[e.key] ?? 0
+    if (delta === 0) return
+    e.preventDefault()
+    const current = OPTIONS.findIndex((opt) => opt.value === value)
+    const next = (current + delta + OPTIONS.length) % OPTIONS.length
+    onChange(OPTIONS[next].value)
+    const buttons = e.currentTarget.querySelectorAll('button')
+    ;(buttons[next] as HTMLButtonElement | undefined)?.focus()
   }
 
   return (
-    <div role="radiogroup" aria-label="Theme" className="fpds-theme-toggle">
-      {OPTIONS.map((opt, i) => (
+    <div
+      role="radiogroup"
+      aria-label="Theme"
+      onKeyDown={onKeyDown}
+      className={variant === 'sidebar' ? 'fpds-theme-toggle fpds-theme-toggle--sidebar' : 'fpds-theme-toggle'}
+    >
+      {OPTIONS.map(opt => (
         <button
           key={opt.value}
-          ref={el => { btnRefs.current[i] = el }}
           type="button"
           role="radio"
           aria-checked={value === opt.value}
           tabIndex={value === opt.value ? 0 : -1}
           onClick={() => onChange(opt.value)}
-          onKeyDown={e => handleKeyDown(e, i)}
           className="fpds-theme-toggle__btn"
         >
           {opt.label}
