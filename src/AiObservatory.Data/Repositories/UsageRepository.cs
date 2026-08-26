@@ -415,11 +415,132 @@ public class UsageRepository(
         return await ctx.BudgetRules.AsNoTracking().ToListAsync(ct);
     }
 
-    public async Task SetBudgetRuleTriggeredAsync(Guid ruleId, Instant triggeredAt, CancellationToken ct = default)
+    public async Task<BudgetAlertClaimResult> GetOrCreateBudgetAlertAsync(
+        Guid ruleId,
+        LocalDate periodStart,
+        LocalDate periodEnd,
+        decimal thresholdGbp,
+        decimal actualSpendGbp,
+        Insight insight,
+        Instant triggeredAt,
+        CancellationToken ct = default
+    )
+    {
+        ArgumentNullException.ThrowIfNull(insight);
+        var claim = new BudgetAlertClaim
+        {
+            BudgetRuleId = ruleId,
+            PeriodStart = periodStart,
+            PeriodEnd = periodEnd,
+            InsightId = insight.Id,
+            ThresholdGbp = thresholdGbp,
+            ActualSpendGbp = actualSpendGbp,
+            CreatedAt = triggeredAt,
+        };
+
+        await using var tx = await ctx.Database.BeginTransactionAsync(ct);
+        try
+        {
+            ctx.Insights.Add(insight);
+            ctx.BudgetAlertClaims.Add(claim);
+            await ctx.SaveChangesAsync(ct);
+            var updated = await ctx
+                .BudgetRules.Where(rule => rule.Id == ruleId)
+                .ExecuteUpdateAsync(setters => setters.SetProperty(rule => rule.LastTriggeredAt, triggeredAt), ct);
+            if (updated != 1)
+            {
+                throw new InvalidOperationException($"Budget rule {ruleId} no longer exists.");
+            }
+
+            await tx.CommitAsync(ct);
+            return new BudgetAlertClaimResult(true, thresholdGbp, actualSpendGbp, triggeredAt);
+        }
+        catch (DbUpdateException ex)
+            when (ex.InnerException
+                    is PostgresException
+                    {
+                        SqlState: PostgresErrorCodes.UniqueViolation,
+                        ConstraintName: "UX_BudgetAlertClaims_RulePeriod",
+                    }
+            )
+        {
+            await tx.RollbackAsync(ct);
+            ctx.Entry(claim).State = EntityState.Detached;
+            ctx.Entry(insight).State = EntityState.Detached;
+            var existing = await ctx
+                .BudgetAlertClaims.AsNoTracking()
+                .SingleAsync(
+                    candidate =>
+                        candidate.BudgetRuleId == ruleId
+                        && candidate.PeriodStart == periodStart
+                        && candidate.PeriodEnd == periodEnd,
+                    ct
+                );
+            return new BudgetAlertClaimResult(
+                false,
+                existing.ThresholdGbp,
+                existing.ActualSpendGbp,
+                existing.CreatedAt
+            );
+        }
+        catch
+        {
+            await tx.RollbackAsync(ct);
+            ctx.Entry(claim).State = EntityState.Detached;
+            ctx.Entry(insight).State = EntityState.Detached;
+            throw;
+        }
+    }
+
+    public async Task<bool> TryMarkBudgetAlertEmailAttemptedAsync(
+        Guid ruleId,
+        LocalDate periodStart,
+        LocalDate periodEnd,
+        Instant attemptedAt,
+        CancellationToken ct = default
+    ) =>
+        await ctx
+            .BudgetAlertClaims.Where(claim =>
+                claim.BudgetRuleId == ruleId
+                && claim.PeriodStart == periodStart
+                && claim.PeriodEnd == periodEnd
+                && claim.EmailAttemptedAt == null
+            )
+            .ExecuteUpdateAsync(setters => setters.SetProperty(claim => claim.EmailAttemptedAt, attemptedAt), ct) == 1;
+
+    public async Task<IReadOnlyList<BudgetAlertEmail>> GetPendingBudgetAlertEmailsAsync(
+        CancellationToken ct = default
+    ) =>
+        await (
+            from claim in ctx.BudgetAlertClaims.AsNoTracking()
+            join rule in ctx.BudgetRules.AsNoTracking() on claim.BudgetRuleId equals rule.Id
+            where claim.EmailAttemptedAt == null
+            orderby claim.CreatedAt, claim.Id
+            select new BudgetAlertEmail(
+                claim.BudgetRuleId,
+                rule.Provider,
+                rule.Period,
+                claim.PeriodStart,
+                claim.PeriodEnd,
+                claim.ThresholdGbp,
+                claim.ActualSpendGbp,
+                claim.CreatedAt
+            )
+        ).ToListAsync(ct);
+
+    public async Task MarkBudgetAlertEmailSentAsync(
+        Guid ruleId,
+        LocalDate periodStart,
+        LocalDate periodEnd,
+        Instant sentAt,
+        CancellationToken ct = default
+    )
     {
         await ctx
-            .BudgetRules.Where(r => r.Id == ruleId)
-            .ExecuteUpdateAsync(s => s.SetProperty(r => r.LastTriggeredAt, triggeredAt), ct);
+            .BudgetAlertClaims.Where(claim =>
+                claim.BudgetRuleId == ruleId && claim.PeriodStart == periodStart && claim.PeriodEnd == periodEnd
+            )
+            .ExecuteUpdateAsync(setters => setters.SetProperty(claim => claim.EmailSentAt, sentAt), ct);
     }
 
     public async Task AddInsightAsync(Insight insight, CancellationToken ct = default)

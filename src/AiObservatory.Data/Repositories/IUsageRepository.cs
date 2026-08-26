@@ -68,6 +68,24 @@ public sealed record LocalSnapshotRecord(
     string EventKey
 );
 
+public sealed record BudgetAlertClaimResult(
+    bool Created,
+    decimal ThresholdGbp,
+    decimal ActualSpendGbp,
+    Instant CreatedAt
+);
+
+public sealed record BudgetAlertEmail(
+    Guid RuleId,
+    Provider? Provider,
+    BillingPeriod Period,
+    LocalDate PeriodStart,
+    LocalDate PeriodEnd,
+    decimal ThresholdGbp,
+    decimal ActualSpendGbp,
+    Instant CreatedAt
+);
+
 public interface IUsageRepository
 {
     Task<RecordEventResult> RecordEventAsync(UsageEvent evt, CancellationToken ct = default);
@@ -105,7 +123,35 @@ public interface IUsageRepository
     );
 
     Task<IReadOnlyList<BudgetRule>> GetBudgetRulesAsync(CancellationToken ct = default);
-    Task SetBudgetRuleTriggeredAsync(Guid ruleId, Instant triggeredAt, CancellationToken ct = default);
+
+    Task<BudgetAlertClaimResult> GetOrCreateBudgetAlertAsync(
+        Guid ruleId,
+        LocalDate periodStart,
+        LocalDate periodEnd,
+        decimal thresholdGbp,
+        decimal actualSpendGbp,
+        Insight insight,
+        Instant triggeredAt,
+        CancellationToken ct = default
+    );
+
+    Task<IReadOnlyList<BudgetAlertEmail>> GetPendingBudgetAlertEmailsAsync(CancellationToken ct = default);
+
+    Task<bool> TryMarkBudgetAlertEmailAttemptedAsync(
+        Guid ruleId,
+        LocalDate periodStart,
+        LocalDate periodEnd,
+        Instant attemptedAt,
+        CancellationToken ct = default
+    );
+
+    Task MarkBudgetAlertEmailSentAsync(
+        Guid ruleId,
+        LocalDate periodStart,
+        LocalDate periodEnd,
+        Instant sentAt,
+        CancellationToken ct = default
+    );
 
     Task AddInsightAsync(Insight insight, CancellationToken ct = default);
     Task<IReadOnlyList<Insight>> GetUnacknowledgedInsightsAsync(CancellationToken ct = default);

@@ -7,11 +7,12 @@ const client = vi.hoisted(() => ({
   getAggregates: vi.fn().mockResolvedValue([]), getInsights: vi.fn().mockResolvedValue([]),
   getSubscriptions: vi.fn().mockResolvedValue([]), getSourceStatuses: vi.fn().mockResolvedValue([]),
   getSpendEntries: vi.fn().mockResolvedValue([]),
+  getBilledReporting: vi.fn().mockResolvedValue({ entryCount: 0, dailySeries: [], vendorSeries: [] }),
 }))
 
 vi.mock('./client', async importOriginal => ({ ...await importOriginal<typeof import('./client')>(), ...client }))
 
-import { dashboardDateRange, localDate, useAggregates, useDashboardStatus, useSpendEntries } from './queries'
+import { dashboardDateRange, localDate, useAggregates, useBilledReporting, useDashboardStatus } from './queries'
 
 const wrapper = ({ children }: { children: ReactNode }) => (
   <QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}>{children}</QueryClientProvider>
@@ -23,6 +24,7 @@ beforeEach(() => {
   client.getSubscriptions.mockResolvedValue([])
   client.getSourceStatuses.mockResolvedValue([])
   client.getSpendEntries.mockResolvedValue([])
+  client.getBilledReporting.mockResolvedValue({ entryCount: 0, dailySeries: [], vendorSeries: [] })
 })
 
 afterEach(() => {
@@ -48,17 +50,17 @@ describe('dashboard queries', () => {
     expect(result.current.isLoading).toBe(true)
   })
 
-  test('uses the shared aggregate rolling range unchanged for ledger spend', async () => {
+  test('uses the shared aggregate rolling range unchanged for billed reporting', async () => {
     vi.useFakeTimers()
     vi.setSystemTime(new Date('2026-08-31T12:00:00'))
     const range = dashboardDateRange()
     renderHook(() => {
       useAggregates()
-      useSpendEntries(range.from, range.to)
+      useBilledReporting(range.from, range.to)
     }, { wrapper })
     await vi.runAllTimersAsync()
     expect(client.getAggregates).toHaveBeenCalledWith(range.from.toISOString().slice(0, 10), range.to.toISOString().slice(0, 10))
-    expect(client.getSpendEntries).toHaveBeenCalledWith(range.from.toISOString().slice(0, 10), range.to.toISOString().slice(0, 10))
+    expect(client.getBilledReporting).toHaveBeenCalledWith(range.from.toISOString().slice(0, 10), range.to.toISOString().slice(0, 10))
   })
 
   test('keeps all 31 local calendar dates across the BST spring transition', () => {
@@ -68,34 +70,34 @@ describe('dashboard queries', () => {
     expect(localDate(range.to)).toBe('2026-03-30')
   })
 
-  test('shares the bounded aggregate and spend requests with dashboard status', async () => {
+  test('shares aggregate and authoritative reporting requests with dashboard status', async () => {
     const range = dashboardDateRange()
     const { result } = renderHook(() => {
       const status = useDashboardStatus()
       useAggregates(range.from, range.to)
-      useSpendEntries(range.from, range.to)
+      useBilledReporting(range.from, range.to)
       return status
     }, { wrapper })
 
     await waitFor(() => expect(result.current.isLoading).toBe(false))
     expect(client.getAggregates).toHaveBeenCalledOnce()
-    expect(client.getSpendEntries).toHaveBeenCalledOnce()
+    expect(client.getBilledReporting).toHaveBeenCalledOnce()
     expect(client.getAggregates).toHaveBeenCalledWith(localDate(range.from), localDate(range.to))
-    expect(client.getSpendEntries).toHaveBeenCalledWith(localDate(range.from), localDate(range.to))
+    expect(client.getBilledReporting).toHaveBeenCalledWith(localDate(range.from), localDate(range.to))
   })
 
-  test('includes ledger spend errors in dashboard status', async () => {
+  test('includes billed reporting errors in dashboard status', async () => {
     const spendError = new Error('ledger unavailable')
-    client.getSpendEntries.mockRejectedValueOnce(spendError)
+    client.getBilledReporting.mockRejectedValueOnce(spendError)
     const { result } = renderHook(() => useDashboardStatus(), { wrapper })
     await waitFor(() => expect(result.current.isError).toBe(true))
     expect(result.current.error).toBe(spendError)
   })
 
-  test('keeps dashboard loading while bounded ledger spend is pending', async () => {
-    client.getSpendEntries.mockImplementationOnce(() => new Promise(() => {}))
+  test('keeps dashboard loading while billed reporting is pending', async () => {
+    client.getBilledReporting.mockImplementationOnce(() => new Promise(() => {}))
     const { result } = renderHook(() => useDashboardStatus(), { wrapper })
-    await waitFor(() => expect(client.getSpendEntries).toHaveBeenCalledOnce())
+    await waitFor(() => expect(client.getBilledReporting).toHaveBeenCalledOnce())
     expect(result.current.isLoading).toBe(true)
   })
 })

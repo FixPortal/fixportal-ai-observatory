@@ -1,12 +1,12 @@
 import { Bar, BarChart, Cell, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts'
 import type { ValueType } from 'recharts/types/component/DefaultTooltipContent'
 import { gbp } from '../lib/currency'
-import type { BilledVendorSeries } from '../lib/billedReporting'
+import type { BilledReporting } from '../api/client'
 
 const TEXT_MUTED = 'var(--text-muted)'
 
 interface Props {
-  data: BilledVendorSeries[]
+  data: BilledReporting['vendorSeries']
 }
 
 export default function BilledVendorSplit({ data }: Props) {

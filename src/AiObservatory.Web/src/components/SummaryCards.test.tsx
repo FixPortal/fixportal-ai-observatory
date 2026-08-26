@@ -1,19 +1,19 @@
 import { fireEvent, render, screen } from '@testing-library/react'
 import { beforeEach, describe, expect, test, vi } from 'vitest'
-import type { DailyAggregate, Insight, SpendEntry } from '../api/client'
+import type { BilledReporting, DailyAggregate, Insight } from '../api/client'
 import SummaryCards from './SummaryCards'
 
 const data = vi.hoisted(() => ({
   aggregates: [] as DailyAggregate[],
   insights: [] as Insight[],
-  spendEntries: [] as SpendEntry[],
+  billedReporting: undefined as BilledReporting | undefined,
 }))
 
 vi.mock('../api/queries', () => ({
   AGGREGATES_DAYS_RANGE: 31,
   useAggregates: () => data.aggregates,
   useInsights: () => data.insights,
-  useSpendEntries: () => ({ entries: data.spendEntries, isLoading: false, isError: false }),
+  useBilledReporting: () => ({ report: data.billedReporting, isLoading: false, isError: false }),
   dashboardDateRange: () => ({ from: new Date('2026-08-01T12:00:00'), to: new Date('2026-08-31T12:00:00') }),
 }))
 
@@ -33,7 +33,16 @@ beforeEach(() => {
     aggregate({ costBasis: 'providerEstimated', costUsd: 3, requestCount: 1 }),
     aggregate({ costBasis: 'notional', costUsd: 4, requestCount: 1 }),
   ]
-  data.spendEntries = [{ id: '1', occurredOn: '2026-08-24', vendorId: 'v', categoryId: 'c', amount: 8, currency: 'GBP', amountGbp: 8, fxRate: 1, description: null, source: 'manual', entryKey: null, recordedAt: '2026-08-24T12:00:00Z' }]
+  data.billedReporting = {
+    entryCount: 5003,
+    totalGbp: 8,
+    dailyAverageGbp: 8 / 31,
+    projectedMonthlyGbp: 8 / 31 * 30,
+    topVendorName: 'Anthropic',
+    topVendorGbp: 8,
+    dailySeries: [],
+    vendorSeries: [],
+  }
   data.insights = []
 })
 
@@ -54,7 +63,7 @@ describe('SummaryCards', () => {
   })
 
   test('uses Not reported for absent money and unknown server savings', () => {
-    data.spendEntries = []
+    data.billedReporting = { ...data.billedReporting!, entryCount: 0, totalGbp: 0 }
     render(<SummaryCards />)
 
     expect(screen.getAllByText('Not reported').length).toBeGreaterThanOrEqual(1)

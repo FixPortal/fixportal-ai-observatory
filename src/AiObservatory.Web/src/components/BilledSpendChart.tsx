@@ -2,12 +2,12 @@ import { Bar, BarChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recha
 import type { ValueType } from 'recharts/types/component/DefaultTooltipContent'
 import { gbp } from '../lib/currency'
 import { formatShortDate } from '../lib/format'
-import type { BilledDailySeries } from '../lib/billedReporting'
+import type { BilledReporting } from '../api/client'
 
 const TEXT_MUTED = 'var(--text-muted)'
 
 interface Props {
-  data: BilledDailySeries[]
+  data: BilledReporting['dailySeries']
 }
 
 export default function BilledSpendChart({ data }: Props) {

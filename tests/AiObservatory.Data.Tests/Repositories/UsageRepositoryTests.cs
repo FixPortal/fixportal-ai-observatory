@@ -745,6 +745,97 @@ public class UsageRepositoryTests : IAsyncLifetime
             .Be(15m);
     }
 
+    [Fact]
+    public async Task Budget_alert_claim_converges_concurrent_and_replayed_calls_on_one_durable_state()
+    {
+        var ct = TestContext.Current.CancellationToken;
+        var rule = new BudgetRule { Period = BillingPeriod.Daily, ThresholdGbp = 10m };
+        _ctx.BudgetRules.Add(rule);
+        await _ctx.SaveChangesAsync(ct);
+
+        var options = new DbContextOptionsBuilder<AiObservatoryDbContext>()
+            .UseNpgsql(_connStr, o => o.UseNodaTime())
+            .Options;
+        await using var firstContext = new AiObservatoryDbContext(options);
+        await using var secondContext = new AiObservatoryDbContext(options);
+        var firstRepository = new UsageRepository(firstContext);
+        var secondRepository = new UsageRepository(secondContext);
+        var period = new LocalDate(2026, 8, 1);
+        var triggeredAt = Instant.FromUtc(2026, 8, 2, 0, 5);
+
+        var results = await Task.WhenAll(
+            firstRepository.GetOrCreateBudgetAlertAsync(
+                rule.Id,
+                period,
+                period,
+                10m,
+                15m,
+                AlertInsight(period, triggeredAt),
+                triggeredAt,
+                ct
+            ),
+            secondRepository.GetOrCreateBudgetAlertAsync(
+                rule.Id,
+                period,
+                period,
+                10m,
+                15m,
+                AlertInsight(period, triggeredAt),
+                triggeredAt,
+                ct
+            )
+        );
+
+        results.Should().ContainSingle(result => result.Created);
+        results.Should().ContainSingle(result => !result.Created);
+        (await _ctx.BudgetAlertClaims.AsNoTracking().CountAsync(ct)).Should().Be(1);
+        (await _ctx.Insights.AsNoTracking().CountAsync(ct)).Should().Be(1);
+        (await _ctx.BudgetRules.AsNoTracking().SingleAsync(candidate => candidate.Id == rule.Id, ct))
+            .LastTriggeredAt.Should()
+            .Be(triggeredAt);
+
+        var replay = await firstRepository.GetOrCreateBudgetAlertAsync(
+            rule.Id,
+            period,
+            period,
+            99m,
+            100m,
+            AlertInsight(period, triggeredAt),
+            triggeredAt,
+            ct
+        );
+        replay.Created.Should().BeFalse();
+        replay.ThresholdGbp.Should().Be(10m);
+        replay.ActualSpendGbp.Should().Be(15m);
+        (await _ctx.BudgetAlertClaims.AsNoTracking().CountAsync(ct)).Should().Be(1);
+        (await _ctx.Insights.AsNoTracking().CountAsync(ct)).Should().Be(1);
+
+        var pending = await firstRepository.GetPendingBudgetAlertEmailsAsync(ct);
+        pending.Should().ContainSingle();
+        pending[0].RuleId.Should().Be(rule.Id);
+        pending[0].PeriodStart.Should().Be(period);
+        pending[0].ActualSpendGbp.Should().Be(15m);
+
+        var emailClaims = await Task.WhenAll(
+            firstRepository.TryMarkBudgetAlertEmailAttemptedAsync(rule.Id, period, period, triggeredAt, ct),
+            secondRepository.TryMarkBudgetAlertEmailAttemptedAsync(rule.Id, period, period, triggeredAt, ct)
+        );
+        emailClaims.Should().ContainSingle(claimed => claimed);
+        emailClaims.Should().ContainSingle(claimed => !claimed);
+        (await firstRepository.GetPendingBudgetAlertEmailsAsync(ct)).Should().BeEmpty();
+    }
+
+    private static Insight AlertInsight(LocalDate period, Instant generatedAt) =>
+        new()
+        {
+            GeneratedAt = generatedAt,
+            PeriodStart = period,
+            PeriodEnd = period,
+            InsightType = InsightType.BudgetAlert,
+            Title = "Budget alert",
+            Body = "Billed spend exceeded the threshold.",
+        };
+
     private static SpendEntry Spend(Guid vendorId, Guid categoryId, LocalDate occurredOn, decimal amountGbp) =>
         new()
         {
