@@ -10,6 +10,8 @@ param prefix string = 'fpaiobs'
 // one-time Entra setup script (infra/scripts/setup-entra.ps1) creates the app.
 param aadTenantId string = 'c5eac41f-0525-4692-8705-7822be64d5ae'
 param aadClientId string = 'f3a9736e-1ba6-43b6-89f7-e799a9f93e9a'
+param anthropicBillingSecretName string = ''
+param copilotOrgSecretName string = ''
 
 module kv 'modules/keyvault.bicep' = {
   name: 'keyvault'
@@ -60,5 +62,7 @@ module ingest 'modules/ingest.bicep' = {
     appName: '${prefix}-ingest'
     kvName: kv.outputs.kvName
     aiConnectionString: appinsights.outputs.connectionString
+    anthropicBillingSecretName: anthropicBillingSecretName
+    copilotOrgSecretName: copilotOrgSecretName
   }
 }
