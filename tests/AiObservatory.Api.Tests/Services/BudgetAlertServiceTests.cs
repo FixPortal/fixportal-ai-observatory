@@ -123,6 +123,14 @@ public class BudgetAlertServiceTests
         var rule = Rule(BillingPeriod.Daily, provider: Provider.Anthropic);
         StubRules(rule);
         StubBilledSpend(rule, 4m);
+        _repo
+            .GetBilledSpendGbpAsync(
+                Arg.Any<LocalDate>(),
+                Arg.Any<LocalDate>(),
+                null,
+                Arg.Any<CancellationToken>()
+            )
+            .Returns(20m);
 
         await Sut().CheckAndAlertAsync(TestContext.Current.CancellationToken);
 
