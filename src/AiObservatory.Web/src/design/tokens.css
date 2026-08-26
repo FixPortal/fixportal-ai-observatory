@@ -7,36 +7,34 @@
  * this import — never here. See design-standard.md § App-local tokens. */
 
 :root {
-  --app-bg: #f7f8fa;
+  --app-bg: #f3f7fc;
   --card-bg: #ffffff;
-  --sidebar-bg: #0b1220;
+  --header-bg: #edf4fc;
+  --footer-bg: #edf4fc;
+  --sidebar-bg: #050c16;
   --border: #e5e7eb;
   /* AA-corrected in 0.5.6: #cbd5e1 is ~1.5:1 on --card-bg — far below the 3:1
      UI-chrome floor (1.4.11) for the control boundaries this token serves.
      #7c8ca2 is 3.4:1 on --card-bg and 3.2:1 on --app-bg. */
   --border-strong: #7c8ca2;
   --text: #1f2937;
-  --text-muted: #6b7280;
-  /* AA-corrected in 0.5.5: stock slate #94a3b8 is ~2.4:1 on --app-bg — fails
-     AA (4.5:1) for the small secondary text this token serves. #5b6b85 is
-     ~5.1:1. Measured and proven in fixportal-ci-frontend, which carried this
-     as an app-local override; upstreamed here so every consumer gets it. */
-  --text-faint: #5b6b85;
+  --text-muted: #5a6472;
+  /* Faint text still clears AA on the approved cool light canvas; the previous
+     slate value did not. */
+  --text-faint: #646d7b;
 
   /* Sidebar — IDE chrome, theme-invariant. See design-standard.md § Sidebar is
      IDE-style chrome. Never override under [data-theme="dark"]. */
   --sidebar-text: #e2e8f0;
   --sidebar-text-muted: #94a3b8;
-  /* AA-corrected in 0.5.6: #64748b is 3.93:1 on the theme-invariant
-     --sidebar-bg (#0b1220) — below AA (4.5:1) for the 14px idle nav text this
-     token serves, in both themes (A11Y-SFE-002 / A11Y-PFP-008). #7c8ca2 is
-     5.5:1 and still reads visibly fainter than --sidebar-text-muted. */
+  /* Accessible idle navigation text on the approved theme-invariant
+     --sidebar-bg. It remains visibly fainter than --sidebar-text-muted. */
   --sidebar-text-faint: #7c8ca2;
   --sidebar-hover-bg: rgba(255, 255, 255, 0.05);
   --sidebar-selected-bg: rgba(255, 255, 255, 0.10);
   --sidebar-border: rgba(255, 255, 255, 0.10);
-  --sidebar-active-bg: #0f4e47;
-  --sidebar-active-text: #86efac;
+  --sidebar-active-bg: hsl(217 82% 20%);
+  --sidebar-active-text: hsl(217 82% 80%);
   /* Attention badge on a subnav entry. Amber on
      the dark sidebar field -- theme-invariant like the rest of the sidebar
      palette, and visually distinct from --sidebar-active-* so a pending
@@ -44,32 +42,40 @@
   --sidebar-badge-bg: #b45309;
   --sidebar-badge-text: #fef3c7;
 
-  --brand-tint: #f0fdfa;
-  --brand-soft: #5eead4;
-  --brand-soft-rgb: 94 234 212;
-  --brand: #0d9488;
-  --brand-strong: #0f766e;
+  --brand-tint: hsl(217 82% 96%);
+  --brand-soft: hsl(217 82% 30%);
+  --brand-soft-rgb: 14 62 139;
+  --brand: hsl(217 82% 50%);
+  --brand-strong: hsl(217 82% 40%);
+  --brand-contrast: #ffffff;
   /* The accent AS TEXT. --brand is a single invariant L=50% value meant for fills
      and borders; read as a text colour it goes too dark on a light surface. Any
-     brand-coloured text must resolve through this token, never through --brand.
-     Mode-split: the deep teal reads on light surfaces, the soft teal on dark.
-     Consumers that derive an accent recompute it; these are the stock values, and
-     __tests__/components-css.test.ts holds both to the AA floor. */
-  --brand-text: #0f766e;
+     brand-coloured text must resolve through this mode-specific token. Consumers
+     that derive an accent recompute it; the contract test holds both modes to AA. */
+  --brand-text: hsl(217 82% 20%);
+  --brand-bg: hsl(217 82% 97%);
+  --brand-bg-hover: hsl(217 82% 91%);
+  --brand-border: hsl(217 82% 35% / 0.35);
+  --brand-border-hover: hsl(217 82% 30% / 0.55);
+  --brand-ring: hsl(217 82% 35% / 0.6);
+  --brand-pill-bg: hsl(217 82% 45% / 0.12);
   /* Direction channel: --flow-out marks sent/generated traffic against --brand for
-     received (throughput sparkline, demo rails, replay trace). This was violet
-     (#7e22ce / #d2a5f0), which made it a fifth hue outside brand/ok/warn/bad and put it
-     in direct collision under a purple accent. Blue sits ~60 degrees off stock teal —
-     the same spacing the app's accent derivation uses — and carries no status meaning,
-     unlike green/amber/red. Indigo was rejected: close enough to violet to draw the
-     same objection.
+     received. It keeps the selected accent hue but damps saturation so flow remains
+     distinct without inventing another palette colour. --flow-out is the fill;
+     --flow-out-soft is its readable, mode-specific text companion. */
+  --flow-out: hsl(217 25% 45%);
+  --flow-out-soft: hsl(217 25% 28%);
 
-     --flow-out is the FILL (dots, borders, bar segments); --flow-out-soft is the
-     readable text companion, mirroring --brand-soft's ramp — deeper than the fill in
-     light, lighter in dark. Consumers that set an accent get both derived from it and
-     never see these defaults; these are the stock, un-themed palette. */
-  --flow-out: #2563eb;
-  --flow-out-soft: #1e40af;
+  --radius-base: 6px;
+  --radius-sm: 3px;
+  --radius: 4px;
+  --radius-md: 6px;
+  --radius-lg: 8px;
+  --radius-xl: 12px;
+  --radius-2xl: 16px;
+  --radius-3xl: 24px;
+  --transition-base: 80ms;
+  --shadow-card: none;
 
   --ok-bg: #dcfce7;
   --ok-border: #16a34a;
@@ -138,16 +144,27 @@
    so a subtree can be pinned light even inside a dark ancestor. Sidebar /
    code / font tokens are theme-invariant and intentionally NOT restated. */
 [data-theme="light"] {
-  --app-bg: #f7f8fa;
+  --app-bg: #f3f7fc;
   --card-bg: #ffffff;
+  --header-bg: #edf4fc;
+  --footer-bg: #edf4fc;
   --border: #e5e7eb;
   --border-strong: #7c8ca2;
   --text: #1f2937;
-  --text-muted: #6b7280;
-  --text-faint: #5b6b85;
+  --text-muted: #5a6472;
+  --text-faint: #646d7b;
   --code-bg: #1e1e2a;
-  --brand-tint: #f0fdfa;
-  --brand-text: #0f766e;
+  --brand-tint: hsl(217 82% 96%);
+  --brand-soft: hsl(217 82% 30%);
+  --brand-soft-rgb: 14 62 139;
+  --brand-text: hsl(217 82% 20%);
+  --brand-bg: hsl(217 82% 97%);
+  --brand-bg-hover: hsl(217 82% 91%);
+  --brand-border: hsl(217 82% 35% / 0.35);
+  --brand-border-hover: hsl(217 82% 30% / 0.55);
+  --brand-ring: hsl(217 82% 35% / 0.6);
+  --brand-pill-bg: hsl(217 82% 45% / 0.12);
+  --flow-out-soft: hsl(217 25% 28%);
   --ok-bg: #dcfce7; --ok-border: #16a34a; --ok-text: #15803d;
   --warn-bg: #fef3c7; --warn-border: #fbbf24; --warn-text: #92400e;
   --bad-bg: #fef2f2; --bad-border: #fca5a5; --bad-text: #991b1b;
@@ -159,8 +176,10 @@
 }
 
 :root[data-theme="dark"], [data-theme="dark"] {
-  --app-bg: #020617;
-  --card-bg: #0f172a;
+  --app-bg: #07111f;
+  --card-bg: #0d1b2e;
+  --header-bg: #081426;
+  --footer-bg: #081426;
   --border: #1e293b;
   /* AA-corrected in 0.5.6: #334155 is 1.95:1 on --app-bg and 1.72:1 on
      --card-bg — below the 3:1 UI-chrome floor (1.4.11) for idle control
@@ -170,22 +189,28 @@
   --text-muted: #94a3b8;
   /* AA-corrected in 0.5.5: #64748b is ~4.2:1 on --app-bg — just under AA.
      #94a3b8 is ~7.4:1. Same upstreaming as the light value above. */
-  --text-faint: #94a3b8;
+  --text-faint: #8496ae;
 
   /* Code panes drop through the card to the page bg in dark mode — the
      editor-inset look (VSCode / Monaco). Light mode keeps the dark
      #1e1e2a default declared on :root. */
   --code-bg: #020617;
 
-  --brand-tint: rgba(20, 184, 166, 0.10);
-  /* The deep teal that carries brand text on a light surface is far too dark on
-     #020617; dark takes the soft teal instead (the same value --brand-soft holds). */
-  --brand-text: #5eead4;
+  --brand-tint: hsl(217 82% 50% / 0.12);
+  /* Dark mode lifts the accent roles so text and soft interaction states remain
+     legible on the approved cool navy surfaces. */
+  --brand-soft: hsl(217 82% 80%);
+  --brand-soft-rgb: 162 194 246;
+  --brand-text: hsl(217 82% 88%);
+  --brand-bg: hsl(217 82% 8%);
+  --brand-bg-hover: hsl(217 82% 18%);
+  --brand-border: hsl(217 82% 70% / 0.35);
+  --brand-border-hover: hsl(217 82% 75% / 0.55);
+  --brand-ring: hsl(217 82% 70% / 0.65);
+  --brand-pill-bg: hsl(217 82% 70% / 0.12);
 
-  /* Both lifted for dark slate: the light-mode fill and its deeper text companion are
-     too dark to carry a dot, a border or small text on #020617. */
-  --flow-out: #3b82f6;
-  --flow-out-soft: #93c5fd;
+  /* The readable flow companion is lifted for the dark canvas. */
+  --flow-out-soft: hsl(217 25% 78%);
 
   --ok-bg: rgba(22, 163, 74, 0.20);
   --ok-text: #86efac;

@@ -4,7 +4,7 @@
 
 **Goal:** Make the deployed AI Observatory financially truthful and visually conformant with the FixPortal design language in one pull request.
 
-**Architecture:** The billed GBP ledger becomes the sole source for Reporting and budget alerts, while usage aggregates remain activity, estimate, and explicitly notional evidence. The frontend keeps its tokenless-OSS-safe vendored design layer, synchronizes it to `@fixportal/design` 0.7.0, and applies app-local provider/project palettes only for identity and chart series.
+**Architecture:** The billed GBP ledger becomes the sole source for Reporting and budget alerts, while usage aggregates remain activity, estimate, and explicitly notional evidence. The frontend keeps its tokenless-OSS-safe vendored design layer, synchronizes it to `@fixportal/design` 0.8.0 at tag `v0.8.0` / commit `16691f2`, and applies app-local provider/project palettes only for identity and chart series.
 
 **Tech Stack:** .NET 10, ASP.NET Core minimal APIs, EF Core 10 with PostgreSQL and NodaTime, React 19, TypeScript 6, TanStack Query, Recharts, Vitest/Testing Library, Bicep, Azure App Service and Static Web Apps.
 
@@ -20,7 +20,7 @@
 - Keep NodaTime at the domain/data boundary and the existing injected `IClock` in alert evaluation.
 - Use the existing repository, query hooks, Recharts dependency, CSS architecture, and native `<details>` disclosure.
 - Keep the vendored design copy; do not add `@fixportal/design` or another UI dependency to `package.json`.
-- Provider colours identify providers or chart series only. Teal is interaction; green/amber/red are status.
+- Provider colours identify providers or chart series only. The canonical blue accent is interaction; green/amber/red are status.
 - Preserve accessibility basics and test keyboard/semantic behaviour where the interaction changes.
 - Commit locally by task, but push the finished branch only once after the full gate is green.
 
@@ -489,7 +489,7 @@ git commit -m "Clarify notional value and bound insights"
 - Modify: `src/AiObservatory.Web/src/design/transitions.test.ts`
 
 **Interfaces:**
-- Consumes: canonical `D:\fix-portal\fixportal-assets\packages\design` version 0.7.0.
+- Consumes: canonical `D:\fix-portal\fixportal-assets\packages\design` version 0.8.0 at tag `v0.8.0` / commit `16691f2`.
 - Produces: stable existing Observatory import paths with canonical primitive behaviour.
 - Preserves: `BrandWordmark.tsx` and `SearchIcon.tsx`, which do not need synchronization.
 
@@ -498,8 +498,8 @@ git commit -m "Clarify notional value and bound insights"
 Keep the transition checks and add assertions against `tokens.css` / `components.css` for:
 
 ```ts
-expect(tokens).toContain('--brand-text: #0f766e')
-expect(tokens).toContain('--sidebar-bg: #0b1220')
+expect(tokens).toContain('--brand-contrast: #ffffff')
+expect(tokens).toContain('--sidebar-bg: #050c16')
 expect(tokens).toContain('--warn-border: #f59e0b')
 expect(components).toContain('.fpds-app-header')
 expect(components).toContain('.fpds-site-footer')
@@ -537,7 +537,7 @@ Create `system.md` with these exact sections and rules:
 ```markdown
 # AI Observatory visual system
 
-Canonical base: `@fixportal/design` 0.7.0, vendored from the FixPortal assets repository so public installs require no private package token.
+Canonical base: `@fixportal/design` 0.8.0 at tag `v0.8.0` / commit `16691f2`, vendored from the FixPortal assets repository so public installs require no private package token.
 
 ## Product signature
 
@@ -545,7 +545,7 @@ AI Observatory is evidence-first: values carry source, scope, basis, freshness, 
 
 ## App-local palettes
 
-Provider colours identify providers in charts, swatches, and provider badges only. Project colours identify project series only. Neither palette communicates status, selection, progress, or interaction. Brand teal is interaction; green, amber, and red are status.
+Provider colours identify providers in charts, swatches, and provider badges only. Project colours identify project series only. Neither palette communicates status, selection, progress, or interaction. The canonical blue accent is interaction; green, amber, and red are status.
 
 ## Conformance
 
@@ -625,7 +625,7 @@ Remove fallback hex values from active component CSS where the canonical token i
 
 - [ ] **Step 3: Remove obsolete token bridges and normalize CSS values**
 
-Because canonical 0.7.0 now supplies font, brand-text, stronger borders, sidebar, flow, code, and corrected dark warning tokens:
+Because canonical 0.8.0 supplies font, dedicated chrome surfaces, brand contrast/background/ring roles, radius/motion roles, stronger borders, sidebar, flow, code, and corrected dark warning tokens:
 
 - remove app-local redefinitions of canonical tokens;
 - keep only Observatory spacing, motion, radius aliases, provider colours, project colours, and spend-category colours;
@@ -730,6 +730,29 @@ git add src/AiObservatory.Web/src
 ```powershell
 git commit -m "Conform the Observatory UI to FixPortal design"
 ```
+
+---
+
+### Task 5b: Resynchronize the vendored UI with `@fixportal/design` 0.8.0
+
+The 0.8.0 snapshot supersedes the 0.7.0 provenance in Tasks 4-5 without changing
+their product semantics. Replace `tokens.css`, `components.css`, and `Button.tsx`
+byte-for-byte from clean tag `v0.8.0` / commit `16691f2`; hash-check the other
+already-vendored primitives. Consume the new header/footer surfaces,
+`--brand-contrast`, `--brand-ring`, canonical radius roles, and
+`--transition-base` through app-local role aliases rather than copied values.
+
+Review newly exported primitives against real call sites under the Ponytail rule:
+vendor only one that removes an existing implementation while preserving its full
+behaviour and accessibility. In particular, the Dashboard's current tablist accepts
+ArrowUp/ArrowDown aliases; canonical 0.8.0 `Tabs` handles horizontal arrows plus
+Home/End but omits those existing aliases, so adopting it would lose keyboard
+behaviour. Keep the local tablist and do not vendor unused primitives.
+
+No CSS/source-string change-detector test is added. Prove the resync with canonical
+blob hashes, frontend lint/full tests/build, `git diff --check`, and the full
+six-tab × desktop/mobile × light/dark rendered matrix because the canonical canvas,
+chrome, brand, text, focus, radius, and motion values affect the entire shell.
 
 ---
 
