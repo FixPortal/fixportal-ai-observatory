@@ -49,7 +49,7 @@ function subToForm(sub: Subscription): FormValues {
 
 const capitalize = (s: string) => s.charAt(0).toUpperCase() + s.slice(1)
 
-const FALLBACK_BADGE = { color: 'var(--provider-other)', background: 'rgba(100,116,139,.12)' }
+const FALLBACK_BADGE = { color: 'var(--provider-other)', background: 'color-mix(in srgb, var(--provider-other) 12%, transparent)' }
 
 type FormMode = 'none' | 'add' | (string & {})
 
