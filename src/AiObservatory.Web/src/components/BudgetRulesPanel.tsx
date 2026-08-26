@@ -15,11 +15,8 @@ function WebhookChip({ configured }: { configured: boolean | undefined }) {
   if (configured === undefined) return null
   return (
     <span
+      className="budget-rules__channel"
       style={{
-        fontSize: '0.75rem',
-        fontWeight: 500,
-        padding: '2px 8px',
-        borderRadius: 4,
         color: configured ? 'var(--ok-border)' : 'var(--text-muted)',
         border: `1px solid ${configured ? 'var(--ok-border)' : 'var(--border)'}`,
       }}
@@ -91,17 +88,9 @@ export default function BudgetRulesPanel() {
   return (
     <section>
       <div className="panel">
-        <div
-          style={{
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'space-between',
-            gap: 'var(--space-3)',
-            flexWrap: 'wrap',
-          }}
-        >
-          <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-3)', flexWrap: 'wrap' }}>
-            <span className="panel-title" style={{ marginBottom: 0, paddingBottom: 0, borderBottom: 'none' }}>
+        <div className="budget-rules__header">
+          <div className="budget-rules__title-row">
+            <span className="panel-title">
               Budget Rules
             </span>
             <WebhookChip configured={configured} />
@@ -113,52 +102,52 @@ export default function BudgetRulesPanel() {
           )}
         </div>
 
-        <div style={{ marginTop: 'var(--space-3)', borderTop: '1px solid var(--border)', paddingTop: 'var(--space-3)' }}>
+        <div className="budget-rules__body">
           {isError && <p className="panel-empty">Failed to load budget rules.</p>}
           {mutationError && <p className="panel-empty" role="alert">{mutationError}</p>}
           {!isError && !isLoading && rules.length === 0 && (
             <p className="panel-empty">No budget rules configured.</p>
           )}
           {rules.length > 0 && (
-            <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.82rem' }}>
+            <table className="budget-rules__table">
               <thead>
-                <tr style={{ borderBottom: '1px solid var(--border)' }}>
-                  <th style={{ textAlign: 'left', padding: '4px 8px 4px 0', color: 'var(--text-muted)', fontWeight: 600 }}>
+                <tr>
+                  <th>
                     Provider
                   </th>
-                  <th style={{ textAlign: 'left', padding: '4px 8px', color: 'var(--text-muted)', fontWeight: 600 }}>
+                  <th>
                     Period
                   </th>
-                  <th style={{ textAlign: 'right', padding: '4px 8px', color: 'var(--text-muted)', fontWeight: 600 }}>
+                  <th>
                     Threshold (GBP)
                   </th>
-                  <th style={{ textAlign: 'left', padding: '4px 8px', color: 'var(--text-muted)', fontWeight: 600 }}>
+                  <th>
                     Last fired
                   </th>
-                  {!isReadonly && <th style={{ width: 32 }} aria-label="Actions" />}
+                  {!isReadonly && <th aria-label="Actions" />}
                 </tr>
               </thead>
               <tbody>
                 {rules.map(rule => (
-                  <tr key={rule.id} style={{ borderBottom: '1px solid var(--border)' }}>
-                    <td style={{ padding: '6px 8px 6px 0', color: 'var(--text)' }}>
+                  <tr key={rule.id}>
+                    <td>
                       {rule.provider ? capitalize(rule.provider) : 'All providers'}
                     </td>
-                    <td style={{ padding: '6px 8px', color: 'var(--text)' }}>
+                    <td>
                       {capitalize(rule.period)}
                     </td>
-                    <td style={{ padding: '6px 8px', color: 'var(--text)', textAlign: 'right' }}>
+                    <td>
                       {gbp(rule.thresholdGbp)}
                     </td>
-                    <td style={{ padding: '6px 8px', color: 'var(--text-muted)' }}>
+                    <td>
                       {rule.lastTriggeredAt
                         ? new Date(rule.lastTriggeredAt).toLocaleString()
                         : 'Never'}
                     </td>
                     {!isReadonly && (
-                      <td style={{ padding: '6px 0 6px 8px', textAlign: 'center' }}>
+                      <td className="budget-rules__actions">
                         {confirmDeleteId === rule.id ? (
-                          <span style={{ display: 'inline-flex', gap: 4, justifyContent: 'flex-end' }}>
+                          <span>
                             <Button
                               variant="ghost"
                               size="sm"
@@ -187,31 +176,16 @@ export default function BudgetRulesPanel() {
       </div>
 
       {panelOpen && (
-        <div className="panel" style={{ marginTop: 'var(--space-3)' }}>
+        <div className="panel budget-rules__history">
           <div className="panel-title">Add Budget Rule</div>
           <form onSubmit={handleSubmit}>
-            <div
-              style={{
-                display: 'grid',
-                gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))',
-                gap: 'var(--space-3)',
-                marginBottom: 'var(--space-4)',
-              }}
-            >
-              <label style={{ display: 'flex', flexDirection: 'column', gap: 4, fontSize: '0.8rem', color: 'var(--text-muted)' }}>
+            <div className="budget-rules__form-grid">
+              <label className="budget-rules__field">
                 Provider
                 <select
                   value={provider}
                   onChange={e => setProvider(e.target.value)}
-                  style={{
-                    font: 'inherit',
-                    fontSize: '0.85rem',
-                    padding: '5px 8px',
-                    borderRadius: 4,
-                    border: '1px solid var(--border)',
-                    background: 'var(--card-bg)',
-                    color: 'var(--text)',
-                  }}
+                  className="budget-rules__control"
                 >
                   <option value="">All providers</option>
                   {PROVIDERS.map(p => (
@@ -220,20 +194,12 @@ export default function BudgetRulesPanel() {
                 </select>
               </label>
 
-              <label style={{ display: 'flex', flexDirection: 'column', gap: 4, fontSize: '0.8rem', color: 'var(--text-muted)' }}>
+              <label className="budget-rules__field">
                 Period
                 <select
                   value={period}
                   onChange={e => setPeriod(e.target.value as typeof period)}
-                  style={{
-                    font: 'inherit',
-                    fontSize: '0.85rem',
-                    padding: '5px 8px',
-                    borderRadius: 4,
-                    border: '1px solid var(--border)',
-                    background: 'var(--card-bg)',
-                    color: 'var(--text)',
-                  }}
+                  className="budget-rules__control"
                 >
                   {PERIODS.map(p => (
                     <option key={p} value={p}>{capitalize(p)}</option>
@@ -241,7 +207,7 @@ export default function BudgetRulesPanel() {
                 </select>
               </label>
 
-              <label style={{ display: 'flex', flexDirection: 'column', gap: 4, fontSize: '0.8rem', color: 'var(--text-muted)' }}>
+              <label className="budget-rules__field">
                 Threshold (GBP)
                 <input
                   type="number"
@@ -251,20 +217,12 @@ export default function BudgetRulesPanel() {
                   onChange={e => setThreshold(e.target.value)}
                   placeholder="e.g. 50"
                   required
-                  style={{
-                    font: 'inherit',
-                    fontSize: '0.85rem',
-                    padding: '5px 8px',
-                    borderRadius: 4,
-                    border: '1px solid var(--border)',
-                    background: 'var(--card-bg)',
-                    color: 'var(--text)',
-                  }}
+                  className="budget-rules__control"
                 />
               </label>
             </div>
 
-            <div style={{ display: 'flex', gap: 'var(--space-2)' }}>
+            <div className="budget-rules__actions">
               <Button type="submit" variant="primary" size="sm" disabled={addRule.isPending || threshold === ''}>
                 {addRule.isPending ? 'Adding...' : 'Add rule'}
               </Button>
@@ -276,23 +234,22 @@ export default function BudgetRulesPanel() {
         </div>
       )}
 
-      <div className="panel" style={{ marginTop: 'var(--space-3)' }}>
+      <div className="panel budget-rules__history">
         <div className="panel-title">Alert History</div>
         {budgetAlerts.length === 0 ? (
           <p className="panel-empty">No budget alerts triggered.</p>
         ) : (
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-2)' }}>
+          <div className="budget-rules__history">
             {budgetAlerts.map(alert => (
               <div
                 key={alert.id}
                 className="insight insight-anomaly"
-                style={{ padding: 'var(--space-3)' }}
               >
                 <div className="insight-title">{alert.title}</div>
-                <div className="insight-body" style={{ marginTop: 'var(--space-1)' }}>
+                <div className="insight-body">
                   {alert.body}
                 </div>
-                <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginTop: 'var(--space-1)' }}>
+                <div className="budget-rules__history-time">
                   {new Date(alert.generatedAt).toLocaleString()}
                 </div>
               </div>
