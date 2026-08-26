@@ -454,7 +454,7 @@ td.budget-rules__actions { display: table-cell; padding: 6px 0 6px 8px; text-ali
 }
 .auth-gate__button {
   padding: var(--space-2) var(--space-4);
-  background: var(--surface);
+  background: var(--app-bg);
   border: 1px solid var(--border-strong);
   border-radius: var(--r-chip);
   color: var(--text);
@@ -1344,7 +1344,7 @@ td.budget-rules__actions { display: table-cell; padding: 6px 0 6px 8px; text-ali
   color: inherit;
   transition: background var(--transition-fast);
 }
-.collapsible-panel__header:hover { background: var(--surface); }
+.collapsible-panel__header:hover { background: var(--app-bg); }
 .collapsible-panel__header:focus-visible {
   outline: 2px solid var(--brand-strong);
   outline-offset: -2px;
