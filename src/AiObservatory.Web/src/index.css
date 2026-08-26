@@ -45,11 +45,10 @@
   --provider-google: #0284c7;
   --provider-copilot: #db2777;
   --provider-openai: #ea580c;
-  /* Lime, not teal/green/indigo/fuchsia: those are all spoken for semantically
-     (brand teal, ok green, info indigo, and fuchsia as the dark-theme warn
-     border). Lime is the nearest free hue that stays separable from the four
-     categorical colours above, and semantic ok-green never appears as a chart
-     fill, so the two cannot be confused at a swatch. */
+  /* Moonshot stays lime: canonical blue is reserved for interaction, green for
+     success, and amber/red for warning/destructive states. It remains separable
+     from the provider identity colours above; semantic success green never
+     appears as a chart fill, so role and identity cannot be confused at a swatch. */
   --provider-moonshot: #65a30d;
   --provider-other: #64748b;
   --provider-judge: #d97706;
@@ -162,7 +161,7 @@ body {
   align-items: center;
   justify-content: center;
   padding: 0;
-  transition: border-color 0.12s ease, color 0.12s ease;
+  transition: border-color var(--transition-fast), color var(--transition-fast);
 }
 .info-btn:hover,
 .info-btn[aria-expanded="true"] {
