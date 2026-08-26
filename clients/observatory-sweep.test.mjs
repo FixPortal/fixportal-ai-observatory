@@ -7,13 +7,30 @@ import { mkdtemp, mkdir, readFile, rm, utimes, writeFile } from 'node:fs/promise
 import { createServer } from 'node:http'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
+import { DatabaseSync } from 'node:sqlite'
 import { fileURLToPath } from 'node:url'
 import { promisify } from 'node:util'
+import * as sweep from './observatory-sweep.mjs'
 import {
   parseCodex, parseCopilot, parseClaude, parseKimi,
   buildDailySnapshots, updateFileCache, parseLocalSources, listJsonl,
   planSnapshotSubmissions, scanRecords, observatoryUrl, observatoryFetch,
 } from './observatory-sweep.mjs'
+
+function varint(value) {
+  const bytes = []
+  do {
+    bytes.push((value & 0x7f) | (value > 0x7f ? 0x80 : 0))
+    value = Math.floor(value / 128)
+  } while (value)
+  return bytes
+}
+
+function antigravityPayload(input, output, thoughts = 0, prefix = []) {
+  const usage = [0x08, 1, 0x10, ...varint(input), 0x18, ...varint(output), 0x30, ...varint(thoughts)]
+  const response = [...prefix, 0x4a, ...varint(usage.length), ...usage]
+  return Buffer.from([0x2a, ...varint(response.length), ...response])
+}
 
 test('observatoryUrl protects the API key in transit', () => {
   assert.equal(observatoryUrl('https://observatory.example/api/'), 'https://observatory.example/api')
@@ -209,6 +226,118 @@ test('parseKimi ignores valid JSON values that are not telemetry objects', () =>
   assert.deepEqual(parseKimi(content), [])
 })
 
+test('Gemini review transcripts produce API list-price snapshots', () => {
+  const records = sweep.parseGeminiReview([
+    JSON.stringify({ sessionId: 'review-session', startTime: '2026-08-24T11:59:00Z' }),
+    JSON.stringify({
+      type: 'gemini', timestamp: '2026-08-24T12:00:00Z', model: 'gemini-3.1-pro-preview',
+      tokens: { input: 100, output: 20, cached: 10, thoughts: 5 },
+    }),
+  ].join('\n'))
+
+  const [snapshot] = buildDailySnapshots(records)
+
+  assert.equal(snapshot.provider, 'Google')
+  assert.equal(snapshot.sourceId, 'gemini-review-local')
+  assert.equal(snapshot.usageScope, 'api')
+  assert.equal(snapshot.costBasis, 'listPriceEstimate')
+  assert.equal(snapshot.inputTokens, 90)
+  assert.equal(snapshot.outputTokens, 20)
+  assert.equal(snapshot.cacheReadTokens, 10)
+  assert.equal(snapshot.thoughtTokens, 5)
+  assert.deepEqual(JSON.parse(snapshot.rawPayload), {
+    source: 'observatory-sweep', tool: 'gemini-review', service: 'Gemini Developer API',
+    tier: 'standard', context: 'short', thinking_tokens: 5,
+  })
+})
+
+test('Antigravity databases produce subscription notional snapshots', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'observatory-antigravity-'))
+  const dbPath = join(root, 'session-id.db')
+  const db = new DatabaseSync(dbPath)
+  db.exec('CREATE TABLE steps (idx INTEGER PRIMARY KEY, step_type INTEGER, step_payload BLOB)')
+  const insert = db.prepare('INSERT INTO steps (idx, step_type, step_payload) VALUES (?, ?, ?)')
+  insert.run(1, 23, antigravityPayload(100, 20, 5))
+  insert.run(2, 23, antigravityPayload(50, 10, 2))
+  db.close()
+  const transcript = JSON.stringify({
+    created_at: '2026-08-24T12:00:00Z',
+    content: 'The user changed setting `Model Selection` from None to Gemini 3.1 Pro (High).',
+  })
+
+  try {
+    const [record] = await sweep.parseAntigravityDatabase(dbPath, transcript)
+    const [snapshot] = buildDailySnapshots([record])
+
+    assert.equal(snapshot.provider, 'Google')
+    assert.equal(snapshot.sourceId, 'antigravity-local')
+    assert.equal(snapshot.usageScope, 'subscription')
+    assert.equal(snapshot.costBasis, 'notional')
+    assert.equal(snapshot.model, 'gemini-3.1-pro-high')
+    assert.equal(snapshot.inputTokens, 150)
+    assert.equal(snapshot.outputTokens, 30)
+    assert.equal(snapshot.thoughtTokens, 7)
+  } finally {
+    await rm(root, { recursive: true, force: true })
+  }
+})
+
+test('Antigravity parser ignores protobuf fields that only resemble token counters', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'observatory-antigravity-false-token-'))
+  const dbPath = join(root, 'session-id.db')
+  const db = new DatabaseSync(dbPath)
+  db.exec('CREATE TABLE steps (idx INTEGER PRIMARY KEY, step_type INTEGER, step_payload BLOB)')
+  const unrelated = [0x08, ...varint(1_765_000_000), 0x10, ...varint(32_437_700), 0x18, 5]
+  db.prepare('INSERT INTO steps VALUES (?, ?, ?)')
+    .run(1, 23, antigravityPayload(100, 20, 5, [0x0a, ...varint(unrelated.length), ...unrelated]))
+  db.close()
+
+  try {
+    const [record] = await sweep.parseAntigravityDatabase(
+      dbPath,
+      JSON.stringify({ created_at: '2026-08-24T12:00:00Z', content: 'Gemini 3.1 Pro (High)' }),
+    )
+    assert.equal(record.inputTokens, 100)
+    assert.equal(record.outputTokens, 20)
+    assert.equal(record.thoughtTokens, 5)
+  } finally {
+    await rm(root, { recursive: true, force: true })
+  }
+})
+
+test('scanRecords discovers retained Gemini reviews and Antigravity conversations', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'observatory-google-scan-'))
+  const geminiHome = join(root, 'gemini')
+  const reviewChats = join(geminiHome, 'tmp', 'gem-review-fixture', 'chats')
+  const conversations = join(geminiHome, 'antigravity-cli', 'conversations')
+  const transcriptDir = join(geminiHome, 'antigravity-cli', 'brain', 'agy-session', '.system_generated', 'logs')
+  await mkdir(reviewChats, { recursive: true })
+  await mkdir(conversations, { recursive: true })
+  await mkdir(transcriptDir, { recursive: true })
+  await writeFile(join(reviewChats, 'session-review.jsonl'), JSON.stringify({
+    type: 'gemini', timestamp: '2026-08-24T12:00:00Z', model: 'gemini-3.1-pro-preview',
+    tokens: { input: 100, output: 20, cached: 10, thoughts: 5 },
+  }))
+  await writeFile(join(transcriptDir, 'transcript.jsonl'), JSON.stringify({
+    created_at: '2026-08-24T12:00:00Z', content: 'Model Selection` from None to Gemini 3.1 Pro (High).',
+  }))
+  const db = new DatabaseSync(join(conversations, 'agy-session.db'))
+  db.exec('CREATE TABLE steps (idx INTEGER PRIMARY KEY, step_type INTEGER, step_payload BLOB)')
+  db.prepare('INSERT INTO steps VALUES (?, ?, ?)').run(1, 23, antigravityPayload(50, 10))
+  db.close()
+  const cfg = {
+    codexHome: join(root, 'codex'), copilotHome: join(root, 'copilot'),
+    claudeHome: join(root, 'claude'), kimiHome: join(root, 'kimi'), geminiHome,
+  }
+
+  try {
+    const records = await scanRecords(cfg, {}, new Set(['gemini', 'antigravity']))
+    assert.deepEqual(records.map(record => record.tool).sort(), ['antigravity', 'gemini-review'])
+  } finally {
+    await rm(root, { recursive: true, force: true })
+  }
+})
+
 test('local parsers ignore records without a valid observation timestamp', () => {
   const claude = parseClaude(JSON.stringify({ type: 'assistant', timestamp: null, message: { id: 'msg-no-time', model: 'claude-opus-5', usage: { input_tokens: 1, output_tokens: 1 } } }))
   const kimi = parseKimi(JSON.stringify({ type: 'usage.record', time: null, model: 'kimi-code/kimi-for-coding', usage: { inputOther: 1, output: 1 } }))
@@ -345,7 +474,7 @@ test('scanRecords rebuilds an unversioned matching-mtime cache instead of reusin
     const records = await scanRecords(cfg, state, new Set(['codex']))
 
     assert.deepEqual(records, [])
-    assert.equal(state.parseCacheVersion, 1)
+    assert.equal(state.parseCacheVersion, 2)
     assert.deepEqual(state.files.codex[path].records, [])
   } finally {
     await rm(root, { recursive: true, force: true })
@@ -406,7 +535,7 @@ test('scanRecords handles transcript histories larger than the engine argument l
   }
   const files = Array.from({ length: 200 }, (_, index) => ({ path: `claude-${index}.jsonl`, mtimeMs: 1 }))
   const state = {
-    parseCacheVersion: 1,
+    parseCacheVersion: 2,
     files: {
       claude: Object.fromEntries(files.map(file => [file.path, {
         mtimeMs: file.mtimeMs,
@@ -598,7 +727,7 @@ test('replacement plans active snapshots before tombstones in both lexical key d
 })
 
 test('parseLocalSources defaults to every collector and honors an explicit allowlist', () => {
-  assert.deepEqual([...parseLocalSources()].sort(), ['claude', 'codex', 'copilot', 'kimi'])
+  assert.deepEqual([...parseLocalSources()].sort(), ['antigravity', 'claude', 'codex', 'copilot', 'gemini', 'kimi'])
   assert.deepEqual([...parseLocalSources('codex,kimi')].sort(), ['codex', 'kimi'])
 })
 
@@ -670,9 +799,10 @@ test('main retries a failed server-inventory tombstone from persisted state and 
     await run(process.execPath, [fileURLToPath(new URL('./observatory-sweep.mjs', import.meta.url))], { env })
 
     assert.deepEqual(persistedAfterFailure.files.codex, {})
-    assert.equal(gets.length, 8)
+    assert.equal(gets.length, 12)
     assert.deepEqual([...new Set(gets.map(request => request.sourceId))].sort(), [
-      'claude-local', 'codex-local', 'copilot-local', 'kimi-local',
+      'antigravity-local', 'claude-local', 'codex-local', 'copilot-local',
+      'gemini-review-local', 'kimi-local',
     ])
     assert.equal(gets.every(request => request.apiKey === 'test-key'), true)
     assert.equal(posts.length, 2)

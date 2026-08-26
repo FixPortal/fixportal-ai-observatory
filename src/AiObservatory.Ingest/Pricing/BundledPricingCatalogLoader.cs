@@ -66,6 +66,15 @@ public sealed class BundledPricingCatalogLoader
             static catalog => catalog.RetrievedAt,
             cancellationToken
         );
+        await LoadAsync<GeminiDeveloperPriceCatalog>(
+            Provider.Google,
+            PricingSourceIds.GeminiDeveloperApi,
+            "gemini-developer-api.json",
+            static catalog => catalog.SourceUrl,
+            static catalog => catalog.RetrievedAt,
+            cancellationToken,
+            replaceActive: true
+        );
     }
 
     private async Task LoadAsync<T>(
@@ -74,7 +83,8 @@ public sealed class BundledPricingCatalogLoader
         string fileName,
         Func<T, string> getSourceUrl,
         Func<T, NodaTime.Instant> getRetrievedAt,
-        CancellationToken cancellationToken
+        CancellationToken cancellationToken,
+        bool replaceActive = false
     )
     {
         try
@@ -88,11 +98,16 @@ public sealed class BundledPricingCatalogLoader
             var retrievedAt = getRetrievedAt(catalog);
             var candidate = PricingCandidate.Create(provider, sourceId, retrievedAt, sourceUrl, raw, catalog);
 
-            await _store.ActivateIfMissingAsync(
-                candidate,
-                cancellationToken,
-                (_, callbackCt) => _repricing.RepriceProviderAsync(provider, callbackCt)
-            );
+            Task Reprice(PricingSnapshot _, CancellationToken callbackCt) =>
+                _repricing.RepriceProviderAsync(provider, callbackCt);
+            if (replaceActive)
+            {
+                await _store.ActivateAsync(candidate, cancellationToken, Reprice);
+            }
+            else
+            {
+                await _store.ActivateIfMissingAsync(candidate, cancellationToken, Reprice);
+            }
         }
         catch (OperationCanceledException)
         {

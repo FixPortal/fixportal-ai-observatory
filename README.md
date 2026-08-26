@@ -14,7 +14,7 @@ AI Observatory is a .NET 10 and React 19 dashboard with a PostgreSQL store. Prov
 - [Provider setup](docs/provider-setup.md) — every source, access requirement, and known unavailable capability.
 - [Truth and pricing](docs/truth-and-pricing.md) — source/scope/basis meanings and safe catalog refresh.
 - [Adding a provider](docs/adding-a-provider.md) — the compile-time adapter seam.
-- [Local producers](clients/README.md) — Codex, Copilot, Claude, and Kimi sweeper setup.
+- [Local producers](clients/README.md) — Codex, Copilot, Claude, Kimi, Gemini review, and Antigravity sweeper setup.
 - [Postman collection](docs/ai-observatory.postman_collection.json) — representative authenticated API requests.
 
 ## Local development
@@ -75,7 +75,7 @@ $env:DB_CONNECTION = 'Host=localhost;Port=5433;Database=aiobservatory;Username=a
 dotnet run --project src/AiObservatory.Ingest
 ```
 
-Use neutral placeholders such as `<observatory-api-key>` outside your secret store. See [Provider setup](docs/provider-setup.md) for acquisition settings; pricing catalogs for OpenAI, Claude, and Kimi refresh without credentials, while Google catalog pricing remains known unavailable until verified SKU mappings exist.
+Use neutral placeholders such as `<observatory-api-key>` outside your secret store. See [Provider setup](docs/provider-setup.md) for acquisition settings; public pricing catalogs require no credentials. Google Cloud SKU pricing remains unavailable until verified mappings exist, independently of the bundled Gemini Developer API rates.
 
 ## Dashboard truth
 
@@ -85,7 +85,7 @@ Use neutral placeholders such as `<observatory-api-key>` outside your secret sto
 - Missing money or tokens read `Not reported`, never zero.
 - Source status shows configuration, freshness, failure, and unavailability separately from process liveness.
 
-Supported acquisition includes OpenAI usage/costs, Anthropic usage/cost reports and optional Claude Code analytics, GitHub Copilot organization engagement, Google Cloud Billing BigQuery export, GitHub activity/billing, and local Codex/Copilot/Claude/Kimi telemetry. The [provider matrix](docs/provider-setup.md) is the authoritative capability list.
+Supported acquisition includes OpenAI usage/costs, Anthropic usage/cost reports and optional Claude Code analytics, GitHub Copilot organization engagement, Google Cloud Billing BigQuery export, GitHub activity/billing, and six local transcript collectors. The [provider matrix](docs/provider-setup.md) is the authoritative capability list.
 
 ## API
 
@@ -130,6 +130,6 @@ The repository is [Apache-2.0](LICENSE) licensed. Keep provider changes source-a
 | Symptom | Cause and next step |
 | --- | --- |
 | A provider is `Not configured` | Supply the exact required settings and upstream access in [Provider setup](docs/provider-setup.md). |
-| Google catalog stays unavailable | This is expected while verified SKU mappings are empty; billed BigQuery export remains independent. |
+| Google Cloud catalog stays unavailable | Cloud SKU mappings remain unavailable; Gemini Developer API list pricing and billed BigQuery export are independent. |
 | Claude activity appears twice | Exclude local Claude telemetry when Claude Code Analytics covers the same activity. |
 | A cost is missing | Required model dimensions may be unknown; Observatory intentionally returns no guessed fallback price. |

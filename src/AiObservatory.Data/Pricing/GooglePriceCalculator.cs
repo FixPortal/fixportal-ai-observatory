@@ -11,7 +11,15 @@ public sealed class GooglePriceCalculator : IProviderPriceCalculator
     {
         using var evidence = ProviderPricingJson.Evidence(usage.RawPayload);
         if (
-            !ProviderPricingJson.TryString(evidence.RootElement, "service", out var service)
+            ProviderPricingJson.TryString(evidence.RootElement, "service", out var service)
+            && service.Equals("Gemini Developer API", StringComparison.OrdinalIgnoreCase)
+        )
+        {
+            return CalculateDeveloperApi(usage, evidence.RootElement, normalizedCatalog);
+        }
+
+        if (
+            !ProviderPricingJson.TryString(evidence.RootElement, "service", out service)
             || !ProviderPricingJson.TryString(evidence.RootElement, "sku_id", out var skuId)
             || !ProviderPricingJson.TryString(evidence.RootElement, "region", out var region)
             || !ProviderPricingJson.TryString(evidence.RootElement, "modality", out var modality)
@@ -53,6 +61,35 @@ public sealed class GooglePriceCalculator : IProviderPriceCalculator
             cost,
             counterfactual is null ? null : tokens / 1_000_000m * (counterfactual.Rate - entry.Rate)
         );
+    }
+
+    private static UsagePriceQuote? CalculateDeveloperApi(
+        UsageEvent usage,
+        System.Text.Json.JsonElement evidence,
+        string normalizedCatalog
+    )
+    {
+        if (
+            string.IsNullOrWhiteSpace(usage.Model)
+            || !ProviderPricingJson.TryString(evidence, "tier", out var tier)
+            || !ProviderPricingJson.TryString(evidence, "context", out var context)
+        )
+        {
+            return null;
+        }
+
+        var catalog = PricingCatalogJson.Deserialize<GeminiDeveloperPriceCatalog>(normalizedCatalog);
+        var entry = catalog.Resolve(usage.Model, tier, context, usage.OccurredAt.InUtc().Date);
+        if (entry is null)
+        {
+            return null;
+        }
+
+        var input = usage.InputTokens / 1_000_000m * entry.Input;
+        var cached = (usage.CacheReadTokens ?? 0) / 1_000_000m * entry.CachedInput;
+        var output = (usage.OutputTokens + (usage.ThoughtTokens ?? 0)) / 1_000_000m * entry.Output;
+        var savings = (usage.CacheReadTokens ?? 0) / 1_000_000m * (entry.Input - entry.CachedInput);
+        return new UsagePriceQuote(input + cached + output, savings);
     }
 
     private static bool TryGetTokens(UsageEvent usage, string modality, string cacheLane, out long tokens)

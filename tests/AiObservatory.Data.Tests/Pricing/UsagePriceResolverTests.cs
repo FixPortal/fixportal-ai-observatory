@@ -302,6 +302,55 @@ public sealed class UsagePriceResolverTests : IAsyncLifetime
     }
 
     [Fact]
+    public async Task ResolverValuesGeminiDeveloperApiInputCacheOutputAndThoughtTokens()
+    {
+        var usage = Event(
+            Provider.Google,
+            "gemini-3.1-pro-preview",
+            """{"service":"Gemini Developer API","tier":"standard","context":"short"}""",
+            input: 1_000_000,
+            output: 1_000_000,
+            cacheRead: 1_000_000,
+            thought: 1_000_000
+        );
+        var catalog = new GeminiDeveloperPriceCatalog(
+            "USD",
+            "https://ai.google.dev/gemini-api/docs/pricing",
+            RetrievedAt,
+            [
+                new(
+                    "gemini-3.1-pro-preview",
+                    ["gemini-3.1-pro-preview"],
+                    EffectiveFrom,
+                    false,
+                    "standard",
+                    "short",
+                    2m,
+                    0.2m,
+                    12m
+                ),
+            ]
+        );
+        const string evidence = "Gemini Developer API pricing evidence";
+        await _store.ActivateAsync(
+            new PricingSnapshotCandidate(
+                Provider.Google,
+                PricingSourceIds.GeminiDeveloperApi,
+                RetrievedAt,
+                catalog.SourceUrl,
+                Convert.ToHexStringLower(SHA256.HashData(Encoding.UTF8.GetBytes(evidence))),
+                evidence,
+                Json(catalog)
+            ),
+            TestContext.Current.CancellationToken
+        );
+
+        (await Resolver().ResolveAsync(usage, TestContext.Current.CancellationToken))
+            .Should()
+            .Be(new UsagePriceQuote(26.2m, 1.8m));
+    }
+
+    [Fact]
     public async Task ResolverUsesTheUsageLocalDateAndReturnsNullBeforeTheEffectiveWindow()
     {
         var ct = TestContext.Current.CancellationToken;
@@ -383,6 +432,7 @@ public sealed class UsagePriceResolverTests : IAsyncLifetime
         long cacheRead = 0,
         long cacheWrite = 0,
         long? cacheWrite1h = 0,
+        long thought = 0,
         LocalDate? occurredOn = null
     ) =>
         new()
@@ -395,6 +445,7 @@ public sealed class UsagePriceResolverTests : IAsyncLifetime
             CacheReadTokens = cacheRead,
             CacheWriteTokens = cacheWrite,
             CacheWrite1hTokens = cacheWrite1h,
+            ThoughtTokens = thought,
             RawPayload = raw,
             CostBasis = CostBasis.ListPriceEstimate,
         };

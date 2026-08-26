@@ -41,6 +41,7 @@ Pricing refreshes daily and shortly after startup when the last successful refre
 - [OpenAI pricing](https://developers.openai.com/api/docs/pricing.md)
 - [Claude pricing](https://platform.claude.com/docs/en/about-claude/pricing.md)
 - [Kimi documentation](https://platform.kimi.ai/docs/llms.txt)
+- [Gemini Developer API pricing](https://ai.google.dev/gemini-api/docs/pricing)
 
 The [Google Cloud Billing Catalog API](https://docs.cloud.google.com/billing/v1/how-tos/catalog-api) is the planned official authority, but is currently unfetched and unavailable: `GooglePricingSource.VerifiedMappings` is empty, so its source definition remains not configured during pricing checks.
 
@@ -51,4 +52,4 @@ The network boundary accepts only fixed HTTPS allowlists, validates redirect hos
 Unknown models or required dimensions resolve to `null` with a warning; there is no generic fallback price. Repricing uses occurrence date and affects only eligible `ListPriceEstimate` and `Notional` observations with sufficient dimensions. It never rewrites `Billed`, `ProviderEstimated`, ambiguous legacy/unknown, or dimension-incomplete observations.
 
 > [!IMPORTANT]
-> `google-cloud-catalog` is known unavailable even if both Google catalog settings are present: `GooglePricingSource.VerifiedMappings` is empty. Google billed export remains useful without a list-price estimate.
+> `google-cloud-catalog` remains unavailable because exact Cloud SKU mappings are empty. This does not affect the separate bundled `gemini-developer-api-pricing` catalog used for explicitly identified Gemini API-key review sessions, or Google billed export.

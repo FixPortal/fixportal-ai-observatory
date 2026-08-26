@@ -1,20 +1,23 @@
 #!/usr/bin/env node
 // AI Observatory local usage sweeper (drop-in).
 //
-// Rebuilds cumulative daily/model snapshots from local Codex, Copilot, Claude,
-// and Kimi telemetry, then POSTs them to `/api/events`. The state file caches
+// Rebuilds cumulative daily/model snapshots from six local CLI stores, then
+// POSTs them to `/api/events`. The state file caches
 // parsed files by path + mtime; server inventory makes losing it harmless.
 //
-// Zero dependencies: Node 18+ only (global fetch, fs/promises).
+// Zero dependencies: Node 24+ only (global fetch, fs/promises, sqlite).
 
 import { readFile, readdir, mkdir, writeFile, stat } from 'node:fs/promises'
 import { homedir } from 'node:os'
 import { join, dirname, basename } from 'node:path'
 import { pathToFileURL } from 'node:url'
 
-const ALL_LOCAL_SOURCES = ['codex', 'copilot', 'claude', 'kimi']
-const ALL_LOCAL_SOURCE_IDS = ALL_LOCAL_SOURCES.map(source => `${source}-local`)
-const PARSE_CACHE_VERSION = 1
+const ALL_LOCAL_SOURCES = ['codex', 'copilot', 'claude', 'kimi', 'gemini', 'antigravity']
+const ALL_LOCAL_SOURCE_IDS = [
+  'codex-local', 'copilot-local', 'claude-local', 'kimi-local',
+  'gemini-review-local', 'antigravity-local',
+]
+const PARSE_CACHE_VERSION = 2
 
 // --- Pure helpers -----------------------------------------------------------
 
@@ -204,6 +207,137 @@ export function parseKimi(content) {
   return records
 }
 
+/** Parse PAYG Gemini review transcripts written by gemini-review.ps1. */
+export function parseGeminiReview(content) {
+  const records = []
+  for (const line of content.split('\n')) {
+    if (!line || !line.includes('"type":"gemini"')) { continue }
+    let row
+    try { row = JSON.parse(line) } catch { continue }
+    const occurredAtUtc = isoTimestamp(row?.timestamp)
+    if (row?.type !== 'gemini' || !row.tokens || !occurredAtUtc) { continue }
+    const cacheReadTokens = token(row.tokens.cached)
+    const promptTokens = token(row.tokens.input)
+    records.push({
+      tool: 'gemini-review',
+      date: occurredAtUtc.slice(0, 10),
+      model: row.model ?? 'unknown',
+      occurredAtUtc,
+      inputTokens: Math.max(0, promptTokens - cacheReadTokens),
+      outputTokens: token(row.tokens.output),
+      cacheReadTokens,
+      cacheWriteTokens: 0,
+      thoughtTokens: token(row.tokens.thoughts),
+      context: promptTokens > 200_000 ? 'long' : 'short',
+    })
+  }
+  return records
+}
+
+function decodeVarint(data, start) {
+  let value = 0
+  let shift = 0
+  let index = start
+  while (index < data.length) {
+    const byte = data[index++]
+    value += (byte & 0x7f) * (2 ** shift)
+    if (!(byte & 0x80)) { return [value, index] }
+    shift += 7
+  }
+  return [0, data.length]
+}
+
+function protobufFields(data) {
+  const fields = []
+  for (let index = 0; index < data.length;) {
+    const [tag, afterTag] = decodeVarint(data, index)
+    const field = Math.floor(tag / 8)
+    const wire = tag & 7
+    index = afterTag
+    if (!field) { return [] }
+    if (wire === 0) {
+      const [value, next] = decodeVarint(data, index)
+      fields.push({ field, value })
+      index = next
+    } else if (wire === 1) {
+      index += 8
+    } else if (wire === 2) {
+      const [length, start] = decodeVarint(data, index)
+      const end = start + length
+      if (end > data.length) { return [] }
+      fields.push({ field, value: data.subarray(start, end) })
+      index = end
+    } else if (wire === 5) {
+      index += 4
+    } else {
+      return []
+    }
+  }
+  return fields
+}
+
+function antigravityTokens(payload) {
+  const response = protobufFields(payload).find(field => field.field === 5 && typeof field.value !== 'number')?.value
+  const usage = response
+    && protobufFields(response).find(field => field.field === 9 && typeof field.value !== 'number')?.value
+  if (!usage) { return null }
+  const values = new Map(protobufFields(usage).filter(field => typeof field.value === 'number').map(field => [field.field, field.value]))
+  const input = values.get(2)
+  const output = values.get(3)
+  if (input === undefined || output === undefined || input >= 100_000_000 || output >= 1_000_000) { return null }
+  return { input, output, thoughts: values.get(6) ?? 0 }
+}
+
+function antigravityTranscript(content) {
+  let occurredAtUtc = null
+  let model = 'unknown'
+  const mappings = [
+    [/Gemini 3\.1 Pro \(High\)/i, 'gemini-3.1-pro-high'],
+    [/Gemini 3\.1 Pro/i, 'gemini-3.1-pro'],
+    [/Gemini 3\.1 Flash/i, 'gemini-3.1-flash'],
+    [/Gemini 2\.5 Pro/i, 'gemini-2.5-pro'],
+    [/Gemini 2\.5 Flash/i, 'gemini-2.5-flash'],
+  ]
+  for (const line of content.split('\n')) {
+    let row
+    try { row = JSON.parse(line) } catch { continue }
+    const timestamp = isoTimestamp(row?.created_at)
+    if (timestamp && (!occurredAtUtc || timestamp > occurredAtUtc)) { occurredAtUtc = timestamp }
+    const text = typeof row?.content === 'string' ? row.content : ''
+    const match = mappings.find(([pattern]) => pattern.test(text))
+    if (match) { model = match[1] }
+  }
+  return { occurredAtUtc, model }
+}
+
+/** Parse one Antigravity SQLite conversation using its timestamp/model transcript. */
+export async function parseAntigravityDatabase(path, transcriptContent) {
+  const { occurredAtUtc, model } = antigravityTranscript(transcriptContent)
+  if (!occurredAtUtc) { return [] }
+  const { DatabaseSync } = await import('node:sqlite')
+  const db = new DatabaseSync(path, { readOnly: true })
+  let rows
+  try {
+    rows = db.prepare('SELECT step_payload FROM steps WHERE step_type = 23 AND step_payload IS NOT NULL ORDER BY idx').all()
+  } finally {
+    db.close()
+  }
+  const totals = { input: 0, output: 0, thoughts: 0 }
+  for (const row of rows) {
+    const parsed = antigravityTokens(row.step_payload)
+    if (!parsed) { continue }
+    totals.input += parsed.input
+    totals.output += parsed.output
+    totals.thoughts += parsed.thoughts
+  }
+  if (totals.input + totals.output + totals.thoughts === 0) { return [] }
+  return [{
+    tool: 'antigravity', date: occurredAtUtc.slice(0, 10), model, occurredAtUtc,
+    inputTokens: totals.input, outputTokens: totals.output,
+    cacheReadTokens: 0, cacheWriteTokens: 0, thoughtTokens: totals.thoughts,
+  }]
+}
+
 function sourceMetadata(tool, model) {
   switch (tool) {
     case 'codex': return { provider: 'OpenAI', sourceId: 'codex-local', runtime: 'codex' }
@@ -219,6 +353,11 @@ function sourceMetadata(tool, model) {
     }
     case 'claude': return { provider: 'Anthropic', sourceId: 'claude-local', runtime: 'claude' }
     case 'kimi': return { provider: 'Moonshot', sourceId: 'kimi-local', runtime: 'kimi' }
+    case 'gemini-review': return {
+      provider: 'Google', sourceId: 'gemini-review-local', runtime: 'gemini',
+      usageScope: 'api', costBasis: 'listPriceEstimate',
+    }
+    case 'antigravity': return { provider: 'Google', sourceId: 'antigravity-local', runtime: 'antigravity' }
     default: return null
   }
 }
@@ -276,7 +415,9 @@ export function buildDailySnapshots(records) {
     const geo = record.inferenceGeo ?? 'unknown'
     const eventKey = record.tool === 'claude'
       ? `claude:${record.date}:${record.model}:${tier}:${speed}:${geo}`
-      : `${record.tool}:${record.date}:${record.model}`
+      : record.tool === 'gemini-review'
+        ? `gemini-review:${record.date}:${record.model}:${record.context}`
+        : `${record.tool}:${record.date}:${record.model}`
     let group = groups.get(eventKey)
     if (!group) {
       group = {
@@ -288,6 +429,7 @@ export function buildDailySnapshots(records) {
         serviceTier: record.serviceTier,
         speed: record.speed,
         inferenceGeo: record.inferenceGeo,
+        context: record.context,
         input: 0,
         output: 0,
         cacheRead: 0,
@@ -334,13 +476,14 @@ export function buildDailySnapshots(records) {
         occurredAtUtc: group.occurredAtUtc,
         sourceId: group.sourceId,
         sourceKind: 'localTelemetry',
-        usageScope: 'subscription',
-        costBasis: 'notional',
+        usageScope: group.usageScope ?? 'subscription',
+        costBasis: group.costBasis ?? 'notional',
         runtime: group.runtime,
         rawPayload: JSON.stringify({
           source: 'observatory-sweep',
           tool: group.tool,
           ...(group.tool === 'codex' ? { processing: 'standard', context: 'short', region: 'global' } : {}),
+          ...(group.tool === 'gemini-review' ? { service: 'Gemini Developer API', tier: 'standard', context: group.context } : {}),
           ...(group.serviceTier ? { service_tier: group.serviceTier } : {}),
           ...(group.speed ? { speed: group.speed } : {}),
           ...(group.inferenceGeo ? { inference_geo: group.inferenceGeo } : {}),
@@ -467,7 +610,7 @@ async function fetchSnapshotInventory(url, apiKey) {
   return inventory
 }
 
-export async function listJsonl(dir, out = [], io = { readdir, stat }, topLevel = true) {
+async function listMatching(dir, matches, out = [], io = { readdir, stat }, topLevel = true) {
   let entries
   try { entries = await io.readdir(dir, { withFileTypes: true }) }
   catch (error) {
@@ -476,14 +619,19 @@ export async function listJsonl(dir, out = [], io = { readdir, stat }, topLevel 
   }
   for (const entry of entries) {
     const full = join(dir, entry.name)
-    if (entry.isDirectory()) { await listJsonl(full, out, io, false) }
-    else if (entry.name.endsWith('.jsonl')) {
+    if (entry.isDirectory()) { await listMatching(full, matches, out, io, false) }
+    else if (matches(entry.name)) {
       const details = await io.stat(full)
       out.push({ path: full, mtimeMs: details.mtimeMs })
     }
   }
   return out
 }
+
+export const listJsonl = (dir, out = [], io = { readdir, stat }, topLevel = true) =>
+  listMatching(dir, name => name.endsWith('.jsonl'), out, io, topLevel)
+
+const listDatabases = dir => listMatching(dir, name => name.endsWith('.db'))
 
 export async function scanRecords(cfg, state, enabled, discover = listJsonl) {
   const records = []
@@ -547,19 +695,52 @@ export async function scanRecords(cfg, state, enabled, discover = listJsonl) {
     for (const record of result.records) { records.push(record) }
   }
 
+  if (enabled.has('gemini')) {
+    const files = (await discover(join(cfg.geminiHome, 'tmp')))
+      .filter(file => /[\\/]gem-review-[^\\/]+[\\/]chats[\\/]session-[^\\/]+\.jsonl$/i.test(file.path))
+    const result = await updateFileCache(files, state.files.gemini, content => parseGeminiReview(content))
+    state.files.gemini = result.cache
+    for (const record of result.records) { records.push(record) }
+  }
+
+  if (enabled.has('antigravity')) {
+    const conversationRoot = join(cfg.geminiHome, 'antigravity-cli')
+    const files = []
+    for (const file of await listDatabases(join(conversationRoot, 'conversations'))) {
+      const sessionId = basename(file.path, '.db')
+      const transcriptPath = join(conversationRoot, 'brain', sessionId, '.system_generated', 'logs', 'transcript.jsonl')
+      try {
+        const transcript = await stat(transcriptPath)
+        files.push({ ...file, transcriptPath, mtimeMs: file.mtimeMs + transcript.mtimeMs })
+      } catch (error) {
+        if (error?.code !== 'ENOENT') { throw error }
+      }
+    }
+    const result = await updateFileCache(
+      files,
+      state.files.antigravity,
+      async (_path, file) => parseAntigravityDatabase(file.path, await readFile(file.transcriptPath, 'utf8')),
+      path => path,
+    )
+    state.files.antigravity = result.cache
+    for (const record of result.records) { records.push(record) }
+  }
+
   return records
 }
 
-export async function main({ discover = listJsonl } = {}) {
+export async function main({ discover = listJsonl, now = () => new Date() } = {}) {
   const url = observatoryUrl(process.env.OBSERVATORY_URL ?? 'http://localhost:5039')
   const apiKey = process.env.OBSERVATORY_API_KEY
   if (!apiKey) { console.error('OBSERVATORY_API_KEY not set; nothing to do.'); process.exit(0) }
+  const observedAtUtc = now().toISOString()
 
   const cfg = {
     codexHome: process.env.CODEX_HOME ?? join(homedir(), '.codex'),
     copilotHome: process.env.COPILOT_HOME ?? join(homedir(), '.copilot'),
     claudeHome: process.env.CLAUDE_HOME ?? join(homedir(), '.claude'),
     kimiHome: process.env.KIMI_HOME ?? join(homedir(), '.kimi-code'),
+    geminiHome: process.env.GEMINI_HOME ?? join(homedir(), '.gemini'),
   }
   const statePath = process.env.OBSERVATORY_STATE ?? join(homedir(), '.ai-observatory', 'sweep-state.json')
   const state = await loadState(statePath)
@@ -576,7 +757,7 @@ export async function main({ discover = listJsonl } = {}) {
     const succeeded = await postEvent(
       url,
       apiKey,
-      { ...submission.snapshot, observedAtUtc: new Date().toISOString() },
+      { ...submission.snapshot, observedAtUtc },
     )
     activeSucceeded.set(
       submission.snapshot.sourceId,
@@ -588,7 +769,9 @@ export async function main({ discover = listJsonl } = {}) {
   }
   for (const submission of submissions.filter(item => !item.active)) {
     if (activeSucceeded.get(submission.snapshot.sourceId) === false) { continue }
-    if (await postEvent(url, apiKey, { ...submission.snapshot, observedAtUtc: new Date().toISOString() })) {
+    // Server inventory is the durable retry marker: a failed tombstone remains
+    // visible and is compensated by the next scheduled reconciliation.
+    if (await postEvent(url, apiKey, { ...submission.snapshot, observedAtUtc })) {
       posted++
     }
   }

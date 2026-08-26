@@ -54,6 +54,9 @@ internal static class PricingCandidate
             case GooglePriceCatalog google:
                 google.Validate();
                 break;
+            case GeminiDeveloperPriceCatalog gemini:
+                gemini.Validate();
+                break;
             default:
                 throw new ArgumentException("Unknown pricing catalog type.", nameof(catalog));
         }
