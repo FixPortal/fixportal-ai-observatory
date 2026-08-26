@@ -29,23 +29,25 @@ export default function GitHubCommitTable({ summary, isLoading = false, isError 
   }
 
   return (
-    <table className="project-table">
-      <thead>
-        <tr>
-          <GitHubSortableHeader field="repo" label="Repo" sortField={sortField} sortDirection={sortDirection} onSort={handleSort} />
-          <GitHubSortableHeader field="commitCount" label="Commits" sortField={sortField} sortDirection={sortDirection} onSort={handleSort} />
-          <th>Churn</th>
-        </tr>
-      </thead>
-      <tbody>
-        {visible.map((s) => (
-          <tr key={s.repo}>
-            <td>{s.repo}</td>
-            <td>{s.commitCount}</td>
-            <td>+{s.additions} / -{s.deletions}</td>
+    <div className="model-table-wrap">
+      <table className="project-table">
+        <thead>
+          <tr>
+            <GitHubSortableHeader field="repo" label="Repo" sortField={sortField} sortDirection={sortDirection} onSort={handleSort} />
+            <GitHubSortableHeader field="commitCount" label="Commits" sortField={sortField} sortDirection={sortDirection} onSort={handleSort} />
+            <th>Churn</th>
           </tr>
-        ))}
-      </tbody>
-    </table>
+        </thead>
+        <tbody>
+          {visible.map((s) => (
+            <tr key={s.repo}>
+              <td>{s.repo}</td>
+              <td>{s.commitCount}</td>
+              <td>+{s.additions} / -{s.deletions}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
   )
 }

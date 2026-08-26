@@ -4,7 +4,7 @@
 
 **Goal:** Make the deployed AI Observatory financially truthful and visually conformant with the FixPortal design language in one pull request.
 
-**Architecture:** The billed GBP ledger becomes the sole source for Reporting and budget alerts, while usage aggregates remain activity, estimate, and explicitly notional evidence. The frontend keeps its tokenless-OSS-safe vendored design layer, synchronizes it to `@fixportal/design` 0.8.0 at tag `v0.8.0` / commit `16691f2`, and applies app-local provider/project palettes only for identity and chart series.
+**Architecture:** The billed GBP ledger becomes the sole source for Reporting and budget alerts, while usage aggregates remain activity, estimate, and explicitly notional evidence. The frontend keeps its tokenless-OSS-safe vendored design layer, synchronizes it to `@fixportal/design` 0.8.1 at tag `v0.8.1` / commit `6b3e3e0`, and applies app-local provider/project palettes only for identity and chart series.
 
 **Tech Stack:** .NET 10, ASP.NET Core minimal APIs, EF Core 10 with PostgreSQL and NodaTime, React 19, TypeScript 6, TanStack Query, Recharts, Vitest/Testing Library, Bicep, Azure App Service and Static Web Apps.
 
@@ -30,9 +30,11 @@
 
 **Files:**
 - Modify: `src/AiObservatory.Data/Entities/BudgetRule.cs`
+- Create: `src/AiObservatory.Data/Entities/BudgetAlertClaim.cs`
+- Modify: `src/AiObservatory.Data/AiObservatoryDbContext.cs`
 - Modify: `src/AiObservatory.Data/Repositories/IUsageRepository.cs`
 - Modify: `src/AiObservatory.Data/Repositories/UsageRepository.cs`
-- Create: EF-generated migration `RenameBudgetThresholdToGbp` under `src/AiObservatory.Data/Migrations/`
+- Create: EF-generated migration `20260826130157_AddBudgetAlertsAndRenameThresholdToGbp` under `src/AiObservatory.Data/Migrations/`
 - Modify: `src/AiObservatory.Data/Migrations/AiObservatoryDbContextModelSnapshot.cs`
 - Modify: `src/AiObservatory.Api/Endpoints/BudgetRulesEndpoints.cs`
 - Modify: `src/AiObservatory.Api/Services/BudgetAlertService.cs`
@@ -50,6 +52,8 @@
 
 **Interfaces:**
 - Produces: `Task<decimal> GetBilledSpendGbpAsync(LocalDate from, LocalDate to, Provider? provider = null, CancellationToken ct = default)` on `IUsageRepository`.
+- Produces: one grouped `GetDailyBilledSpendGbpAsync` read from the persisted evaluation boundary,
+  one durable claim per rule-period, and a bounded oldest-first pending-email read with leases.
 - Produces: `BudgetRule.ThresholdGbp`, JSON field `thresholdGbp`, and `BudgetAlertPayload.ThresholdGbp` / `ActualSpendGbp`.
 - Consumes: signed `SpendEntry.AmountGbp` and `SpendVendor.Provider`; unmapped vendors count only when `provider` is null.
 
@@ -178,27 +182,47 @@ if (totalSpendGbp <= rule.ThresholdGbp)
 
 Use `£{value:F2}` and the phrase `billed spend` in insight titles/bodies and email copy. Serialize `{ thresholdGbp = rule.ThresholdGbp, actualSpendGbp = totalSpendGbp }`. Rename the minimal API request property and validation message to `ThresholdGbp`. Rename the two development seed properties without changing their numeric values.
 
-- [ ] **Step 6: Generate and verify the column-rename migration**
+Persist `EvaluationStartsOn` as the immutable alert lifetime boundary. Daily evaluation uses one
+grouped billed-spend query for every completed day from that boundary so late/corrected ledger
+entries remain eligible; weekly and monthly windows clamp their start to the same boundary.
+
+Creating an alert writes its insight, unique rule-period `BudgetAlertClaim`, and rule trigger time
+in one transaction. Read an existing claim before opening that write transaction; retain the
+unique-violation fallback for concurrent creators. Deliver pending email from durable claims in
+oldest-first batches of 50, with the existing recoverable lease and stable message ID. Clearing
+all insights explicitly deletes claims then insights in one transaction because the claim-to-
+insight FK is restrictive.
+
+Cover the evaluation boundary, replay fast path, concurrent convergence, pending-email bound and
+terminal filters, claim-aware insight purge, and purge rollback against real PostgreSQL where
+provider behavior is consequential.
+
+- [ ] **Step 6: Generate and verify the consolidated durable-alert migration**
 
 Run:
 
 ```powershell
-dotnet ef migrations add RenameBudgetThresholdToGbp --project src/AiObservatory.Data --startup-project src/AiObservatory.Api
+dotnet ef migrations add AddBudgetAlertsAndRenameThresholdToGbp --project src/AiObservatory.Data --startup-project src/AiObservatory.Api
 ```
 
-The generated `Up` must contain only:
+The generated `Up` must:
 
-```csharp
-migrationBuilder.RenameColumn(
-    name: "ThresholdUsd",
-    table: "BudgetRules",
-    newName: "ThresholdGbp"
-);
-```
+- rename `BudgetRules.ThresholdUsd` to `ThresholdGbp` in place;
+- add non-null `EvaluationStartsOn` with a database-UTC-date default for existing and new rules;
+- create `BudgetAlertClaims` with rule-period and lease check constraints;
+- add the unique rule-period and insight indexes plus the filtered oldest-first delivery index;
+- cascade rule deletion to its claims while restricting insight deletion until the claim is
+  explicitly removed.
 
-The generated `Down` must reverse that rename. Reject any drop/add pair because it would lose numeric values.
+The generated `Down` must drop `BudgetAlertClaims`, drop `EvaluationStartsOn`, then rename
+`ThresholdGbp` back to `ThresholdUsd`. Reject any drop/add threshold pair because it would lose
+numeric values.
 
-Add a migration test that migrates to `20260825220510_TrackPendingSourceWindows`, inserts a rule with `"ThresholdUsd" = 123.45`, migrates to latest, and asserts `BudgetRule.ThresholdGbp == 123.45m`.
+Add a real-PostgreSQL migration test that migrates to
+`20260825220510_TrackPendingSourceWindows`, inserts a rule with `"ThresholdUsd" = 123.45`,
+migrates to latest, and asserts the value, database evaluation default, indexes, constraints,
+and relationships. Migrate back and assert `ThresholdUsd == 123.45`, the claim table is gone,
+and `EvaluationStartsOn` is gone.
 
 - [ ] **Step 7: Update the web budget contract and panel copy**
 
@@ -486,34 +510,21 @@ git commit -m "Clarify notional value and bound insights"
 - Replace from canonical: `src/AiObservatory.Web/src/design/StatusBadge.tsx`
 - Replace from canonical: `src/AiObservatory.Web/src/design/ThemeToggle.tsx`
 - Create: `src/AiObservatory.Web/src/system.md`
-- Modify: `src/AiObservatory.Web/src/design/transitions.test.ts`
 
 **Interfaces:**
-- Consumes: canonical `D:\fix-portal\fixportal-assets\packages\design` version 0.8.0 at tag `v0.8.0` / commit `16691f2`.
+- Consumes: canonical `D:\fix-portal\fixportal-assets\packages\design` version 0.8.1 at tag `v0.8.1` / commit `6b3e3e0`.
 - Produces: stable existing Observatory import paths with canonical primitive behaviour.
 - Preserves: `BrandWordmark.tsx` and `SearchIcon.tsx`, which do not need synchronization.
 
-- [ ] **Step 1: Extend the local design regression test before copying files**
+- [ ] **Step 1: Record the canonical Git blob hashes**
 
-Keep the transition checks and add assertions against `tokens.css` / `components.css` for:
+Record the clean `v0.8.1` Git blob hash for each of the six source files. Those immutable blobs,
+not assertions about selected CSS strings, define the vendored snapshot.
 
-```ts
-expect(tokens).toContain('--brand-contrast: #ffffff')
-expect(tokens).toContain('--sidebar-bg: #050c16')
-expect(tokens).toContain('--warn-border: #f59e0b')
-expect(components).toContain('.fpds-app-header')
-expect(components).toContain('.fpds-site-footer')
-```
+- [ ] **Step 2: Compare the existing vendored hashes with the canonical blobs**
 
-- [ ] **Step 2: Run the design tests and verify stale-vendor failures**
-
-Run from `src/AiObservatory.Web`:
-
-```powershell
-npm test -- --run src/design/transitions.test.ts
-```
-
-Expected: FAIL on canonical tokens/classes not present in the stale vendored copy.
+Record which vendored files differ before copying. Do not add CSS/source-string change-detector
+tests: they pin private implementation text while missing rendered regressions.
 
 - [ ] **Step 3: Copy only the six used canonical files**
 
@@ -537,7 +548,7 @@ Create `system.md` with these exact sections and rules:
 ```markdown
 # AI Observatory visual system
 
-Canonical base: `@fixportal/design` 0.8.0 at tag `v0.8.0` / commit `16691f2`, vendored from the FixPortal assets repository so public installs require no private package token.
+Canonical base: `@fixportal/design` 0.8.1 at tag `v0.8.1` / commit `6b3e3e0`, vendored from the FixPortal assets repository so public installs require no private package token.
 
 ## Product signature
 
@@ -552,11 +563,11 @@ Provider colours identify providers in charts, swatches, and provider badges onl
 Use canonical surface, text, brand, status, spacing, radius, typography, focus, and motion rules. Borders provide depth; shadows are reserved for floating surfaces. Monospace is for values, identifiers, timestamps, and machine evidence.
 ```
 
-- [ ] **Step 5: Run the design tests and production build, then commit**
+- [ ] **Step 5: Verify blob identity, rendered behaviour, and the production build, then commit**
 
-```powershell
-npm test -- --run src/design/transitions.test.ts
-```
+Recompute all six vendored Git blob hashes and require exact equality with the clean-tag sources.
+Then run frontend lint, the full test suite, and the production build. The Task 5 six-tab ×
+desktop/mobile × light/dark render matrix is the authoritative CSS/interaction evidence.
 
 ```powershell
 npm run build
@@ -612,7 +623,7 @@ Expected: FAIL because the registry currently hard-codes `rgba(...)` values.
 
 - [ ] **Step 2: Normalize the app-local colour vocabulary**
 
-Change each badge background to `color-mix(in srgb, <colorVar> 12%, transparent)`. Move `ProjectTreemap`'s eight raw colours into `index.css` as `--project-1` through `--project-8`, with light and dark values, and consume only those variables in the component. Keep `--provider-other` for the overflow block.
+Change each badge background to `color-mix(in srgb, <colorVar> 12%, transparent)`. Move `ProjectTreemap`'s eight raw colours into `index.css` as `--project-1` through `--project-8`, add an app-local `--project-other` in both themes, and consume only those variables in the component.
 
 Replace the adversarial badge literals with semantic tokens:
 
@@ -625,7 +636,7 @@ Remove fallback hex values from active component CSS where the canonical token i
 
 - [ ] **Step 3: Remove obsolete token bridges and normalize CSS values**
 
-Because canonical 0.8.0 supplies font, dedicated chrome surfaces, brand contrast/background/ring roles, radius/motion roles, stronger borders, sidebar, flow, code, and corrected dark warning tokens:
+Because canonical 0.8.1 supplies font, dedicated chrome surfaces, brand contrast/background/ring roles, radius/motion roles, stronger borders, sidebar, flow, code, and corrected dark warning tokens:
 
 - remove app-local redefinitions of canonical tokens;
 - keep only Observatory spacing, motion, radius aliases, provider colours, project colours, and spend-category colours;
@@ -733,11 +744,11 @@ git commit -m "Conform the Observatory UI to FixPortal design"
 
 ---
 
-### Task 5b: Resynchronize the vendored UI with `@fixportal/design` 0.8.0
+### Task 5b: Resynchronize the vendored UI with `@fixportal/design` 0.8.1
 
-The 0.8.0 snapshot supersedes the 0.7.0 provenance in Tasks 4-5 without changing
+The 0.8.1 snapshot supersedes the 0.7.0 provenance in Tasks 4-5 without changing
 their product semantics. Replace `tokens.css`, `components.css`, and `Button.tsx`
-byte-for-byte from clean tag `v0.8.0` / commit `16691f2`; hash-check the other
+byte-for-byte from clean tag `v0.8.1` / commit `6b3e3e0`; hash-check the other
 already-vendored primitives. Consume the new header/footer surfaces,
 `--brand-contrast`, `--brand-ring`, canonical radius roles, and
 `--transition-base` through app-local role aliases rather than copied values.
@@ -745,9 +756,15 @@ already-vendored primitives. Consume the new header/footer surfaces,
 Review newly exported primitives against real call sites under the Ponytail rule:
 vendor only one that removes an existing implementation while preserving its full
 behaviour and accessibility. In particular, the Dashboard's current tablist accepts
-ArrowUp/ArrowDown aliases; canonical 0.8.0 `Tabs` handles horizontal arrows plus
+ArrowUp/ArrowDown aliases; canonical 0.8.1 `Tabs` handles horizontal arrows plus
 Home/End but omits those existing aliases, so adopting it would lose keyboard
 behaviour. Keep the local tablist and do not vendor unused primitives.
+
+The three Observatory edit dialogs also remain app-local native `<dialog>` implementations.
+Canonical 0.8.1 `Modal` improves native-close synchronization, but its fixed 420 px panel,
+unbounded viewport height, and non-sticky header would regress the existing 560 px,
+viewport-bounded, sticky-header subscription and spend forms. Do not vendor it until the
+canonical primitive can preserve those live behaviours without app-specific overrides.
 
 No CSS/source-string change-detector test is added. Prove the resync with canonical
 blob hashes, frontend lint/full tests/build, `git diff --check`, and the full

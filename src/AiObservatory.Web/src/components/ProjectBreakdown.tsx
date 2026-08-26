@@ -97,7 +97,8 @@ export default function ProjectBreakdown({ projects, selectedProject, onSelectPr
       {visible.length === 0 ? (
         <p className="panel-empty">No matching projects found.</p>
       ) : (
-        <table className="project-table">
+        <div className="model-table-wrap">
+          <table className="project-table">
           <thead>
             <tr>
               <SortableHeader field="project" label="Project" sortField={sortField} sortDirection={sortDirection} onSort={handleSort} />
@@ -137,7 +138,8 @@ export default function ProjectBreakdown({ projects, selectedProject, onSelectPr
               </tr>
             ))}
           </tbody>
-        </table>
+          </table>
+        </div>
       )}
     </>
   )

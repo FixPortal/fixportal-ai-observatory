@@ -18,3 +18,35 @@ test('keeps an incomplete top-vendor projection truthful instead of formatting n
   expect(card).toHaveTextContent('—')
   expect(card).not.toHaveTextContent('£0.00')
 })
+
+test('does not present an empty ledger as a zero-cost claim', () => {
+  render(<ReportingCards report={{
+    entryCount: 0,
+    totalGbp: 0,
+    dailyAverageGbp: 0,
+    projectedMonthlyGbp: 0,
+    topVendorName: null,
+    topVendorGbp: null,
+    dailySeries: [],
+    vendorSeries: [],
+  }} />)
+
+  const card = screen.getByText('Billed spend').parentElement!
+  expect(card).toHaveTextContent('—')
+  expect(card).not.toHaveTextContent('£0.00')
+})
+
+test('reports a non-empty ledger that nets to zero as zero billed spend', () => {
+  render(<ReportingCards report={{
+    entryCount: 2,
+    totalGbp: 0,
+    dailyAverageGbp: 0,
+    projectedMonthlyGbp: 0,
+    topVendorName: 'Anthropic',
+    topVendorGbp: 0,
+    dailySeries: [],
+    vendorSeries: [],
+  }} />)
+
+  expect(screen.getByText('Billed spend').parentElement).toHaveTextContent('£0.00')
+})

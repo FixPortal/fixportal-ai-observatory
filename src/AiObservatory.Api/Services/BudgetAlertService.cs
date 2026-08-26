@@ -45,6 +45,16 @@ public class BudgetAlertService(
             }
 
             var (from, to) = GetWindow(rule.Period, today, yesterday, monthStart);
+            if (rule.EvaluationStartsOn > to)
+            {
+                continue;
+            }
+
+            if (rule.EvaluationStartsOn > from)
+            {
+                from = rule.EvaluationStartsOn;
+            }
+
             await CheckRuleSafelyAsync(rule, from, to, now, ct);
         }
     }

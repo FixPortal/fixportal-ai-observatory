@@ -253,5 +253,31 @@ public class UsageMigrationTests : IAsyncLifetime
             )
             .ToListAsync(ct);
         claimConstraints.Should().BeEquivalentTo("CK_BudgetAlertClaim_EmailLease", "CK_BudgetAlertClaim_Period");
+
+        var rollbackMigrator = afterMigration.Database.GetService<IMigrator>();
+        await rollbackMigrator.MigrateAsync("20260825220510_TrackPendingSourceWindows", ct);
+        var restoredThreshold = await afterMigration
+            .Database.SqlQuery<decimal>(
+                $"""SELECT "ThresholdUsd" AS "Value" FROM "BudgetRules" WHERE "Id" = {existingRuleId}"""
+            )
+            .SingleAsync(ct);
+        var removedObjects = await afterMigration
+            .Database.SqlQueryRaw<string>(
+                """
+                SELECT table_name AS "Value"
+                FROM information_schema.tables
+                WHERE table_schema = 'public' AND table_name = 'BudgetAlertClaims'
+                UNION ALL
+                SELECT column_name AS "Value"
+                FROM information_schema.columns
+                WHERE table_schema = 'public'
+                  AND table_name = 'BudgetRules'
+                  AND column_name = 'EvaluationStartsOn'
+                """
+            )
+            .ToListAsync(ct);
+
+        restoredThreshold.Should().Be(123.45m);
+        removedObjects.Should().BeEmpty();
     }
 }

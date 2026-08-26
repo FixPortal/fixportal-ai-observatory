@@ -32,3 +32,16 @@ test('shows empty state when there is no activity', () => {
   render(<ProjectTreemap projects={[]} selectedProject={null} onSelectProject={vi.fn()} />)
   expect(screen.getByText('No activity data for this period.')).toBeInTheDocument()
 })
+
+test('uses the project palette for the overflow bucket', () => {
+  const manyProjects = Array.from({ length: 9 }, (_, index) => ({
+    project: `project-${index + 1}`,
+    sessionCount: 1,
+    activeSeconds: 9 - index,
+    sharePercent: 0,
+  }))
+
+  render(<ProjectTreemap projects={manyProjects} selectedProject={null} onSelectProject={vi.fn()} />)
+
+  expect(screen.getByRole('button', { name: /Other/ })).toHaveStyle({ background: 'var(--project-other)' })
+})

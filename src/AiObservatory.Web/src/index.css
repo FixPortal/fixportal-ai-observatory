@@ -63,6 +63,7 @@
   --project-6: #be185d;
   --project-7: #4d7c0f;
   --project-8: #475569;
+  --project-other: #334155;
 }
 
 :root[data-theme="dark"] {
@@ -81,6 +82,7 @@
   --project-6: #f9a8d4;
   --project-7: #bef264;
   --project-8: #cbd5e1;
+  --project-other: #e2e8f0;
 }
 
 /* ---- Base ---- */
@@ -226,8 +228,6 @@ body {
   border: 1px solid var(--border);
   border-radius: var(--r-panel);
   padding: var(--space-4);
-  overflow-x: auto;
-  scrollbar-width: thin;
 }
 .panel-title {
   font-size: 12px;
@@ -465,7 +465,7 @@ td.budget-rules__actions { display: table-cell; padding: 6px 0 6px 8px; text-ali
 .auth-gate__button:hover:not(:disabled) { border-color: var(--brand); }
 
 /* ---- Shared tables ---- */
-.model-table-wrap { overflow-x: auto; }
+.model-table-wrap { overflow-x: auto; scrollbar-width: thin; }
 :is(.budget-rules__table, .model-table, .project-table, .spend-ledger) {
   width: 100%;
   border-collapse: collapse;
@@ -679,14 +679,14 @@ td.budget-rules__actions { display: table-cell; padding: 6px 0 6px 8px; text-ali
   .fpds-theme-toggle__btn { padding-inline: var(--space-2); }
   .page-nav { padding-inline: var(--space-3); }
   .summary-cards { grid-template-columns: repeat(2, 1fr); }
-  .info-popover--summary {
+  :is(.info-popover--summary, .sub-panel .info-popover) {
     position: fixed;
     inset: auto var(--space-3) var(--space-3);
     width: auto;
     max-height: min(50vh, 320px);
     overflow-y: auto;
   }
-  .info-popover--summary .info-popover__caret { display: none; }
+  :is(.info-popover--summary, .sub-panel .info-popover) .info-popover__caret { display: none; }
   .main-grid, .bottom-grid { grid-template-columns: minmax(0, 1fr); }
   .source-status__list { grid-template-columns: 1fr; }
   .source-status__success { flex-basis: 100%; }

@@ -101,7 +101,8 @@ function StatsTable({ stats, isError }: StatsTableProps) {
       {visible.length === 0 ? (
         <p className="panel-empty">No matching stats found.</p>
       ) : (
-        <table className="model-table">
+        <div className="model-table-wrap">
+          <table className="model-table">
           <thead>
             <tr>
               <GitHubSortableHeader field="reviewer" label="Reviewer" sortField={sortField} sortDirection={sortDirection} onSort={handleSort} />
@@ -131,7 +132,8 @@ function StatsTable({ stats, isError }: StatsTableProps) {
               </tr>
             ))}
           </tbody>
-        </table>
+          </table>
+        </div>
       )}
     </>
   )
@@ -202,7 +204,8 @@ function RunsList({ groups, isError }: RunsListProps) {
             title={group.summary ?? formatRecordedAt(group.recordedAt)}
             summary={<RunSummary group={group} />}
           >
-            <table className="model-table">
+            <div className="model-table-wrap">
+              <table className="model-table">
               <thead>
                 <tr>
                   <th>Reviewer</th><th>Model</th><th>Raised</th><th>Accepted</th>
@@ -225,7 +228,8 @@ function RunsList({ groups, isError }: RunsListProps) {
                   </tr>
                 ))}
               </tbody>
-            </table>
+              </table>
+            </div>
           </CollapsiblePanel>
         ))
       )}

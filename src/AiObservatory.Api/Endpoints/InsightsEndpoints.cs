@@ -41,7 +41,10 @@ public static class InsightsEndpoints
             "/insights",
             async (AiObservatoryDbContext db, CancellationToken ct) =>
             {
+                await using var tx = await db.Database.BeginTransactionAsync(ct);
+                await db.BudgetAlertClaims.ExecuteDeleteAsync(ct);
                 var deleted = await db.Insights.ExecuteDeleteAsync(ct);
+                await tx.CommitAsync(ct);
                 return Results.Ok(new { deleted });
             }
         );

@@ -48,7 +48,8 @@ export default function GitHubPrTable({ prs, isLoading = false, isError = false 
       {visible.length === 0 ? (
         <p className="panel-empty">No matching PRs found.</p>
       ) : (
-        <table className="model-table">
+        <div className="model-table-wrap">
+          <table className="model-table">
           <thead>
             <tr>
               <GitHubSortableHeader field="repo" label="Repo" sortField={sortField} sortDirection={sortDirection} onSort={handleSort} />
@@ -75,7 +76,8 @@ export default function GitHubPrTable({ prs, isLoading = false, isError = false 
               </tr>
             ))}
           </tbody>
-        </table>
+          </table>
+        </div>
       )}
     </>
   )
