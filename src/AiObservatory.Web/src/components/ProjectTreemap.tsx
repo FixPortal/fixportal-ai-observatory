@@ -8,7 +8,7 @@ import { formatActiveTime } from '../lib/duration'
 const PALETTE = Array.from({ length: 8 }, (_, index) => `var(--project-${index + 1})`)
 // Neutral fill for the overflow bucket so a 9th block doesn't wrap back to the brand
 // colour (PALETTE[8 % 8]) and read as the largest project.
-const OTHER_COLOR = 'var(--provider-other)'
+const OTHER_COLOR = 'var(--project-other)'
 
 interface Props {
   projects: ProjectActivity[]

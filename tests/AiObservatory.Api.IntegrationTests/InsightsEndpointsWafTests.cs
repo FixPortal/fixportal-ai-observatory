@@ -1,0 +1,152 @@
+using System.Net;
+using System.Net.Http.Json;
+using System.Text.Json;
+using AiObservatory.Data;
+using AiObservatory.Data.Entities;
+using AwesomeAssertions;
+using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.DependencyInjection;
+using NodaTime;
+
+namespace AiObservatory.Api.IntegrationTests;
+
+[Trait("Category", "Integration")]
+public class InsightsEndpointsWafTests(AiObservatoryApiFactory factory) : IClassFixture<AiObservatoryApiFactory>
+{
+    [Fact]
+    public async Task DeleteInsights_removes_claimed_and_unclaimed_insights_with_their_delivery_state()
+    {
+        var ct = TestContext.Current.CancellationToken;
+        var period = new LocalDate(2026, 8, 25);
+        var generatedAt = Instant.FromUtc(2026, 8, 26, 0, 5);
+        var rule = new BudgetRule
+        {
+            Period = BillingPeriod.Daily,
+            ThresholdGbp = 10m,
+            EvaluationStartsOn = period,
+        };
+        var claimedInsight = Insight(period, generatedAt, "Claimed");
+        var unclaimedInsight = Insight(period, generatedAt.Plus(Duration.FromMinutes(1)), "Unclaimed");
+
+        using (var scope = factory.Services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<AiObservatoryDbContext>();
+            db.AddRange(rule, claimedInsight, unclaimedInsight);
+            db.BudgetAlertClaims.Add(
+                new BudgetAlertClaim
+                {
+                    BudgetRuleId = rule.Id,
+                    PeriodStart = period,
+                    PeriodEnd = period,
+                    InsightId = claimedInsight.Id,
+                    ThresholdGbp = 10m,
+                    ActualSpendGbp = 15m,
+                    CreatedAt = generatedAt,
+                    EmailLeaseId = Guid.NewGuid(),
+                    EmailLeaseAcquiredAt = generatedAt,
+                }
+            );
+            await db.SaveChangesAsync(ct);
+        }
+
+        using var client = factory.CreateAdminClient();
+        var response = await client.DeleteAsync("/api/insights", ct);
+
+        response.StatusCode.Should().Be(HttpStatusCode.OK);
+        (await response.Content.ReadFromJsonAsync<JsonElement>(ct)).GetProperty("deleted").GetInt32().Should().Be(2);
+        using var assertionScope = factory.Services.CreateScope();
+        var assertionDb = assertionScope.ServiceProvider.GetRequiredService<AiObservatoryDbContext>();
+        (await assertionDb.Insights.AsNoTracking().CountAsync(ct)).Should().Be(0);
+        (await assertionDb.BudgetAlertClaims.AsNoTracking().CountAsync(ct)).Should().Be(0);
+    }
+
+    [Fact]
+    public async Task DeleteInsights_rolls_back_claim_deletion_when_insight_deletion_fails()
+    {
+        var ct = TestContext.Current.CancellationToken;
+        var period = new LocalDate(2026, 8, 24);
+        var generatedAt = Instant.FromUtc(2026, 8, 25, 0, 5);
+        var rule = new BudgetRule
+        {
+            Period = BillingPeriod.Daily,
+            ThresholdGbp = 10m,
+            EvaluationStartsOn = period,
+        };
+        var insight = Insight(period, generatedAt, "Rollback");
+        using (var scope = factory.Services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<AiObservatoryDbContext>();
+            db.AddRange(rule, insight);
+            db.BudgetAlertClaims.Add(
+                new BudgetAlertClaim
+                {
+                    BudgetRuleId = rule.Id,
+                    PeriodStart = period,
+                    PeriodEnd = period,
+                    InsightId = insight.Id,
+                    ThresholdGbp = 10m,
+                    ActualSpendGbp = 15m,
+                    CreatedAt = generatedAt,
+                }
+            );
+            await db.SaveChangesAsync(ct);
+            await db.Database.ExecuteSqlRawAsync(
+                """
+                CREATE FUNCTION reject_insight_delete() RETURNS trigger LANGUAGE plpgsql AS $$
+                BEGIN
+                    RAISE EXCEPTION 'forced insight-delete failure';
+                END
+                $$;
+                CREATE TRIGGER reject_insight_delete
+                    BEFORE DELETE ON "Insights"
+                    FOR EACH STATEMENT EXECUTE FUNCTION reject_insight_delete();
+                """,
+                ct
+            );
+        }
+
+        try
+        {
+            using var client = factory.CreateAdminClient();
+            var response = await client.DeleteAsync("/api/insights", ct);
+
+            response.StatusCode.Should().Be(HttpStatusCode.InternalServerError);
+            using var assertionScope = factory.Services.CreateScope();
+            var assertionDb = assertionScope.ServiceProvider.GetRequiredService<AiObservatoryDbContext>();
+            (await assertionDb.Insights.AsNoTracking().CountAsync(ct)).Should().Be(1);
+            (await assertionDb.BudgetAlertClaims.AsNoTracking().CountAsync(ct)).Should().Be(1);
+        }
+        finally
+        {
+            using var cleanupScope = factory.Services.CreateScope();
+            var cleanupDb = cleanupScope.ServiceProvider.GetRequiredService<AiObservatoryDbContext>();
+            await cleanupDb.Database.ExecuteSqlRawAsync(
+                """
+                DROP TRIGGER IF EXISTS reject_insight_delete ON "Insights";
+                DROP FUNCTION IF EXISTS reject_insight_delete();
+                """,
+                CancellationToken.None
+            );
+            await cleanupDb
+                .BudgetAlertClaims.Where(claim => claim.InsightId == insight.Id)
+                .ExecuteDeleteAsync(CancellationToken.None);
+            await cleanupDb
+                .Insights.Where(candidate => candidate.Id == insight.Id)
+                .ExecuteDeleteAsync(CancellationToken.None);
+            await cleanupDb
+                .BudgetRules.Where(candidate => candidate.Id == rule.Id)
+                .ExecuteDeleteAsync(CancellationToken.None);
+        }
+    }
+
+    private static Insight Insight(LocalDate period, Instant generatedAt, string title) =>
+        new()
+        {
+            GeneratedAt = generatedAt,
+            PeriodStart = period,
+            PeriodEnd = period,
+            InsightType = InsightType.BudgetAlert,
+            Title = title,
+            Body = title,
+        };
+}

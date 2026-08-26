@@ -103,7 +103,8 @@ export default function BudgetRulesPanel() {
             <p className="panel-empty">No budget rules configured.</p>
           )}
           {rules.length > 0 && (
-            <table className="budget-rules__table">
+            <div className="model-table-wrap">
+              <table className="budget-rules__table">
               <thead>
                 <tr>
                   <th>
@@ -164,7 +165,8 @@ export default function BudgetRulesPanel() {
                   </tr>
                 ))}
               </tbody>
-            </table>
+              </table>
+            </div>
           )}
         </div>
       </div>

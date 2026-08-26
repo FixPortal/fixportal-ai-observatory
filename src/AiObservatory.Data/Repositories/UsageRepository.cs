@@ -14,6 +14,7 @@ public class UsageRepository(
     UsagePriceResolver? priceResolver = null
 ) : IUsageRepository
 {
+    private const int BudgetAlertEmailBatchSize = 50;
     private static readonly JsonDocumentOptions RawPayloadJsonOptions = new() { AllowDuplicateProperties = false };
 
     public async Task<RecordEventResult> RecordEventAsync(UsageEvent evt, CancellationToken ct = default)
@@ -452,6 +453,26 @@ public class UsageRepository(
     )
     {
         ArgumentNullException.ThrowIfNull(insight);
+        var existingClaim = await ctx
+            .BudgetAlertClaims.AsNoTracking()
+            .SingleOrDefaultAsync(
+                candidate =>
+                    candidate.BudgetRuleId == ruleId
+                    && candidate.PeriodStart == periodStart
+                    && candidate.PeriodEnd == periodEnd,
+                ct
+            );
+        if (existingClaim is not null)
+        {
+            return new BudgetAlertClaimResult(
+                existingClaim.Id,
+                false,
+                existingClaim.ThresholdGbp,
+                existingClaim.ActualSpendGbp,
+                existingClaim.CreatedAt
+            );
+        }
+
         var claim = new BudgetAlertClaim
         {
             BudgetRuleId = ruleId,
@@ -561,7 +582,9 @@ public class UsageRepository(
                 claim.ActualSpendGbp,
                 claim.CreatedAt
             )
-        ).ToListAsync(ct);
+        )
+            .Take(BudgetAlertEmailBatchSize)
+            .ToListAsync(ct);
 
     public async Task ReleaseBudgetAlertEmailLeaseAsync(Guid claimId, Guid leaseId, CancellationToken ct = default)
     {

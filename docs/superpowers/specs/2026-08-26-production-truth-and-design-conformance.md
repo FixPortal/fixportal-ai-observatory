@@ -1,6 +1,6 @@
 # Production truth and FixPortal design conformance
 
-**Status: design approved in conversation 2026-08-26; implementation not started.**
+**Status: implementation complete on `reviewer-findings-batch10`; PR review and deployment verification in progress.**
 
 ## Purpose
 
@@ -38,7 +38,7 @@ redesign into a generic SaaS dashboard.
 
 ## Canonical visual source
 
-The source of truth is `@fixportal/design` 0.8.0 at tag `v0.8.0` / commit `16691f2` in the FixPortal assets repository. Its design
+The source of truth is `@fixportal/design` 0.8.1 at tag `v0.8.1` / commit `6b3e3e0` in the FixPortal assets repository. Its design
 sentence remains:
 
 > trading-floor precise — terminal aesthetic, dense readouts, monospace where data lives,
@@ -81,7 +81,7 @@ and Spend in both themes and at desktop and mobile widths.
 - Focus, hover, active, disabled, loading, empty, and error states use canonical tokens and are
   visibly distinct in both themes.
 - Dedicated header/footer surfaces, brand contrast/background/ring roles, canonical radius
-  tokens, and the 80 ms interaction duration come from the 0.8.0 snapshot rather than local
+  tokens, and the 80 ms interaction duration come from the 0.8.1 snapshot rather than local
   values.
 
 ### Typography and density
@@ -133,16 +133,22 @@ Budget rules and notifications move from estimated USD to billed GBP:
 
 - `BudgetRule.ThresholdUsd`, request fields, response fields, payloads, and labels become
   `ThresholdGbp`.
-- The database migration renames the existing column and preserves its numeric values. A
+- The consolidated database migration renames the existing column, adds the persisted
+  evaluation boundary and durable alert-claim schema, and preserves existing numeric values. A
   stored threshold of `1000` therefore becomes GBP 1000; it is not converted at a live exchange
   rate.
 - `BudgetAlertService` compares the rule only with billed ledger entries in the rule's period.
+- Daily rules reconsider every completed day from their immutable evaluation boundary so late
+  ledger corrections are not lost; weekly and monthly windows are clamped to that boundary.
 - A provider-scoped rule includes billed entries only for spend vendors mapped to that
   provider. Unmapped vendor spend contributes only to an all-provider rule.
 - The existing `IUsageRepository` is extended with one no-tracking projected billed-sum query;
   a second repository abstraction is not introduced.
 - Alert titles, bodies, serialized metadata, and email copy use pounds and say billed spend.
-- Existing trigger de-duplication and injected clock behaviour remain unchanged.
+- One durable claim per rule and period atomically owns the alert insight and email-delivery
+  state. Replays read that claim without writing; concurrent creators converge through the
+  database uniqueness constraint, and delivery uses a recoverable lease with stable message ID.
+- The injected clock behaviour remains unchanged.
 
 This is a trust-boundary correction. Legacy daily aggregates, regardless of their `CostBasis`,
 cannot trigger a financial alert.
@@ -179,7 +185,8 @@ existing secret is repurposed merely because its name looks similar.
 
 ```text
 SpendEntry.AmountGbp ──> billed reporting API ──> Reporting cards/charts
-                    └──> billed sum query ──────> GBP budget alerts
+                    └──> billed sum query ──────> durable alert claim + insight
+                                                   └──> bounded leased email delivery
 
 DailyAggregate[Notional] ──────────────────────> subscription comparison
 
@@ -191,8 +198,13 @@ spend.
 
 ## Migration and compatibility
 
-- Rename the budget threshold column in place so existing rule identifiers, periods, providers,
-  trigger history, and numeric thresholds survive.
+- In one migration, rename the budget threshold column in place, add `EvaluationStartsOn`, and
+  create `BudgetAlertClaims` with its unique rule-period/insight indexes, constraints, and
+  restrictive insight relationship. Existing rule identifiers, periods, providers, trigger
+  history, and numeric thresholds survive.
+- The reverse migration drops the claim table and evaluation boundary before renaming
+  `ThresholdGbp` back to `ThresholdUsd`; the threshold number remains unchanged in either
+  direction.
 - Change the public request/response field to `thresholdGbp`; the API is pre-release and does
   not retain the misleading USD alias.
 - Preserve all spend ledger and usage history.
@@ -222,7 +234,14 @@ coverage includes:
 - GBP budget rules trigger above the billed threshold and not below it.
 - Provider-scoped rules include mapped vendors and exclude unrelated or unmapped vendors.
 - Alert payloads and email copy use GBP and billed-spend language.
-- The migration preserves existing threshold numbers while renaming the column.
+- The migration preserves existing threshold numbers in both directions and creates/removes the
+  durable boundary/claim schema as one deployment unit.
+- Existing claim replays avoid a write transaction; concurrent attempts still converge on one
+  durable claim.
+- Pending email reads are oldest-first, terminal/actively leased rows are excluded, and each
+  worker pass is bounded to 50 claims.
+- Clearing insights removes dependent claims and insights atomically; a failed insight delete
+  restores the claims.
 - The notional subscription comparison includes only `Notional` aggregates.
 
 The consequential billed-sum query is exercised against the repository's real test database
@@ -233,7 +252,11 @@ provider. `DbContext` and `DbSet` are not mocked.
 - Five insights render by default; the native disclosure reveals the remainder.
 - Five or fewer insights render without an empty disclosure.
 - Relevant financial empty, loading, and error states remain truthful.
+- Empty billed ledgers render unavailable values, while a non-empty ledger that nets to zero
+  renders £0.00.
 - Existing keyboard and accessible-name tests continue to pass.
+- Canonical design files are proven by matching Git blob hashes; rendered light/dark desktop and
+  mobile states are authoritative for CSS conformance and clipping.
 
 ### Full gate
 

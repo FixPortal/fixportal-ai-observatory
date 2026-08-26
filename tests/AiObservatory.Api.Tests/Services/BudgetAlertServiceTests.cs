@@ -393,6 +393,45 @@ public class BudgetAlertServiceTests
         await _notifier.DidNotReceive().NotifyAsync(Arg.Any<BudgetAlertPayload>(), Arg.Any<CancellationToken>());
     }
 
+    [Theory]
+    [InlineData(BillingPeriod.Weekly, 5, 31)]
+    [InlineData(BillingPeriod.Monthly, 6, 2)]
+    public async Task CheckAndAlert_does_not_read_before_a_periodic_rules_evaluation_boundary(
+        BillingPeriod period,
+        int startMonth,
+        int startDay
+    )
+    {
+        var evaluationStartsOn = new LocalDate(2026, startMonth, startDay);
+        var rule = Rule(period, evaluationStartsOn: evaluationStartsOn);
+        StubRules(rule);
+        StubBilledSpend(rule, 0m);
+
+        await Sut().CheckAndAlertAsync(TestContext.Current.CancellationToken);
+
+        await _repo
+            .Received(1)
+            .GetBilledSpendGbpAsync(evaluationStartsOn, new LocalDate(2026, 6, 2), null, Arg.Any<CancellationToken>());
+    }
+
+    [Fact]
+    public async Task CheckAndAlert_skips_a_periodic_rule_whose_evaluation_boundary_is_in_the_future()
+    {
+        var rule = Rule(BillingPeriod.Weekly, evaluationStartsOn: new LocalDate(2026, 6, 3));
+        StubRules(rule);
+
+        await Sut().CheckAndAlertAsync(TestContext.Current.CancellationToken);
+
+        await _repo
+            .DidNotReceive()
+            .GetBilledSpendGbpAsync(
+                Arg.Any<LocalDate>(),
+                Arg.Any<LocalDate>(),
+                Arg.Any<Provider?>(),
+                Arg.Any<CancellationToken>()
+            );
+    }
+
     [Fact]
     public async Task CheckAndAlert_skips_weekly_rule_already_triggered_within_window()
     {

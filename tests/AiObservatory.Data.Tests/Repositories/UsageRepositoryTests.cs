@@ -809,16 +809,22 @@ public class UsageRepositoryTests : IAsyncLifetime
             .LastTriggeredAt.Should()
             .Be(triggeredAt);
 
-        var replay = await firstRepository.GetOrCreateBudgetAlertAsync(
-            rule.Id,
-            period,
-            period,
-            99m,
-            100m,
-            AlertInsight(period, triggeredAt),
-            triggeredAt,
-            ct
-        );
+        BudgetAlertClaimResult replay;
+        await using (var readOnlyTx = await firstContext.Database.BeginTransactionAsync(ct))
+        {
+            await firstContext.Database.ExecuteSqlRawAsync("SET TRANSACTION READ ONLY", ct);
+            replay = await firstRepository.GetOrCreateBudgetAlertAsync(
+                rule.Id,
+                period,
+                period,
+                99m,
+                100m,
+                AlertInsight(period, triggeredAt),
+                triggeredAt,
+                ct
+            );
+            await readOnlyTx.RollbackAsync(ct);
+        }
         replay.Created.Should().BeFalse();
         replay.ThresholdGbp.Should().Be(10m);
         replay.ActualSpendGbp.Should().Be(15m);
@@ -921,6 +927,75 @@ public class UsageRepositoryTests : IAsyncLifetime
         definition.Should().Contain("(\"CreatedAt\", \"Id\")");
         definition.Should().Contain("INCLUDE (\"EmailLeaseAcquiredAt\")");
         definition.Should().Contain("WHERE (\"EmailSentAt\" IS NULL)");
+    }
+
+    [Fact]
+    public async Task Deliverable_budget_alert_emails_are_deterministically_bounded_and_exclude_terminal_claims()
+    {
+        var ct = TestContext.Current.CancellationToken;
+        var baseTime = Instant.FromUtc(2026, 1, 1, 0, 0);
+        var rule = new BudgetRule
+        {
+            Period = BillingPeriod.Daily,
+            ThresholdGbp = 10m,
+            EvaluationStartsOn = new LocalDate(2026, 1, 1),
+        };
+        _ctx.BudgetRules.Add(rule);
+        var deliverable = Enumerable
+            .Range(0, 52)
+            .Select(index =>
+            {
+                var period = new LocalDate(2026, 1, 1).PlusDays(index);
+                var insight = AlertInsight(period, baseTime.Plus(Duration.FromMinutes(index)));
+                _ctx.Insights.Add(insight);
+                return new BudgetAlertClaim
+                {
+                    Id = Guid.Parse($"00000000-0000-0000-0000-{index + 1:D12}"),
+                    BudgetRuleId = rule.Id,
+                    PeriodStart = period,
+                    PeriodEnd = period,
+                    InsightId = insight.Id,
+                    ThresholdGbp = 10m,
+                    ActualSpendGbp = 15m,
+                    CreatedAt = index < 2 ? baseTime : baseTime.Plus(Duration.FromMinutes(index - 1)),
+                };
+            })
+            .ToList();
+        _ctx.BudgetAlertClaims.AddRange(deliverable);
+
+        var sentInsight = AlertInsight(new LocalDate(2026, 3, 1), baseTime.Minus(Duration.FromHours(2)));
+        var leasedInsight = AlertInsight(new LocalDate(2026, 3, 2), baseTime.Minus(Duration.FromHours(1)));
+        _ctx.Insights.AddRange(sentInsight, leasedInsight);
+        _ctx.BudgetAlertClaims.AddRange(
+            new BudgetAlertClaim
+            {
+                BudgetRuleId = rule.Id,
+                PeriodStart = sentInsight.PeriodStart,
+                PeriodEnd = sentInsight.PeriodEnd,
+                InsightId = sentInsight.Id,
+                ThresholdGbp = 10m,
+                ActualSpendGbp = 15m,
+                CreatedAt = sentInsight.GeneratedAt,
+                EmailSentAt = baseTime,
+            },
+            new BudgetAlertClaim
+            {
+                BudgetRuleId = rule.Id,
+                PeriodStart = leasedInsight.PeriodStart,
+                PeriodEnd = leasedInsight.PeriodEnd,
+                InsightId = leasedInsight.Id,
+                ThresholdGbp = 10m,
+                ActualSpendGbp = 15m,
+                CreatedAt = leasedInsight.GeneratedAt,
+                EmailLeaseId = Guid.NewGuid(),
+                EmailLeaseAcquiredAt = baseTime.Plus(Duration.FromDays(2)),
+            }
+        );
+        await _ctx.SaveChangesAsync(ct);
+
+        var result = await _repo.GetDeliverableBudgetAlertEmailsAsync(baseTime.Plus(Duration.FromDays(1)), ct);
+
+        result.Select(email => email.ClaimId).Should().Equal(deliverable.Take(50).Select(claim => claim.Id));
     }
 
     private static Insight AlertInsight(LocalDate period, Instant generatedAt) =>
