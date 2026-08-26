@@ -202,76 +202,68 @@ public class UsageMigrationTests : IAsyncLifetime
     }
 
     [Fact]
-    public async Task RenameBudgetThresholdToGbp_preserves_existing_threshold_value()
+    public async Task AddBudgetAlertsAndRenameThresholdToGbp_is_one_value_preserving_deployment_boundary()
     {
         var ct = TestContext.Current.CancellationToken;
-        await using (var beforeRename = new AiObservatoryDbContext(_options))
+        var existingRuleId = Guid.Parse("30000000-0000-0000-0000-000000000001");
+        var newRuleId = Guid.Parse("30000000-0000-0000-0000-000000000002");
+        await using (var beforeMigration = new AiObservatoryDbContext(_options))
         {
-            var migrator = beforeRename.Database.GetService<IMigrator>();
+            var migrator = beforeMigration.Database.GetService<IMigrator>();
             await migrator.MigrateAsync("20260825220510_TrackPendingSourceWindows", ct);
-            await beforeRename.Database.ExecuteSqlRawAsync(
-                """
+            await beforeMigration.Database.ExecuteSqlInterpolatedAsync(
+                $"""
                 INSERT INTO "BudgetRules" ("Id", "Period", "ThresholdUsd")
-                VALUES ('30000000-0000-0000-0000-000000000001', 'Daily', 123.45)
+                VALUES ({existingRuleId}, 'Daily', 123.45)
                 """,
                 ct
             );
             await migrator.MigrateAsync(cancellationToken: ct);
         }
 
-        await using var afterRename = new AiObservatoryDbContext(_options);
-        (await afterRename.BudgetRules.SingleAsync(r => r.Id == Guid.Parse("30000000-0000-0000-0000-000000000001"), ct))
-            .ThresholdGbp.Should()
-            .Be(123.45m);
-    }
-
-    [Fact]
-    public async Task AddBudgetAlertDeliveryLease_starts_existing_rules_at_the_deployment_date()
-    {
-        var ct = TestContext.Current.CancellationToken;
-        var ruleId = Guid.Parse("40000000-0000-0000-0000-000000000001");
-        var insightId = Guid.Parse("40000000-0000-0000-0000-000000000002");
-        var claimId = Guid.Parse("40000000-0000-0000-0000-000000000003");
-        const string emptyData = "{}";
-        await using (var beforeBoundary = new AiObservatoryDbContext(_options))
-        {
-            var migrator = beforeBoundary.Database.GetService<IMigrator>();
-            await migrator.MigrateAsync("20260826105729_AddBudgetAlertClaims", ct);
-            await beforeBoundary.Database.ExecuteSqlInterpolatedAsync(
-                $"""
-                INSERT INTO "BudgetRules" ("Id", "Period", "ThresholdGbp", "LastTriggeredAt")
-                VALUES ({ruleId}, 'Daily', 10, '2026-08-01T00:00:00Z')
-                """,
-                ct
-            );
-            await beforeBoundary.Database.ExecuteSqlInterpolatedAsync(
-                $"""
-                INSERT INTO "Insights" ("Id", "GeneratedAt", "PeriodStart", "PeriodEnd", "InsightType", "Title", "Body", "Data")
-                VALUES ({insightId}, '2026-08-01T00:00:00Z', '2026-08-01', '2026-08-01', 'BudgetAlert', 'Alert', 'Alert', CAST({emptyData} AS jsonb))
-                """,
-                ct
-            );
-            await beforeBoundary.Database.ExecuteSqlInterpolatedAsync(
-                $"""
-                INSERT INTO "BudgetAlertClaims" ("Id", "BudgetRuleId", "PeriodStart", "PeriodEnd", "InsightId", "ThresholdGbp", "ActualSpendGbp", "CreatedAt", "EmailAttemptedAt")
-                VALUES ({claimId}, {ruleId}, '2026-08-01', '2026-08-01', {insightId}, 10, 15, '2026-08-01T00:00:00Z', '2026-08-01T00:01:00Z')
-                """,
-                ct
-            );
-            await migrator.MigrateAsync(cancellationToken: ct);
-        }
-
-        await using var afterBoundary = new AiObservatoryDbContext(_options);
-        var databaseUtcDate = await afterBoundary
+        await using var afterMigration = new AiObservatoryDbContext(_options);
+        var databaseUtcDate = await afterMigration
             .Database.SqlQueryRaw<LocalDate>("SELECT (CURRENT_TIMESTAMP AT TIME ZONE 'UTC')::date AS \"Value\"")
             .SingleAsync(ct);
-        var rule = await afterBoundary.BudgetRules.AsNoTracking().SingleAsync(candidate => candidate.Id == ruleId, ct);
-        var claim = await afterBoundary
-            .BudgetAlertClaims.AsNoTracking()
-            .SingleAsync(candidate => candidate.Id == claimId, ct);
+        var existingRule = await afterMigration
+            .BudgetRules.AsNoTracking()
+            .SingleAsync(rule => rule.Id == existingRuleId, ct);
+        existingRule.ThresholdGbp.Should().Be(123.45m);
+        existingRule.EvaluationStartsOn.Should().Be(databaseUtcDate);
 
-        rule.EvaluationStartsOn.Should().Be(databaseUtcDate);
-        claim.EmailLeaseId.Should().Be(claimId);
-        claim.EmailLeaseAcquiredAt.Should().Be(Instant.FromUtc(2026, 8, 1, 0, 1));
+        await afterMigration.Database.ExecuteSqlInterpolatedAsync(
+            $"""
+            INSERT INTO "BudgetRules" ("Id", "Period", "ThresholdGbp")
+            VALUES ({newRuleId}, 'Daily', 10)
+            """,
+            ct
+        );
+        var newRule = await afterMigration.BudgetRules.AsNoTracking().SingleAsync(rule => rule.Id == newRuleId, ct);
+        newRule.EvaluationStartsOn.Should().Be(databaseUtcDate);
+
+        var claimConstraints = await afterMigration
+            .Database.SqlQueryRaw<string>(
+                """
+                SELECT conname AS "Value"
+                FROM pg_constraint
+                WHERE conrelid = '"BudgetAlertClaims"'::regclass
+                  AND conname IN ('CK_BudgetAlertClaim_EmailLease', 'CK_BudgetAlertClaim_Period')
+                ORDER BY conname
+                """
+            )
+            .ToListAsync(ct);
+        claimConstraints.Should().BeEquivalentTo("CK_BudgetAlertClaim_EmailLease", "CK_BudgetAlertClaim_Period");
+
+        var branchMigrations = await afterMigration
+            .Database.SqlQueryRaw<string>(
+                """
+                SELECT "MigrationId" AS "Value"
+                FROM "__EFMigrationsHistory"
+                WHERE "MigrationId" > '20260825220510_TrackPendingSourceWindows'
+                ORDER BY "MigrationId"
+                """
+            )
+            .ToListAsync(ct);
+        branchMigrations.Should().ContainSingle().Which.Should().EndWith("_AddBudgetAlertsAndRenameThresholdToGbp");
     }
 }

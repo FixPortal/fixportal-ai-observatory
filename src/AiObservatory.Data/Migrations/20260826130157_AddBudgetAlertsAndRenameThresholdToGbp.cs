@@ -7,11 +7,21 @@ using NodaTime;
 namespace AiObservatory.Data.Migrations
 {
     /// <inheritdoc />
-    public partial class AddBudgetAlertClaims : Migration
+    public partial class AddBudgetAlertsAndRenameThresholdToGbp : Migration
     {
         /// <inheritdoc />
         protected override void Up(MigrationBuilder migrationBuilder)
         {
+            migrationBuilder.RenameColumn(name: "ThresholdUsd", table: "BudgetRules", newName: "ThresholdGbp");
+
+            migrationBuilder.AddColumn<LocalDate>(
+                name: "EvaluationStartsOn",
+                table: "BudgetRules",
+                type: "date",
+                nullable: false,
+                defaultValueSql: "(CURRENT_TIMESTAMP AT TIME ZONE 'UTC')::date"
+            );
+
             migrationBuilder.CreateTable(
                 name: "BudgetAlertClaims",
                 columns: table => new
@@ -24,12 +34,17 @@ namespace AiObservatory.Data.Migrations
                     ThresholdGbp = table.Column<decimal>(type: "numeric", nullable: false),
                     ActualSpendGbp = table.Column<decimal>(type: "numeric", nullable: false),
                     CreatedAt = table.Column<Instant>(type: "timestamp with time zone", nullable: false),
-                    EmailAttemptedAt = table.Column<Instant>(type: "timestamp with time zone", nullable: true),
+                    EmailLeaseId = table.Column<Guid>(type: "uuid", nullable: true),
+                    EmailLeaseAcquiredAt = table.Column<Instant>(type: "timestamp with time zone", nullable: true),
                     EmailSentAt = table.Column<Instant>(type: "timestamp with time zone", nullable: true),
                 },
                 constraints: table =>
                 {
                     table.PrimaryKey("PK_BudgetAlertClaims", x => x.Id);
+                    table.CheckConstraint(
+                        "CK_BudgetAlertClaim_EmailLease",
+                        "(\"EmailLeaseId\" IS NULL) = (\"EmailLeaseAcquiredAt\" IS NULL)"
+                    );
                     table.CheckConstraint("CK_BudgetAlertClaim_Period", "\"PeriodEnd\" >= \"PeriodStart\"");
                     table.ForeignKey(
                         name: "FK_BudgetAlertClaims_BudgetRules_BudgetRuleId",
@@ -47,6 +62,15 @@ namespace AiObservatory.Data.Migrations
                     );
                 }
             );
+
+            migrationBuilder
+                .CreateIndex(
+                    name: "IX_BudgetAlertClaims_Deliverable",
+                    table: "BudgetAlertClaims",
+                    columns: new[] { "CreatedAt", "Id" },
+                    filter: "\"EmailSentAt\" IS NULL"
+                )
+                .Annotation("Npgsql:IndexInclude", new[] { "EmailLeaseAcquiredAt" });
 
             migrationBuilder.CreateIndex(
                 name: "IX_BudgetAlertClaims_InsightId",
@@ -67,6 +91,10 @@ namespace AiObservatory.Data.Migrations
         protected override void Down(MigrationBuilder migrationBuilder)
         {
             migrationBuilder.DropTable(name: "BudgetAlertClaims");
+
+            migrationBuilder.DropColumn(name: "EvaluationStartsOn", table: "BudgetRules");
+
+            migrationBuilder.RenameColumn(name: "ThresholdGbp", table: "BudgetRules", newName: "ThresholdUsd");
         }
     }
 }

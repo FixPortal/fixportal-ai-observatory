@@ -13,8 +13,8 @@ using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 namespace AiObservatory.Data.Migrations
 {
     [DbContext(typeof(AiObservatoryDbContext))]
-    [Migration("20260826113422_AddBudgetAlertEvaluationBoundaryAndEmailLease")]
-    partial class AddBudgetAlertEvaluationBoundaryAndEmailLease
+    [Migration("20260826130157_AddBudgetAlertsAndRenameThresholdToGbp")]
+    partial class AddBudgetAlertsAndRenameThresholdToGbp
     {
         /// <inheritdoc />
         protected override void BuildTargetModel(ModelBuilder modelBuilder)
@@ -243,6 +243,12 @@ namespace AiObservatory.Data.Migrations
 
                     b.HasIndex("InsightId")
                         .IsUnique();
+
+                    b.HasIndex("CreatedAt", "Id")
+                        .HasDatabaseName("IX_BudgetAlertClaims_Deliverable")
+                        .HasFilter("\"EmailSentAt\" IS NULL");
+
+                    NpgsqlIndexBuilderExtensions.IncludeProperties(b.HasIndex("CreatedAt", "Id"), new[] { "EmailLeaseAcquiredAt" });
 
                     b.HasIndex("BudgetRuleId", "PeriodStart", "PeriodEnd")
                         .IsUnique()
