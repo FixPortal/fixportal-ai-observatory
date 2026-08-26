@@ -1,6 +1,7 @@
 using AiObservatory.Api.Services;
 using AiObservatory.Data.Entities;
 using AiObservatory.Data.Repositories;
+using AwesomeAssertions;
 using Microsoft.Extensions.Logging.Abstractions;
 using NodaTime;
 using NodaTime.Testing;
@@ -265,6 +266,84 @@ public class BudgetAlertServiceTests
                 Arg.Any<LocalDate>(),
                 Arg.Any<Provider?>(),
                 Arg.Any<CancellationToken>()
+            );
+    }
+
+    [Fact]
+    public async Task CheckAndAlert_uses_fresh_lease_and_completion_times_for_each_backlogged_email()
+    {
+        var startedAt = _clock.GetCurrentInstant();
+        var firstClaimId = Guid.NewGuid();
+        var secondClaimId = Guid.NewGuid();
+        var ruleId = Guid.NewGuid();
+        BudgetAlertEmail Email(Guid claimId) =>
+            new(
+                claimId,
+                ruleId,
+                null,
+                BillingPeriod.Daily,
+                new LocalDate(2026, 6, 1),
+                new LocalDate(2026, 6, 1),
+                10m,
+                15m,
+                startedAt
+            );
+
+        _repo
+            .GetDeliverableBudgetAlertEmailsAsync(Arg.Any<Instant>(), Arg.Any<CancellationToken>())
+            .Returns([Email(firstClaimId), Email(secondClaimId)]);
+        var acquisitions = new List<(Guid ClaimId, Instant AcquiredAt, Instant LeaseExpiredBefore)>();
+        _repo
+            .TryAcquireBudgetAlertEmailLeaseAsync(
+                Arg.Any<Guid>(),
+                Arg.Any<Guid>(),
+                Arg.Any<Instant>(),
+                Arg.Any<Instant>(),
+                Arg.Any<CancellationToken>()
+            )
+            .Returns(call =>
+            {
+                acquisitions.Add((call.ArgAt<Guid>(0), call.ArgAt<Instant>(2), call.ArgAt<Instant>(3)));
+                return true;
+            });
+        var completions = new List<(Guid ClaimId, Instant SentAt)>();
+        _repo
+            .MarkBudgetAlertEmailSentAsync(
+                Arg.Any<Guid>(),
+                Arg.Any<Guid>(),
+                Arg.Any<Instant>(),
+                Arg.Any<CancellationToken>()
+            )
+            .Returns(call =>
+            {
+                completions.Add((call.ArgAt<Guid>(0), call.ArgAt<Instant>(2)));
+                return Task.CompletedTask;
+            });
+        var delivery = 0;
+        _notifier
+            .NotifyAsync(Arg.Any<BudgetAlertPayload>(), Arg.Any<CancellationToken>())
+            .Returns(_ =>
+            {
+                if (delivery++ == 0)
+                {
+                    _clock.Advance(Duration.FromMinutes(16));
+                }
+                return Task.CompletedTask;
+            });
+
+        await Sut().CheckAndAlertAsync(TestContext.Current.CancellationToken);
+
+        acquisitions
+            .Should()
+            .Equal(
+                (firstClaimId, startedAt, startedAt.Minus(Duration.FromMinutes(15))),
+                (secondClaimId, startedAt.Plus(Duration.FromMinutes(16)), startedAt.Plus(Duration.FromMinutes(1)))
+            );
+        completions
+            .Should()
+            .Equal(
+                (firstClaimId, startedAt.Plus(Duration.FromMinutes(16))),
+                (secondClaimId, startedAt.Plus(Duration.FromMinutes(16)))
             );
     }
 
