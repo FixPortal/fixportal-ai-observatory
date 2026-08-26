@@ -482,6 +482,31 @@ public sealed class PricingSnapshotStoreTests : IAsyncLifetime
         catalogs.Should().AllSatisfy(validate => validate.Should().NotThrow());
     }
 
+    [Fact]
+    public void GeminiDeveloperCatalogRejectsCachedInputPricedAboveFreshInput()
+    {
+        var catalog = new GeminiDeveloperPriceCatalog(
+            "USD",
+            "https://ai.google.dev/gemini-api/docs/pricing",
+            RetrievedAt,
+            [
+                new(
+                    "gemini-3.1-pro-preview",
+                    ["gemini-3.1-pro-preview"],
+                    new LocalDate(2026, 2, 19),
+                    false,
+                    "standard",
+                    "short",
+                    2m,
+                    3m,
+                    12m
+                ),
+            ]
+        );
+
+        ((Action)catalog.Validate).Should().Throw<InvalidDataException>();
+    }
+
     [Theory]
     [InlineData("taxonomy-enum")]
     [InlineData("global-regions")]

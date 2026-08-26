@@ -37,6 +37,7 @@ public sealed record GeminiDeveloperPriceCatalog(
                 || entry.Context is not ("short" or "long")
                 || entry.Input <= 0
                 || entry.CachedInput <= 0
+                || entry.CachedInput > entry.Input
                 || entry.Output <= 0
             )
             {

@@ -305,6 +305,31 @@ test('Antigravity parser ignores protobuf fields that only resemble token counte
   }
 })
 
+test('Antigravity parser reports rejected usage rows while retaining valid totals', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'observatory-antigravity-rejected-row-'))
+  const dbPath = join(root, 'session-id.db')
+  const db = new DatabaseSync(dbPath)
+  db.exec('CREATE TABLE steps (idx INTEGER PRIMARY KEY, step_type INTEGER, step_payload BLOB)')
+  const insert = db.prepare('INSERT INTO steps VALUES (?, ?, ?)')
+  insert.run(1, 23, antigravityPayload(100, 20, 5))
+  insert.run(2, 23, antigravityPayload(100_000_000, 20, 5))
+  db.close()
+  const messages = []
+
+  try {
+    const [record] = await sweep.parseAntigravityDatabase(
+      dbPath,
+      JSON.stringify({ created_at: '2026-08-24T12:00:00Z', content: 'Gemini 3.1 Pro' }),
+      message => messages.push(message),
+    )
+
+    assert.equal(record.inputTokens, 100)
+    assert.deepEqual(messages, [`Skipped 1 unrecognized Antigravity usage row in ${dbPath}`])
+  } finally {
+    await rm(root, { recursive: true, force: true })
+  }
+})
+
 test('scanRecords discovers retained Gemini reviews and Antigravity conversations', async () => {
   const root = await mkdtemp(join(tmpdir(), 'observatory-google-scan-'))
   const geminiHome = join(root, 'gemini')
@@ -443,6 +468,24 @@ test('updateFileCache parses only changed paths and drops files deleted from the
   assert.deepEqual(reads, ['changed'])
   assert.deepEqual(result.records.map(x => x.id).sort(), ['changed', 'same'])
   assert.deepEqual(Object.keys(result.cache).sort(), ['changed', 'same'])
+})
+
+test('updateFileCache does not collapse distinct composite cache keys with the same mtime sum', async () => {
+  const cache = {
+    conversation: { mtimeMs: 300, cacheKey: '100:200', records: [{ id: 'old' }] },
+  }
+  const reads = []
+
+  const result = await updateFileCache(
+    [{ path: 'conversation', mtimeMs: 300, cacheKey: '200:100' }],
+    cache,
+    content => [{ id: content }],
+    async path => { reads.push(path); return 'new' },
+  )
+
+  assert.deepEqual(reads, ['conversation'])
+  assert.deepEqual(result.records, [{ id: 'new' }])
+  assert.equal(result.cache.conversation.cacheKey, '200:100')
 })
 
 test('scanRecords rebuilds an unversioned matching-mtime cache instead of reusing stale records', async () => {
