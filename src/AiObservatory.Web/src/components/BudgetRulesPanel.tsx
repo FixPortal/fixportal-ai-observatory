@@ -14,13 +14,7 @@ const capitalize = (s: string) => s.charAt(0).toUpperCase() + s.slice(1)
 function WebhookChip({ configured }: { configured: boolean | undefined }) {
   if (configured === undefined) return null
   return (
-    <span
-      className="budget-rules__channel"
-      style={{
-        color: configured ? 'var(--ok-border)' : 'var(--text-muted)',
-        border: `1px solid ${configured ? 'var(--ok-border)' : 'var(--border)'}`,
-      }}
-    >
+    <span className={`budget-rules__channel${configured ? ' budget-rules__channel--configured' : ''}`}>
       Email: {configured ? 'configured' : 'not configured'}
     </span>
   )

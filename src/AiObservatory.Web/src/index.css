@@ -2,7 +2,7 @@
  * AI Observatory stylesheet.
  * Imports @fixportal/design/tokens.css (shared cross-repo tokens) and extends
  * it below with the Observatory's categorical provider palette, the
- * spacing/motion/radius scales, and a font bridge. Universal surface/text/
+ * spacing/motion/radius scales, provider colours, and project colours. Universal surface/text/
  * brand/status tokens come from the shared sheet — never redefine them here.
  * Depth is borders, not shadows (no modal/toast/popover here). See system.md.
  */
@@ -19,18 +19,6 @@
 @import "./design/components.css";
 
 :root {
-  /* Font bridge: tokens.css (consumed without Tailwind theme.css) exposes no
-     font tokens. Mirror the IBM Plex stacks (bundled above via @fontsource);
-     system-ui remains the fallback. Promotion to shared tokens.css is an SP0
-     follow-up. */
-  --font-sans: "IBM Plex Sans", system-ui, -apple-system, sans-serif;
-  --font-mono: "IBM Plex Mono", ui-monospace, monospace;
-
-  /* Text on --brand-strong fills (the white-on-brand idiom from the design
-     standard; constant across themes). Promotion to shared tokens.css is an
-     SP0 follow-up alongside the font bridge above. */
-  --text-on-brand: #fff;
-
   /* Spacing scale (4px base). --space-1 is a micro-offset for sub-card gaps and
      compact control padding. --space-5 intentionally omitted; layout uses 4→6 jump. */
   --space-1: 0.25rem;
@@ -64,6 +52,17 @@
   --provider-moonshot: #65a30d;
   --provider-other: #64748b;
   --provider-judge: #d97706;
+
+  /* Project identity palette. These colours are categorical only: never use
+     them for state, selection, progress, or interaction. */
+  --project-1: #6d28d9;
+  --project-2: #1d4ed8;
+  --project-3: #a21caf;
+  --project-4: #c2410c;
+  --project-5: #0e7490;
+  --project-6: #be185d;
+  --project-7: #4d7c0f;
+  --project-8: #475569;
 }
 
 :root[data-theme="dark"] {
@@ -74,6 +73,14 @@
   --provider-moonshot: #a3e635;
   --provider-other: #94a3b8;
   --provider-judge: #fbbf24;
+  --project-1: #c4b5fd;
+  --project-2: #93c5fd;
+  --project-3: #f0abfc;
+  --project-4: #fdba74;
+  --project-5: #67e8f9;
+  --project-6: #f9a8d4;
+  --project-7: #bef264;
+  --project-8: #cbd5e1;
 }
 
 /* ---- Base ---- */
@@ -89,40 +96,15 @@ body {
 
 /* ---- Shell + nav ---- */
 .dashboard { min-height: 100%; display: flex; flex-direction: column; }
-/* App header — mirrors the CI dashboard masthead: full BrandWordmark plus a mono
-   descriptor, sticky to the top edge. */
-.app-header {
-  position: sticky;
-  top: 0;
-  z-index: 10;
-  display: flex;
-  align-items: center;
-  gap: var(--space-3);
-  padding: var(--space-3) var(--space-6);
-  background: var(--card-bg);
-  border-bottom: 1px solid var(--border);
-}
-.app-header__lockup {
-  display: flex;
-  align-items: flex-end;
-  gap: var(--space-3);
-}
-.app-header__wordmark { display: block; color: var(--text); }
-.app-header__descriptor {
-  font-family: var(--font-mono);
-  font-size: 0.8125rem;        /* 13px */
-  letter-spacing: 0.05em;
-  color: var(--text-muted);
-  padding-bottom: var(--space-2);  /* baseline-align with the tall wordmark */
-  white-space: nowrap;
-}
-/* Centred content columns (the nav spans full width above). */
-.summary-cards, .source-status, .sub-panel, .main-grid, .bottom-grid {
-  max-width: 1200px;
+.dashboard__main { flex: 1; width: 100%; }
+.dashboard__tabpanel {
+  position: relative;
   width: 100%;
+  max-width: 1200px;
   margin-inline: auto;
-  padding: 0 var(--space-6);
+  padding-inline: var(--space-6);
 }
+.summary-cards, .source-status, .sub-panel, .main-grid, .bottom-grid { width: 100%; }
 .summary-cards { margin-top: var(--space-6); }
 .bottom-grid { padding-bottom: var(--space-6); }
 
@@ -136,7 +118,7 @@ body {
   gap: var(--space-4);
 }
 .card-label {
-  font-size: 0.75rem; /* >=12px, was 0.65rem/10.4px — sub-minimum body text */
+  font-size: 12px;
   letter-spacing: 0.06em;
   text-transform: uppercase;
   color: var(--text-muted);
@@ -144,14 +126,14 @@ body {
 .card-label--row { display: flex; align-items: center; gap: var(--space-2); }
 .card-value {
   font-family: var(--font-mono);
-  font-size: 1.5rem;
+  font-size: 20px;
   font-weight: 600;
   color: var(--text);
   margin-top: var(--space-2);
 }
-.card-value--model { font-size: 0.95rem; }
-.card-value--lead { font-size: 2rem; } /* spend leads the summary row */
-.card-sub { font-size: 0.75rem; color: var(--text-muted); margin-top: var(--space-1); } /* >=12px, was 0.72rem/11.5px */
+.card-value--model { font-size: 16px; }
+.card-value--lead { font-size: 24px; }
+.card-sub { font-size: 12px; color: var(--text-muted); margin-top: var(--space-1); }
 .card-cache { margin-top: var(--space-1); color: var(--ok-text); font-weight: 500; display: flex; align-items: center; gap: var(--space-2); flex-wrap: wrap; }
 
 /* ---- Info button + popover ---- */
@@ -172,7 +154,7 @@ body {
   color: var(--text-muted);
   font-family: Georgia, serif;
   font-style: italic;
-  font-size: 0.625rem;
+  font-size: 10px;
   line-height: 1;
   cursor: pointer;
   display: inline-flex;
@@ -184,10 +166,10 @@ body {
 .info-btn:hover,
 .info-btn[aria-expanded="true"] {
   border-color: var(--brand);
-  color: var(--brand);
+  color: var(--brand-text);
 }
 .info-btn:focus-visible {
-  outline: 2px solid var(--brand);
+  outline: 2px solid var(--brand-strong);
   outline-offset: 2px;
 }
 .info-popover {
@@ -199,7 +181,7 @@ body {
   border: 1px solid color-mix(in srgb, var(--brand) 60%, var(--border));
   border-radius: var(--r-panel);
   padding: var(--space-3);
-  font-size: 0.6875rem;
+  font-size: 11px;
   color: var(--text-muted);
   line-height: 1.55;
   z-index: 20;
@@ -208,10 +190,10 @@ body {
 .info-popover p { margin: 0 0 var(--space-2); }
 .info-popover p:last-of-type { margin-bottom: 0; }
 .info-popover__title {
-  font-size: 0.625rem;
+  font-size: 10px;
   letter-spacing: 0.1em;
   text-transform: uppercase;
-  color: var(--brand);
+  color: var(--brand-text);
   font-weight: 600;
   margin-bottom: var(--space-2);
 }
@@ -244,9 +226,11 @@ body {
   border: 1px solid var(--border);
   border-radius: var(--r-panel);
   padding: var(--space-4);
+  overflow-x: auto;
+  scrollbar-width: thin;
 }
 .panel-title {
-  font-size: 0.75rem;
+  font-size: 12px;
   font-weight: 600;
   letter-spacing: 0.05em;
   text-transform: uppercase;
@@ -260,41 +244,88 @@ body {
 .budget-rules__header { display: flex; align-items: center; justify-content: space-between; gap: var(--space-3); flex-wrap: wrap; }
 .budget-rules__title-row { display: flex; align-items: center; gap: var(--space-3); flex-wrap: wrap; }
 .budget-rules__title-row .panel-title { margin-bottom: 0; padding-bottom: 0; border-bottom: none; }
-.budget-rules__channel { font-size: 0.75rem; font-weight: 500; padding: 2px 8px; border-radius: 4px; }
+.budget-rules__channel {
+  padding: 2px var(--space-2);
+  border: 1px solid var(--border);
+  border-radius: var(--r-control);
+  color: var(--text-muted);
+  font-size: 12px;
+  font-weight: 500;
+}
+.budget-rules__channel--configured { background: var(--ok-bg); border-color: var(--ok-border); color: var(--ok-text); }
 .budget-rules__body { margin-top: var(--space-3); border-top: 1px solid var(--border); padding-top: var(--space-3); }
-.budget-rules__table { width: 100%; border-collapse: collapse; font-size: 0.82rem; }
-.budget-rules__table tr { border-bottom: 1px solid var(--border); }
-.budget-rules__table th { padding: 4px 8px; color: var(--text-muted); font-weight: 600; text-align: left; }
+.budget-rules__table { width: 100%; border-collapse: collapse; font-size: 13px; }
 .budget-rules__table th:first-child { padding-left: 0; }
 .budget-rules__table th:nth-child(3) { text-align: right; }
 .budget-rules__table th:last-child { width: 32px; }
-.budget-rules__table td { padding: 6px 8px; color: var(--text); }
 .budget-rules__table td:first-child { padding-left: 0; }
 .budget-rules__table td:nth-child(3) { text-align: right; }
 .budget-rules__table td:nth-child(4) { color: var(--text-muted); }
 .budget-rules__actions { display: inline-flex; gap: var(--space-2); justify-content: flex-end; }
 td.budget-rules__actions { display: table-cell; padding: 6px 0 6px 8px; text-align: center; }
 .budget-rules__form-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: var(--space-3); margin-bottom: var(--space-4); }
-.budget-rules__field { display: flex; flex-direction: column; gap: 4px; font-size: 0.8rem; color: var(--text-muted); }
-.budget-rules__control { font: inherit; font-size: 0.85rem; padding: 5px 8px; border-radius: 4px; border: 1px solid var(--border); background: var(--card-bg); color: var(--text); }
+.budget-rules__field { display: flex; flex-direction: column; gap: var(--space-1); font-size: 13px; color: var(--text-muted); }
+.budget-rules__control { font: inherit; font-size: 14px; padding: 5px var(--space-2); border-radius: var(--r-control); border: 1px solid var(--border); background: var(--app-bg); color: var(--text); }
 .budget-rules__history { margin-top: var(--space-3); }
 .budget-rules__history .budget-rules__history { margin-top: 0; display: flex; flex-direction: column; gap: var(--space-2); }
 .budget-rules__history .insight { padding: var(--space-3); }
 .budget-rules__history .insight-body { margin-top: var(--space-1); }
-.budget-rules__history-time { font-size: 0.75rem; color: var(--text-muted); margin-top: var(--space-1); }
+.budget-rules__history-time { font-size: 12px; color: var(--text-muted); margin-top: var(--space-1); }
+
+/* ---- Date range ---- */
+.date-range { position: relative; display: inline-flex; align-items: center; gap: var(--space-1); }
+.date-range__popover {
+  position: absolute;
+  top: calc(100% + var(--space-2));
+  left: 0;
+  z-index: 20;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  min-width: 220px;
+  padding: var(--space-3);
+  background: var(--card-bg);
+  border: 1px solid var(--border);
+  border-radius: var(--r-panel);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.35);
+}
+.date-range__field { display: flex; flex-direction: column; gap: 2px; color: var(--text-muted); font-size: 12px; }
+.date-range__input {
+  padding: 2px var(--space-2);
+  background: var(--app-bg);
+  border: 1px solid var(--border);
+  border-radius: var(--r-control);
+  color: var(--text);
+  font-family: var(--font-mono);
+  font-size: 13px;
+}
+.date-range__apply {
+  margin-top: var(--space-1);
+  padding: var(--space-1) var(--space-3);
+  background: var(--brand-strong);
+  border: 1px solid var(--brand-strong);
+  border-radius: var(--r-control);
+  color: #fff;
+  font: inherit;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+}
+.date-range__apply:hover { filter: brightness(1.1); }
 
 /* Empty-state copy shown in a panel when there is no data / no unread insights. */
 .panel-empty {
   margin: 0;
   padding: var(--space-4) 0;
-  font-size: 0.8rem;
+  font-size: 13px;
   color: var(--text-muted);
   text-align: center;
 }
+.panel-empty[role="alert"] { color: var(--bad-text); }
 
 .panel-note {
   margin: 6px 0 0;
-  font-size: 0.68rem;
+  font-size: 11px;
   color: var(--text-muted);
 }
 
@@ -315,13 +346,13 @@ td.budget-rules__actions { display: table-cell; padding: 6px 0 6px 8px; text-ali
 }
 .source-status__header h2 {
   margin: 0;
-  font-size: 0.75rem;
+  font-size: 12px;
   font-weight: 600;
   letter-spacing: 0.05em;
   text-transform: uppercase;
   color: var(--text-muted);
 }
-.source-status__header span { font-size: 0.68rem; color: var(--text-faint); }
+.source-status__header span { font-size: 11px; color: var(--text-faint); }
 .source-status__list {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -338,14 +369,14 @@ td.budget-rules__actions { display: table-cell; padding: 6px 0 6px 8px; text-ali
   min-width: 0;
   padding: var(--space-2) 0;
   border-top: 1px solid var(--border);
-  font-size: 0.7rem;
+  font-size: 11px;
 }
 .source-status__identity { min-width: 0; flex: 1; display: flex; align-items: baseline; gap: var(--space-2); }
 .source-status__name { color: var(--text); font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .source-status__provider { color: var(--text-faint); white-space: nowrap; }
 .source-status__success { min-width: 0; color: var(--text-muted); font-family: var(--font-mono); font-variant-numeric: tabular-nums; white-space: nowrap; }
 .source-status__failures { color: var(--text-faint); font-variant-numeric: tabular-nums; }
-.source-status__setup, .source-status__error summary { color: var(--brand); cursor: pointer; }
+.source-status__setup, .source-status__error summary { color: var(--brand-text); cursor: pointer; }
 .source-status__setup { margin-left: auto; }
 .source-status__error { margin-left: auto; }
 .source-status__error[open] { flex-basis: 100%; margin-left: 0; }
@@ -354,7 +385,6 @@ td.budget-rules__actions { display: table-cell; padding: 6px 0 6px 8px; text-ali
 
 /* Page-level API-failure banner (bad/error family — tokens shared with insights). */
 .error-banner {
-  max-width: 1200px;
   width: 100%;
   margin: var(--space-4) auto 0;
   padding: var(--space-3) var(--space-4);
@@ -362,7 +392,7 @@ td.budget-rules__actions { display: table-cell; padding: 6px 0 6px 8px; text-ali
   border: 1px solid var(--bad-border);
   border-radius: var(--r-chip);
   color: var(--bad-text);
-  font-size: 0.8rem;
+  font-size: 13px;
 }
 .error-banner__action {
   margin-left: var(--space-1);
@@ -377,24 +407,22 @@ td.budget-rules__actions { display: table-cell; padding: 6px 0 6px 8px; text-ali
 
 /* Initial-load banner — App Service cold start makes the first request slow, so
    give the user a signal instead of an empty dashboard of zeros. */
-#dashboard-tabpanel { position: relative; }
 .loading-banner {
   position: absolute;
   z-index: 1;
   left: 50%;
   transform: translateX(-50%);
-  max-width: 1200px;
   width: 100%;
   margin: 0;
   padding: var(--space-3) var(--space-4);
   display: flex;
   align-items: center;
   gap: var(--space-2);
-  background: var(--info-bg);
-  border: 1px solid var(--info-border);
+  background: var(--brand-tint);
+  border: 1px solid var(--brand);
   border-radius: var(--r-chip);
-  color: var(--info-text);
-  font-size: 0.8rem;
+  color: var(--brand-text);
+  font-size: 13px;
 }
 .loading-banner__spinner {
   width: 0.9rem;
@@ -420,7 +448,7 @@ td.budget-rules__actions { display: table-cell; padding: 6px 0 6px 8px; text-ali
 .auth-gate__wordmark { color: var(--text); }
 .auth-gate__descriptor {
   font-family: var(--font-mono);
-  font-size: 0.8125rem;
+  font-size: 13px;
   letter-spacing: 0.05em;
   color: var(--text-muted);
 }
@@ -436,28 +464,33 @@ td.budget-rules__actions { display: table-cell; padding: 6px 0 6px 8px; text-ali
 .auth-gate__button:disabled { color: var(--text-muted); cursor: default; }
 .auth-gate__button:hover:not(:disabled) { border-color: var(--brand); }
 
-/* ---- Model breakdown table ---- */
+/* ---- Shared tables ---- */
 .model-table-wrap { overflow-x: auto; }
-.model-table { width: 100%; border-collapse: collapse; font-size: 0.8rem; }
-.model-table th {
+:is(.budget-rules__table, .model-table, .project-table, .spend-ledger) {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 13px;
+}
+:is(.budget-rules__table, .model-table, .project-table, .spend-ledger) th {
   text-align: left;
-  font-weight: 500;
-  font-size: 0.65rem;
+  font-size: 10px;
+  font-weight: 600;
   text-transform: uppercase;
   letter-spacing: 0.05em;
   color: var(--text-muted);
   padding: var(--space-1) var(--space-2);
 }
-.model-table td {
+:is(.budget-rules__table, .model-table, .project-table, .spend-ledger) td {
   padding: var(--space-2);
   border-top: 1px solid var(--border);
   color: var(--text);
   font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
 }
-.model-table tbody tr {
+:is(.budget-rules__table, .model-table, .project-table, .spend-ledger) tbody tr {
   transition: background-color var(--transition-fast);
 }
-.model-table tbody tr:hover {
+:is(.budget-rules__table, .model-table, .project-table, .spend-ledger) tbody tr:hover {
   background-color: var(--app-bg);
 }
 /* Categorical provider marker — same palette as the chart series. */
@@ -475,14 +508,14 @@ td.budget-rules__actions { display: table-cell; padding: 6px 0 6px 8px; text-ali
   margin-top: var(--space-1);
   color: var(--text-faint);
   font-family: var(--font-sans);
-  font-size: 0.65rem;
+  font-size: 10px;
   white-space: nowrap;
 }
 /* Decorative progress bar (no text) — --brand fill is fine here; it is NOT AA on
    white (~3.74:1), so do not reuse this token in a text/border role. */
 .bar-mini {
   height: 4px;
-  border-radius: 2px;
+  border-radius: var(--r-control);
   margin-top: var(--space-1);
   background: var(--brand);
 }
@@ -503,7 +536,7 @@ td.budget-rules__actions { display: table-cell; padding: 6px 0 6px 8px; text-ali
 .breakdown-search {
   appearance: none;
   font: inherit;
-  font-size: 0.8rem;
+  font-size: 13px;
   width: 100%;
   padding: var(--space-2) var(--space-3) var(--space-2) var(--space-6);
   background: var(--app-bg);
@@ -511,10 +544,6 @@ td.budget-rules__actions { display: table-cell; padding: 6px 0 6px 8px; text-ali
   border-radius: var(--r-control);
   color: var(--text);
   transition: border-color var(--transition-fast);
-}
-.breakdown-search:focus {
-  outline: 2px solid var(--brand);
-  outline-offset: 1px;
 }
 .breakdown-search-icon {
   position: absolute;
@@ -537,7 +566,7 @@ td.budget-rules__actions { display: table-cell; padding: 6px 0 6px 8px; text-ali
   gap: var(--space-2);
   appearance: none;
   font: inherit;
-  font-size: 0.75rem;
+  font-size: 12px;
   font-weight: 500;
   padding: var(--space-1) var(--space-3);
   background: transparent;
@@ -575,7 +604,7 @@ td.budget-rules__actions { display: table-cell; padding: 6px 0 6px 8px; text-ali
 }
 .breakdown-sort__field {
   font: inherit;
-  font-size: 0.8rem;
+  font-size: 13px;
   padding: var(--space-2) var(--space-3);
   background: var(--app-bg);
   border: 1px solid var(--border);
@@ -585,7 +614,7 @@ td.budget-rules__actions { display: table-cell; padding: 6px 0 6px 8px; text-ali
 .breakdown-sort__direction {
   appearance: none;
   font: inherit;
-  font-size: 0.7rem;
+  font-size: 11px;
   width: 1.8rem;
   height: 1.8rem;
   padding: 0;
@@ -608,7 +637,7 @@ td.budget-rules__actions { display: table-cell; padding: 6px 0 6px 8px; text-ali
   outline: none;
 }
 .sortable-header:focus-visible {
-  outline: 2px solid var(--brand);
+  outline: 2px solid var(--brand-strong);
   outline-offset: -2px;
 }
 .sortable-header:hover {
@@ -618,28 +647,37 @@ td.budget-rules__actions { display: table-cell; padding: 6px 0 6px 8px; text-ali
   display: inline-flex;
   align-items: center;
   gap: var(--space-1);
+  appearance: none;
+  padding: 0;
+  background: none;
+  border: 0;
+  color: inherit;
+  font: inherit;
+  letter-spacing: inherit;
+  text-transform: inherit;
+  cursor: pointer;
 }
 .sort-indicator {
   display: inline-block;
-  font-size: 0.6rem;
+  font-size: 10px;
   color: var(--text-faint);
   transition: color var(--transition-fast);
 }
 .sortable-header:hover .sort-indicator {
   color: var(--text-muted);
 }
-.sort-indicator--active {
-  color: var(--brand);
-}
+.sort-indicator--active { color: var(--brand-text); }
 
 /* ---- Responsive ---- */
 @media (max-width: 760px) {
+  .dashboard__tabpanel { padding-inline: var(--space-3); }
   .app-header {
     flex-wrap: wrap;
     padding-inline: var(--space-3);
   }
   .app-header__descriptor { display: none; }
   .fpds-theme-toggle__btn { padding-inline: var(--space-2); }
+  .page-nav { padding-inline: var(--space-3); }
   .summary-cards { grid-template-columns: repeat(2, 1fr); }
   .info-popover--summary {
     position: fixed;
@@ -652,6 +690,7 @@ td.budget-rules__actions { display: table-cell; padding: 6px 0 6px 8px; text-ali
   .main-grid, .bottom-grid { grid-template-columns: minmax(0, 1fr); }
   .source-status__list { grid-template-columns: 1fr; }
   .source-status__success { flex-basis: 100%; }
+  :is(.budget-rules__table, .model-table, .project-table, .spend-ledger) { min-width: 640px; }
 }
 
 /* ---- Insights feed ---- */
@@ -664,14 +703,14 @@ td.budget-rules__actions { display: table-cell; padding: 6px 0 6px 8px; text-ali
   background: var(--card-bg);
 }
 .insight-type {
-  font-size: 0.65rem;
+  font-size: 10px;
   font-weight: 600;
   letter-spacing: 0.07em;
   text-transform: uppercase;
   color: var(--text-muted);
 }
-.insight-title { font-size: 0.85rem; font-weight: 600; color: var(--text); margin-top: var(--space-1); }
-.insight-body { font-size: 0.8rem; color: var(--text-muted); margin-top: var(--space-1); }
+.insight-title { font-size: 14px; font-weight: 600; color: var(--text); margin-top: var(--space-1); }
+.insight-body { font-size: 13px; color: var(--text-muted); margin-top: var(--space-1); }
 
 .insight-anomaly { border-left-color: var(--bad-border); background: var(--bad-bg); }
 .insight-efficiency { border-left-color: var(--ok-border); background: var(--ok-bg); }
@@ -695,9 +734,9 @@ td.budget-rules__actions { display: table-cell; padding: 6px 0 6px 8px; text-ali
 .insight-body strong { font-weight: 600; }
 .insight-body code {
   font-family: var(--font-mono);
-  font-size: 0.75em;
+  font-size: 10px;
   background: color-mix(in srgb, var(--text) 8%, transparent);
-  border-radius: 3px;
+  border-radius: var(--r-control);
   padding: 1px 4px;
 }
 
@@ -708,7 +747,7 @@ td.budget-rules__actions { display: table-cell; padding: 6px 0 6px 8px; text-ali
   border-top: 1px solid var(--border);
 }
 .insight-explanation__label {
-  font-size: 0.65rem;
+  font-size: 10px;
   font-weight: 600;
   letter-spacing: 0.07em;
   text-transform: uppercase;
@@ -716,7 +755,7 @@ td.budget-rules__actions { display: table-cell; padding: 6px 0 6px 8px; text-ali
   margin-bottom: var(--space-2);
 }
 .insight-explain-error {
-  font-size: 0.75rem;
+  font-size: 12px;
   color: var(--bad-text);
   margin: var(--space-2) 0 0;
 }
@@ -728,52 +767,23 @@ td.budget-rules__actions { display: table-cell; padding: 6px 0 6px 8px; text-ali
   margin-top: var(--space-2);
 }
 
+.insights-older { margin-top: var(--space-3); border-top: 1px solid var(--border); }
+.insights-older > summary {
+  width: max-content;
+  margin-top: var(--space-2);
+  border-radius: var(--r-control);
+  color: var(--text-muted);
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+}
+.insights-older > summary:hover { color: var(--brand-text); }
+.insights-older > summary:focus-visible { outline: 2px solid var(--brand-strong); outline-offset: 2px; color: var(--brand-text); }
+
 /* Dismiss button — replaced by @fixportal/design Button variant="ghost" size="sm" */
 
-/* ---- Footer (FixPortal — mirrors the CI dashboard footer; per-site tagline) ---- */
-.site-footer {
-  margin-top: auto;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: var(--space-3);
-  padding: var(--space-8) var(--space-6);
-  border-top: 1px solid var(--border);
-}
-/* Decorative inner brand band: aria-hidden in Footer.tsx keeps it out of the
-   accessibility tree; pointer-events:none drops mouse hits on the chrome. */
-.site-footer__band {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: var(--space-2);
-  pointer-events: none;
-}
-.site-footer__wordmark { color: var(--text); opacity: 0.85; }
-.site-footer__tagline {
-  font-family: var(--font-mono);
-  font-size: 0.625rem;         /* 10px */
-  letter-spacing: 0.34em;
-  text-transform: uppercase;
-  color: var(--text-faint);
-}
-.site-footer__attrib {
-  font-family: var(--font-mono);
-  font-size: 0.75rem;           /* 12px, was 0.6875rem/11px */
-  line-height: 1.6;
-  color: var(--text-muted);
-}
-.site-footer__attrib a {
-  color: var(--brand);
-  text-decoration: none;
-  border-bottom: 1px solid color-mix(in srgb, var(--brand) 45%, transparent);
-}
-.site-footer__attrib a:hover { border-bottom-color: var(--brand); }
-.site-footer__attrib a:focus-visible {
-  outline: 2px solid var(--brand);
-  outline-offset: 2px;
-  border-radius: var(--r-control);
-}
+/* Canonical footer component supplies structure and typography. */
+.site-footer__attrib a { color: var(--brand-text); }
 
 /* Suspense fallback while the lazily-loaded chart chunk fetches. Matches the
    chart heights so panels don't reflow when the chart paints. */
@@ -788,7 +798,7 @@ td.budget-rules__actions { display: table-cell; padding: 6px 0 6px 8px; text-ali
 .page-nav {
   display: flex;
   gap: 0;
-  padding: 0 var(--space-6);
+  padding-inline: max(var(--space-6), calc((100% - 1200px) / 2 + var(--space-6)));
   background: var(--card-bg);
   border-bottom: 1px solid var(--border);
   overflow-x: auto;
@@ -803,17 +813,19 @@ td.budget-rules__actions { display: table-cell; padding: 6px 0 6px 8px; text-ali
   background: none;
   color: var(--text-muted);
   font-family: var(--font-sans);
-  font-size: 0.875rem;
+  font-size: 14px;
   font-weight: 500;
   cursor: pointer;
   transition: color 0.15s;
   margin-bottom: -1px;  /* overlap container border */
+  white-space: nowrap;
 }
 
-.page-nav__tab:hover { color: var(--text); }
+.page-nav__tab:hover { color: var(--brand-text); }
+.page-nav__tab:focus-visible { outline: 2px solid var(--brand-strong); outline-offset: -2px; }
 
 .page-nav__tab--active {
-  color: var(--text);
+  color: var(--brand-text);
   font-weight: 600;
   border-bottom-color: var(--brand);
 }
@@ -823,7 +835,7 @@ td.budget-rules__actions { display: table-cell; padding: 6px 0 6px 8px; text-ali
   display: flex;
   flex-direction: column;
   gap: var(--space-4);
-  padding: var(--space-4) var(--space-6);
+  padding-top: var(--space-4);
 }
 
 /* ---- Chart Controls ---- */
@@ -845,7 +857,7 @@ td.budget-rules__actions { display: table-cell; padding: 6px 0 6px 8px; text-ali
   appearance: none;
   border: none;
   font: inherit;
-  font-size: 0.7rem;
+  font-size: 11px;
   font-weight: 500;
   padding: var(--space-1) var(--space-3);
   border-radius: calc(var(--r-control) - 2px);
@@ -867,7 +879,26 @@ td.budget-rules__actions { display: table-cell; padding: 6px 0 6px 8px; text-ali
 .sortable-header__content:focus-visible,
 .source-status__setup:focus-visible,
 .source-status__error summary:focus-visible {
-  outline: 2px solid var(--brand);
+  outline: 2px solid var(--brand-strong);
+  outline-offset: 2px;
+}
+
+.breakdown-search:focus-visible,
+.breakdown-sort__field:focus-visible,
+.breakdown-sort__direction:focus-visible,
+.budget-rules__control:focus-visible,
+.date-range__input:focus-visible,
+.date-range__apply:focus-visible,
+.spend-filters__field select:focus-visible,
+.spend-filters__add:focus-visible,
+.catalog-tab:focus-visible,
+.sub-card__extra-input:focus-visible,
+.sub-list__btn:focus-visible,
+.sub-add-btn:focus-visible,
+.sub-form__input:focus-visible,
+.sub-form__select:focus-visible,
+.sub-form__btn:focus-visible {
+  outline: 2px solid var(--brand-strong);
   outline-offset: 2px;
 }
 
@@ -886,7 +917,7 @@ td.budget-rules__actions { display: table-cell; padding: 6px 0 6px 8px; text-ali
   padding: var(--space-2) 0 0;
   border-top: 1px solid var(--border);
   color: var(--text-muted);
-  font-size: 0.68rem;
+  font-size: 11px;
 }
 .usage-chart-legend li { display: flex; align-items: baseline; gap: var(--space-2); min-width: 0; }
 .usage-chart-legend li > span:last-child { overflow-wrap: anywhere; }
@@ -909,7 +940,7 @@ td.budget-rules__actions { display: table-cell; padding: 6px 0 6px 8px; text-ali
   gap: var(--space-2);
 }
 .sub-panel-title {
-  font-size: 0.75rem;
+  font-size: 12px;
   font-weight: 600;
   letter-spacing: 0.05em;
   text-transform: uppercase;
@@ -918,7 +949,7 @@ td.budget-rules__actions { display: table-cell; padding: 6px 0 6px 8px; text-ali
 .sub-panel-btn {
   appearance: none;
   font: inherit;
-  font-size: 0.72rem;
+  font-size: 12px;
   padding: var(--space-1) var(--space-3);
   background: transparent;
   border: 1px solid var(--border-strong);
@@ -946,17 +977,17 @@ td.budget-rules__actions { display: table-cell; padding: 6px 0 6px 8px; text-ali
   gap: var(--space-2);
   margin-bottom: var(--space-3);
 }
-.sub-card__provider { font-size: 0.8rem; font-weight: 700; }
-.sub-card__plan { font-size: 0.78rem; color: var(--text-muted); }
+.sub-card__provider { font-size: 13px; font-weight: 700; }
+.sub-card__plan { font-size: 12px; color: var(--text-muted); }
 .sub-card__cost {
   font-family: var(--font-mono);
-  font-size: 1.35rem;
+  font-size: 20px;
   font-weight: 600;
   margin-bottom: var(--space-1);
 }
 .sub-card__cost-unit {
   font-family: var(--font-sans);
-  font-size: 0.75rem;
+  font-size: 12px;
   font-weight: 400;
   color: var(--text-muted);
 }
@@ -964,7 +995,7 @@ td.budget-rules__actions { display: table-cell; padding: 6px 0 6px 8px; text-ali
   display: flex;
   align-items: center;
   gap: var(--space-2);
-  font-size: 0.75rem;
+  font-size: 12px;
   margin-bottom: var(--space-3);
 }
 .sub-card__extra-label { color: var(--text-muted); }
@@ -977,14 +1008,14 @@ td.budget-rules__actions { display: table-cell; padding: 6px 0 6px 8px; text-ali
   border-radius: var(--r-chip);
   padding: 2px var(--space-2);
   cursor: pointer;
-  font-size: 0.72rem;
+  font-size: 12px;
   transition: border-color var(--transition-fast);
 }
 .sub-card__extra-chip:hover { border-color: var(--border-strong); }
 .sub-card__extra-chip--null { color: var(--text-muted); }
 .sub-card__extra-input {
   font: inherit;
-  font-size: 0.72rem;
+  font-size: 12px;
   padding: 2px var(--space-2);
   background: var(--app-bg);
   border: 1px solid var(--border-strong);
@@ -993,14 +1024,14 @@ td.budget-rules__actions { display: table-cell; padding: 6px 0 6px 8px; text-ali
   width: 80px;
 }
 .sub-card__billing-day {
-  font-size: 0.7rem;
+  font-size: 11px;
   color: var(--text-muted);
   margin-bottom: var(--space-3);
 }
 .sub-card__period-row {
   display: flex;
   justify-content: space-between;
-  font-size: 0.75rem;
+  font-size: 12px;
   margin-bottom: var(--space-2);
 }
 .sub-card__period-label { color: var(--text-muted); }
@@ -1010,26 +1041,26 @@ td.budget-rules__actions { display: table-cell; padding: 6px 0 6px 8px; text-ali
 .sub-progress-track {
   background: var(--app-bg);
   border: 1px solid var(--border);
-  border-radius: 3px;
+  border-radius: var(--r-control);
   height: 6px;
   overflow: hidden;
   margin-bottom: var(--space-1);
 }
 .sub-progress-fill {
   height: 100%;
-  border-radius: 3px;
+  border-radius: var(--r-control);
   transition: width var(--transition-normal);
 }
 .sub-progress-fill--over { background: var(--bad-border) !important; }
 .sub-progress-label {
-  font-size: 0.65rem;
+  font-size: 10px;
   color: var(--text-muted);
   text-align: right;
 }
 
 .sub-empty { text-align: center; padding: var(--space-8) 0; }
 .sub-empty__text {
-  font-size: 0.8rem;
+  font-size: 13px;
   color: var(--text-muted);
   margin-bottom: var(--space-4);
 }
@@ -1039,7 +1070,7 @@ td.budget-rules__actions { display: table-cell; padding: 6px 0 6px 8px; text-ali
   background: var(--overlay-bg);
 }
 .modal {
-  margin: var(--space-8) auto auto;
+  margin: auto;
   padding: 0;
   background: var(--card-bg);
   border: 1px solid var(--border);
@@ -1048,6 +1079,8 @@ td.budget-rules__actions { display: table-cell; padding: 6px 0 6px 8px; text-ali
   max-width: 560px;
   max-height: calc(100vh - 4rem);
   overflow-y: auto;
+  box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.10), 0 4px 6px -4px rgba(0, 0, 0, 0.10);
+  outline: none;
 }
 .modal__header {
   display: flex;
@@ -1060,11 +1093,11 @@ td.budget-rules__actions { display: table-cell; padding: 6px 0 6px 8px; text-ali
   background: var(--card-bg);
   z-index: 1;
 }
-.modal__title { font-size: 0.9rem; font-weight: 600; color: var(--text); }
+.modal__title { font-size: 14px; font-weight: 600; color: var(--text); }
 .modal__close {
   appearance: none;
   font: inherit;
-  font-size: 1.1rem;
+  font-size: 18px;
   line-height: 1;
   background: transparent;
   border: 0;
@@ -1073,7 +1106,17 @@ td.budget-rules__actions { display: table-cell; padding: 6px 0 6px 8px; text-ali
   padding: var(--space-1);
 }
 .modal__close:hover { color: var(--text); }
+.modal__close:focus-visible { outline: 2px solid var(--brand-strong); outline-offset: 2px; }
 .modal__body { padding: var(--space-3) var(--space-4) var(--space-4); }
+.modal__error {
+  margin: 0 0 var(--space-3);
+  padding: var(--space-2) var(--space-3);
+  background: var(--bad-bg);
+  border: 1px solid var(--bad-border);
+  border-radius: var(--r-chip);
+  color: var(--bad-text);
+  font-size: 13px;
+}
 
 .sub-list { list-style: none; margin: 0; padding: 0; }
 .sub-list-row {
@@ -1085,22 +1128,22 @@ td.budget-rules__actions { display: table-cell; padding: 6px 0 6px 8px; text-ali
 }
 .sub-list-row:last-of-type { border-bottom: none; }
 .sub-list__badge {
-  font-size: 0.65rem;
+  font-size: 10px;
   font-weight: 700;
   text-transform: uppercase;
   letter-spacing: 0.04em;
   padding: 2px 7px;
-  border-radius: 99px;
+  border-radius: var(--r-chip);
   white-space: nowrap;
 }
-.sub-list__name { flex: 1; font-size: 0.82rem; }
-.sub-list__cost { font-size: 0.78rem; color: var(--text-muted); font-family: var(--font-mono); white-space: nowrap; }
+.sub-list__name { flex: 1; font-size: 13px; }
+.sub-list__cost { font-size: 12px; color: var(--text-muted); font-family: var(--font-mono); white-space: nowrap; }
 /* Inline editable field in a list row (the vendor default-category picker) — reads as
    the muted metadata it sits beside until hovered/focused, so the row stays a list
    rather than looking like a form. */
 .sub-list__select {
   font: inherit;
-  font-size: 0.75rem;
+  font-size: 12px;
   max-width: 12rem;
   padding: 2px var(--space-2);
   background: transparent;
@@ -1116,17 +1159,17 @@ td.budget-rules__actions { display: table-cell; padding: 6px 0 6px 8px; text-ali
   color: var(--text);
 }
 .sub-list__select:focus-visible {
-  outline: 2px solid var(--brand);
+  outline: 2px solid var(--brand-strong);
   outline-offset: 1px;
 }
 .sub-list__select:disabled { cursor: default; opacity: 0.6; }
 .sub-list__actions { display: flex; gap: var(--space-2); flex-shrink: 0; }
 .sub-list__confirm { display: flex; align-items: center; gap: var(--space-2); flex-shrink: 0; }
-.sub-list__confirm-text { font-size: 0.72rem; color: var(--bad-text); }
+.sub-list__confirm-text { font-size: 12px; color: var(--bad-text); }
 .sub-list__btn {
   appearance: none;
   font: inherit;
-  font-size: 0.7rem;
+  font-size: 11px;
   padding: var(--space-1) var(--space-2);
   background: transparent;
   border: 1px solid var(--border);
@@ -1142,7 +1185,7 @@ td.budget-rules__actions { display: table-cell; padding: 6px 0 6px 8px; text-ali
 .sub-add-btn {
   appearance: none;
   font: inherit;
-  font-size: 0.78rem;
+  font-size: 12px;
   padding: var(--space-2) var(--space-3);
   background: transparent;
   border: 1px dashed var(--border-strong);
@@ -1153,7 +1196,7 @@ td.budget-rules__actions { display: table-cell; padding: 6px 0 6px 8px; text-ali
   margin-top: var(--space-3);
   transition: border-color var(--transition-fast), color var(--transition-fast);
 }
-.sub-add-btn:hover { border-color: var(--brand); color: var(--brand); }
+.sub-add-btn:hover { border-color: var(--brand); color: var(--brand-text); }
 
 .sub-form {
   margin-top: var(--space-3);
@@ -1161,7 +1204,7 @@ td.budget-rules__actions { display: table-cell; padding: 6px 0 6px 8px; text-ali
   border-top: 1px solid var(--border);
 }
 .sub-form__title {
-  font-size: 0.7rem;
+  font-size: 11px;
   font-weight: 600;
   text-transform: uppercase;
   letter-spacing: 0.05em;
@@ -1176,7 +1219,7 @@ td.budget-rules__actions { display: table-cell; padding: 6px 0 6px 8px; text-ali
   display: inline-flex;
   align-items: center;
   gap: var(--space-2);
-  font-size: 0.82rem;
+  font-size: 13px;
   color: var(--text);
   cursor: pointer;
 }
@@ -1188,7 +1231,7 @@ td.budget-rules__actions { display: table-cell; padding: 6px 0 6px 8px; text-ali
 }
 .sub-form__label {
   display: block;
-  font-size: 0.7rem;
+  font-size: 11px;
   color: var(--text-muted);
   margin-bottom: var(--space-1);
 }
@@ -1196,7 +1239,7 @@ td.budget-rules__actions { display: table-cell; padding: 6px 0 6px 8px; text-ali
 .sub-form__select {
   appearance: none;
   font: inherit;
-  font-size: 0.82rem;
+  font-size: 13px;
   width: 100%;
   padding: var(--space-2) var(--space-3);
   background: var(--app-bg);
@@ -1204,16 +1247,11 @@ td.budget-rules__actions { display: table-cell; padding: 6px 0 6px 8px; text-ali
   border-radius: var(--r-control);
   color: var(--text);
 }
-.sub-form__input:focus,
-.sub-form__select:focus {
-  outline: 2px solid var(--brand);
-  outline-offset: 1px;
-}
 .sub-form__actions { display: flex; gap: var(--space-2); justify-content: flex-end; }
 .sub-form__btn {
   appearance: none;
   font: inherit;
-  font-size: 0.78rem;
+  font-size: 12px;
   padding: var(--space-2) var(--space-3);
   border-radius: var(--r-control);
   cursor: pointer;
@@ -1228,7 +1266,7 @@ td.budget-rules__actions { display: table-cell; padding: 6px 0 6px 8px; text-ali
 .sub-form__btn--primary {
   background: var(--brand-strong);
   border: 1px solid var(--brand-strong);
-  color: var(--text-on-brand);
+  color: #fff;
 }
 .sub-form__btn--primary:hover { filter: brightness(1.1); }
 .sub-form__btn:disabled { opacity: 0.5; cursor: not-allowed; }
@@ -1238,7 +1276,7 @@ td.budget-rules__actions { display: table-cell; padding: 6px 0 6px 8px; text-ali
 .catalog-tab {
   appearance: none;
   font: inherit;
-  font-size: 0.78rem;
+  font-size: 12px;
   padding: var(--space-2) var(--space-3);
   background: transparent;
   border: 1px solid var(--border);
@@ -1248,22 +1286,22 @@ td.budget-rules__actions { display: table-cell; padding: 6px 0 6px 8px; text-ali
 }
 .catalog-tab[aria-selected="true"] {
   border-color: var(--brand);
-  color: var(--text);
+  color: var(--brand-text);
   background: var(--app-bg);
 }
 .catalog-key {
   font-family: var(--font-mono);
-  font-size: 0.72rem;
+  font-size: 12px;
   color: var(--text-muted);
   white-space: nowrap;
 }
 .catalog-badge {
-  font-size: 0.65rem;
+  font-size: 10px;
   font-weight: 700;
   text-transform: uppercase;
   letter-spacing: 0.04em;
   padding: 2px 7px;
-  border-radius: 99px;
+  border-radius: var(--r-chip);
   color: var(--text-muted);
   background: var(--overlay-bg);
   white-space: nowrap;
@@ -1274,21 +1312,18 @@ td.budget-rules__actions { display: table-cell; padding: 6px 0 6px 8px; text-ali
   .sub-cards { grid-template-columns: 1fr; }
 }
 
-/* ---- Reporting page layout ---- */
-.reporting-page { display: flex; flex-direction: column; gap: var(--space-4); padding: 0 var(--space-6); }
+/* ---- Reporting/activity/GitHub page layout ---- */
+.reporting-page { display: flex; flex-direction: column; gap: var(--space-4); }
 .reporting-range-bar { display: flex; align-items: center; gap: var(--space-3); flex-wrap: wrap; padding: var(--space-3) 0; }
-.reporting-range-label { color: var(--text-muted); font-size: 0.85rem; }
+.reporting-range-label { color: var(--text-muted); font-size: 14px; }
 
 /* ---- Collapsible optional panels ---- */
 .collapsible-panel-zone {
-  max-width: 1200px;
   width: 100%;
-  margin-inline: auto;
-  padding: 0 var(--space-6);
   margin-top: var(--space-6);
   display: flex;
   flex-direction: column;
-  gap: 6px;
+  gap: var(--space-2);
 }
 .collapsible-panel {
   border: 1px solid var(--border);
@@ -1298,8 +1333,8 @@ td.budget-rules__actions { display: table-cell; padding: 6px 0 6px 8px; text-ali
 .collapsible-panel__header {
   display: flex;
   align-items: center;
-  gap: 10px;
-  padding: 10px 14px;
+  gap: var(--space-3);
+  padding: var(--space-3) var(--space-4);
   background: var(--card-bg);
   cursor: pointer;
   border: none;
@@ -1311,7 +1346,7 @@ td.budget-rules__actions { display: table-cell; padding: 6px 0 6px 8px; text-ali
 }
 .collapsible-panel__header:hover { background: var(--surface); }
 .collapsible-panel__header:focus-visible {
-  outline: 2px solid var(--brand);
+  outline: 2px solid var(--brand-strong);
   outline-offset: -2px;
 }
 .collapsible-panel__dot {
@@ -1322,7 +1357,7 @@ td.budget-rules__actions { display: table-cell; padding: 6px 0 6px 8px; text-ali
   flex-shrink: 0;
 }
 .collapsible-panel__title {
-  font-size: 0.75rem;
+  font-size: 12px;
   font-weight: 600;
   color: var(--text);
   white-space: nowrap;
@@ -1331,7 +1366,7 @@ td.budget-rules__actions { display: table-cell; padding: 6px 0 6px 8px; text-ali
   max-width: 22rem;
   min-width: 0; /* allow the flex item to shrink so the ellipsis can engage */
 }
-.collapsible-panel__summary { font-size: 0.68rem; color: var(--text-muted); }
+.collapsible-panel__summary { font-size: 11px; color: var(--text-muted); }
 .collapsible-panel__chevron {
   margin-left: auto;
   color: var(--text-faint);
@@ -1350,12 +1385,12 @@ td.budget-rules__actions { display: table-cell; padding: 6px 0 6px 8px; text-ali
 .collapsible-panel__body-outer--open { grid-template-rows: 1fr; }
 .collapsible-panel__body-inner {
   overflow: hidden;
-  background: var(--bg);
-  padding: 0 14px;
+  background: var(--app-bg);
+  padding: 0 var(--space-4);
   transition: padding 0.2s ease;
 }
 .collapsible-panel__body-outer--open .collapsible-panel__body-inner {
-  padding: 12px 14px;
+  padding: var(--space-3) var(--space-4);
   border-top: 1px solid var(--border);
 }
 
@@ -1368,42 +1403,40 @@ td.budget-rules__actions { display: table-cell; padding: 6px 0 6px 8px; text-ali
 /* ---- Adversarial review: per-run panels ---- */
 /* Let the panel summary span grow so the run totals right-align before the chevron. */
 .collapsible-panel__summary:has(.adv-run__summary) { flex: 1; display: flex; }
-.adv-run__summary { display: flex; align-items: center; gap: 10px; margin-left: auto; }
-.adv-run__meta { color: var(--text-muted); font-size: 0.68rem; }
-.adv-run__badge { font-size: 0.62rem; padding: 2px 7px; border-radius: 999px; font-weight: 600; }
-.adv-run__badge--ok { background: rgba(45,212,191,.15); color: #2dd4bf; }
-.adv-run__badge--warn { background: rgba(251,146,60,.15); color: #fb923c; }
-.adv-run__totals { font-size: 0.7rem; color: var(--text); }
+.adv-run__summary { display: flex; align-items: center; flex-wrap: wrap; gap: var(--space-2); margin-left: auto; }
+.adv-run__meta { color: var(--text-muted); font-size: 11px; }
+.adv-run__badge { font-size: 10px; padding: 2px 7px; border-radius: var(--r-chip); font-weight: 600; }
+.adv-run__badge--ok { background: var(--ok-bg); color: var(--ok-text); }
+.adv-run__badge--warn { background: var(--warn-bg); color: var(--warn-text); }
+.adv-run__totals { font-size: 11px; color: var(--text); }
 .adv-run__totals b { color: var(--text); font-weight: 700; }
 
 /* ---- Activity tab: project breakdown ---- */
-.project-table { width: 100%; border-collapse: collapse; font-size: 0.8rem; }
-.project-table th {
+.adv-review-panel .model-table :is(th, td):nth-child(n + 3),
+.project-table:has(.project-table__select) :is(th, td):nth-child(n + 2) { text-align: right; }
+.project-table__select {
+  appearance: none;
+  padding: 0;
+  background: none;
+  border: 0;
+  border-radius: var(--r-control);
+  color: var(--brand-text);
+  font: inherit;
   text-align: left;
-  font-weight: 500;
-  font-size: 0.65rem;
-  text-transform: uppercase;
-  letter-spacing: 0.05em;
-  color: var(--text-muted);
-  padding: var(--space-1) var(--space-2);
+  cursor: pointer;
 }
-.project-table td {
-  padding: var(--space-2);
-  border-top: 1px solid var(--border);
-  color: var(--text);
-  font-family: var(--font-mono);
-}
-.project-table tbody tr { transition: background-color var(--transition-fast); }
-.project-table tbody tr:hover { background-color: var(--app-bg); }
+.project-table__select:hover { text-decoration: underline; text-underline-offset: 2px; }
+.project-table__select:focus-visible { outline: 2px solid var(--brand-strong); outline-offset: 2px; }
+.project-table__row--selected { background: var(--brand-tint); }
 .project-table__share { display: flex; align-items: center; gap: var(--space-2); }
 .project-table__bar-track {
   flex: 1;
   height: 8px;
-  border-radius: 4px;
+  border-radius: var(--r-control);
   background: var(--border);
   overflow: hidden;
 }
-.project-table__bar { height: 100%; border-radius: 4px; background: var(--brand); }
+.project-table__bar { height: 100%; border-radius: var(--r-control); background: var(--brand); }
 
 /* ---- Activity tab: treemap ---- */
 .activity-treemap {
@@ -1425,17 +1458,18 @@ td.budget-rules__actions { display: table-cell; padding: 6px 0 6px 8px; text-ali
   gap: var(--space-1);
   min-width: 48px;
   border: none;
-  color: var(--text-on-brand);
+  color: var(--card-bg);
   cursor: pointer;
   text-align: center;
   padding: var(--space-2);
   transition: filter var(--transition-fast);
 }
 .activity-treemap__block:hover:not(:disabled) { filter: brightness(1.1); }
+.activity-treemap__block:focus-visible { outline: 2px solid var(--brand-strong); outline-offset: -2px; }
 .activity-treemap__block:disabled { cursor: default; }
-.activity-treemap__block--selected { outline: 2px solid var(--text); outline-offset: -2px; }
+.activity-treemap__block--selected { outline: 2px solid var(--brand-strong); outline-offset: -2px; }
 .activity-treemap__label {
-  font-size: 0.7rem;
+  font-size: 11px;
   font-weight: 600;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -1458,7 +1492,7 @@ td.budget-rules__actions { display: table-cell; padding: 6px 0 6px 8px; text-ali
 }
 
 /* ---- Spend tab ---- */
-.spend-page { display: flex; flex-direction: column; gap: var(--space-4); padding: 0 var(--space-6); }
+.spend-page { display: flex; flex-direction: column; gap: var(--space-4); }
 
 .spend-filters {
   display: flex;
@@ -1471,12 +1505,12 @@ td.budget-rules__actions { display: table-cell; padding: 6px 0 6px 8px; text-ali
   display: flex;
   flex-direction: column;
   gap: var(--space-1);
-  font-size: 0.72rem;
+  font-size: 12px;
   color: var(--text-muted);
 }
 .spend-filters__field select {
   font: inherit;
-  font-size: 0.8rem;
+  font-size: 13px;
   padding: var(--space-2) var(--space-3);
   background: var(--app-bg);
   border: 1px solid var(--border);
@@ -1486,13 +1520,13 @@ td.budget-rules__actions { display: table-cell; padding: 6px 0 6px 8px; text-ali
 .spend-filters__add {
   appearance: none;
   font: inherit;
-  font-size: 0.8rem;
+  font-size: 13px;
   padding: var(--space-2) var(--space-4);
   margin-left: auto;
   background: var(--brand-strong);
   border: 1px solid var(--brand-strong);
   border-radius: var(--r-control);
-  color: var(--text-on-brand);
+  color: #fff;
   cursor: pointer;
 }
 .spend-filters__add:hover { filter: brightness(1.1); }
@@ -1512,47 +1546,29 @@ td.budget-rules__actions { display: table-cell; padding: 6px 0 6px 8px; text-ali
   padding: var(--space-4);
 }
 .spend-totals__label {
-  font-size: 0.7rem;
+  font-size: 11px;
   text-transform: uppercase;
   letter-spacing: 0.05em;
   color: var(--text-muted);
 }
 .spend-totals__value {
   font-family: var(--font-mono);
-  font-size: 1.35rem;
+  font-size: 20px;
   font-weight: 600;
   color: var(--text);
 }
 
 .spend-ledger__wrapper { overflow-x: auto; }
-.spend-ledger { width: 100%; border-collapse: collapse; font-size: 0.8rem; }
-.spend-ledger th {
-  text-align: left;
-  font-weight: 500;
-  font-size: 0.65rem;
-  text-transform: uppercase;
-  letter-spacing: 0.05em;
-  color: var(--text-muted);
-  padding: var(--space-1) var(--space-2);
-}
-.spend-ledger td {
-  padding: var(--space-2);
-  border-top: 1px solid var(--border);
-  color: var(--text);
-  font-family: var(--font-mono);
-}
-.spend-ledger tbody tr { transition: background-color var(--transition-fast); }
-.spend-ledger tbody tr:hover { background-color: var(--app-bg); }
 .spend-ledger__num { text-align: right; }
 /* A refund nets off the total, so it must not scan as just another charge. --ok-text is
    the semantic "good" token and passes AA on the card background; the minus sign and the
    visually-hidden "Refund:" prefix carry the meaning for anyone who cannot use the colour. */
 .spend-ledger__num--refund { color: var(--ok-text); }
-.spend-ledger__native { color: var(--text-muted); font-size: 0.7rem; }
+.spend-ledger__native { color: var(--text-muted); font-size: 11px; }
 .spend-ledger__empty {
   margin: 0;
   padding: var(--space-4) 0;
-  font-size: 0.8rem;
+  font-size: 13px;
   color: var(--text-muted);
   text-align: center;
 }
@@ -1560,11 +1576,11 @@ td.budget-rules__actions { display: table-cell; padding: 6px 0 6px 8px; text-ali
 @media (max-width: 760px) {
   .spend-totals { grid-template-columns: 1fr; }
 }
-.activity-treemap__value { font-size: 0.65rem; opacity: 0.85; }
+.activity-treemap__value { font-size: 10px; opacity: 0.85; }
 /* Native host context is intentionally compact; the dashboard remains the product. */
 .embedded-context {
   padding: 0.35rem 1rem;
-  border-bottom: 1px solid var(--border, #2c2c2c);
-  color: var(--text-muted, #a0a0a0);
-  font-size: 0.75rem;
+  border-bottom: 1px solid var(--border);
+  color: var(--text-muted);
+  font-size: 12px;
 }

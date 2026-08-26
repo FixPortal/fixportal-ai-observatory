@@ -45,7 +45,7 @@ export function summarizeBilledReporting(
   }
 
   const [topVendorId, topVendorGbp] = [...totalsByVendor.entries()]
-    .reduce((top, current) => current[1] > top[1] ? current : top)
+    .reduce((top, current) => current[1] > top[1] ? current : top, ['', Number.NEGATIVE_INFINITY])
   const dailyAverageGbp = totalGbp / daysInRange
   return {
     totalGbp,

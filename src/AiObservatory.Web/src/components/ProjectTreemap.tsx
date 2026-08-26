@@ -5,10 +5,10 @@ import { formatActiveTime } from '../lib/duration'
 
 // Fixed palette cycled by index — projects are arbitrary strings, unlike
 // providerColor's known provider set, so there's no semantic color to key off.
-const PALETTE = ['var(--brand)', '#5a9c7c', '#3f6f8f', '#7a5fa0', '#b8895a', '#4f8a8b', '#9c5a7c', '#6b8e4e']
+const PALETTE = Array.from({ length: 8 }, (_, index) => `var(--project-${index + 1})`)
 // Neutral fill for the overflow bucket so a 9th block doesn't wrap back to the brand
 // colour (PALETTE[8 % 8]) and read as the largest project.
-const OTHER_COLOR = 'var(--provider-other, #64748b)'
+const OTHER_COLOR = 'var(--provider-other)'
 
 interface Props {
   projects: ProjectActivity[]
