@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { currentBillingPeriodStart } from './subscriptions'
+import { currentBillingPeriodStart, notionalValueUsd } from './subscriptions'
 
 const DATE_2024_03_15 = '2024-03-15'
 const DATE_2024_03_01 = '2024-03-01'
@@ -39,5 +39,16 @@ describe('currentBillingPeriodStart', () => {
   it('handles billing day 1', () => {
     expect(currentBillingPeriodStart(1, DATE_2024_03_01)).toBe(DATE_2024_03_01)
     expect(currentBillingPeriodStart(1, DATE_2024_03_15)).toBe(DATE_2024_03_01)
+  })
+})
+
+describe('notionalValueUsd', () => {
+  it('excludes non-notional, unreported, out-of-provider, and pre-period aggregate costs', () => {
+    expect(notionalValueUsd([
+      { provider: 'anthropic', date: '2026-08-01', costBasis: 'notional', costUsd: 10, requestCount: 1, unknownCostCount: 0 },
+      { provider: 'anthropic', date: '2026-08-02', costBasis: 'listPriceEstimate', costUsd: 1000, requestCount: 1, unknownCostCount: 0 },
+      { provider: 'anthropic', date: '2026-08-03', costBasis: 'notional', costUsd: 8, requestCount: 1, unknownCostCount: 1 },
+      { provider: 'openai', date: '2026-08-02', costBasis: 'notional', costUsd: 7, requestCount: 1, unknownCostCount: 0 },
+    ], 'anthropic', '2026-08-01')).toBe(10)
   })
 })
