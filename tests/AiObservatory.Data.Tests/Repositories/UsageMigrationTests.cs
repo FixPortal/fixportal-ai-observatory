@@ -200,4 +200,27 @@ public class UsageMigrationTests : IAsyncLifetime
 
         restoredKeys.Should().BeEquivalentTo("x", "OpenAI:x", "x", "OpenAI:x");
     }
+
+    [Fact]
+    public async Task RenameBudgetThresholdToGbp_preserves_existing_threshold_value()
+    {
+        var ct = TestContext.Current.CancellationToken;
+        await using (var beforeRename = new AiObservatoryDbContext(_options))
+        {
+            var migrator = beforeRename.Database.GetService<IMigrator>();
+            await migrator.MigrateAsync("20260825220510_TrackPendingSourceWindows", ct);
+            await beforeRename.Database.ExecuteSqlRawAsync(
+                """
+                INSERT INTO "BudgetRules" ("Id", "Period", "ThresholdUsd")
+                VALUES ('30000000-0000-0000-0000-000000000001', 'Daily', 123.45)
+                """,
+                ct
+            );
+            await migrator.MigrateAsync(cancellationToken: ct);
+        }
+
+        await using var afterRename = new AiObservatoryDbContext(_options);
+        (await afterRename.BudgetRules.SingleAsync(r => r.Id == Guid.Parse("30000000-0000-0000-0000-000000000001"), ct))
+            .ThresholdGbp.Should().Be(123.45m);
+    }
 }

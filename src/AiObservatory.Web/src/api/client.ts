@@ -284,7 +284,7 @@ export interface BudgetRule {
   id: string
   provider: string | null
   period: 'daily' | 'weekly' | 'monthly'
-  thresholdUsd: number
+  thresholdGbp: number
   lastTriggeredAt: string | null
 }
 

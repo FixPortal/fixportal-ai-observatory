@@ -32,12 +32,12 @@ public sealed class EmailAlertNotifier(ISmtpClient smtpClient, IConfiguration co
             message.From.Add(MailboxAddress.Parse(from));
             message.To.Add(MailboxAddress.Parse(to));
             message.Subject =
-                $"Budget alert: {payload.Provider} {payload.Period} spend exceeded ${payload.ThresholdUsd:F2}";
+                $"Budget alert: {payload.Provider} {payload.Period} billed spend exceeded £{payload.ThresholdGbp:F2}";
             message.Body = new TextPart("plain")
             {
                 Text =
-                    $"Total {payload.Period.ToLower()} spend for {payload.Provider} reached ${payload.ActualSpend:F2}, "
-                    + $"exceeding your ${payload.ThresholdUsd:F2} threshold.\n\nTriggered at: {payload.TriggeredAt:u}",
+                    $"Total {payload.Period.ToLower()} billed spend for {payload.Provider} reached £{payload.ActualSpendGbp:F2}, "
+                    + $"exceeding your £{payload.ThresholdGbp:F2} threshold.\n\nTriggered at: {payload.TriggeredAt:u}",
             };
 
             await smtpClient.SendAsync(message, ct);

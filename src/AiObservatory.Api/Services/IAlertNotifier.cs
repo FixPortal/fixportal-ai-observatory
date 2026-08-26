@@ -3,8 +3,8 @@ namespace AiObservatory.Api.Services;
 public record BudgetAlertPayload(
     string Provider,
     string Period,
-    decimal ThresholdUsd,
-    decimal ActualSpend,
+    decimal ThresholdGbp,
+    decimal ActualSpendGbp,
     DateTimeOffset TriggeredAt
 );
 

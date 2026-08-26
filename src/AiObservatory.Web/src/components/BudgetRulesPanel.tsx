@@ -4,6 +4,7 @@ import { Button } from '../design/Button'
 import { createBudgetRule, deleteBudgetRule } from '../api/client'
 import { useBudgetRules, useInsights, useEmailStatus } from '../api/queries'
 import { isReadonly } from '../auth/msal'
+import { gbp } from '../lib/currency'
 
 const PROVIDERS = ['anthropic', 'copilot', 'google', 'openai'] as const
 const PERIODS = ['daily', 'weekly', 'monthly'] as const
@@ -53,7 +54,7 @@ export default function BudgetRulesPanel() {
       createBudgetRule({
         provider: provider === '' ? null : provider,
         period,
-        thresholdUsd: parseFloat(threshold),
+        thresholdGbp: parseFloat(threshold),
       }),
     onMutate: () => setMutationError(null),
     onSuccess: () => {
@@ -129,7 +130,7 @@ export default function BudgetRulesPanel() {
                     Period
                   </th>
                   <th style={{ textAlign: 'right', padding: '4px 8px', color: 'var(--text-muted)', fontWeight: 600 }}>
-                    Threshold (USD)
+                    Threshold (GBP)
                   </th>
                   <th style={{ textAlign: 'left', padding: '4px 8px', color: 'var(--text-muted)', fontWeight: 600 }}>
                     Last fired
@@ -147,7 +148,7 @@ export default function BudgetRulesPanel() {
                       {capitalize(rule.period)}
                     </td>
                     <td style={{ padding: '6px 8px', color: 'var(--text)', textAlign: 'right' }}>
-                      ${rule.thresholdUsd.toFixed(2)}
+                      {gbp(rule.thresholdGbp)}
                     </td>
                     <td style={{ padding: '6px 8px', color: 'var(--text-muted)' }}>
                       {rule.lastTriggeredAt
@@ -241,7 +242,7 @@ export default function BudgetRulesPanel() {
               </label>
 
               <label style={{ display: 'flex', flexDirection: 'column', gap: 4, fontSize: '0.8rem', color: 'var(--text-muted)' }}>
-                Threshold (USD)
+                Threshold (GBP)
                 <input
                   type="number"
                   min="0.01"

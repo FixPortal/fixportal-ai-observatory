@@ -390,6 +390,26 @@ public class UsageRepository(
             .ToListAsync(ct);
     }
 
+    public async Task<decimal> GetBilledSpendGbpAsync(
+        LocalDate from,
+        LocalDate to,
+        Provider? provider = null,
+        CancellationToken ct = default
+    )
+    {
+        var entries = ctx.SpendEntries.AsNoTracking().Where(e => e.OccurredOn >= from && e.OccurredOn <= to);
+        if (provider is not null)
+        {
+            entries =
+                from entry in entries
+                join vendor in ctx.SpendVendors.AsNoTracking() on entry.VendorId equals vendor.Id
+                where vendor.Provider == provider
+                select entry;
+        }
+
+        return await entries.SumAsync(e => (decimal?)e.AmountGbp, ct) ?? 0m;
+    }
+
     public async Task<IReadOnlyList<BudgetRule>> GetBudgetRulesAsync(CancellationToken ct = default)
     {
         return await ctx.BudgetRules.AsNoTracking().ToListAsync(ct);

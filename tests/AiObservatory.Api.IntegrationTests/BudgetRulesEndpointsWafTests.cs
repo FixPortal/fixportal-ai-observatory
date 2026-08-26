@@ -5,7 +5,7 @@ using AwesomeAssertions;
 namespace AiObservatory.Api.IntegrationTests;
 
 /// <summary>
-/// AIO-H3: POST /api/budget-rules ThresholdUsd>0 guard. A zero/negative threshold would
+/// AIO-H3: POST /api/budget-rules ThresholdGbp>0 guard. A zero/negative threshold would
 /// fire a spurious alert (Insight row + email) every single evaluation cycle until deleted.
 /// </summary>
 [Trait("Category", "Integration")]
@@ -22,7 +22,7 @@ public class BudgetRulesEndpointsWafTests(AiObservatoryApiFactory factory)
         {
             Provider = (string?)null,
             Period = "daily",
-            ThresholdUsd = threshold,
+            ThresholdGbp = threshold,
         };
 
         var response = await client.PostAsJsonAsync("/api/budget-rules", body, TestContext.Current.CancellationToken);
@@ -38,7 +38,7 @@ public class BudgetRulesEndpointsWafTests(AiObservatoryApiFactory factory)
         {
             Provider = (string?)null,
             Period = "weekly",
-            ThresholdUsd = 25m,
+            ThresholdGbp = 25m,
         };
 
         var response = await client.PostAsJsonAsync("/api/budget-rules", body, TestContext.Current.CancellationToken);
@@ -57,7 +57,7 @@ public class BudgetRulesEndpointsWafTests(AiObservatoryApiFactory factory)
             {
                 Provider = (string?)null,
                 Period = 0,
-                ThresholdUsd = 25m,
+                ThresholdGbp = 25m,
             },
             TestContext.Current.CancellationToken
         );
