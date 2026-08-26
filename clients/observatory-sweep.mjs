@@ -18,6 +18,8 @@ const ALL_LOCAL_SOURCE_IDS = [
   'gemini-review-local', 'antigravity-local',
 ]
 const PARSE_CACHE_VERSION = 2
+// Gemini Developer API standard-tier pricing changes above this documented prompt-token threshold.
+const GEMINI_LONG_CONTEXT_THRESHOLD = 200_000
 
 // --- Pure helpers -----------------------------------------------------------
 
@@ -228,7 +230,7 @@ export function parseGeminiReview(content) {
       cacheReadTokens,
       cacheWriteTokens: 0,
       thoughtTokens: token(row.tokens.thoughts),
-      context: promptTokens > 200_000 ? 'long' : 'short',
+      context: promptTokens > GEMINI_LONG_CONTEXT_THRESHOLD ? 'long' : 'short',
     })
   }
   return records
@@ -311,7 +313,7 @@ function antigravityTranscript(content) {
 }
 
 /** Parse one Antigravity SQLite conversation using its timestamp/model transcript. */
-export async function parseAntigravityDatabase(path, transcriptContent) {
+export async function parseAntigravityDatabase(path, transcriptContent, report = log) {
   const { occurredAtUtc, model } = antigravityTranscript(transcriptContent)
   if (!occurredAtUtc) { return [] }
   const { DatabaseSync } = await import('node:sqlite')
@@ -323,12 +325,16 @@ export async function parseAntigravityDatabase(path, transcriptContent) {
     db.close()
   }
   const totals = { input: 0, output: 0, thoughts: 0 }
+  let rejected = 0
   for (const row of rows) {
     const parsed = antigravityTokens(row.step_payload)
-    if (!parsed) { continue }
+    if (!parsed) { rejected++; continue }
     totals.input += parsed.input
     totals.output += parsed.output
     totals.thoughts += parsed.thoughts
+  }
+  if (rejected) {
+    report(`Skipped ${rejected} unrecognized Antigravity usage row${rejected === 1 ? '' : 's'} in ${path}`)
   }
   if (totals.input + totals.output + totals.thoughts === 0) { return [] }
   return [{
@@ -540,11 +546,18 @@ export async function updateFileCache(files, cache, parse, read = path => readFi
   const records = []
   for (const file of files) {
     const cached = cache?.[file.path]
-    if (cached?.mtimeMs === file.mtimeMs && Array.isArray(cached.records)) {
+    const unchanged = file.cacheKey === undefined
+      ? cached?.mtimeMs === file.mtimeMs
+      : cached?.cacheKey === file.cacheKey
+    if (unchanged && Array.isArray(cached.records)) {
       next[file.path] = cached
     } else {
       const parsed = await parse(await read(file.path), file)
-      next[file.path] = { mtimeMs: file.mtimeMs, records: parsed ?? [] }
+      next[file.path] = {
+        mtimeMs: file.mtimeMs,
+        ...(file.cacheKey === undefined ? {} : { cacheKey: file.cacheKey }),
+        records: parsed ?? [],
+      }
     }
     for (const record of next[file.path].records) { records.push(record) }
   }
@@ -711,7 +724,7 @@ export async function scanRecords(cfg, state, enabled, discover = listJsonl) {
       const transcriptPath = join(conversationRoot, 'brain', sessionId, '.system_generated', 'logs', 'transcript.jsonl')
       try {
         const transcript = await stat(transcriptPath)
-        files.push({ ...file, transcriptPath, mtimeMs: file.mtimeMs + transcript.mtimeMs })
+        files.push({ ...file, transcriptPath, cacheKey: `${file.mtimeMs}:${transcript.mtimeMs}` })
       } catch (error) {
         if (error?.code !== 'ENOENT') { throw error }
       }
