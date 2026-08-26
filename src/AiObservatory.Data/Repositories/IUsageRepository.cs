@@ -97,6 +97,13 @@ public interface IUsageRepository
         CancellationToken ct = default
     );
 
+    Task<decimal> GetBilledSpendGbpAsync(
+        LocalDate from,
+        LocalDate to,
+        Provider? provider = null,
+        CancellationToken ct = default
+    );
+
     Task<IReadOnlyList<BudgetRule>> GetBudgetRulesAsync(CancellationToken ct = default);
     Task SetBudgetRuleTriggeredAsync(Guid ruleId, Instant triggeredAt, CancellationToken ct = default);
 

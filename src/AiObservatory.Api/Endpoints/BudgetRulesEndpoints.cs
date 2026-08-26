@@ -40,16 +40,16 @@ public static class BudgetRulesEndpoints
             {
                 // A zero/negative threshold is exceeded by any spend, so the rule fires a
                 // spurious alert (plus Insight row + email) every period until deleted.
-                if (req.ThresholdUsd <= 0)
+                if (req.ThresholdGbp <= 0)
                 {
-                    return Results.BadRequest("ThresholdUsd must be greater than zero");
+                    return Results.BadRequest("ThresholdGbp must be greater than zero");
                 }
 
                 var rule = new BudgetRule
                 {
                     Provider = req.Provider,
                     Period = req.Period,
-                    ThresholdUsd = req.ThresholdUsd,
+                    ThresholdGbp = req.ThresholdGbp,
                 };
                 db.BudgetRules.Add(rule);
                 await db.SaveChangesAsync(ct);
@@ -70,4 +70,4 @@ public static class BudgetRulesEndpoints
     }
 }
 
-public sealed record CreateBudgetRuleRequest(Provider? Provider, BillingPeriod Period, decimal ThresholdUsd);
+public sealed record CreateBudgetRuleRequest(Provider? Provider, BillingPeriod Period, decimal ThresholdGbp);

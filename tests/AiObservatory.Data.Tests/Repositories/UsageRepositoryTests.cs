@@ -712,6 +712,48 @@ public class UsageRepositoryTests : IAsyncLifetime
         await act.Should().ThrowAsync<DbUpdateException>();
     }
 
+    [Fact]
+    public async Task GetBilledSpendGbpAsync_sums_signed_in_range_entries_and_filters_by_mapped_provider()
+    {
+        var ct = TestContext.Current.CancellationToken;
+        var anthropic = await _ctx.SpendVendors.SingleAsync(v => v.Provider == Provider.Anthropic, ct);
+        var openAi = await _ctx.SpendVendors.SingleAsync(v => v.Provider == Provider.OpenAI, ct);
+        var unmapped = await _ctx.SpendVendors.SingleAsync(v => v.Key == "coderabbit", ct);
+        var categoryId = await _ctx.SpendCategories.Select(c => c.Id).FirstAsync(ct);
+
+        _ctx.SpendEntries.AddRange(
+            Spend(anthropic.Id, categoryId, new LocalDate(2026, 8, 1), 20m),
+            Spend(anthropic.Id, categoryId, new LocalDate(2026, 8, 2), -5m),
+            Spend(openAi.Id, categoryId, new LocalDate(2026, 8, 2), 7m),
+            Spend(unmapped.Id, categoryId, new LocalDate(2026, 8, 2), 3m),
+            Spend(anthropic.Id, categoryId, new LocalDate(2026, 7, 31), 100m)
+        );
+        await _ctx.SaveChangesAsync(ct);
+
+        (await _repo.GetBilledSpendGbpAsync(new LocalDate(2026, 8, 1), new LocalDate(2026, 8, 2), null, ct))
+            .Should()
+            .Be(25m);
+        (await _repo.GetBilledSpendGbpAsync(new LocalDate(2026, 8, 1), new LocalDate(2026, 8, 2), Provider.Anthropic, ct))
+            .Should()
+            .Be(15m);
+    }
+
+    private static SpendEntry Spend(Guid vendorId, Guid categoryId, LocalDate occurredOn, decimal amountGbp) =>
+        new()
+        {
+            VendorId = vendorId,
+            CategoryId = categoryId,
+            OccurredOn = occurredOn,
+            Amount = amountGbp,
+            AmountGbp = amountGbp,
+            Currency = "GBP",
+            FxRate = 1m,
+            Source = SpendSource.Manual,
+            RecordedAt = Instant.FromUtc(2026, 8, 2, 12, 0),
+            ObservedAt = Instant.FromUtc(2026, 8, 2, 12, 0),
+            CostBasis = CostBasis.Billed,
+        };
+
     private static UsageEvent NewEvent(
         string? changedField = null,
         string sourceId = UsageSourceIds.OpenAiUsageApi,

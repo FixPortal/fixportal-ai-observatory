@@ -294,7 +294,7 @@ if (app.Environment.IsDevelopment())
                 {
                     Provider = null,
                     Period = BillingPeriod.Daily,
-                    ThresholdUsd = 5.00m,
+                    ThresholdGbp = 5.00m,
                 }
             );
 
@@ -303,7 +303,7 @@ if (app.Environment.IsDevelopment())
                 {
                     Provider = Provider.Anthropic,
                     Period = BillingPeriod.Monthly,
-                    ThresholdUsd = 150.00m,
+                    ThresholdGbp = 150.00m,
                 }
             );
 

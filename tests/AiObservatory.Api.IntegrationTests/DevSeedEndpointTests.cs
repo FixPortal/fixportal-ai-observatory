@@ -56,7 +56,7 @@ public class DevSeedEndpointTests
                 {
                     Provider = null,
                     Period = BillingPeriod.Daily,
-                    ThresholdUsd = 99m,
+                    ThresholdGbp = 99m,
                 }
             );
             await db.SaveChangesAsync(TestContext.Current.CancellationToken);

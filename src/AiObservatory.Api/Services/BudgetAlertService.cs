@@ -69,13 +69,8 @@ public class BudgetAlertService(
 
     private async Task CheckRuleAsync(BudgetRule rule, LocalDate from, LocalDate to, Instant now, CancellationToken ct)
     {
-        var aggregates = await repository.GetAggregatesAsync(from, to, ct);
-        var relevantAggregates = rule.Provider.HasValue
-            ? aggregates.Where(a => a.Provider == rule.Provider)
-            : aggregates;
-
-        var totalSpend = relevantAggregates.Sum(a => a.CostUsd);
-        if (totalSpend <= rule.ThresholdUsd)
+        var totalSpendGbp = await repository.GetBilledSpendGbpAsync(from, to, rule.Provider, ct);
+        if (totalSpendGbp <= rule.ThresholdGbp)
         {
             return;
         }
@@ -86,19 +81,19 @@ public class BudgetAlertService(
             PeriodStart = from,
             PeriodEnd = to,
             InsightType = InsightType.BudgetAlert,
-            Title = $"Budget alert: {rule.Period} spend exceeded ${rule.ThresholdUsd:F2}",
+            Title = $"Budget alert: {rule.Period} billed spend exceeded £{rule.ThresholdGbp:F2}",
             Body =
-                $"Total {rule.Period.ToString().ToLower()} spend reached ${totalSpend:F2}, exceeding your ${rule.ThresholdUsd:F2} threshold.",
+                $"Total {rule.Period.ToString().ToLower()} billed spend reached £{totalSpendGbp:F2}, exceeding your £{rule.ThresholdGbp:F2} threshold.",
             Data = System.Text.Json.JsonSerializer.Serialize(
-                new { threshold = rule.ThresholdUsd, actual = totalSpend }
+                new { thresholdGbp = rule.ThresholdGbp, actualSpendGbp = totalSpendGbp }
             ),
         };
 
         var payload = new BudgetAlertPayload(
             rule.Provider?.ToString() ?? "all",
             rule.Period.ToString(),
-            rule.ThresholdUsd,
-            totalSpend,
+            rule.ThresholdGbp,
+            totalSpendGbp,
             now.ToDateTimeOffset()
         );
 
