@@ -31,6 +31,7 @@ public sealed class EmailAlertNotifier(ISmtpClient smtpClient, IConfiguration co
             using var message = new MimeMessage();
             message.From.Add(MailboxAddress.Parse(from));
             message.To.Add(MailboxAddress.Parse(to));
+            message.MessageId = payload.MessageId;
             message.Subject =
                 $"Budget alert: {payload.Provider} {payload.Period} billed spend exceeded £{payload.ThresholdGbp:F2}";
             message.Body = new TextPart("plain")

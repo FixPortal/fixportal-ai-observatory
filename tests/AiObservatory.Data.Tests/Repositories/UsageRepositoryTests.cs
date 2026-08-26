@@ -743,6 +743,20 @@ public class UsageRepositoryTests : IAsyncLifetime
         )
             .Should()
             .Be(15m);
+
+        (
+            await _repo.GetDailyBilledSpendGbpAsync(
+                new LocalDate(2026, 8, 1),
+                new LocalDate(2026, 8, 2),
+                Provider.Anthropic,
+                ct
+            )
+        )
+            .Should()
+            .Equal(
+                new DailyBilledSpend(new LocalDate(2026, 8, 1), 20m),
+                new DailyBilledSpend(new LocalDate(2026, 8, 2), -5m)
+            );
     }
 
     [Fact]
@@ -788,6 +802,7 @@ public class UsageRepositoryTests : IAsyncLifetime
 
         results.Should().ContainSingle(result => result.Created);
         results.Should().ContainSingle(result => !result.Created);
+        results.Select(result => result.ClaimId).Distinct().Should().ContainSingle();
         (await _ctx.BudgetAlertClaims.AsNoTracking().CountAsync(ct)).Should().Be(1);
         (await _ctx.Insights.AsNoTracking().CountAsync(ct)).Should().Be(1);
         (await _ctx.BudgetRules.AsNoTracking().SingleAsync(candidate => candidate.Id == rule.Id, ct))
@@ -810,19 +825,82 @@ public class UsageRepositoryTests : IAsyncLifetime
         (await _ctx.BudgetAlertClaims.AsNoTracking().CountAsync(ct)).Should().Be(1);
         (await _ctx.Insights.AsNoTracking().CountAsync(ct)).Should().Be(1);
 
-        var pending = await firstRepository.GetPendingBudgetAlertEmailsAsync(ct);
+        var leaseDuration = Duration.FromMinutes(15);
+        var pending = await firstRepository.GetDeliverableBudgetAlertEmailsAsync(triggeredAt.Minus(leaseDuration), ct);
         pending.Should().ContainSingle();
+        pending[0].ClaimId.Should().Be(replay.ClaimId);
         pending[0].RuleId.Should().Be(rule.Id);
         pending[0].PeriodStart.Should().Be(period);
         pending[0].ActualSpendGbp.Should().Be(15m);
 
+        var firstLeaseId = Guid.NewGuid();
+        var secondLeaseId = Guid.NewGuid();
         var emailClaims = await Task.WhenAll(
-            firstRepository.TryMarkBudgetAlertEmailAttemptedAsync(rule.Id, period, period, triggeredAt, ct),
-            secondRepository.TryMarkBudgetAlertEmailAttemptedAsync(rule.Id, period, period, triggeredAt, ct)
+            firstRepository.TryAcquireBudgetAlertEmailLeaseAsync(
+                replay.ClaimId,
+                firstLeaseId,
+                triggeredAt,
+                triggeredAt.Minus(leaseDuration),
+                ct
+            ),
+            secondRepository.TryAcquireBudgetAlertEmailLeaseAsync(
+                replay.ClaimId,
+                secondLeaseId,
+                triggeredAt,
+                triggeredAt.Minus(leaseDuration),
+                ct
+            )
         );
         emailClaims.Should().ContainSingle(claimed => claimed);
         emailClaims.Should().ContainSingle(claimed => !claimed);
-        (await firstRepository.GetPendingBudgetAlertEmailsAsync(ct)).Should().BeEmpty();
+
+        var activeLeaseId = emailClaims[0] ? firstLeaseId : secondLeaseId;
+        var freshLeaseCheckAt = triggeredAt.Plus(Duration.FromMinutes(5));
+        (await firstRepository.GetDeliverableBudgetAlertEmailsAsync(freshLeaseCheckAt.Minus(leaseDuration), ct))
+            .Should()
+            .BeEmpty("a fresh delivery lease suppresses concurrent/restart attempts");
+
+        await firstRepository.ReleaseBudgetAlertEmailLeaseAsync(replay.ClaimId, activeLeaseId, ct);
+        (await firstRepository.GetDeliverableBudgetAlertEmailsAsync(freshLeaseCheckAt.Minus(leaseDuration), ct))
+            .Should()
+            .ContainSingle("a definitive failure releases its lease for immediate retry");
+
+        var retryLeaseId = Guid.NewGuid();
+        (
+            await firstRepository.TryAcquireBudgetAlertEmailLeaseAsync(
+                replay.ClaimId,
+                retryLeaseId,
+                freshLeaseCheckAt,
+                freshLeaseCheckAt.Minus(leaseDuration),
+                ct
+            )
+        )
+            .Should()
+            .BeTrue();
+
+        var staleLeaseCheckAt = freshLeaseCheckAt.Plus(Duration.FromMinutes(16));
+        var stalePending = await firstRepository.GetDeliverableBudgetAlertEmailsAsync(
+            staleLeaseCheckAt.Minus(leaseDuration),
+            ct
+        );
+        stalePending.Should().ContainSingle("an abandoned delivery lease must recover");
+
+        var recoveryLeaseId = Guid.NewGuid();
+        (
+            await firstRepository.TryAcquireBudgetAlertEmailLeaseAsync(
+                replay.ClaimId,
+                recoveryLeaseId,
+                staleLeaseCheckAt,
+                staleLeaseCheckAt.Minus(leaseDuration),
+                ct
+            )
+        )
+            .Should()
+            .BeTrue();
+        await firstRepository.MarkBudgetAlertEmailSentAsync(replay.ClaimId, recoveryLeaseId, staleLeaseCheckAt, ct);
+        (await firstRepository.GetDeliverableBudgetAlertEmailsAsync(staleLeaseCheckAt.Plus(Duration.FromHours(1)), ct))
+            .Should()
+            .BeEmpty("EmailSentAt is terminal and reader-filtered");
     }
 
     private static Insight AlertInsight(LocalDate period, Instant generatedAt) =>

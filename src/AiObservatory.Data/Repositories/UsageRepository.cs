@@ -410,6 +410,31 @@ public class UsageRepository(
         return await entries.SumAsync(e => (decimal?)e.AmountGbp, ct) ?? 0m;
     }
 
+    public async Task<IReadOnlyList<DailyBilledSpend>> GetDailyBilledSpendGbpAsync(
+        LocalDate from,
+        LocalDate to,
+        Provider? provider = null,
+        CancellationToken ct = default
+    )
+    {
+        var entries = ctx.SpendEntries.AsNoTracking().Where(e => e.OccurredOn >= from && e.OccurredOn <= to);
+        if (provider is not null)
+        {
+            entries =
+                from entry in entries
+                join vendor in ctx.SpendVendors.AsNoTracking() on entry.VendorId equals vendor.Id
+                where vendor.Provider == provider
+                select entry;
+        }
+
+        var rows = await entries
+            .GroupBy(entry => entry.OccurredOn)
+            .Select(group => new { Date = group.Key, AmountGbp = group.Sum(entry => entry.AmountGbp) })
+            .OrderBy(row => row.Date)
+            .ToListAsync(ct);
+        return rows.Select(row => new DailyBilledSpend(row.Date, row.AmountGbp)).ToList();
+    }
+
     public async Task<IReadOnlyList<BudgetRule>> GetBudgetRulesAsync(CancellationToken ct = default)
     {
         return await ctx.BudgetRules.AsNoTracking().ToListAsync(ct);
@@ -453,7 +478,7 @@ public class UsageRepository(
             }
 
             await tx.CommitAsync(ct);
-            return new BudgetAlertClaimResult(true, thresholdGbp, actualSpendGbp, triggeredAt);
+            return new BudgetAlertClaimResult(claim.Id, true, thresholdGbp, actualSpendGbp, triggeredAt);
         }
         catch (DbUpdateException ex)
             when (ex.InnerException
@@ -477,6 +502,7 @@ public class UsageRepository(
                     ct
                 );
             return new BudgetAlertClaimResult(
+                existing.Id,
                 false,
                 existing.ThresholdGbp,
                 existing.ActualSpendGbp,
@@ -492,31 +518,40 @@ public class UsageRepository(
         }
     }
 
-    public async Task<bool> TryMarkBudgetAlertEmailAttemptedAsync(
-        Guid ruleId,
-        LocalDate periodStart,
-        LocalDate periodEnd,
-        Instant attemptedAt,
+    public async Task<bool> TryAcquireBudgetAlertEmailLeaseAsync(
+        Guid claimId,
+        Guid leaseId,
+        Instant acquiredAt,
+        Instant leaseExpiredBefore,
         CancellationToken ct = default
     ) =>
         await ctx
             .BudgetAlertClaims.Where(claim =>
-                claim.BudgetRuleId == ruleId
-                && claim.PeriodStart == periodStart
-                && claim.PeriodEnd == periodEnd
-                && claim.EmailAttemptedAt == null
+                claim.Id == claimId
+                && claim.EmailSentAt == null
+                && (claim.EmailLeaseAcquiredAt == null || claim.EmailLeaseAcquiredAt <= leaseExpiredBefore)
             )
-            .ExecuteUpdateAsync(setters => setters.SetProperty(claim => claim.EmailAttemptedAt, attemptedAt), ct) == 1;
+            .ExecuteUpdateAsync(
+                setters =>
+                    setters
+                        .SetProperty(claim => claim.EmailLeaseId, leaseId)
+                        .SetProperty(claim => claim.EmailLeaseAcquiredAt, acquiredAt),
+                ct
+            ) == 1;
 
-    public async Task<IReadOnlyList<BudgetAlertEmail>> GetPendingBudgetAlertEmailsAsync(
+    public async Task<IReadOnlyList<BudgetAlertEmail>> GetDeliverableBudgetAlertEmailsAsync(
+        Instant leaseExpiredBefore,
         CancellationToken ct = default
     ) =>
         await (
             from claim in ctx.BudgetAlertClaims.AsNoTracking()
             join rule in ctx.BudgetRules.AsNoTracking() on claim.BudgetRuleId equals rule.Id
-            where claim.EmailAttemptedAt == null
+            where
+                claim.EmailSentAt == null
+                && (claim.EmailLeaseAcquiredAt == null || claim.EmailLeaseAcquiredAt <= leaseExpiredBefore)
             orderby claim.CreatedAt, claim.Id
             select new BudgetAlertEmail(
+                claim.Id,
                 claim.BudgetRuleId,
                 rule.Provider,
                 rule.Period,
@@ -528,17 +563,31 @@ public class UsageRepository(
             )
         ).ToListAsync(ct);
 
+    public async Task ReleaseBudgetAlertEmailLeaseAsync(Guid claimId, Guid leaseId, CancellationToken ct = default)
+    {
+        await ctx
+            .BudgetAlertClaims.Where(claim =>
+                claim.Id == claimId && claim.EmailSentAt == null && claim.EmailLeaseId == leaseId
+            )
+            .ExecuteUpdateAsync(
+                setters =>
+                    setters
+                        .SetProperty(claim => claim.EmailLeaseId, (Guid?)null)
+                        .SetProperty(claim => claim.EmailLeaseAcquiredAt, (Instant?)null),
+                ct
+            );
+    }
+
     public async Task MarkBudgetAlertEmailSentAsync(
-        Guid ruleId,
-        LocalDate periodStart,
-        LocalDate periodEnd,
+        Guid claimId,
+        Guid leaseId,
         Instant sentAt,
         CancellationToken ct = default
     )
     {
         await ctx
             .BudgetAlertClaims.Where(claim =>
-                claim.BudgetRuleId == ruleId && claim.PeriodStart == periodStart && claim.PeriodEnd == periodEnd
+                claim.Id == claimId && claim.EmailSentAt == null && claim.EmailLeaseId == leaseId
             )
             .ExecuteUpdateAsync(setters => setters.SetProperty(claim => claim.EmailSentAt, sentAt), ct);
     }

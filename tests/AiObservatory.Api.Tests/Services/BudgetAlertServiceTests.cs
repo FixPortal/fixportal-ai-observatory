@@ -76,9 +76,10 @@ public class BudgetAlertServiceTests
     }
 
     [Fact]
-    public async Task CheckAndAlert_evaluates_the_last_seven_completed_daily_periods()
+    public async Task CheckAndAlert_evaluates_all_completed_daily_periods_from_rule_boundary_in_one_read()
     {
-        var rule = Rule(BillingPeriod.Daily);
+        var evaluationStartsOn = new LocalDate(2026, 4, 1);
+        var rule = Rule(BillingPeriod.Daily, evaluationStartsOn: evaluationStartsOn);
         StubRules(rule);
         StubBilledSpend(rule, 0m);
 
@@ -86,38 +87,31 @@ public class BudgetAlertServiceTests
 
         await _repo
             .Received(1)
-            .GetBilledSpendGbpAsync(
-                new LocalDate(2026, 6, 1),
+            .GetDailyBilledSpendGbpAsync(
+                evaluationStartsOn,
                 new LocalDate(2026, 6, 1),
                 null,
                 Arg.Any<CancellationToken>()
             );
         await _repo
-            .Received(1)
-            .GetBilledSpendGbpAsync(
-                new LocalDate(2026, 5, 26),
-                new LocalDate(2026, 5, 26),
-                null,
-                Arg.Any<CancellationToken>()
-            );
-        await _repo
-            .Received(7)
+            .DidNotReceive()
             .GetBilledSpendGbpAsync(Arg.Any<LocalDate>(), Arg.Any<LocalDate>(), null, Arg.Any<CancellationToken>());
     }
 
     [Fact]
-    public async Task CheckAndAlert_reconsiders_a_late_daily_entry_inside_the_catchup_window()
+    public async Task CheckAndAlert_reconsiders_a_late_daily_entry_older_than_seven_days()
     {
-        var rule = Rule(BillingPeriod.Daily);
+        var lateDate = new LocalDate(2026, 5, 1);
+        var rule = Rule(BillingPeriod.Daily, evaluationStartsOn: lateDate);
         StubRules(rule);
         _repo
-            .GetBilledSpendGbpAsync(
+            .GetDailyBilledSpendGbpAsync(
                 Arg.Any<LocalDate>(),
                 Arg.Any<LocalDate>(),
                 rule.Provider,
                 Arg.Any<CancellationToken>()
             )
-            .Returns(call => call.ArgAt<LocalDate>(0) == new LocalDate(2026, 5, 26) ? 15m : 0m);
+            .Returns([new DailyBilledSpend(lateDate, 15m)]);
         StubSuccessfulDelivery();
 
         await Sut().CheckAndAlertAsync(TestContext.Current.CancellationToken);
@@ -126,8 +120,8 @@ public class BudgetAlertServiceTests
             .Received(1)
             .GetOrCreateBudgetAlertAsync(
                 rule.Id,
-                new LocalDate(2026, 5, 26),
-                new LocalDate(2026, 5, 26),
+                lateDate,
+                lateDate,
                 10m,
                 15m,
                 Arg.Any<Insight>(),
@@ -138,32 +132,29 @@ public class BudgetAlertServiceTests
     }
 
     [Fact]
-    public async Task CheckAndAlert_WhenNotifierThrows_DurableAlertRemainsAndEmailIsNeverRetried()
+    public async Task CheckAndAlert_does_not_replay_daily_history_before_deployment_boundary()
     {
-        var rule = Rule(BillingPeriod.Daily);
+        var rule = Rule(
+            BillingPeriod.Daily,
+            lastTriggeredAt: Instant.FromUtc(2026, 5, 20, 8, 0),
+            evaluationStartsOn: new LocalDate(2026, 6, 2)
+        );
         StubRules(rule);
-        StubBilledSpend(rule, 15m);
-        _notifier
-            .NotifyAsync(Arg.Any<BudgetAlertPayload>(), Arg.Any<CancellationToken>())
-            .Returns(Task.FromException(new InvalidOperationException("SMTP unreachable")));
-        StubDurableAlert();
-        _repo
-            .TryMarkBudgetAlertEmailAttemptedAsync(
-                rule.Id,
-                Arg.Any<LocalDate>(),
-                Arg.Any<LocalDate>(),
-                Arg.Any<Instant>(),
-                Arg.Any<CancellationToken>()
-            )
-            .Returns(true, false);
 
-        await Sut().CheckAndAlertAsync(TestContext.Current.CancellationToken);
         await Sut().CheckAndAlertAsync(TestContext.Current.CancellationToken);
 
         await _repo
-            .Received(2)
+            .DidNotReceive()
+            .GetDailyBilledSpendGbpAsync(
+                Arg.Any<LocalDate>(),
+                Arg.Any<LocalDate>(),
+                Arg.Any<Provider?>(),
+                Arg.Any<CancellationToken>()
+            );
+        await _repo
+            .DidNotReceive()
             .GetOrCreateBudgetAlertAsync(
-                rule.Id,
+                Arg.Any<Guid>(),
                 Arg.Any<LocalDate>(),
                 Arg.Any<LocalDate>(),
                 Arg.Any<decimal>(),
@@ -172,27 +163,67 @@ public class BudgetAlertServiceTests
                 Arg.Any<Instant>(),
                 Arg.Any<CancellationToken>()
             );
-        await _notifier.Received(1).NotifyAsync(Arg.Any<BudgetAlertPayload>(), Arg.Any<CancellationToken>());
-        await _repo
-            .DidNotReceive()
-            .MarkBudgetAlertEmailSentAsync(
+    }
+
+    [Fact]
+    public async Task CheckAndAlert_WhenNotifierTemporarilyFails_RetriesSameMessageThenMarksSent()
+    {
+        var claimId = Guid.Parse("10000000-0000-0000-0000-000000000001");
+        var ruleId = Guid.Parse("20000000-0000-0000-0000-000000000001");
+        var email = new BudgetAlertEmail(
+            claimId,
+            ruleId,
+            Provider.Anthropic,
+            BillingPeriod.Daily,
+            new LocalDate(2026, 6, 1),
+            new LocalDate(2026, 6, 1),
+            10m,
+            15m,
+            Instant.FromUtc(2026, 6, 2, 0, 1)
+        );
+        _repo.GetDeliverableBudgetAlertEmailsAsync(Arg.Any<Instant>(), Arg.Any<CancellationToken>()).Returns([email]);
+        _repo
+            .TryAcquireBudgetAlertEmailLeaseAsync(
+                claimId,
                 Arg.Any<Guid>(),
-                Arg.Any<LocalDate>(),
-                Arg.Any<LocalDate>(),
+                Arg.Any<Instant>(),
                 Arg.Any<Instant>(),
                 Arg.Any<CancellationToken>()
+            )
+            .Returns(true);
+        _notifier
+            .NotifyAsync(Arg.Any<BudgetAlertPayload>(), Arg.Any<CancellationToken>())
+            .Returns(Task.FromException(new InvalidOperationException("SMTP unreachable")), Task.CompletedTask);
+
+        await Sut().CheckAndAlertAsync(TestContext.Current.CancellationToken);
+        await Sut().CheckAndAlertAsync(TestContext.Current.CancellationToken);
+
+        var expectedMessageId = $"budget-alert-{claimId:N}@observatory.fixportal.com";
+        await _notifier
+            .Received(2)
+            .NotifyAsync(
+                Arg.Is<BudgetAlertPayload>(payload => payload.MessageId == expectedMessageId),
+                Arg.Any<CancellationToken>()
             );
+        await _repo
+            .Received(1)
+            .ReleaseBudgetAlertEmailLeaseAsync(claimId, Arg.Any<Guid>(), Arg.Any<CancellationToken>());
+        await _repo
+            .Received(1)
+            .MarkBudgetAlertEmailSentAsync(claimId, Arg.Any<Guid>(), Arg.Any<Instant>(), Arg.Any<CancellationToken>());
     }
 
     [Fact]
     public async Task CheckAndAlert_replays_a_pending_email_from_durable_state_before_period_suppression()
     {
+        var claimId = Guid.NewGuid();
         var rule = Rule(BillingPeriod.Weekly, lastTriggeredAt: Instant.FromUtc(2026, 6, 1, 8, 0));
         StubRules(rule);
         _repo
-            .GetPendingBudgetAlertEmailsAsync(Arg.Any<CancellationToken>())
+            .GetDeliverableBudgetAlertEmailsAsync(Arg.Any<Instant>(), Arg.Any<CancellationToken>())
             .Returns([
                 new BudgetAlertEmail(
+                    claimId,
                     rule.Id,
                     Provider.Anthropic,
                     BillingPeriod.Weekly,
@@ -204,10 +235,10 @@ public class BudgetAlertServiceTests
                 ),
             ]);
         _repo
-            .TryMarkBudgetAlertEmailAttemptedAsync(
-                rule.Id,
-                new LocalDate(2026, 5, 27),
-                new LocalDate(2026, 6, 2),
+            .TryAcquireBudgetAlertEmailLeaseAsync(
+                claimId,
+                Arg.Any<Guid>(),
+                Arg.Any<Instant>(),
                 Arg.Any<Instant>(),
                 Arg.Any<CancellationToken>()
             )
@@ -275,8 +306,8 @@ public class BudgetAlertServiceTests
         StubRules(rule);
         StubBilledSpend(rule, 4m);
         _repo
-            .GetBilledSpendGbpAsync(Arg.Any<LocalDate>(), Arg.Any<LocalDate>(), null, Arg.Any<CancellationToken>())
-            .Returns(20m);
+            .GetDailyBilledSpendGbpAsync(Arg.Any<LocalDate>(), Arg.Any<LocalDate>(), null, Arg.Any<CancellationToken>())
+            .Returns([new DailyBilledSpend(new LocalDate(2026, 6, 1), 20m)]);
 
         await Sut().CheckAndAlertAsync(TestContext.Current.CancellationToken);
 
@@ -333,20 +364,40 @@ public class BudgetAlertServiceTests
 
     private BudgetAlertService Sut() => new(_repo, _clock, _notifier, NullLogger<BudgetAlertService>.Instance);
 
-    private static BudgetRule Rule(BillingPeriod period, Provider? provider = null, Instant? lastTriggeredAt = null) =>
+    private static BudgetRule Rule(
+        BillingPeriod period,
+        Provider? provider = null,
+        Instant? lastTriggeredAt = null,
+        LocalDate? evaluationStartsOn = null
+    ) =>
         new()
         {
             Id = Guid.NewGuid(),
             Period = period,
             Provider = provider,
             ThresholdGbp = 10m,
+            EvaluationStartsOn = evaluationStartsOn ?? new LocalDate(2026, 6, 1),
             LastTriggeredAt = lastTriggeredAt,
         };
 
     private void StubRules(params BudgetRule[] rules) =>
         _repo.GetBudgetRulesAsync(Arg.Any<CancellationToken>()).Returns(rules);
 
-    private void StubBilledSpend(BudgetRule rule, decimal amount) =>
+    private void StubBilledSpend(BudgetRule rule, decimal amount)
+    {
+        if (rule.Period == BillingPeriod.Daily)
+        {
+            _repo
+                .GetDailyBilledSpendGbpAsync(
+                    Arg.Any<LocalDate>(),
+                    Arg.Any<LocalDate>(),
+                    rule.Provider,
+                    Arg.Any<CancellationToken>()
+                )
+                .Returns(amount == 0m ? [] : [new DailyBilledSpend(new LocalDate(2026, 6, 1), amount)]);
+            return;
+        }
+
         _repo
             .GetBilledSpendGbpAsync(
                 Arg.Any<LocalDate>(),
@@ -354,20 +405,17 @@ public class BudgetAlertServiceTests
                 rule.Provider,
                 Arg.Any<CancellationToken>()
             )
-            .Returns(call =>
-                rule.Period != BillingPeriod.Daily || call.ArgAt<LocalDate>(0) == new LocalDate(2026, 6, 1)
-                    ? amount
-                    : 0m
-            );
+            .Returns(amount);
+    }
 
     private void StubSuccessfulDelivery()
     {
         StubDurableAlert();
         _repo
-            .TryMarkBudgetAlertEmailAttemptedAsync(
+            .TryAcquireBudgetAlertEmailLeaseAsync(
                 Arg.Any<Guid>(),
-                Arg.Any<LocalDate>(),
-                Arg.Any<LocalDate>(),
+                Arg.Any<Guid>(),
+                Arg.Any<Instant>(),
                 Arg.Any<Instant>(),
                 Arg.Any<CancellationToken>()
             )
@@ -388,6 +436,7 @@ public class BudgetAlertServiceTests
                 Arg.Any<CancellationToken>()
             )
             .Returns(call => new BudgetAlertClaimResult(
+                Guid.NewGuid(),
                 true,
                 call.ArgAt<decimal>(3),
                 call.ArgAt<decimal>(4),
