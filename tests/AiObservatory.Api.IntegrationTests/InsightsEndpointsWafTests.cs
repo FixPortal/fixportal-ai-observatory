@@ -3,6 +3,7 @@ using System.Net.Http.Json;
 using System.Text.Json;
 using AiObservatory.Data;
 using AiObservatory.Data.Entities;
+using AiObservatory.Data.Repositories;
 using AwesomeAssertions;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
@@ -58,6 +59,209 @@ public class InsightsEndpointsWafTests(AiObservatoryApiFactory factory) : IClass
         var assertionDb = assertionScope.ServiceProvider.GetRequiredService<AiObservatoryDbContext>();
         (await assertionDb.Insights.AsNoTracking().CountAsync(ct)).Should().Be(0);
         (await assertionDb.BudgetAlertClaims.AsNoTracking().CountAsync(ct)).Should().Be(0);
+    }
+
+    [Fact]
+    public async Task DeleteInsights_returns_conflict_and_preserves_rows_when_an_email_lease_is_fresh()
+    {
+        var ct = TestContext.Current.CancellationToken;
+        var period = new LocalDate(2026, 8, 25);
+        var rule = new BudgetRule
+        {
+            Period = BillingPeriod.Daily,
+            ThresholdGbp = 10m,
+            EvaluationStartsOn = period,
+        };
+        var insight = Insight(period, Instant.FromUtc(2026, 8, 26, 0, 5), "Fresh lease");
+        var claim = new BudgetAlertClaim
+        {
+            BudgetRuleId = rule.Id,
+            PeriodStart = period,
+            PeriodEnd = period,
+            InsightId = insight.Id,
+            ThresholdGbp = 10m,
+            ActualSpendGbp = 15m,
+            CreatedAt = insight.GeneratedAt,
+            EmailLeaseId = Guid.NewGuid(),
+        };
+
+        using (var scope = factory.Services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<AiObservatoryDbContext>();
+            claim.EmailLeaseAcquiredAt = scope.ServiceProvider.GetRequiredService<IClock>().GetCurrentInstant();
+            db.AddRange(rule, insight, claim);
+            await db.SaveChangesAsync(ct);
+        }
+
+        try
+        {
+            using var client = factory.CreateAdminClient();
+            var response = await client.DeleteAsync("/api/insights", ct);
+
+            response.StatusCode.Should().Be(HttpStatusCode.Conflict);
+            using var assertionScope = factory.Services.CreateScope();
+            var assertionDb = assertionScope.ServiceProvider.GetRequiredService<AiObservatoryDbContext>();
+            (await assertionDb.Insights.AsNoTracking().CountAsync(candidate => candidate.Id == insight.Id, ct))
+                .Should()
+                .Be(1);
+            (await assertionDb.BudgetAlertClaims.AsNoTracking().CountAsync(candidate => candidate.Id == claim.Id, ct))
+                .Should()
+                .Be(1);
+        }
+        finally
+        {
+            await CleanupAsync(rule.Id, insight.Id, CancellationToken.None);
+        }
+    }
+
+    [Fact]
+    public async Task DeleteInsights_returns_conflict_when_email_lease_acquisition_wins_the_race()
+    {
+        var ct = TestContext.Current.CancellationToken;
+        var period = new LocalDate(2026, 8, 25);
+        var rule = new BudgetRule
+        {
+            Period = BillingPeriod.Daily,
+            ThresholdGbp = 10m,
+            EvaluationStartsOn = period,
+        };
+        var insight = Insight(period, Instant.FromUtc(2026, 8, 26, 0, 5), "Racing lease");
+        var claim = new BudgetAlertClaim
+        {
+            BudgetRuleId = rule.Id,
+            PeriodStart = period,
+            PeriodEnd = period,
+            InsightId = insight.Id,
+            ThresholdGbp = 10m,
+            ActualSpendGbp = 15m,
+            CreatedAt = insight.GeneratedAt,
+        };
+        Instant acquiredAt;
+
+        using (var scope = factory.Services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<AiObservatoryDbContext>();
+            acquiredAt = scope.ServiceProvider.GetRequiredService<IClock>().GetCurrentInstant();
+            db.AddRange(rule, insight, claim);
+            await db.SaveChangesAsync(ct);
+        }
+
+        try
+        {
+            using var leaseScope = factory.Services.CreateScope();
+            var leaseDb = leaseScope.ServiceProvider.GetRequiredService<AiObservatoryDbContext>();
+            await using var leaseTx = await leaseDb.Database.BeginTransactionAsync(ct);
+            var repository = new UsageRepository(leaseDb);
+            var acquired = await repository.TryAcquireBudgetAlertEmailLeaseAsync(
+                claim.Id,
+                Guid.NewGuid(),
+                acquiredAt,
+                acquiredAt.Minus(Duration.FromMinutes(15)),
+                ct
+            );
+            acquired.Should().BeTrue();
+
+            using var client = factory.CreateAdminClient();
+            var deleteTask = client.DeleteAsync("/api/insights", ct);
+            var observationDelay = Task.Delay(TimeSpan.FromMilliseconds(250), ct);
+            (await Task.WhenAny(deleteTask, observationDelay)).Should().BeSameAs(observationDelay);
+
+            await leaseTx.CommitAsync(ct);
+            var response = await deleteTask;
+
+            response.StatusCode.Should().Be(HttpStatusCode.Conflict);
+            using var assertionScope = factory.Services.CreateScope();
+            var assertionDb = assertionScope.ServiceProvider.GetRequiredService<AiObservatoryDbContext>();
+            (await assertionDb.Insights.AsNoTracking().CountAsync(candidate => candidate.Id == insight.Id, ct))
+                .Should()
+                .Be(1);
+            (await assertionDb.BudgetAlertClaims.AsNoTracking().CountAsync(candidate => candidate.Id == claim.Id, ct))
+                .Should()
+                .Be(1);
+        }
+        finally
+        {
+            await CleanupAsync(rule.Id, insight.Id, CancellationToken.None);
+        }
+    }
+
+    [Fact]
+    public async Task DeleteInsights_fences_email_lease_acquisition_until_a_successful_purge_commits()
+    {
+        var ct = TestContext.Current.CancellationToken;
+        var period = new LocalDate(2026, 8, 25);
+        var rule = new BudgetRule
+        {
+            Period = BillingPeriod.Daily,
+            ThresholdGbp = 10m,
+            EvaluationStartsOn = period,
+        };
+        var insight = Insight(period, Instant.FromUtc(2026, 8, 26, 0, 5), "Purge wins");
+        var claim = new BudgetAlertClaim
+        {
+            BudgetRuleId = rule.Id,
+            PeriodStart = period,
+            PeriodEnd = period,
+            InsightId = insight.Id,
+            ThresholdGbp = 10m,
+            ActualSpendGbp = 15m,
+            CreatedAt = insight.GeneratedAt,
+        };
+        Instant acquiredAt;
+
+        using (var scope = factory.Services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<AiObservatoryDbContext>();
+            acquiredAt = scope.ServiceProvider.GetRequiredService<IClock>().GetCurrentInstant();
+            db.AddRange(rule, insight, claim);
+            await db.SaveChangesAsync(ct);
+        }
+
+        try
+        {
+            using var blockerScope = factory.Services.CreateScope();
+            var blockerDb = blockerScope.ServiceProvider.GetRequiredService<AiObservatoryDbContext>();
+            await using var blockerTx = await blockerDb.Database.BeginTransactionAsync(ct);
+            await blockerDb
+                .Insights.FromSqlInterpolated($"""SELECT * FROM "Insights" WHERE "Id" = {insight.Id} FOR UPDATE""")
+                .AsNoTracking()
+                .SingleAsync(ct);
+
+            using var client = factory.CreateAdminClient();
+            var deleteTask = client.DeleteAsync("/api/insights", ct);
+            await WaitForBlockedInsightDeleteAsync(ct);
+
+            using var acquisitionScope = factory.Services.CreateScope();
+            var acquisitionDb = acquisitionScope.ServiceProvider.GetRequiredService<AiObservatoryDbContext>();
+            var repository = new UsageRepository(acquisitionDb);
+            var acquisitionTask = repository.TryAcquireBudgetAlertEmailLeaseAsync(
+                claim.Id,
+                Guid.NewGuid(),
+                acquiredAt,
+                acquiredAt.Minus(Duration.FromMinutes(15)),
+                ct
+            );
+            var observationDelay = Task.Delay(TimeSpan.FromMilliseconds(250), ct);
+            (await Task.WhenAny(acquisitionTask, observationDelay)).Should().BeSameAs(observationDelay);
+
+            await blockerTx.CommitAsync(ct);
+            var response = await deleteTask;
+
+            response.StatusCode.Should().Be(HttpStatusCode.OK);
+            (await acquisitionTask).Should().BeFalse();
+            using var assertionScope = factory.Services.CreateScope();
+            var assertionDb = assertionScope.ServiceProvider.GetRequiredService<AiObservatoryDbContext>();
+            (await assertionDb.Insights.AsNoTracking().CountAsync(candidate => candidate.Id == insight.Id, ct))
+                .Should()
+                .Be(0);
+            (await assertionDb.BudgetAlertClaims.AsNoTracking().CountAsync(candidate => candidate.Id == claim.Id, ct))
+                .Should()
+                .Be(0);
+        }
+        finally
+        {
+            await CleanupAsync(rule.Id, insight.Id, CancellationToken.None);
+        }
     }
 
     [Fact]
@@ -149,4 +353,44 @@ public class InsightsEndpointsWafTests(AiObservatoryApiFactory factory) : IClass
             Title = title,
             Body = title,
         };
+
+    private async Task CleanupAsync(Guid ruleId, Guid insightId, CancellationToken ct)
+    {
+        using var scope = factory.Services.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<AiObservatoryDbContext>();
+        await db.BudgetAlertClaims.Where(claim => claim.InsightId == insightId).ExecuteDeleteAsync(ct);
+        await db.Insights.Where(insight => insight.Id == insightId).ExecuteDeleteAsync(ct);
+        await db.BudgetRules.Where(rule => rule.Id == ruleId).ExecuteDeleteAsync(ct);
+    }
+
+    private async Task WaitForBlockedInsightDeleteAsync(CancellationToken ct)
+    {
+        using var scope = factory.Services.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<AiObservatoryDbContext>();
+        for (var attempt = 0; attempt < 100; attempt++)
+        {
+            var blocked = await db
+                .Database.SqlQueryRaw<bool>(
+                    """
+                    SELECT EXISTS (
+                        SELECT 1
+                        FROM pg_stat_activity
+                        WHERE datname = current_database()
+                            AND pid <> pg_backend_pid()
+                            AND wait_event_type = 'Lock'
+                            AND query LIKE '%DELETE FROM "Insights"%'
+                    ) AS "Value"
+                    """
+                )
+                .SingleAsync(ct);
+            if (blocked)
+            {
+                return;
+            }
+
+            await Task.Delay(TimeSpan.FromMilliseconds(50), ct);
+        }
+
+        throw new TimeoutException("Insight purge did not reach the expected PostgreSQL lock wait.");
+    }
 }

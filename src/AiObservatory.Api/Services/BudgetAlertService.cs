@@ -11,20 +11,11 @@ public class BudgetAlertService(
     ILogger<BudgetAlertService> logger
 )
 {
-    private static readonly Duration EmailLeaseDuration = Duration.FromMinutes(15);
-
     // virtual to match the other de-interfaced services (FxRateProvider, AnthropicIntelligenceClient):
     // overridable for subclass-mocking now that IBudgetAlertService is gone.
     public virtual async Task CheckAndAlertAsync(CancellationToken ct = default)
     {
         var now = clock.GetCurrentInstant();
-        foreach (
-            var pending in await repository.GetDeliverableBudgetAlertEmailsAsync(now.Minus(EmailLeaseDuration), ct)
-        )
-        {
-            await DeliverEmailAsync(pending, ct);
-        }
-
         var rules = await repository.GetBudgetRulesAsync(ct);
         var today = now.InUtc().Date;
         var yesterday = today.PlusDays(-1);
@@ -56,6 +47,17 @@ public class BudgetAlertService(
             }
 
             await CheckRuleSafelyAsync(rule, from, to, now, ct);
+        }
+
+        var deliveryStartedAt = clock.GetCurrentInstant();
+        foreach (
+            var pending in await repository.GetDeliverableBudgetAlertEmailsAsync(
+                deliveryStartedAt.Minus(BudgetAlertEmailLease.Duration),
+                ct
+            )
+        )
+        {
+            await DeliverEmailAsync(pending, ct);
         }
     }
 
@@ -201,7 +203,7 @@ public class BudgetAlertService(
             ),
         };
 
-        var claim = await repository.GetOrCreateBudgetAlertAsync(
+        await repository.GetOrCreateBudgetAlertAsync(
             rule.Id,
             from,
             to,
@@ -209,21 +211,6 @@ public class BudgetAlertService(
             totalSpendGbp,
             insight,
             now,
-            ct
-        );
-
-        await DeliverEmailAsync(
-            new BudgetAlertEmail(
-                claim.ClaimId,
-                rule.Id,
-                rule.Provider,
-                rule.Period,
-                from,
-                to,
-                claim.ThresholdGbp,
-                claim.ActualSpendGbp,
-                claim.CreatedAt
-            ),
             ct
         );
     }
@@ -237,7 +224,7 @@ public class BudgetAlertService(
                 email.ClaimId,
                 leaseId,
                 acquiredAt,
-                acquiredAt.Minus(EmailLeaseDuration),
+                acquiredAt.Minus(BudgetAlertEmailLease.Duration),
                 ct
             )
         )
@@ -268,7 +255,7 @@ public class BudgetAlertService(
                 ex,
                 "Budget alert email for rule {RuleId} was interrupted; its lease will recover after {LeaseMinutes} minutes and retry with the same Message-Id. Delivery may be duplicated if SMTP accepted it",
                 email.RuleId,
-                EmailLeaseDuration.TotalMinutes
+                BudgetAlertEmailLease.Duration.TotalMinutes
             );
             ct.ThrowIfCancellationRequested();
         }

@@ -21,7 +21,7 @@ public class BudgetAlertServiceTests
         var rule = Rule(BillingPeriod.Daily);
         StubRules(rule);
         StubBilledSpend(rule, 10.01m);
-        StubSuccessfulDelivery();
+        StubSuccessfulDelivery(rule);
 
         await Sut().CheckAndAlertAsync(TestContext.Current.CancellationToken);
 
@@ -113,7 +113,7 @@ public class BudgetAlertServiceTests
                 Arg.Any<CancellationToken>()
             )
             .Returns([new DailyBilledSpend(lateDate, 15m)]);
-        StubSuccessfulDelivery();
+        StubSuccessfulDelivery(rule);
 
         await Sut().CheckAndAlertAsync(TestContext.Current.CancellationToken);
 
@@ -215,7 +215,7 @@ public class BudgetAlertServiceTests
     }
 
     [Fact]
-    public async Task CheckAndAlert_replays_a_pending_email_from_durable_state_before_period_suppression()
+    public async Task CheckAndAlert_replays_a_pending_email_from_durable_state_despite_period_suppression()
     {
         var claimId = Guid.NewGuid();
         var rule = Rule(BillingPeriod.Weekly, lastTriggeredAt: Instant.FromUtc(2026, 6, 1, 8, 0));
@@ -348,6 +348,110 @@ public class BudgetAlertServiceTests
     }
 
     [Fact]
+    public async Task CheckAndAlert_creates_claims_before_one_deterministic_bounded_delivery_pass()
+    {
+        var rules = Enumerable.Range(1, 52).Select(_ => Rule(BillingPeriod.Daily)).ToArray();
+        var claimIds = Enumerable
+            .Range(1, rules.Length)
+            .Select(index => Guid.ParseExact($"{index:x32}", "N"))
+            .ToArray();
+        var claimIdByRule = rules
+            .Select((rule, index) => (rule.Id, claimIds[index]))
+            .ToDictionary(pair => pair.Id, pair => pair.Item2);
+        var pending = new Dictionary<Guid, BudgetAlertEmail>();
+        var sent = new HashSet<Guid>();
+        var attempts = new List<Guid>();
+
+        StubRules(rules.Reverse().ToArray());
+        StubBilledSpend(rules[0], 15m);
+        _repo
+            .GetOrCreateBudgetAlertAsync(
+                Arg.Any<Guid>(),
+                Arg.Any<LocalDate>(),
+                Arg.Any<LocalDate>(),
+                Arg.Any<decimal>(),
+                Arg.Any<decimal>(),
+                Arg.Any<Insight>(),
+                Arg.Any<Instant>(),
+                Arg.Any<CancellationToken>()
+            )
+            .Returns(call =>
+            {
+                var ruleId = call.ArgAt<Guid>(0);
+                var claimId = claimIdByRule[ruleId];
+                pending.TryAdd(
+                    claimId,
+                    new BudgetAlertEmail(
+                        claimId,
+                        ruleId,
+                        null,
+                        BillingPeriod.Daily,
+                        call.ArgAt<LocalDate>(1),
+                        call.ArgAt<LocalDate>(2),
+                        call.ArgAt<decimal>(3),
+                        call.ArgAt<decimal>(4),
+                        call.ArgAt<Instant>(6)
+                    )
+                );
+                return new BudgetAlertClaimResult(
+                    claimId,
+                    true,
+                    call.ArgAt<decimal>(3),
+                    call.ArgAt<decimal>(4),
+                    call.ArgAt<Instant>(6)
+                );
+            });
+        _repo
+            .GetDeliverableBudgetAlertEmailsAsync(Arg.Any<Instant>(), Arg.Any<CancellationToken>())
+            .Returns(_ =>
+                pending
+                    .Values.Where(email => !sent.Contains(email.ClaimId))
+                    .OrderBy(email => email.CreatedAt)
+                    .ThenBy(email => email.ClaimId)
+                    .Take(50)
+                    .ToArray()
+            );
+        _repo
+            .TryAcquireBudgetAlertEmailLeaseAsync(
+                Arg.Any<Guid>(),
+                Arg.Any<Guid>(),
+                Arg.Any<Instant>(),
+                Arg.Any<Instant>(),
+                Arg.Any<CancellationToken>()
+            )
+            .Returns(call => !sent.Contains(call.ArgAt<Guid>(0)));
+        _notifier
+            .NotifyAsync(Arg.Any<BudgetAlertPayload>(), Arg.Any<CancellationToken>())
+            .Returns(call =>
+            {
+                var messageId = call.ArgAt<BudgetAlertPayload>(0).MessageId;
+                var encodedClaimId = messageId["budget-alert-".Length..^"@observatory.fixportal.com".Length];
+                attempts.Add(Guid.ParseExact(encodedClaimId, "N"));
+                return Task.CompletedTask;
+            });
+        _repo
+            .MarkBudgetAlertEmailSentAsync(
+                Arg.Any<Guid>(),
+                Arg.Any<Guid>(),
+                Arg.Any<Instant>(),
+                Arg.Any<CancellationToken>()
+            )
+            .Returns(call =>
+            {
+                sent.Add(call.ArgAt<Guid>(0));
+                return Task.CompletedTask;
+            });
+
+        await Sut().CheckAndAlertAsync(TestContext.Current.CancellationToken);
+
+        attempts.Should().Equal(claimIds.Take(50));
+
+        await Sut().CheckAndAlertAsync(TestContext.Current.CancellationToken);
+
+        attempts.Should().Equal(claimIds);
+    }
+
+    [Fact]
     public async Task CheckAndAlert_WhenOneRulesNotifierThrows_SiblingRulesStillEvaluated()
     {
         var failing = Rule(BillingPeriod.Daily);
@@ -449,7 +553,7 @@ public class BudgetAlertServiceTests
         var rule = Rule(BillingPeriod.Weekly, lastTriggeredAt: Instant.FromUtc(2026, 5, 20, 8, 0));
         StubRules(rule);
         StubBilledSpend(rule, 15m);
-        StubSuccessfulDelivery();
+        StubSuccessfulDelivery(rule);
 
         await Sut().CheckAndAlertAsync(TestContext.Current.CancellationToken);
 
@@ -473,7 +577,7 @@ public class BudgetAlertServiceTests
         var rule = Rule(BillingPeriod.Monthly, lastTriggeredAt: Instant.FromUtc(2026, 5, 15, 8, 0));
         StubRules(rule);
         StubBilledSpend(rule, 15m);
-        StubSuccessfulDelivery();
+        StubSuccessfulDelivery(rule);
 
         await Sut().CheckAndAlertAsync(TestContext.Current.CancellationToken);
 
@@ -526,22 +630,9 @@ public class BudgetAlertServiceTests
             .Returns(amount);
     }
 
-    private void StubSuccessfulDelivery()
+    private void StubSuccessfulDelivery(BudgetRule rule)
     {
-        StubDurableAlert();
-        _repo
-            .TryAcquireBudgetAlertEmailLeaseAsync(
-                Arg.Any<Guid>(),
-                Arg.Any<Guid>(),
-                Arg.Any<Instant>(),
-                Arg.Any<Instant>(),
-                Arg.Any<CancellationToken>()
-            )
-            .Returns(true);
-        _notifier.NotifyAsync(Arg.Any<BudgetAlertPayload>(), Arg.Any<CancellationToken>()).Returns(Task.CompletedTask);
-    }
-
-    private void StubDurableAlert() =>
+        BudgetAlertEmail? pending = null;
         _repo
             .GetOrCreateBudgetAlertAsync(
                 Arg.Any<Guid>(),
@@ -553,11 +644,40 @@ public class BudgetAlertServiceTests
                 Arg.Any<Instant>(),
                 Arg.Any<CancellationToken>()
             )
-            .Returns(call => new BudgetAlertClaimResult(
-                Guid.NewGuid(),
-                true,
-                call.ArgAt<decimal>(3),
-                call.ArgAt<decimal>(4),
-                call.ArgAt<Instant>(6)
-            ));
+            .Returns(call =>
+            {
+                var claimId = Guid.NewGuid();
+                pending = new BudgetAlertEmail(
+                    claimId,
+                    rule.Id,
+                    rule.Provider,
+                    rule.Period,
+                    call.ArgAt<LocalDate>(1),
+                    call.ArgAt<LocalDate>(2),
+                    call.ArgAt<decimal>(3),
+                    call.ArgAt<decimal>(4),
+                    call.ArgAt<Instant>(6)
+                );
+                return new BudgetAlertClaimResult(
+                    claimId,
+                    true,
+                    call.ArgAt<decimal>(3),
+                    call.ArgAt<decimal>(4),
+                    call.ArgAt<Instant>(6)
+                );
+            });
+        _repo
+            .GetDeliverableBudgetAlertEmailsAsync(Arg.Any<Instant>(), Arg.Any<CancellationToken>())
+            .Returns(_ => pending is null ? [] : [pending]);
+        _repo
+            .TryAcquireBudgetAlertEmailLeaseAsync(
+                Arg.Any<Guid>(),
+                Arg.Any<Guid>(),
+                Arg.Any<Instant>(),
+                Arg.Any<Instant>(),
+                Arg.Any<CancellationToken>()
+            )
+            .Returns(true);
+        _notifier.NotifyAsync(Arg.Any<BudgetAlertPayload>(), Arg.Any<CancellationToken>()).Returns(Task.CompletedTask);
+    }
 }

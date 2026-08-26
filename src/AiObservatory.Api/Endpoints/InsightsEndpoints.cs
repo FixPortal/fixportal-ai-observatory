@@ -1,3 +1,4 @@
+using AiObservatory.Api.Services;
 using AiObservatory.Api.Services.Intelligence;
 using AiObservatory.Data;
 using AiObservatory.Data.Repositories;
@@ -39,9 +40,28 @@ public static class InsightsEndpoints
         // before regenerating. Irreversible.
         app.MapDelete(
             "/insights",
-            async (AiObservatoryDbContext db, CancellationToken ct) =>
+            async (AiObservatoryDbContext db, IClock clock, CancellationToken ct) =>
             {
                 await using var tx = await db.Database.BeginTransactionAsync(ct);
+                await db.Database.ExecuteSqlRawAsync(
+                    """LOCK TABLE "BudgetAlertClaims" IN SHARE ROW EXCLUSIVE MODE""",
+                    ct
+                );
+                var activeLeaseCutoff = clock.GetCurrentInstant().Minus(BudgetAlertEmailLease.Duration);
+                var hasActiveLease = await db.BudgetAlertClaims.AnyAsync(
+                    claim =>
+                        claim.EmailSentAt == null
+                        && claim.EmailLeaseAcquiredAt != null
+                        && claim.EmailLeaseAcquiredAt > activeLeaseCutoff,
+                    ct
+                );
+                if (hasActiveLease)
+                {
+                    return Results.Conflict(
+                        "Budget alert email delivery is in progress; retry after its lease expires."
+                    );
+                }
+
                 await db.BudgetAlertClaims.ExecuteDeleteAsync(ct);
                 var deleted = await db.Insights.ExecuteDeleteAsync(ct);
                 await tx.CommitAsync(ct);
