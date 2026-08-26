@@ -86,11 +86,22 @@ export default function InsightsFeed() {
   const unread = insights.filter(i => !i.acknowledged)
   if (unread.length === 0) return <p className="panel-empty">No unread insights.</p>
 
+  const visible = unread.slice(0, 5)
+  const older = unread.slice(5)
+
   return (
     <div className="insights-feed">
-      {unread.map(insight => (
+      {visible.map(insight => (
         <InsightRow key={insight.id} insight={insight} />
       ))}
+      {older.length > 0 && (
+        <details className="insights-older">
+          <summary>Show {older.length} older insight{older.length === 1 ? '' : 's'}</summary>
+          <div className="insights-feed insights-feed--older">
+            {older.map(insight => <InsightRow key={insight.id} insight={insight} />)}
+          </div>
+        </details>
+      )}
     </div>
   )
 }

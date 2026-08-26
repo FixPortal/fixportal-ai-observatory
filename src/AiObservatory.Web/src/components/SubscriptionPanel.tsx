@@ -5,7 +5,7 @@ import { patchExtraUsage, type Subscription } from '../api/client'
 import { useSubscriptions, useAggregates, localDate } from '../api/queries'
 import { providerColor } from '../theme/providerColors'
 import { gbp, useUsdToGbp, formatCurrency } from '../lib/currency'
-import { currentBillingPeriodStart } from '../lib/subscriptions'
+import { currentBillingPeriodStart, notionalValueUsd } from '../lib/subscriptions'
 import SubscriptionModal from './SubscriptionModal'
 import { isReadonly } from '../auth/msal'
 
@@ -171,8 +171,8 @@ export default function SubscriptionPanel() {
           <div className="sub-panel-title-row">
             <span className="sub-panel-title">Subscriptions</span>
             <InfoPopover id="subscriptions-info" title="Subscriptions">
-              <p>Period spend is API-tracked usage from the start of each provider's current billing cycle to today.</p>
-              <p>The cycle resets on the renewal day shown in each card. The progress bar shows period spend as a percentage of the monthly cost.</p>
+              <p>Notional usage value applies public API list prices to eligible subscription activity. It is a comparison, not money charged.</p>
+              <p>The cycle resets on the renewal day shown in each card. The progress bar shows notional usage value as a percentage of the subscription price.</p>
             </InfoPopover>
           </div>
           {!isReadonly && (
@@ -199,16 +199,13 @@ export default function SubscriptionPanel() {
               const providerKey = sub.provider.toLowerCase()
               const start = currentBillingPeriodStart(sub.billingDay, today)
               const windowStart = sub.activeFrom > start ? sub.activeFrom : start
-              
-              const periodSpendUsd = aggregates
-                .filter(a => a.provider === providerKey && a.date >= windowStart)
-                .reduce((acc, a) => acc + a.costUsd, 0)
-              const periodSpendGbp = periodSpendUsd * rate
+              const periodNotionalUsd = notionalValueUsd(aggregates, providerKey, windowStart)
+              const periodNotionalGbp = periodNotionalUsd * rate
               
               const total = sub.costAmount + (sub.extraUsageCost ?? 0)
               const totalGbp = sub.currency.toUpperCase() === 'USD' ? total * rate : total
               
-              const ratio = totalGbp > 0 ? periodSpendGbp / totalGbp : 0
+              const ratio = totalGbp > 0 ? periodNotionalGbp / totalGbp : 0
               const pct = Math.min(ratio * 100, 100)
               const isOver = ratio > 1
               const accentColor = providerColor(providerKey)
@@ -249,20 +246,20 @@ export default function SubscriptionPanel() {
                   </div>
 
                   <div className="sub-card__period-row">
-                    <span className="sub-card__period-label">Period spend</span>
+                    <span className="sub-card__period-label">Notional usage value</span>
                     <span className={`sub-card__period-value${isOver ? ' sub-card__period-value--over' : ''}`}>
-                      {gbp(periodSpendGbp)}
+                      {gbp(periodNotionalGbp)}
                     </span>
                   </div>
 
                   <div className="sub-progress-track">
                     <div
                       className={`sub-progress-fill${isOver ? ' sub-progress-fill--over' : ''}`}
-                      style={{ width: `${pct}%`, background: isOver ? undefined : accentColor }}
+                      style={{ width: `${pct}%`, background: isOver ? undefined : 'var(--brand)' }}
                     />
                   </div>
                   <div className="sub-progress-label">
-                    {Math.round(ratio * 100)}% of {formatCurrency(total, sub.currency)} total
+                    {Math.round(ratio * 100)}% of {formatCurrency(total, sub.currency)} subscription price
                   </div>
                 </div>
               )

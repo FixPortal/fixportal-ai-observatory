@@ -1,3 +1,11 @@
+import type { DailyAggregate } from '../api/client'
+
+export function notionalValueUsd(aggregates: Pick<DailyAggregate, 'provider' | 'date' | 'costBasis' | 'costUsd' | 'requestCount' | 'unknownCostCount'>[], provider: string, from: string): number {
+  return aggregates
+    .filter(a => a.provider === provider && a.date >= from && a.costBasis === 'notional' && a.requestCount > a.unknownCostCount)
+    .reduce((total, a) => total + a.costUsd, 0)
+}
+
 /**
  * Returns the ISO date (yyyy-MM-dd) of the most recent occurrence of
  * billingDay on or before today, handling month-end clamping.
