@@ -103,7 +103,7 @@ export default function Dashboard() {
         ))}
       </div>
       <main className="dashboard__main">
-      <div id="dashboard-tabpanel" role="tabpanel" aria-labelledby={`dashboard-tab-${tab}`}>
+      <div id="dashboard-tabpanel" className="dashboard__tabpanel" role="tabpanel" aria-labelledby={`dashboard-tab-${tab}`}>
         {isError && <ErrorBanner error={error} />}
         {!isError && isLoading && (
           <output className="loading-banner" aria-live="polite">

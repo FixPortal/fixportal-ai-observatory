@@ -1,36 +1,6 @@
-import type React from 'react'
 import { useEffect, useRef, useState } from 'react'
 
 const PRESETS = [7, 31, 90] as const
-
-const popoverStyle: React.CSSProperties = {
-  position: 'absolute',
-  top: 'calc(100% + 6px)',
-  left: 0,
-  zIndex: 20,
-  background: 'var(--card-bg)',
-  border: '1px solid var(--border)',
-  borderRadius: 'var(--r-panel)',
-  padding: 'var(--space-3)',
-  display: 'flex',
-  flexDirection: 'column',
-  gap: 'var(--space-2)',
-  minWidth: '220px',
-  boxShadow: '0 8px 24px rgba(0, 0, 0, 0.35)',
-}
-
-const applyButtonStyle: React.CSSProperties = {
-  marginTop: 'var(--space-1)',
-  padding: 'var(--space-1) var(--space-3)',
-  background: 'var(--brand)',
-  color: 'var(--text-on-brand)',
-  border: 'none',
-  borderRadius: 'var(--r-control)',
-  fontFamily: 'var(--font-sans)',
-  fontSize: '0.75rem',
-  fontWeight: 600,
-  cursor: 'pointer',
-}
 
 interface Props {
   from: Date
@@ -98,7 +68,7 @@ export default function DateRangePicker({ from, to, preset, onPreset, onCustom }
   }
 
   return (
-    <div ref={containerRef} style={{ position: 'relative', display: 'inline-flex', alignItems: 'center', gap: 'var(--space-1)' }}>
+    <div ref={containerRef} className="date-range">
       <div className="chart-toggle">
         {PRESETS.map(days => (
           <button
@@ -120,50 +90,31 @@ export default function DateRangePicker({ from, to, preset, onPreset, onCustom }
       </div>
 
       {popoverOpen && (
-        <div
-          ref={popoverRef}
-          style={popoverStyle}
-        >
-          <label style={{ fontSize: '0.75rem', color: 'var(--text-muted)', display: 'flex', flexDirection: 'column', gap: '2px' }}>
+        <div ref={popoverRef} className="date-range__popover">
+          <label className="date-range__field">
             From
             <input
               type="date"
               value={fromStr}
               max={toStr}
               onChange={e => setFromStr(e.target.value)}
-              style={{
-                fontFamily: 'var(--font-mono)',
-                fontSize: '0.8rem',
-                padding: '2px var(--space-2)',
-                background: 'var(--app-bg)',
-                color: 'var(--text)',
-                border: '1px solid var(--border)',
-                borderRadius: 'var(--r-control)',
-              }}
+              className="date-range__input"
             />
           </label>
-          <label style={{ fontSize: '0.75rem', color: 'var(--text-muted)', display: 'flex', flexDirection: 'column', gap: '2px' }}>
+          <label className="date-range__field">
             To
             <input
               type="date"
               value={toStr}
               min={fromStr}
               onChange={e => setToStr(e.target.value)}
-              style={{
-                fontFamily: 'var(--font-mono)',
-                fontSize: '0.8rem',
-                padding: '2px var(--space-2)',
-                background: 'var(--app-bg)',
-                color: 'var(--text)',
-                border: '1px solid var(--border)',
-                borderRadius: 'var(--r-control)',
-              }}
+              className="date-range__input"
             />
           </label>
           <button
             type="button"
             onClick={handleApply}
-            style={applyButtonStyle}
+            className="date-range__apply"
           >
             Apply
           </button>

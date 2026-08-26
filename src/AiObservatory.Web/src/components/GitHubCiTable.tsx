@@ -63,7 +63,7 @@ export default function GitHubCiTable({ ci, isLoading = false, isError = false }
             <td>{c.workflowName}</td>
             <td>{c.totalRuns}</td>
             <td>{c.failedRuns}</td>
-            <td style={{ color: c.successRate < SUCCESS_RATE_WARN_THRESHOLD ? 'var(--danger, #d33)' : undefined }}>
+            <td style={{ color: c.successRate < SUCCESS_RATE_WARN_THRESHOLD ? 'var(--bad-text)' : undefined }}>
               {c.successRate.toFixed(0)}%
               {c.successRate < SUCCESS_RATE_WARN_THRESHOLD && <span style={srOnlyStyle}> (low success rate)</span>}
             </td>

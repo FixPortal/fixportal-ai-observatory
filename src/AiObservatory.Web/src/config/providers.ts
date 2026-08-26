@@ -25,7 +25,7 @@ export const PROVIDERS = [
     key: 'anthropic',
     displayName: 'Anthropic',
     colorVar: 'var(--provider-anthropic)',
-    badgeStyle: { color: 'var(--provider-anthropic)', background: 'rgba(124,58,237,.12)' },
+    badgeStyle: { color: 'var(--provider-anthropic)', background: 'color-mix(in srgb, var(--provider-anthropic) 12%, transparent)' },
     sources: [
       { id: 'anthropic-usage-api', displayName: 'Messages usage', setupHref: SETUP_HREF },
       { id: 'anthropic-cost-report', displayName: 'Cost report', setupHref: SETUP_HREF },
@@ -38,7 +38,7 @@ export const PROVIDERS = [
     key: 'copilot',
     displayName: 'Copilot',
     colorVar: 'var(--provider-copilot)',
-    badgeStyle: { color: 'var(--provider-copilot)', background: 'rgba(219,39,119,.12)' },
+    badgeStyle: { color: 'var(--provider-copilot)', background: 'color-mix(in srgb, var(--provider-copilot) 12%, transparent)' },
     sources: [
       { id: 'copilot-org-report', displayName: 'Organization report', setupHref: SETUP_HREF },
       { id: 'copilot-local', displayName: 'Copilot local', setupHref: SETUP_HREF },
@@ -48,7 +48,7 @@ export const PROVIDERS = [
     key: 'google',
     displayName: 'Google',
     colorVar: 'var(--provider-google)',
-    badgeStyle: { color: 'var(--provider-google)', background: 'rgba(2,132,199,.12)' },
+    badgeStyle: { color: 'var(--provider-google)', background: 'color-mix(in srgb, var(--provider-google) 12%, transparent)' },
     sources: [
       { id: 'google-cloud-billing-export', displayName: 'Cloud Billing export', setupHref: SETUP_HREF },
       { id: 'google-cloud-catalog', displayName: 'Cloud catalog', setupHref: SETUP_HREF },
@@ -58,7 +58,7 @@ export const PROVIDERS = [
     key: 'openai',
     displayName: 'OpenAI',
     colorVar: 'var(--provider-openai)',
-    badgeStyle: { color: 'var(--provider-openai)', background: 'rgba(234,88,12,.12)' },
+    badgeStyle: { color: 'var(--provider-openai)', background: 'color-mix(in srgb, var(--provider-openai) 12%, transparent)' },
     sources: [
       { id: 'openai-usage-api', displayName: 'Usage API', setupHref: SETUP_HREF },
       { id: 'openai-costs-api', displayName: 'Costs API', setupHref: SETUP_HREF },
@@ -70,7 +70,7 @@ export const PROVIDERS = [
     key: 'moonshot',
     displayName: 'Moonshot',
     colorVar: 'var(--provider-moonshot)',
-    badgeStyle: { color: 'var(--provider-moonshot)', background: 'rgba(101,163,13,.12)' },
+    badgeStyle: { color: 'var(--provider-moonshot)', background: 'color-mix(in srgb, var(--provider-moonshot) 12%, transparent)' },
     sources: [
       { id: 'kimi-local', displayName: 'Kimi local', setupHref: SETUP_HREF },
       { id: 'kimi-pricing', displayName: 'Kimi pricing', setupHref: SETUP_HREF },
