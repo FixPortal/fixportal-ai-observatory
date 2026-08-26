@@ -352,6 +352,79 @@ test('scanRecords rebuilds an unversioned matching-mtime cache instead of reusin
   }
 })
 
+test('observatoryFetch retries transient responses', async () => {
+  let attempts = 0
+  const server = createServer((_request, response) => {
+    attempts++
+    if (attempts === 1) {
+      response.writeHead(429, { 'Retry-After': '0' }).end()
+    } else if (attempts === 2) {
+      response.writeHead(500, { 'Retry-After': '0' }).end()
+    } else {
+      response.writeHead(200).end()
+    }
+  })
+  await new Promise(resolve => server.listen(0, '127.0.0.1', resolve))
+  const address = server.address()
+
+  try {
+    const response = await observatoryFetch(`http://127.0.0.1:${address.port}/events`, 'test-key')
+    assert.equal(response.status, 200)
+    assert.equal(attempts, 3)
+  } finally {
+    await new Promise(resolve => server.close(resolve))
+  }
+})
+
+test('observatoryFetch retries transient transport failures', async () => {
+  let attempts = 0
+  const server = createServer((request, response) => {
+    attempts++
+    if (attempts < 3) {
+      request.socket.destroy()
+    } else {
+      response.writeHead(200).end()
+    }
+  })
+  await new Promise(resolve => server.listen(0, '127.0.0.1', resolve))
+  const address = server.address()
+
+  try {
+    const response = await observatoryFetch(`http://127.0.0.1:${address.port}/events`, 'test-key')
+    assert.equal(response.status, 200)
+    assert.equal(attempts, 3)
+  } finally {
+    await new Promise(resolve => server.close(resolve))
+  }
+})
+
+test('scanRecords handles transcript histories larger than the engine argument limit', async () => {
+  const record = {
+    tool: 'claude', date: '2026-08-26', model: 'claude-opus-5',
+    occurredAtUtc: '2026-08-26T12:00:00Z',
+    cum: { input: 1, output: 1, cacheRead: 0, cacheWrite: 0, cacheWrite1h: 0 },
+  }
+  const files = Array.from({ length: 200 }, (_, index) => ({ path: `claude-${index}.jsonl`, mtimeMs: 1 }))
+  const state = {
+    parseCacheVersion: 1,
+    files: {
+      claude: Object.fromEntries(files.map(file => [file.path, {
+        mtimeMs: file.mtimeMs,
+        records: Array(1_000).fill(record),
+      }])),
+    },
+  }
+
+  const records = await scanRecords(
+    { claudeHome: 'claude-home' },
+    state,
+    new Set(['claude']),
+    async () => files,
+  )
+
+  assert.equal(records.length, 200_000)
+})
+
 test('listJsonl discovers old and current transcripts so age never changes cumulative truth', async () => {
   const root = await mkdtemp(join(tmpdir(), 'observatory-sweep-'))
   const nested = join(root, 'nested')
@@ -618,7 +691,7 @@ test('main retries a failed server-inventory tombstone from persisted state and 
   }
 })
 
-test('main withholds a source tombstone after its replacement fails but continues unrelated sources', async () => {
+test('main withholds a source tombstone after its replacement exhausts retries but continues unrelated sources', async () => {
   const root = await mkdtemp(join(tmpdir(), 'observatory-sweep-replacement-'))
   const projects = join(root, 'claude', 'projects')
   const statePath = join(root, 'state', 'sweep.json')
@@ -681,7 +754,7 @@ test('main withholds a source tombstone after its replacement fails but continue
   try {
     await run(process.execPath, [fileURLToPath(new URL('./observatory-sweep.mjs', import.meta.url))], { env })
 
-    assert.deepEqual(posts.map(body => body.eventKey), [currentKey, oldKimi.eventKey])
+    assert.deepEqual(posts.map(body => body.eventKey), [currentKey, currentKey, currentKey, oldKimi.eventKey])
     assert.equal(posts.some(body => body.eventKey === oldClaude.eventKey), false)
   } finally {
     await new Promise(resolve => server.close(resolve))

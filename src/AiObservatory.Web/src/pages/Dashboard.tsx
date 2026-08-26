@@ -114,7 +114,6 @@ export default function Dashboard() {
         {tab === 'overview' && (
           <>
             <SummaryCards />
-            <SourceStatusPanel />
             <div className="main-grid">
               <div className="panel">
                 <div className="panel-title">Usage value · last 31 days</div>
@@ -143,6 +142,7 @@ export default function Dashboard() {
                 <InsightsFeed />
               </div>
             </div>
+            <SourceStatusPanel />
           </>
         )}
         {tab === 'adversarial-review' && <AdversarialReviewPanel />}

@@ -231,6 +231,41 @@ public class UsageRepositoryTests : IAsyncLifetime
     }
 
     [Fact]
+    public async Task RecordEvent_older_correction_does_not_replace_newer_snapshot()
+    {
+        var ct = TestContext.Current.CancellationToken;
+        var newerObservedAt = Instant.FromUtc(2026, 8, 24, 13, 1);
+
+        await _repo.RecordEventAsync(NewEvent(input: 175, observedAt: newerObservedAt), ct);
+        var result = await _repo.RecordEventAsync(NewEvent(input: 100), ct);
+
+        result.Disposition.Should().Be(RecordEventDisposition.Unchanged);
+        var saved = await _ctx.UsageEvents.AsNoTracking().SingleAsync(ct);
+        saved.InputTokens.Should().Be(175);
+        (await _ctx.DailyAggregates.AsNoTracking().SingleAsync(ct)).InputTokens.Should().Be(175);
+    }
+
+    [Fact]
+    public async Task RecordEvent_unchanged_local_snapshot_repairs_missing_source_status()
+    {
+        var ct = TestContext.Current.CancellationToken;
+        var first = NewEvent(sourceId: "codex-local");
+        first.SourceKind = SourceKind.LocalTelemetry;
+        first.UsageScope = UsageScope.Subscription;
+
+        await _repo.RecordEventAsync(first, ct);
+        await _ctx.SourceSyncStates.ExecuteDeleteAsync(ct);
+        var replay = NewEvent(sourceId: "codex-local", observedAt: first.ObservedAt + Duration.FromMinutes(1));
+        replay.SourceKind = SourceKind.LocalTelemetry;
+        replay.UsageScope = UsageScope.Subscription;
+
+        (await _repo.RecordEventAsync(replay, ct)).Disposition.Should().Be(RecordEventDisposition.Unchanged);
+        var status = await _ctx.SourceSyncStates.AsNoTracking().SingleAsync(ct);
+        status.SourceId.Should().Be("codex-local");
+        status.LatestObservationAt.Should().Be(replay.ObservedAt);
+    }
+
+    [Fact]
     public async Task RecordEvent_correction_refreshes_a_stale_tracked_snapshot()
     {
         var ct = TestContext.Current.CancellationToken;

@@ -2,6 +2,7 @@ import type { SourceStatusResponse } from '../api/client'
 import { useSourceStatuses } from '../api/queries'
 import { NON_PROVIDER_SOURCES, PROVIDERS, getSource, providerDisplayName, sourceDisplayName, type ProviderSource } from '../config/providers'
 import { StatusBadge } from '../design/StatusBadge'
+import { CollapsiblePanel } from './CollapsiblePanel'
 
 /* eslint-disable react-refresh/only-export-components -- focused tests exercise deterministic merge and time formatting helpers */
 
@@ -71,52 +72,65 @@ const statusPresentation: Record<string, { variant: 'ok' | 'warn' | 'bad' | 'inf
   stale: { variant: 'warn', label: 'Stale' },
   failing: { variant: 'bad', label: 'Failing' },
   unavailable: { variant: 'warn', label: 'Unavailable' },
-  notConfigured: { variant: 'info', label: 'Not configured' },
+  notConfigured: { variant: 'info', label: 'Not connected' },
 }
 
 export default function SourceStatusPanel() {
   const { statuses, isError, isLoading } = useSourceStatuses()
   if (isError) return null
   const rows = mergeSourceStatuses(statuses)
+  const reporting = rows.filter(row => row.status === 'fresh').length
+  const notConnected = rows.filter(row => row.status === 'notConfigured').length
+  const attention = rows.filter(row => ['stale', 'failing', 'unavailable'].includes(row.status)).length
+  const summary = isLoading
+    ? 'Checking collection status'
+    : [
+        `${reporting} reporting`,
+        `${notConnected} not connected`,
+        ...(attention > 0 ? [`${attention} need${attention === 1 ? 's' : ''} attention`] : []),
+      ].join(' · ')
 
   return (
-    <section className="source-status" aria-label="Source freshness" aria-busy={isLoading || undefined}>
-      <div className="source-status__header">
-        <h2>Source freshness</h2>
-        <span>{rows.length} capabilities</span>
-      </div>
-      <ul className="source-status__list">
-        {rows.map(row => {
-          const status = isLoading
-            ? { variant: 'info' as const, label: 'Loading' }
-            : statusPresentation[row.status] ?? { variant: 'info' as const, label: sourceDisplayName(row.status) }
-          const lastSuccess = formatLastSuccess(row.lastSuccessAt)
-          return (
-            <li key={row.sourceId} className="source-status__row">
-              <div className="source-status__identity">
-                <span className="source-status__name">{row.displayName}</span>
-                {row.provider && <span className="source-status__provider">{providerDisplayName(row.provider)}</span>}
-              </div>
-              <StatusBadge variant={status.variant} label={status.label} />
-              <span className="source-status__success">
-                {isLoading ? 'Waiting for status' : lastSuccess ? <time dateTime={lastSuccess.dateTime}>{lastSuccess.relative} · {lastSuccess.absolute}</time> : 'Not reported'}
-              </span>
-              <span className="source-status__failures">
-                {isLoading ? '—' : `${row.consecutiveFailureCount.toLocaleString()} ${row.consecutiveFailureCount === 1 ? 'failure' : 'failures'}`}
-              </span>
-              {!isLoading && row.status === 'notConfigured' && row.setupHref && (
-                <a className="source-status__setup" href={row.setupHref} aria-label={`Setup: ${row.displayName}`}>Setup</a>
-              )}
-              {row.lastError && (
-                <details className="source-status__error">
-                  <summary aria-label={`Show error for ${row.displayName}`}>Error</summary>
-                  <p>{row.lastError}</p>
-                </details>
-              )}
-            </li>
-          )
-        })}
-      </ul>
-    </section>
+    <div className="collapsible-panel-zone source-status-zone">
+      <CollapsiblePanel id="data-sources" title="Data sources" summary={summary}>
+        <section className="source-status" aria-label="Source freshness" aria-busy={isLoading || undefined}>
+          <p className="source-status__intro">
+            Collection health for optional APIs and local telemetry. This does not indicate missing subscription usage.
+          </p>
+          <ul className="source-status__list">
+            {rows.map(row => {
+              const status = isLoading
+                ? { variant: 'info' as const, label: 'Loading' }
+                : statusPresentation[row.status] ?? { variant: 'info' as const, label: sourceDisplayName(row.status) }
+              const lastSuccess = formatLastSuccess(row.lastSuccessAt)
+              return (
+                <li key={row.sourceId} className="source-status__row">
+                  <div className="source-status__identity">
+                    <span className="source-status__name">{row.displayName}</span>
+                    {row.provider && <span className="source-status__provider">{providerDisplayName(row.provider)}</span>}
+                  </div>
+                  <StatusBadge variant={status.variant} label={status.label} />
+                  <span className="source-status__success">
+                    {isLoading ? 'Waiting for status' : lastSuccess ? <time dateTime={lastSuccess.dateTime}>{lastSuccess.relative} · {lastSuccess.absolute}</time> : 'Not reported'}
+                  </span>
+                  <span className="source-status__failures">
+                    {isLoading ? '—' : `${row.consecutiveFailureCount.toLocaleString()} ${row.consecutiveFailureCount === 1 ? 'failure' : 'failures'}`}
+                  </span>
+                  {!isLoading && row.status === 'notConfigured' && row.setupHref && (
+                    <a className="source-status__setup" href={row.setupHref} aria-label={`Setup: ${row.displayName}`}>Setup</a>
+                  )}
+                  {row.lastError && (
+                    <details className="source-status__error">
+                      <summary aria-label={`Show error for ${row.displayName}`}>Error</summary>
+                      <p>{row.lastError}</p>
+                    </details>
+                  )}
+                </li>
+              )
+            })}
+          </ul>
+        </section>
+      </CollapsiblePanel>
+    </div>
   )
 }

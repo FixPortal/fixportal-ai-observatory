@@ -74,6 +74,15 @@ public sealed class SourceSyncStateStore(AiObservatoryDbContext db)
         Instant current,
         Instant? latestObservationAt,
         CancellationToken cancellationToken
+    ) => MarkSuccessAsync(db, sourceId, expectedRefreshInterval, current, latestObservationAt, cancellationToken);
+
+    internal static Task MarkSuccessAsync(
+        AiObservatoryDbContext db,
+        string sourceId,
+        Duration expectedRefreshInterval,
+        Instant current,
+        Instant? latestObservationAt,
+        CancellationToken cancellationToken
     )
     {
         var expectedSeconds = ExpectedSeconds(expectedRefreshInterval);

@@ -14,6 +14,7 @@ const status = (overrides: Partial<SourceStatusResponse>): SourceStatusResponse 
 })
 
 beforeEach(() => {
+  localStorage.clear()
   data.statuses = []
   data.isError = false
   data.isLoading = false
@@ -53,9 +54,14 @@ test('maps all statuses, shows failure evidence, and uses native time/details/li
   ]
   render(<SourceStatusPanel />)
 
-  for (const label of ['Fresh', 'Configured', 'Stale', 'Failing', 'Unavailable', 'Not configured']) {
+  for (const label of ['Fresh', 'Configured', 'Stale', 'Failing', 'Unavailable', 'Not connected']) {
     expect(screen.getAllByText(label).length).toBeGreaterThan(0)
   }
+  const panelButton = screen.getByRole('button', { name: /Data sources/ })
+  expect(panelButton).toHaveAttribute('aria-expanded', 'false')
+  expect(screen.getByText('1 reporting · 12 not connected · 3 need attention')).toBeInTheDocument()
+  expect(screen.getByText(/Collection health for optional APIs and local telemetry/i)).toBeInTheDocument()
+  fireEvent.click(panelButton)
   const failingRow = screen.getByText('Claude local').closest('li')!
   expect(within(failingRow).getByText('3 failures')).toBeInTheDocument()
   const disclosure = failingRow.querySelector('summary')!
@@ -75,17 +81,19 @@ test('maps all statuses, shows failure evidence, and uses native time/details/li
 test('shows readable API-only sources without inventing setup links and does not mask query errors', () => {
   data.statuses = [status({ sourceId: 'new-oss-source', status: 'fresh' })]
   const { rerender } = render(<SourceStatusPanel />)
+  fireEvent.click(screen.getByRole('button', { name: /Data sources/ }))
   const unknownRow = screen.getByText('New oss source').closest('li')!
   expect(within(unknownRow).queryByRole('link')).not.toBeInTheDocument()
 
   data.isError = true
   rerender(<SourceStatusPanel />)
-  expect(screen.queryByRole('region', { name: 'Source freshness' })).not.toBeInTheDocument()
+  expect(screen.queryByRole('button', { name: /Data sources/ })).not.toBeInTheDocument()
 })
 
 test('keeps the registry rows in place while source status is loading', () => {
   data.isLoading = true
   render(<SourceStatusPanel />)
+  fireEvent.click(screen.getByRole('button', { name: /Data sources/ }))
 
   const panel = screen.getByRole('region', { name: 'Source freshness' })
   expect(panel).toHaveAttribute('aria-busy', 'true')
