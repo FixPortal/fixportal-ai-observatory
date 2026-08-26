@@ -12,7 +12,14 @@ namespace AiObservatory.Api.Tests.Services;
 public class EmailAlertNotifierTests
 {
     private static BudgetAlertPayload MakePayload(string provider = "Anthropic") =>
-        new(provider, "Daily", 10m, 15m, DateTimeOffset.UtcNow);
+        new(
+            provider,
+            "Daily",
+            10m,
+            15m,
+            DateTimeOffset.UtcNow,
+            "budget-alert-10000000000000000000000000000001@observatory.fixportal.com"
+        );
 
     [Fact]
     public async Task NotifyAsync_is_noop_when_email_not_configured()
@@ -20,8 +27,9 @@ public class EmailAlertNotifierTests
         var smtp = Substitute.For<ISmtpClient>();
         var config = new ConfigurationBuilder().Build();
 
+        var payload = MakePayload();
         var sut = new EmailAlertNotifier(smtp, config);
-        await sut.NotifyAsync(MakePayload(), TestContext.Current.CancellationToken);
+        await sut.NotifyAsync(payload, TestContext.Current.CancellationToken);
 
         await smtp.DidNotReceive()
             .ConnectAsync(
@@ -56,8 +64,9 @@ public class EmailAlertNotifierTests
             )
             .Build();
 
+        var payload = MakePayload();
         var sut = new EmailAlertNotifier(smtp, config);
-        await sut.NotifyAsync(MakePayload(), TestContext.Current.CancellationToken);
+        await sut.NotifyAsync(payload, TestContext.Current.CancellationToken);
 
         await smtp.Received(1)
             .ConnectAsync("smtp.example.com", 587, SecureSocketOptions.StartTls, Arg.Any<CancellationToken>());
@@ -65,6 +74,7 @@ public class EmailAlertNotifierTests
         await smtp.Received(1).DisconnectAsync(true, Arg.Any<CancellationToken>());
 
         sent.Should().NotBeNull();
+        sent.MessageId.Should().Be(payload.MessageId);
         sent.Subject.Should().Contain("Anthropic").And.Contain("billed spend").And.Contain("£10.00");
         sent.To.ToString().Should().Contain("alerts@example.com");
     }

@@ -12,6 +12,7 @@ public sealed class BudgetAlertClaim
     public decimal ThresholdGbp { get; init; }
     public decimal ActualSpendGbp { get; init; }
     public Instant CreatedAt { get; init; }
-    public Instant? EmailAttemptedAt { get; set; }
+    public Guid? EmailLeaseId { get; set; }
+    public Instant? EmailLeaseAcquiredAt { get; set; }
     public Instant? EmailSentAt { get; set; }
 }

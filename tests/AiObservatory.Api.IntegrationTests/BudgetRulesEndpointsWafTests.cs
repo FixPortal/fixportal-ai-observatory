@@ -1,6 +1,9 @@
 using System.Net;
 using System.Net.Http.Json;
+using System.Text.Json;
 using AwesomeAssertions;
+using Microsoft.Extensions.DependencyInjection;
+using NodaTime;
 
 namespace AiObservatory.Api.IntegrationTests;
 
@@ -44,6 +47,11 @@ public class BudgetRulesEndpointsWafTests(AiObservatoryApiFactory factory)
         var response = await client.PostAsJsonAsync("/api/budget-rules", body, TestContext.Current.CancellationToken);
 
         response.StatusCode.Should().Be(HttpStatusCode.Created);
+        var created = await response.Content.ReadFromJsonAsync<JsonElement>(TestContext.Current.CancellationToken);
+        var today = NodaTime.Text.LocalDatePattern.Iso.Format(
+            factory.Services.GetRequiredService<IClock>().GetCurrentInstant().InUtc().Date
+        );
+        created.GetProperty("evaluationStartsOn").GetString().Should().Be(today);
     }
 
     [Fact]

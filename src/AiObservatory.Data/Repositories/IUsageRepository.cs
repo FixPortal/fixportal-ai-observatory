@@ -69,6 +69,7 @@ public sealed record LocalSnapshotRecord(
 );
 
 public sealed record BudgetAlertClaimResult(
+    Guid ClaimId,
     bool Created,
     decimal ThresholdGbp,
     decimal ActualSpendGbp,
@@ -76,6 +77,7 @@ public sealed record BudgetAlertClaimResult(
 );
 
 public sealed record BudgetAlertEmail(
+    Guid ClaimId,
     Guid RuleId,
     Provider? Provider,
     BillingPeriod Period,
@@ -85,6 +87,8 @@ public sealed record BudgetAlertEmail(
     decimal ActualSpendGbp,
     Instant CreatedAt
 );
+
+public sealed record DailyBilledSpend(LocalDate Date, decimal AmountGbp);
 
 public interface IUsageRepository
 {
@@ -122,6 +126,13 @@ public interface IUsageRepository
         CancellationToken ct = default
     );
 
+    Task<IReadOnlyList<DailyBilledSpend>> GetDailyBilledSpendGbpAsync(
+        LocalDate from,
+        LocalDate to,
+        Provider? provider = null,
+        CancellationToken ct = default
+    );
+
     Task<IReadOnlyList<BudgetRule>> GetBudgetRulesAsync(CancellationToken ct = default);
 
     Task<BudgetAlertClaimResult> GetOrCreateBudgetAlertAsync(
@@ -135,23 +146,22 @@ public interface IUsageRepository
         CancellationToken ct = default
     );
 
-    Task<IReadOnlyList<BudgetAlertEmail>> GetPendingBudgetAlertEmailsAsync(CancellationToken ct = default);
-
-    Task<bool> TryMarkBudgetAlertEmailAttemptedAsync(
-        Guid ruleId,
-        LocalDate periodStart,
-        LocalDate periodEnd,
-        Instant attemptedAt,
+    Task<IReadOnlyList<BudgetAlertEmail>> GetDeliverableBudgetAlertEmailsAsync(
+        Instant leaseExpiredBefore,
         CancellationToken ct = default
     );
 
-    Task MarkBudgetAlertEmailSentAsync(
-        Guid ruleId,
-        LocalDate periodStart,
-        LocalDate periodEnd,
-        Instant sentAt,
+    Task<bool> TryAcquireBudgetAlertEmailLeaseAsync(
+        Guid claimId,
+        Guid leaseId,
+        Instant acquiredAt,
+        Instant leaseExpiredBefore,
         CancellationToken ct = default
     );
+
+    Task ReleaseBudgetAlertEmailLeaseAsync(Guid claimId, Guid leaseId, CancellationToken ct = default);
+
+    Task MarkBudgetAlertEmailSentAsync(Guid claimId, Guid leaseId, Instant sentAt, CancellationToken ct = default);
 
     Task AddInsightAsync(Insight insight, CancellationToken ct = default);
     Task<IReadOnlyList<Insight>> GetUnacknowledgedInsightsAsync(CancellationToken ct = default);

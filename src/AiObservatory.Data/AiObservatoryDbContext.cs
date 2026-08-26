@@ -397,6 +397,9 @@ public class AiObservatoryDbContext(DbContextOptions<AiObservatoryDbContext> opt
         {
             b.Property(r => r.Provider).HasConversion<string>();
             b.Property(r => r.Period).HasConversion<string>();
+            b.Property(r => r.EvaluationStartsOn)
+                .HasDefaultValueSql("(CURRENT_TIMESTAMP AT TIME ZONE 'UTC')::date")
+                .ValueGeneratedOnAdd();
         });
 
         modelBuilder.Entity<BudgetAlertClaim>(b =>
@@ -416,8 +419,13 @@ public class AiObservatoryDbContext(DbContextOptions<AiObservatoryDbContext> opt
                 .OnDelete(DeleteBehavior.Cascade);
             b.HasOne<Insight>().WithMany().HasForeignKey(claim => claim.InsightId).OnDelete(DeleteBehavior.Restrict);
             b.ToTable(table =>
-                table.HasCheckConstraint("CK_BudgetAlertClaim_Period", "\"PeriodEnd\" >= \"PeriodStart\"")
-            );
+            {
+                table.HasCheckConstraint("CK_BudgetAlertClaim_Period", "\"PeriodEnd\" >= \"PeriodStart\"");
+                table.HasCheckConstraint(
+                    "CK_BudgetAlertClaim_EmailLease",
+                    "(\"EmailLeaseId\" IS NULL) = (\"EmailLeaseAcquiredAt\" IS NULL)"
+                );
+            });
         });
 
         modelBuilder.Entity<CavemanSession>(b =>

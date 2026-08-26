@@ -11,14 +11,16 @@ public class BudgetAlertService(
     ILogger<BudgetAlertService> logger
 )
 {
-    private const int DailyCatchupDays = 7;
+    private static readonly Duration EmailLeaseDuration = Duration.FromMinutes(15);
 
     // virtual to match the other de-interfaced services (FxRateProvider, AnthropicIntelligenceClient):
     // overridable for subclass-mocking now that IBudgetAlertService is gone.
     public virtual async Task CheckAndAlertAsync(CancellationToken ct = default)
     {
         var now = clock.GetCurrentInstant();
-        foreach (var pending in await repository.GetPendingBudgetAlertEmailsAsync(ct))
+        foreach (
+            var pending in await repository.GetDeliverableBudgetAlertEmailsAsync(now.Minus(EmailLeaseDuration), ct)
+        )
         {
             await DeliverEmailAsync(pending, now, ct);
         }
@@ -33,13 +35,7 @@ public class BudgetAlertService(
         {
             if (rule.Period == BillingPeriod.Daily)
             {
-                // Recheck a bounded set of completed days so late provider rows and
-                // corrections can still alert. The per-rule/per-day claim makes replay safe.
-                for (var daysAgo = DailyCatchupDays; daysAgo >= 1; daysAgo--)
-                {
-                    var date = today.PlusDays(-daysAgo);
-                    await CheckRuleSafelyAsync(rule, date, date, now, ct);
-                }
+                await CheckDailyRuleSafelyAsync(rule, yesterday, now, ct);
                 continue;
             }
 
@@ -50,6 +46,58 @@ public class BudgetAlertService(
 
             var (from, to) = GetWindow(rule.Period, today, yesterday, monthStart);
             await CheckRuleSafelyAsync(rule, from, to, now, ct);
+        }
+    }
+
+    private async Task CheckDailyRuleSafelyAsync(BudgetRule rule, LocalDate through, Instant now, CancellationToken ct)
+    {
+        if (rule.EvaluationStartsOn > through)
+        {
+            return;
+        }
+
+        IReadOnlyList<DailyBilledSpend> dailySpend;
+        try
+        {
+            // One grouped SQL query covers every completed day since the persisted rule
+            // boundary. Missing/zero days cannot exceed the positive rule threshold.
+            dailySpend = await repository.GetDailyBilledSpendGbpAsync(
+                rule.EvaluationStartsOn,
+                through,
+                rule.Provider,
+                ct
+            );
+        }
+        catch (OperationCanceledException) when (ct.IsCancellationRequested)
+        {
+            throw;
+        }
+        catch (Exception ex)
+        {
+            logger.LogError(ex, "Budget alert check failed for rule {RuleId} ({Period})", rule.Id, rule.Period);
+            return;
+        }
+
+        foreach (var day in dailySpend)
+        {
+            try
+            {
+                await CreateAlertAsync(rule, day.Date, day.Date, day.AmountGbp, now, ct);
+            }
+            catch (OperationCanceledException) when (ct.IsCancellationRequested)
+            {
+                throw;
+            }
+            catch (Exception ex)
+            {
+                logger.LogError(
+                    ex,
+                    "Budget alert check failed for rule {RuleId} ({Period}) on {Date}",
+                    rule.Id,
+                    rule.Period,
+                    day.Date
+                );
+            }
         }
     }
 
@@ -112,6 +160,18 @@ public class BudgetAlertService(
     private async Task CheckRuleAsync(BudgetRule rule, LocalDate from, LocalDate to, Instant now, CancellationToken ct)
     {
         var totalSpendGbp = await repository.GetBilledSpendGbpAsync(from, to, rule.Provider, ct);
+        await CreateAlertAsync(rule, from, to, totalSpendGbp, now, ct);
+    }
+
+    private async Task CreateAlertAsync(
+        BudgetRule rule,
+        LocalDate from,
+        LocalDate to,
+        decimal totalSpendGbp,
+        Instant now,
+        CancellationToken ct
+    )
+    {
         if (totalSpendGbp <= rule.ThresholdGbp)
         {
             return;
@@ -144,6 +204,7 @@ public class BudgetAlertService(
 
         await DeliverEmailAsync(
             new BudgetAlertEmail(
+                claim.ClaimId,
                 rule.Id,
                 rule.Provider,
                 rule.Period,
@@ -160,12 +221,13 @@ public class BudgetAlertService(
 
     private async Task DeliverEmailAsync(BudgetAlertEmail email, Instant attemptedAt, CancellationToken ct)
     {
+        var leaseId = Guid.NewGuid();
         if (
-            !await repository.TryMarkBudgetAlertEmailAttemptedAsync(
-                email.RuleId,
-                email.PeriodStart,
-                email.PeriodEnd,
+            !await repository.TryAcquireBudgetAlertEmailLeaseAsync(
+                email.ClaimId,
+                leaseId,
                 attemptedAt,
+                attemptedAt.Minus(EmailLeaseDuration),
                 ct
             )
         )
@@ -178,39 +240,35 @@ public class BudgetAlertService(
             email.Period.ToString(),
             email.ThresholdGbp,
             email.ActualSpendGbp,
-            email.CreatedAt.ToDateTimeOffset()
+            email.CreatedAt.ToDateTimeOffset(),
+            $"budget-alert-{email.ClaimId:N}@observatory.fixportal.com"
         );
 
         try
         {
-            // At-most-once email: the attempt flag is durable before SMTP. A crash or
-            // cancellation from here can lose email, but the in-app insight survives and
-            // retry never sends a duplicate.
+            // At-least-once attempt semantics: retries reuse a stable Message-Id derived
+            // from the durable claim. SMTP success followed by a lost acknowledgement can
+            // still duplicate delivery; the protocol cannot make that outcome exactly once.
             await notifier.NotifyAsync(payload, ct);
-            await repository.MarkBudgetAlertEmailSentAsync(
-                email.RuleId,
-                email.PeriodStart,
-                email.PeriodEnd,
-                attemptedAt,
-                ct
-            );
+            await repository.MarkBudgetAlertEmailSentAsync(email.ClaimId, leaseId, attemptedAt, ct);
         }
         catch (OperationCanceledException ex) when (ct.IsCancellationRequested)
         {
             logger.LogWarning(
                 ex,
-                "Budget alert email for rule {RuleId} was claimed before cancellation; it will not retry. The in-app alert is durable",
-                email.RuleId
+                "Budget alert email for rule {RuleId} was interrupted; its lease will recover after {LeaseMinutes} minutes and retry with the same Message-Id. Delivery may be duplicated if SMTP accepted it",
+                email.RuleId,
+                EmailLeaseDuration.TotalMinutes
             );
             ct.ThrowIfCancellationRequested();
         }
-        catch (Exception ex) when (ex is not OperationCanceledException)
+        catch (Exception ex)
         {
+            await repository.ReleaseBudgetAlertEmailLeaseAsync(email.ClaimId, leaseId, ct);
             logger.LogError(
                 ex,
-                "Budget alert email failed for rule {RuleId} ({Period}); it will not retry because the SMTP attempt was claimed first. The in-app alert is durable",
-                email.RuleId,
-                email.Period
+                "Budget alert email for rule {RuleId} failed; its lease was released for retry with the same Message-Id. Delivery may be duplicated if SMTP accepted it",
+                email.RuleId
             );
         }
     }

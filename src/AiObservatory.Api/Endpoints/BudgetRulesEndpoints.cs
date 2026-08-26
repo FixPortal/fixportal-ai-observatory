@@ -1,6 +1,7 @@
 using AiObservatory.Data;
 using AiObservatory.Data.Entities;
 using Microsoft.EntityFrameworkCore;
+using NodaTime;
 
 namespace AiObservatory.Api.Endpoints;
 
@@ -36,7 +37,7 @@ public static class BudgetRulesEndpoints
 
         app.MapPost(
             "/budget-rules",
-            async (CreateBudgetRuleRequest req, AiObservatoryDbContext db, CancellationToken ct) =>
+            async (CreateBudgetRuleRequest req, AiObservatoryDbContext db, IClock clock, CancellationToken ct) =>
             {
                 // A zero/negative threshold is exceeded by any spend, so the rule fires a
                 // spurious alert (plus Insight row + email) every period until deleted.
@@ -50,6 +51,7 @@ public static class BudgetRulesEndpoints
                     Provider = req.Provider,
                     Period = req.Period,
                     ThresholdGbp = req.ThresholdGbp,
+                    EvaluationStartsOn = clock.GetCurrentInstant().InUtc().Date,
                 };
                 db.BudgetRules.Add(rule);
                 await db.SaveChangesAsync(ct);

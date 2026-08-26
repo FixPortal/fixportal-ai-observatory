@@ -295,6 +295,7 @@ if (app.Environment.IsDevelopment())
                     Provider = null,
                     Period = BillingPeriod.Daily,
                     ThresholdGbp = 5.00m,
+                    EvaluationStartsOn = today,
                 }
             );
 
@@ -304,6 +305,7 @@ if (app.Environment.IsDevelopment())
                     Provider = Provider.Anthropic,
                     Period = BillingPeriod.Monthly,
                     ThresholdGbp = 150.00m,
+                    EvaluationStartsOn = today,
                 }
             );
 
