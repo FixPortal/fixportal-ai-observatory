@@ -903,6 +903,26 @@ public class UsageRepositoryTests : IAsyncLifetime
             .BeEmpty("EmailSentAt is terminal and reader-filtered");
     }
 
+    [Fact]
+    public async Task Budget_alert_delivery_index_excludes_sent_history_and_covers_lease_filtering()
+    {
+        var definition = await _ctx
+            .Database.SqlQueryRaw<string>(
+                """
+                SELECT indexdef AS "Value"
+                FROM pg_indexes
+                WHERE schemaname = 'public'
+                  AND indexname = 'IX_BudgetAlertClaims_Deliverable'
+                """
+            )
+            .SingleOrDefaultAsync(TestContext.Current.CancellationToken);
+
+        definition.Should().NotBeNull();
+        definition.Should().Contain("(\"CreatedAt\", \"Id\")");
+        definition.Should().Contain("INCLUDE (\"EmailLeaseAcquiredAt\")");
+        definition.Should().Contain("WHERE (\"EmailSentAt\" IS NULL)");
+    }
+
     private static Insight AlertInsight(LocalDate period, Instant generatedAt) =>
         new()
         {

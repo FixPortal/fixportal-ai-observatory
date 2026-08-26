@@ -413,6 +413,10 @@ public class AiObservatoryDbContext(DbContextOptions<AiObservatoryDbContext> opt
                 .IsUnique()
                 .HasDatabaseName("UX_BudgetAlertClaims_RulePeriod");
             b.HasIndex(claim => claim.InsightId).IsUnique();
+            b.HasIndex(claim => new { claim.CreatedAt, claim.Id })
+                .IncludeProperties(claim => claim.EmailLeaseAcquiredAt)
+                .HasFilter("\"EmailSentAt\" IS NULL")
+                .HasDatabaseName("IX_BudgetAlertClaims_Deliverable");
             b.HasOne<BudgetRule>()
                 .WithMany()
                 .HasForeignKey(claim => claim.BudgetRuleId)

@@ -22,7 +22,7 @@ public class BudgetAlertService(
             var pending in await repository.GetDeliverableBudgetAlertEmailsAsync(now.Minus(EmailLeaseDuration), ct)
         )
         {
-            await DeliverEmailAsync(pending, now, ct);
+            await DeliverEmailAsync(pending, ct);
         }
 
         var rules = await repository.GetBudgetRulesAsync(ct);
@@ -214,20 +214,20 @@ public class BudgetAlertService(
                 claim.ActualSpendGbp,
                 claim.CreatedAt
             ),
-            now,
             ct
         );
     }
 
-    private async Task DeliverEmailAsync(BudgetAlertEmail email, Instant attemptedAt, CancellationToken ct)
+    private async Task DeliverEmailAsync(BudgetAlertEmail email, CancellationToken ct)
     {
+        var acquiredAt = clock.GetCurrentInstant();
         var leaseId = Guid.NewGuid();
         if (
             !await repository.TryAcquireBudgetAlertEmailLeaseAsync(
                 email.ClaimId,
                 leaseId,
-                attemptedAt,
-                attemptedAt.Minus(EmailLeaseDuration),
+                acquiredAt,
+                acquiredAt.Minus(EmailLeaseDuration),
                 ct
             )
         )
@@ -250,7 +250,7 @@ public class BudgetAlertService(
             // from the durable claim. SMTP success followed by a lost acknowledgement can
             // still duplicate delivery; the protocol cannot make that outcome exactly once.
             await notifier.NotifyAsync(payload, ct);
-            await repository.MarkBudgetAlertEmailSentAsync(email.ClaimId, leaseId, attemptedAt, ct);
+            await repository.MarkBudgetAlertEmailSentAsync(email.ClaimId, leaseId, clock.GetCurrentInstant(), ct);
         }
         catch (OperationCanceledException ex) when (ct.IsCancellationRequested)
         {
