@@ -56,7 +56,7 @@ export function buildUsageSeries(rows: DailyAggregate[], mode: UsageChartMode, u
     }
     const date = dates.get(row.date) ?? { date: row.date }
     const value = mode === 'tokens'
-      ? (row.inputTokens ?? 0) + (row.outputTokens ?? 0)
+      ? row.inputTokens + row.outputTokens + row.cacheReadTokens + row.cacheWriteTokens
       : row.costUsd * usdToGbp
     date[key] = Number((Number(date[key] ?? 0) + value).toFixed(4))
     dates.set(row.date, date)
@@ -118,7 +118,7 @@ const MODES: { mode: UsageChartMode; label: string }[] = [
 export default function SpendChart({ from, to }: Props) {
   const aggregates = useAggregates(from, to)
   const rate = useUsdToGbp()
-  const [mode, setMode] = useState<UsageChartMode>('tokens')
+  const [mode, setMode] = useState<UsageChartMode>('notional')
   const result = useMemo(() => buildUsageSeries(aggregates, mode, rate), [aggregates, mode, rate])
 
   if (aggregates.length === 0) return <p className="panel-empty">No usage data for this period.</p>
