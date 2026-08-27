@@ -13,7 +13,7 @@ using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 namespace AiObservatory.Data.Migrations
 {
     [DbContext(typeof(AiObservatoryDbContext))]
-    [Migration("20260827150526_AddSubscriptionBillingInterval")]
+    [Migration("20260827152216_AddSubscriptionBillingInterval")]
     partial class AddSubscriptionBillingInterval
     {
         /// <inheritdoc />
@@ -1232,7 +1232,7 @@ namespace AiObservatory.Data.Migrations
 
                     b.ToTable("Subscriptions", t =>
                         {
-                            t.HasCheckConstraint("CK_Subscription_BillingMonth_Valid", "(\"BillingInterval\" = 'Monthly' AND \"BillingMonth\" IS NULL) OR (\"BillingInterval\" = 'Annual' AND \"BillingMonth\" BETWEEN 1 AND 12)");
+                            t.HasCheckConstraint("CK_Subscription_BillingMonth_Valid", "(\"BillingInterval\" = 'Monthly' AND \"BillingMonth\" IS NULL) OR (\"BillingInterval\" = 'Annual' AND \"BillingMonth\" IS NOT NULL AND \"BillingMonth\" BETWEEN 1 AND 12)");
                         });
                 });
 

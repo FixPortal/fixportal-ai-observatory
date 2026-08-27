@@ -38,10 +38,11 @@ public class UsageMigrationTests : IAsyncLifetime
 
     [Theory]
     [InlineData(SubscriptionBillingInterval.Annual, 13)]
+    [InlineData(SubscriptionBillingInterval.Annual, null)]
     [InlineData(SubscriptionBillingInterval.Monthly, 7)]
     public async Task SubscriptionBillingMigration_RejectsInvalidIntervalMonthPairs(
         SubscriptionBillingInterval interval,
-        int billingMonth
+        int? billingMonth
     )
     {
         var ct = TestContext.Current.CancellationToken;

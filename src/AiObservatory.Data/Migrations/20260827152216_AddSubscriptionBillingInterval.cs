@@ -28,7 +28,7 @@ namespace AiObservatory.Data.Migrations
             migrationBuilder.AddCheckConstraint(
                 name: "CK_Subscription_BillingMonth_Valid",
                 table: "Subscriptions",
-                sql: "(\"BillingInterval\" = 'Monthly' AND \"BillingMonth\" IS NULL) OR (\"BillingInterval\" = 'Annual' AND \"BillingMonth\" BETWEEN 1 AND 12)"
+                sql: "(\"BillingInterval\" = 'Monthly' AND \"BillingMonth\" IS NULL) OR (\"BillingInterval\" = 'Annual' AND \"BillingMonth\" IS NOT NULL AND \"BillingMonth\" BETWEEN 1 AND 12)"
             );
         }
 
