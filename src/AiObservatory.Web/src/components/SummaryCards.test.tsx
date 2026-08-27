@@ -71,6 +71,21 @@ describe('SummaryCards', () => {
     expect(screen.getByText('1 savings observation not reported')).toBeInTheDocument()
   })
 
+  test('counts cached input in token totals and input display', () => {
+    data.aggregates = [aggregate({
+      inputTokens: 1_000_000,
+      outputTokens: 2_000_000,
+      cacheReadTokens: 3_000_000,
+      cacheWriteTokens: 4_000_000,
+    })]
+
+    render(<SummaryCards />)
+
+    expect(screen.getByText('10.0M')).toBeInTheDocument()
+    expect(screen.getByText('8,000,000 in / 2,000,000 out')).toBeInTheDocument()
+    expect(screen.getByText('38% cache hit')).toBeInTheDocument()
+  })
+
   test('does not render the former blended spend, savings claim, or money comparisons', () => {
     render(<SummaryCards />)
 

@@ -17,14 +17,29 @@ const aggregate = (overrides: Partial<DailyAggregate> = {}): DailyAggregate => (
 
 beforeEach(() => { data.aggregates = [] })
 
-test('builds token and activity shares without reading cost', () => {
-  const rows = [aggregate({ provider: 'openai', costUsd: 999 }), aggregate({ provider: 'anthropic', inputTokens: 50, outputTokens: 0, requestCount: 6, costUsd: 0 })]
+test('builds complete token shares including cached input', () => {
+  const rows = [
+    aggregate({ provider: 'openai' }),
+    aggregate({ provider: 'anthropic', inputTokens: 50, outputTokens: 0, cacheReadTokens: 100, cacheWriteTokens: 50 }),
+  ]
   expect(buildProviderSlices(rows, 'tokens')).toEqual([
-    { provider: 'anthropic', name: 'Anthropic', value: 50, share: 25 },
-    { provider: 'openai', name: 'OpenAI', value: 150, share: 75 },
+    { provider: 'anthropic', name: 'Anthropic', value: 200, share: 57.14 },
+    { provider: 'openai', name: 'OpenAI', value: 150, share: 42.86 },
+  ])
+})
+
+test('builds notional and activity shares without blending cost bases', () => {
+  const rows = [
+    aggregate({ provider: 'openai', costBasis: 'notional', costUsd: 6, requestCount: 2 }),
+    aggregate({ provider: 'anthropic', costBasis: 'notional', costUsd: 4, requestCount: 6 }),
+    aggregate({ provider: 'anthropic', costBasis: 'listPriceEstimate', costUsd: 90, requestCount: 2 }),
+  ]
+  expect(buildProviderSlices(rows, 'notional')).toEqual([
+    { provider: 'anthropic', name: 'Anthropic', value: 4, share: 40 },
+    { provider: 'openai', name: 'OpenAI', value: 6, share: 60 },
   ])
   expect(buildProviderSlices(rows, 'activity').map(slice => [slice.name, slice.value])).toEqual([
-    ['Anthropic', 6], ['OpenAI', 2],
+    ['Anthropic', 8], ['OpenAI', 2],
   ])
 })
 
@@ -35,7 +50,7 @@ test('keeps arbitrary provider labels readable', () => {
 test('uses native accessible toggles and reports zero selected totals truthfully', async () => {
   data.aggregates = [aggregate({ inputTokens: 100, outputTokens: 0, requestCount: 0 })]
   render(<ProviderSplit />)
-  expect(screen.getByRole('button', { name: 'Tokens' })).toHaveAttribute('aria-pressed', 'true')
+  expect(screen.getByRole('button', { name: 'Notional' })).toHaveAttribute('aria-pressed', 'true')
   const activity = screen.getByRole('button', { name: 'Activity' })
   activity.focus()
   expect(activity).toHaveFocus()

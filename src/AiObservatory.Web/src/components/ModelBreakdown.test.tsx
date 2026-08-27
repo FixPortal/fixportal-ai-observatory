@@ -39,6 +39,18 @@ test('distinguishes missing, legitimate zero, and partially known cost', () => {
   expect(mixed).toMatchObject({ costReported: true, unknownCostCount: 1, cpm: null })
 })
 
+test('includes cached input in cost per million tokens', () => {
+  const [row] = groupModelRows([aggregate({
+    inputTokens: 100,
+    outputTokens: 100,
+    cacheReadTokens: 600,
+    cacheWriteTokens: 200,
+    costUsd: 2,
+  })])
+
+  expect(row.cpm).toBe(2_000)
+})
+
 test('renders provenance, missing and mixed cost truth, and native filter/sort controls', async () => {
   data.aggregates = [
     aggregate({ model: 'missing-model', costUsd: 0, requestCount: 2, unknownCostCount: 2 }),
