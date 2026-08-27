@@ -81,10 +81,19 @@ public class PromptBuilderTests
     }
 
     [Fact]
-    public void Build_describes_annual_subscription_cost_per_year()
+    public void Build_normalises_annual_subscription_in_monthly_total()
     {
         var subscriptions = new List<Subscription>
         {
+            new()
+            {
+                Provider = Provider.OpenAI,
+                Name = "Monthly plan",
+                CostAmount = 200m,
+                Currency = "GBP",
+                BillingInterval = SubscriptionBillingInterval.Monthly,
+                BillingDay = 8,
+            },
             new()
             {
                 Provider = Provider.Google,
@@ -101,5 +110,8 @@ public class PromptBuilderTests
         var prompt = sut.Build([], subscriptions, new LocalDate(2026, 8, 1), new LocalDate(2026, 8, 27), 1m);
 
         prompt.Should().Contain("GBP 189.99/year (~GBP 0.52/day)");
+        prompt
+            .Should()
+            .Contain("Equivalent flat-rate subscription total (annual plans divided by 12): GBP 215.83/month");
     }
 }

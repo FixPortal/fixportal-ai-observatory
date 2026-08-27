@@ -67,16 +67,21 @@ public class PromptBuilder
         if (subscriptions.Any())
         {
             sb.AppendLine("Flat-rate subscriptions:");
+            decimal monthlySubscriptionTotalInGbp = 0;
             foreach (var s in subscriptions)
             {
                 var costInGbp = s.Currency.Equals("USD", StringComparison.OrdinalIgnoreCase)
                     ? s.CostAmount * usdToGbp
                     : s.CostAmount;
                 var isAnnual = s.BillingInterval == SubscriptionBillingInterval.Annual;
+                monthlySubscriptionTotalInGbp += costInGbp / (isAnnual ? 12 : 1);
                 sb.AppendLine(
                     $"  {s.Name}: GBP {costInGbp.ToString("F2", CultureInfo.InvariantCulture)}/{(isAnnual ? "year" : "month")} (~GBP {(costInGbp / (isAnnual ? 365 : 30)).ToString("F2", CultureInfo.InvariantCulture)}/day)"
                 );
             }
+            sb.AppendLine(
+                $"Equivalent flat-rate subscription total (annual plans divided by 12): GBP {monthlySubscriptionTotalInGbp.ToString("F2", CultureInfo.InvariantCulture)}/month. Use this pre-calculated value for any monthly subscription total; do not add raw annual prices to monthly costs."
+            );
         }
 
         if (aggregates.Count >= 2)
