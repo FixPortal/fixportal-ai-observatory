@@ -12,6 +12,7 @@ using AwesomeAssertions;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging.Abstractions;
+using NodaTime;
 using Npgsql;
 
 namespace AiObservatory.Ingest.Tests.Pricing;
@@ -101,6 +102,36 @@ public sealed class BundledPricingCatalogLoaderTests(ProviderPollingDatabase dat
         )
             .Should()
             .Be(1);
+    }
+
+    [Fact]
+    public async Task RepricesExistingNotionalUsageWhenCalculatorCodeChanges()
+    {
+        await using var harness = await CreateHarnessAsync();
+        var ct = TestContext.Current.CancellationToken;
+        await harness.Loader.LoadAsync(ct);
+        var usage = new UsageEvent
+        {
+            Provider = Provider.OpenAI,
+            Model = "gpt-5.4",
+            OccurredAt = Instant.FromUtc(2026, 8, 23, 12, 0),
+            IngestedAt = Instant.FromUtc(2026, 8, 27, 12, 0),
+            ObservedAt = Instant.FromUtc(2026, 8, 27, 12, 0),
+            InputTokens = 1_000_000,
+            OutputTokens = 1_000_000,
+            RawPayload = """{"processing":"standard","context":"short","region":"global"}""",
+            SourceId = UsageSourceIds.CodexLocal,
+            SourceKind = SourceKind.LocalTelemetry,
+            UsageScope = UsageScope.Subscription,
+            CostBasis = CostBasis.Notional,
+            EventKey = $"startup-reprice-{Guid.NewGuid():N}",
+        };
+        await new UsageRepository(harness.Db).RecordEventAsync(usage, ct);
+
+        await harness.Loader.LoadAsync(ct);
+
+        harness.Db.ChangeTracker.Clear();
+        (await harness.Db.UsageEvents.SingleAsync(row => row.Id == usage.Id, ct)).CostUsd.Should().NotBeNull();
     }
 
     [Fact]

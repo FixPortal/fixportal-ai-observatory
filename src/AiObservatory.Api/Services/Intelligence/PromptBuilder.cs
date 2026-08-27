@@ -26,15 +26,23 @@ public class PromptBuilder
         sb.AppendLine();
 
         var totalSpend = aggregates.Sum(a => a.CostUsd);
-        sb.AppendLine($"Total API spend: {Gbp(totalSpend)}");
+        var totalRequests = aggregates.Sum(a => a.RequestCount);
+        var totalUnknownCosts = aggregates.Sum(a => a.UnknownCostCount);
+        sb.AppendLine($"Total reported usage value: {FormatSpend(totalSpend, totalRequests, totalUnknownCosts)}");
 
         var byProvider = aggregates
             .GroupBy(a => a.Provider)
-            .Select(g => new { Provider = g.Key, Spend = g.Sum(a => a.CostUsd) });
-        sb.AppendLine("Spend by provider:");
+            .Select(g => new
+            {
+                Provider = g.Key,
+                Spend = g.Sum(a => a.CostUsd),
+                Requests = g.Sum(a => a.RequestCount),
+                UnknownCosts = g.Sum(a => a.UnknownCostCount),
+            });
+        sb.AppendLine("Reported usage value by provider:");
         foreach (var p in byProvider)
         {
-            sb.AppendLine($"  {p.Provider}: {Gbp(p.Spend)}");
+            sb.AppendLine($"  {p.Provider}: {FormatSpend(p.Spend, p.Requests, p.UnknownCosts)}");
         }
 
         sb.AppendLine("Model breakdown:");
@@ -45,6 +53,7 @@ public class PromptBuilder
                 Model = g.Key,
                 Spend = g.Sum(a => a.CostUsd),
                 Requests = g.Sum(a => a.RequestCount),
+                UnknownCosts = g.Sum(a => a.UnknownCostCount),
                 InputTokens = g.Sum(a => a.InputTokens),
                 OutputTokens = g.Sum(a => a.OutputTokens),
                 CacheReadTokens = g.Sum(a => a.CacheReadTokens),
@@ -61,7 +70,9 @@ public class PromptBuilder
                 m.CacheReadTokens > 0 || m.CacheWriteTokens > 0
                     ? $", Cache: {m.CacheReadTokens} read, {m.CacheWriteTokens} write"
                     : "";
-            sb.AppendLine($"  {m.Model}: {Gbp(m.Spend)}, {m.Requests} requests, {efficiency}{cacheInfo}");
+            var spend =
+                m.Requests <= m.UnknownCosts ? "Not reported" : FormatSpend(m.Spend, m.Requests, m.UnknownCosts);
+            sb.AppendLine($"  {m.Model}: {spend}, {m.Requests} requests, {efficiency}{cacheInfo}");
         }
 
         if (subscriptions.Any())
@@ -84,18 +95,22 @@ public class PromptBuilder
             );
         }
 
-        if (aggregates.Count >= 2)
+        if (aggregates.Count >= 2 && totalUnknownCosts == 0)
         {
             var yesterday = aggregates.Where(a => a.Date == periodEnd).Sum(a => a.CostUsd);
             var priorPeriod = aggregates.Where(a => a.Date < periodEnd).Sum(a => a.CostUsd);
             var avgPerDay = priorPeriod / Math.Max(1, Period.Between(periodStart, periodEnd, PeriodUnits.Days).Days);
-            sb.AppendLine($"Yesterday spend: {Gbp(yesterday)} vs 30-day average: {Gbp(avgPerDay)}/day");
+            sb.AppendLine($"Yesterday reported usage value: {Gbp(yesterday)} vs 30-day average: {Gbp(avgPerDay)}/day");
         }
 
         sb.AppendLine();
         sb.AppendLine(
             "All monetary figures above are in GBP (£). Report every monetary value in your insights in GBP using the £ symbol — never US dollars."
         );
+        sb.AppendLine(
+            "Not reported means usage was recorded but no monetary value was available. Never describe it as zero cost or zero usage."
+        );
+        sb.AppendLine("Notional values apply public API list prices to subscription usage; they are not billed spend.");
         sb.AppendLine("Note: Include analysis of cache hit rates where relevant to Anthropic usage.");
         sb.AppendLine(
             "Produce 3-5 insights covering: summary, efficiency opportunities, anomalies, and recommendations."
@@ -105,5 +120,16 @@ public class PromptBuilder
         );
 
         return sb.ToString();
+
+        string FormatSpend(decimal spend, int requests, int unknownCosts)
+        {
+            if (requests <= unknownCosts)
+            {
+                return $"Not reported ({requests} requests)";
+            }
+            return unknownCosts == 0
+                ? Gbp(spend)
+                : $"{Gbp(spend)} reported ({unknownCosts} of {requests} requests not reported)";
+        }
     }
 }

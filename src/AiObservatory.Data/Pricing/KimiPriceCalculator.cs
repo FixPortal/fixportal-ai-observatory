@@ -15,17 +15,22 @@ public sealed class KimiPriceCalculator : IProviderPriceCalculator
         }
 
         using var evidence = ProviderPricingJson.Evidence(usage.RawPayload);
-        if (
-            !ProviderPricingJson.TryBoolean(evidence.RootElement, "high_speed", out var highSpeed)
-            || !ProviderPricingJson.TryBoolean(evidence.RootElement, "batch", out var batch)
-        )
+        var isNotional = usage.CostBasis == CostBasis.Notional;
+        var model = isNotional ? NormalizeModel(usage.Model) : usage.Model;
+        var hasHighSpeed = ProviderPricingJson.TryBoolean(evidence.RootElement, "high_speed", out var highSpeed);
+        var hasBatch = ProviderPricingJson.TryBoolean(evidence.RootElement, "batch", out var batch);
+        if (!isNotional && (!hasHighSpeed || !hasBatch))
         {
             return null;
         }
+        if (!hasHighSpeed)
+        {
+            highSpeed = model.EndsWith("-highspeed", StringComparison.OrdinalIgnoreCase);
+        }
 
-        var entry = PricingCatalogJson
-            .Deserialize<KimiPriceCatalog>(normalizedCatalog)
-            .Resolve(usage.Model, highSpeed, usage.OccurredAt.InUtc().Date);
+        var catalog = PricingCatalogJson.Deserialize<KimiPriceCatalog>(normalizedCatalog);
+        var pricingDate = isNotional ? catalog.RetrievedAt.InUtc().Date : usage.OccurredAt.InUtc().Date;
+        var entry = catalog.Resolve(model, highSpeed, pricingDate);
         if (entry is null || batch && entry.BatchMultiplier is null)
         {
             return null;
@@ -45,4 +50,13 @@ public sealed class KimiPriceCalculator : IProviderPriceCalculator
     }
 
     private static decimal PerMillion(long tokens, decimal rate) => tokens / 1_000_000m * rate;
+
+    private static string NormalizeModel(string model) =>
+        model.ToLowerInvariant() switch
+        {
+            "kimi-code/kimi-for-coding" or "kimi-for-coding" => "kimi-k2.7-code",
+            "kimi-code/kimi-for-coding-highspeed" or "kimi-for-coding-highspeed" => "kimi-k2.7-code-highspeed",
+            "kimi-code/k3" or "kimi-code/k3-256k" or "k3" or "k3-256k" => "kimi-k3",
+            _ => model,
+        };
 }

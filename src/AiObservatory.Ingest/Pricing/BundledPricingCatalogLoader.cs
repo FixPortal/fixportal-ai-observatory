@@ -100,13 +100,13 @@ public sealed class BundledPricingCatalogLoader
 
             Task Reprice(PricingSnapshot _, CancellationToken callbackCt) =>
                 _repricing.RepriceProviderAsync(provider, callbackCt);
-            if (replaceActive)
+            var result = replaceActive
+                ? await _store.ActivateAsync(candidate, cancellationToken, Reprice)
+                : await _store.ActivateIfMissingAsync(candidate, cancellationToken, Reprice);
+            // ponytail: Observatory volume is modest; add a calculator-version checkpoint if daily scans become material.
+            if (result == PricingActivationResult.Unchanged)
             {
-                await _store.ActivateAsync(candidate, cancellationToken, Reprice);
-            }
-            else
-            {
-                await _store.ActivateIfMissingAsync(candidate, cancellationToken, Reprice);
+                await _repricing.RepriceProviderAsync(provider, cancellationToken);
             }
         }
         catch (OperationCanceledException)
