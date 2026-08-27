@@ -16,14 +16,15 @@ public sealed class AnthropicPriceCalculator : IProviderPriceCalculator
         }
 
         using var evidence = ProviderPricingJson.Evidence(usage.RawPayload);
-        if (!TryDimensions(evidence.RootElement, out var tier, out var speed, out var geography))
+        var isNotional = usage.CostBasis == CostBasis.Notional;
+        if (!TryDimensions(evidence.RootElement, isNotional, out var tier, out var speed, out var geography))
         {
             return null;
         }
 
-        var entry = PricingCatalogJson
-            .Deserialize<AnthropicPriceCatalog>(normalizedCatalog)
-            .Resolve(usage.Model, usage.OccurredAt.InUtc().Date);
+        var catalog = PricingCatalogJson.Deserialize<AnthropicPriceCatalog>(normalizedCatalog);
+        var pricingDate = isNotional ? catalog.RetrievedAt.InUtc().Date : usage.OccurredAt.InUtc().Date;
+        var entry = catalog.Resolve(usage.Model, pricingDate);
         if (entry is null)
         {
             return null;
@@ -52,7 +53,12 @@ public sealed class AnthropicPriceCalculator : IProviderPriceCalculator
         var cacheWrite5m = cacheWrite - cacheWrite1h;
         if (cacheWrite > 0 && !HasExactCacheDurations(evidence.RootElement, cacheWrite5m, cacheWrite1h))
         {
-            return null;
+            if (!isNotional)
+            {
+                return null;
+            }
+            cacheWrite5m = cacheWrite;
+            cacheWrite1h = 0;
         }
 
         var cacheRead = usage.CacheReadTokens ?? 0;
@@ -78,28 +84,43 @@ public sealed class AnthropicPriceCalculator : IProviderPriceCalculator
         return new UsagePriceQuote(cost, cacheSavings);
     }
 
-    private static bool TryDimensions(JsonElement evidence, out string tier, out string speed, out string geography)
+    private static bool TryDimensions(
+        JsonElement evidence,
+        bool useStandardDefaults,
+        out string tier,
+        out string speed,
+        out string geography
+    )
     {
         tier = string.Empty;
         speed = string.Empty;
         geography = string.Empty;
-        if (
-            !ProviderPricingJson.TryString(evidence, "service_tier", out tier)
-            || !ProviderPricingJson.TryString(evidence, "speed", out speed)
-            || !ProviderPricingJson.TryString(evidence, "inference_geo", out geography)
-        )
+        var hasTier = ProviderPricingJson.TryString(evidence, "service_tier", out tier);
+        var hasSpeed = ProviderPricingJson.TryString(evidence, "speed", out speed);
+        var hasGeography = ProviderPricingJson.TryString(evidence, "inference_geo", out geography);
+        if (!useStandardDefaults && (!hasTier || !hasSpeed || !hasGeography))
         {
             return false;
         }
 
-        tier = tier.ToLowerInvariant();
-        speed = speed.ToLowerInvariant();
-        geography = geography.ToLowerInvariant();
+        tier = StandardDefault(tier, hasTier, useStandardDefaults);
+        speed = StandardDefault(speed, hasSpeed, useStandardDefaults);
+        geography =
+            !hasGeography
+            || geography.Equals("unknown", StringComparison.OrdinalIgnoreCase)
+            || geography.Equals("not_available", StringComparison.OrdinalIgnoreCase)
+                ? "global"
+                : geography.ToLowerInvariant();
         return tier is "standard" or "batch"
             && speed is "standard" or "fast"
             && geography is "global" or "us"
             && (tier != "batch" || speed != "fast");
     }
+
+    private static string StandardDefault(string value, bool observed, bool useStandardDefaults) =>
+        !observed || useStandardDefaults && value.Equals("unknown", StringComparison.OrdinalIgnoreCase)
+            ? "standard"
+            : value.ToLowerInvariant();
 
     private static bool HasExactCacheDurations(JsonElement evidence, long expected5m, long expected1h) =>
         ProviderPricingJson.TryNestedInt64(evidence, "cache_creation", "ephemeral_5m_input_tokens", out var observed5m)

@@ -119,7 +119,16 @@ public sealed class PricingSnapshotStore(AiObservatoryDbContext db)
     public Task<PricingSnapshot?> GetCatalogForDateAsync(
         UsageEvent usage,
         CancellationToken cancellationToken = default
-    ) => GetCatalogForDateAsync(GetSourceId(usage), usage.OccurredAt.InUtc().Date, cancellationToken);
+    ) =>
+        usage.CostBasis == CostBasis.Notional
+            ? GetActiveForUsageAsync(usage, cancellationToken)
+            : GetCatalogForDateAsync(GetSourceId(usage), usage.OccurredAt.InUtc().Date, cancellationToken);
+
+    private Task<PricingSnapshot?> GetActiveForUsageAsync(UsageEvent usage, CancellationToken cancellationToken)
+    {
+        var sourceId = GetSourceId(usage);
+        return sourceId is null ? Task.FromResult<PricingSnapshot?>(null) : GetActiveAsync(sourceId, cancellationToken);
+    }
 
     private async Task<PricingSnapshot?> GetCatalogForDateAsync(
         string? sourceId,

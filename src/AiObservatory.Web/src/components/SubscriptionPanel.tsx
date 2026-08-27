@@ -5,7 +5,7 @@ import { patchExtraUsage, type Subscription } from '../api/client'
 import { useSubscriptions, useAggregates, localDate } from '../api/queries'
 import { providerColor } from '../theme/providerColors'
 import { gbp, useUsdToGbp, formatCurrency } from '../lib/currency'
-import { billingMonthName, currentBillingPeriodStart, notionalValueUsd } from '../lib/subscriptions'
+import { billingMonthName, currentBillingPeriodStart, subscriptionUsage } from '../lib/subscriptions'
 import SubscriptionModal from './SubscriptionModal'
 import { isReadonly } from '../auth/msal'
 import { PROVIDER_ORDER, providerDisplayName } from '../config/providers'
@@ -14,6 +14,28 @@ function ordinal(n: number): string {
   const s = ['th', 'st', 'nd', 'rd']
   const v = n % 100
   return n + (s[(v - 20) % 10] ?? s[v] ?? s[0])
+}
+
+function usagePresentation(
+  valueGbp: number | null,
+  requestCount: number,
+  totalGbp: number,
+  totalAmount: number,
+  currency: string,
+) {
+  if (valueGbp === null) {
+    return {
+      value: 'Not reported',
+      ratio: 0,
+      label: `${requestCount.toLocaleString()} ${requestCount === 1 ? 'request' : 'requests'} recorded · value not reported`,
+    }
+  }
+  const ratio = totalGbp > 0 ? valueGbp / totalGbp : 0
+  return {
+    value: gbp(valueGbp),
+    ratio,
+    label: `${Math.round(ratio * 100)}% of ${formatCurrency(totalAmount, currency)} subscription price`,
+  }
 }
 
 function ExtraUsageChip({ sub }: { sub: Subscription }) {
@@ -172,7 +194,8 @@ export default function SubscriptionPanel() {
           <div className="sub-panel-title-row">
             <span className="sub-panel-title">Subscriptions</span>
             <InfoPopover id="subscriptions-info" title="Subscriptions">
-              <p>Notional usage value applies public API list prices to eligible subscription activity. It is a comparison, not money charged.</p>
+              <p>Notional usage value applies current public API list prices to eligible subscription activity. It is a comparison, not money charged.</p>
+              <p>When subscription logs omit API-only routing flags, standard pricing is assumed.</p>
               <p>The cycle resets on the renewal day shown in each card. The progress bar shows notional usage value as a percentage of the subscription price.</p>
             </InfoPopover>
           </div>
@@ -200,13 +223,14 @@ export default function SubscriptionPanel() {
               const providerKey = sub.provider.toLowerCase()
               const start = currentBillingPeriodStart(sub.billingDay, today, sub.billingInterval, sub.billingMonth)
               const windowStart = sub.activeFrom > start ? sub.activeFrom : start
-              const periodNotionalUsd = notionalValueUsd(aggregates, providerKey, windowStart)
-              const periodNotionalGbp = periodNotionalUsd * rate
+              const usage = subscriptionUsage(aggregates, providerKey, windowStart)
+              const periodNotionalGbp = usage.notionalUsd === null ? null : usage.notionalUsd * rate
               
               const total = sub.costAmount + (sub.extraUsageCost ?? 0)
               const totalGbp = sub.currency.toUpperCase() === 'USD' ? total * rate : total
               
-              const ratio = totalGbp > 0 ? periodNotionalGbp / totalGbp : 0
+              const presentation = usagePresentation(periodNotionalGbp, usage.requestCount, totalGbp, total, sub.currency)
+              const ratio = presentation.ratio
               const pct = Math.min(ratio * 100, 100)
               const isOver = ratio > 1
               const accentColor = providerColor(providerKey)
@@ -251,7 +275,7 @@ export default function SubscriptionPanel() {
                   <div className="sub-card__period-row">
                     <span className="sub-card__period-label">Notional usage value</span>
                     <span className={`sub-card__period-value${isOver ? ' sub-card__period-value--over' : ''}`}>
-                      {gbp(periodNotionalGbp)}
+                      {presentation.value}
                     </span>
                   </div>
 
@@ -262,7 +286,7 @@ export default function SubscriptionPanel() {
                     />
                   </div>
                   <div className="sub-progress-label">
-                    {Math.round(ratio * 100)}% of {formatCurrency(total, sub.currency)} subscription price
+                    {presentation.label}
                   </div>
                 </div>
               )

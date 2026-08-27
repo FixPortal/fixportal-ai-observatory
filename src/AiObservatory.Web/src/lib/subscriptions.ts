@@ -14,10 +14,16 @@ const MONTHS = [
 
 export const billingMonthName = (month: number): string => MONTHS[month - 1] ?? ''
 
-export function notionalValueUsd(aggregates: NotionalAggregate[], provider: string, from: string): number {
-  return aggregates
-    .filter(a => a.provider === provider && a.date >= from && a.costBasis === 'notional' && a.requestCount > a.unknownCostCount)
-    .reduce((total, a) => total + a.costUsd, 0)
+export function subscriptionUsage(aggregates: NotionalAggregate[], provider: string, from: string) {
+  const period = aggregates.filter(a => a.provider === provider && a.date >= from && a.costBasis === 'notional')
+  const requestCount = period.reduce((total, a) => total + a.requestCount, 0)
+  const unknownCostCount = period.reduce((total, a) => total + a.unknownCostCount, 0)
+  return {
+    notionalUsd: requestCount > unknownCostCount
+      ? period.filter(a => a.requestCount > a.unknownCostCount).reduce((total, a) => total + a.costUsd, 0)
+      : null,
+    requestCount,
+  }
 }
 
 /**

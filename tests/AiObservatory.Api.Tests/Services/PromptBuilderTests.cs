@@ -114,4 +114,38 @@ public class PromptBuilderTests
             .Should()
             .Contain("Equivalent flat-rate subscription total (annual plans divided by 12): GBP 215.83/month");
     }
+
+    [Fact]
+    public void Build_does_not_describe_unpriced_usage_as_zero_spend()
+    {
+        var aggregates = new List<DailyAggregate>
+        {
+            new()
+            {
+                Date = new LocalDate(2026, 8, 27),
+                Provider = Provider.Anthropic,
+                Model = "claude-opus-4-1",
+                CostBasis = CostBasis.Notional,
+                CostUsd = 0,
+                RequestCount = 42,
+                UnknownCostCount = 42,
+            },
+        };
+
+        var prompt = new PromptBuilder().Build(
+            aggregates,
+            [],
+            new LocalDate(2026, 8, 1),
+            new LocalDate(2026, 8, 27),
+            1m
+        );
+
+        prompt.Should().Contain("Anthropic: Not reported (42 requests)");
+        prompt.Should().Contain("claude-opus-4-1: Not reported, 42 requests");
+        prompt.Should().NotContain("Anthropic: £0.00");
+        prompt.Should().NotContain("Total API spend");
+        prompt
+            .Should()
+            .Contain("Notional values apply public API list prices to subscription usage; they are not billed spend.");
+    }
 }

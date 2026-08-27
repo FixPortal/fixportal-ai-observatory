@@ -224,6 +224,22 @@ public sealed class UsagePriceResolverTests : IAsyncLifetime
         new AnthropicPriceCalculator().Calculate(usage, Json(AnthropicCatalog())).Should().BeNull();
     }
 
+    [Fact]
+    public void AnthropicCalculatorUsesStandardPublicRatesForSparseSubscriptionTelemetry()
+    {
+        var usage = Event(
+            Provider.Anthropic,
+            "claude-sonnet-5",
+            "{}",
+            cacheWrite: 1_000_000,
+            costBasis: CostBasis.Notional
+        );
+
+        var quote = new AnthropicPriceCalculator().Calculate(usage, Json(AnthropicCatalog()));
+
+        quote.Should().Be(new UsagePriceQuote(14.5m, -0.5m));
+    }
+
     [Theory]
     [InlineData(false, false, 5.14, 0.76)]
     [InlineData(false, true, 3.084, 0.456)]
@@ -260,6 +276,19 @@ public sealed class UsagePriceResolverTests : IAsyncLifetime
             .Calculate(Event(Provider.Moonshot, model, raw), Json(KimiCatalog()))
             .Should()
             .BeNull();
+    }
+
+    [Theory]
+    [InlineData("kimi-code/kimi-for-coding", 4.95)]
+    [InlineData("kimi-code/k3", 18)]
+    [InlineData("kimi-code/k3-256k", 18)]
+    public void KimiCalculatorMapsSubscriptionModelIdsToPublishedApiRates(string model, double expectedCost)
+    {
+        var usage = Event(Provider.Moonshot, model, "{}", costBasis: CostBasis.Notional);
+
+        var quote = new KimiPriceCalculator().Calculate(usage, Json(KimiCatalog()));
+
+        quote!.CostUsd.Should().Be((decimal)expectedCost);
     }
 
     [Theory]
@@ -372,6 +401,24 @@ public sealed class UsagePriceResolverTests : IAsyncLifetime
     }
 
     [Fact]
+    public async Task ResolverAppliesCurrentPublishedRatesToEarlierNotionalUsage()
+    {
+        var ct = TestContext.Current.CancellationToken;
+        await _store.ActivateAsync(Candidate(OpenAiCatalog()), ct);
+        var usage = Event(
+            Provider.OpenAI,
+            "gpt-5.4",
+            """{"processing":"standard","context":"short","region":"global"}""",
+            occurredOn: EffectiveFrom.PlusDays(-1),
+            costBasis: CostBasis.Notional
+        );
+
+        var quote = await Resolver().ResolveAsync(usage, ct);
+
+        quote!.CostUsd.Should().Be(12m);
+    }
+
+    [Fact]
     public async Task ResolverRateLimitsTheSameUnknownDimensionDiagnostic()
     {
         var ct = TestContext.Current.CancellationToken;
@@ -433,7 +480,8 @@ public sealed class UsagePriceResolverTests : IAsyncLifetime
         long cacheWrite = 0,
         long? cacheWrite1h = 0,
         long thought = 0,
-        LocalDate? occurredOn = null
+        LocalDate? occurredOn = null,
+        CostBasis costBasis = CostBasis.ListPriceEstimate
     ) =>
         new()
         {
@@ -447,7 +495,7 @@ public sealed class UsagePriceResolverTests : IAsyncLifetime
             CacheWrite1hTokens = cacheWrite1h,
             ThoughtTokens = thought,
             RawPayload = raw,
-            CostBasis = CostBasis.ListPriceEstimate,
+            CostBasis = costBasis,
         };
 
     private static OpenAiPriceCatalog OpenAiCatalog(OpenAiPriceEntry? entry = null) =>

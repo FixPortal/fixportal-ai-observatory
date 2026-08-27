@@ -24,9 +24,10 @@ public sealed class OpenAiPriceCalculator : IProviderPriceCalculator
             return null;
         }
 
-        var entry = PricingCatalogJson
-            .Deserialize<OpenAiPriceCatalog>(normalizedCatalog)
-            .Resolve(usage.Model, processing, context, region, usage.OccurredAt.InUtc().Date);
+        var catalog = PricingCatalogJson.Deserialize<OpenAiPriceCatalog>(normalizedCatalog);
+        var pricingDate =
+            usage.CostBasis == CostBasis.Notional ? catalog.RetrievedAt.InUtc().Date : usage.OccurredAt.InUtc().Date;
+        var entry = catalog.Resolve(usage.Model, processing, context, region, pricingDate);
         var cacheRead = usage.CacheReadTokens ?? 0;
         var cacheWrite = usage.CacheWriteTokens ?? 0;
         if (entry is null || cacheRead > 0 && entry.CachedInput is null || cacheWrite > 0 && entry.CacheWrite is null)
