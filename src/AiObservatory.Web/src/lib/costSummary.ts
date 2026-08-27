@@ -13,6 +13,18 @@ export interface SpendAmount {
   amountGbp: number
 }
 
+interface TokenAggregate {
+  inputTokens: number
+  outputTokens: number
+  cacheReadTokens: number
+  cacheWriteTokens: number
+}
+
+export const observedInputTokens = (aggregate: TokenAggregate) =>
+  aggregate.inputTokens + aggregate.cacheReadTokens + aggregate.cacheWriteTokens
+
+export const observedTokens = (aggregate: TokenAggregate) => observedInputTokens(aggregate) + aggregate.outputTokens
+
 export interface CostSummary {
   billedGbp: number | null
   listPriceEstimateUsd: number | null

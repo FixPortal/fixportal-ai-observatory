@@ -3,7 +3,7 @@ import { Card } from '../design/Card'
 import { useAggregates, useBilledReporting, useInsights, AGGREGATES_DAYS_RANGE, dashboardDateRange } from '../api/queries'
 import { useUsdToGbp, formatGbp, gbp } from '../lib/currency'
 import { formatInt } from '../lib/format'
-import { summarizeCosts } from '../lib/costSummary'
+import { observedInputTokens, summarizeCosts } from '../lib/costSummary'
 import { InfoPopover } from './InfoPopover'
 
 const notReported = 'Not reported'
@@ -18,15 +18,14 @@ export default function SummaryCards() {
   const billedGbp = billedReporting?.entryCount ? billedReporting.totalGbp : null
 
   const { totalInputTokens, totalOutputTokens, totalCacheRead } = useMemo(() => aggregates.reduce((total, aggregate) => ({
-    totalInputTokens: total.totalInputTokens + aggregate.inputTokens,
+    totalInputTokens: total.totalInputTokens + observedInputTokens(aggregate),
     totalOutputTokens: total.totalOutputTokens + aggregate.outputTokens,
     totalCacheRead: total.totalCacheRead + aggregate.cacheReadTokens,
   }), { totalInputTokens: 0, totalOutputTokens: 0, totalCacheRead: 0 }), [aggregates])
 
   const unread = insights.filter(insight => !insight.acknowledged).length
   const totalTokens = totalInputTokens + totalOutputTokens
-  const promptTokens = totalCacheRead + totalInputTokens
-  const cacheHitRate = promptTokens > 0 ? totalCacheRead / promptTokens : 0
+  const cacheHitRate = totalInputTokens > 0 ? totalCacheRead / totalInputTokens : 0
 
   return (
     <div className="summary-cards">

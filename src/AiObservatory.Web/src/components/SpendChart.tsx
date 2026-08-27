@@ -4,6 +4,7 @@ import type { DailyAggregate } from '../api/client'
 import { useAggregates } from '../api/queries'
 import { costBasisDisplayName, providerDisplayName, sourceDisplayName, usageScopeDisplayName } from '../config/providers'
 import { useUsdToGbp, gbp } from '../lib/currency'
+import { observedTokens } from '../lib/costSummary'
 import { formatShortDate } from '../lib/format'
 import { providerColor } from '../theme/providerColors'
 
@@ -56,7 +57,7 @@ export function buildUsageSeries(rows: DailyAggregate[], mode: UsageChartMode, u
     }
     const date = dates.get(row.date) ?? { date: row.date }
     const value = mode === 'tokens'
-      ? row.inputTokens + row.outputTokens + row.cacheReadTokens + row.cacheWriteTokens
+      ? observedTokens(row)
       : row.costUsd * usdToGbp
     date[key] = Number((Number(date[key] ?? 0) + value).toFixed(4))
     dates.set(row.date, date)

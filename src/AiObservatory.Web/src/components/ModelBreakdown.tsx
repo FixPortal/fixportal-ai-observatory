@@ -10,6 +10,7 @@ import {
 } from '../config/providers'
 import SearchIcon from '../design/SearchIcon'
 import { formatGbp, useUsdToGbp } from '../lib/currency'
+import { observedTokens } from '../lib/costSummary'
 import { providerColor } from '../theme/providerColors'
 
 /* eslint-disable react-refresh/only-export-components -- focused tests exercise the table's pure evidence grouping */
@@ -30,8 +31,7 @@ export interface ModelRow {
   basisLabel: string
   cost: number
   requests: number
-  inputTokens: number
-  outputTokens: number
+  tokens: number
   unknownCostCount: number
   costReported: boolean
   cpm: number | null
@@ -56,22 +56,19 @@ export function groupModelRows(aggregates: DailyAggregate[]): ModelRow[] {
       basisLabel: costBasisDisplayName(aggregate.costBasis),
       cost: 0,
       requests: 0,
-      inputTokens: 0,
-      outputTokens: 0,
+      tokens: 0,
       unknownCostCount: 0,
     }
     row.cost += aggregate.costUsd
     row.requests += aggregate.requestCount
-    row.inputTokens += aggregate.inputTokens ?? 0
-    row.outputTokens += aggregate.outputTokens ?? 0
+    row.tokens += observedTokens(aggregate)
     row.unknownCostCount += aggregate.unknownCostCount
     grouped.set(key, row)
   }
 
   return [...grouped.values()].map(row => {
     const costReported = row.unknownCostCount < row.requests
-    const tokens = row.inputTokens + row.outputTokens
-    return { ...row, costReported, cpm: costReported && row.unknownCostCount === 0 && tokens > 0 ? (row.cost / tokens) * 1_000_000 : null }
+    return { ...row, costReported, cpm: costReported && row.unknownCostCount === 0 && row.tokens > 0 ? (row.cost / row.tokens) * 1_000_000 : null }
   })
 }
 

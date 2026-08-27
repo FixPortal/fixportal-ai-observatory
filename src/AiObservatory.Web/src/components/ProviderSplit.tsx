@@ -3,11 +3,12 @@ import type { ValueType } from 'recharts/types/component/DefaultTooltipContent'
 import type { DailyAggregate } from '../api/client'
 import { useAggregates } from '../api/queries'
 import { PROVIDER_ORDER, providerDisplayName } from '../config/providers'
+import { observedTokens } from '../lib/costSummary'
 import { providerColor } from '../theme/providerColors'
 
 /* eslint-disable react-refresh/only-export-components -- focused tests exercise the chart's pure evidence shaping without Recharts internals */
 
-export type ProviderSplitMode = 'tokens' | 'activity'
+export type ProviderSplitMode = 'notional' | 'tokens' | 'activity'
 export interface ProviderSlice { provider: string; name: string; value: number; share: number }
 
 const providerOrder = (provider: string) => {
@@ -16,10 +17,13 @@ const providerOrder = (provider: string) => {
 }
 
 export function buildProviderSlices(rows: DailyAggregate[], mode: ProviderSplitMode): ProviderSlice[] {
-  const totals = rows.reduce<Record<string, number>>((result, row) => {
+  const selected = mode === 'notional'
+    ? rows.filter(row => row.costBasis === 'notional' && row.requestCount > row.unknownCostCount)
+    : rows
+  const totals = selected.reduce<Record<string, number>>((result, row) => {
     const value = mode === 'tokens'
-      ? (row.inputTokens ?? 0) + (row.outputTokens ?? 0)
-      : row.requestCount
+      ? observedTokens(row)
+      : mode === 'notional' ? row.costUsd : row.requestCount
     result[row.provider] = (result[row.provider] ?? 0) + value
     return result
   }, {})
@@ -52,7 +56,10 @@ const ChartInner = lazy(() =>
               formatter={(value: ValueType | undefined, _name, item) => {
                 const amount = Number(Array.isArray(value) ? value[0] : value ?? 0)
                 const share = Number((item.payload as ProviderSlice | undefined)?.share ?? 0)
-                return `${amount.toLocaleString()} ${mode === 'tokens' ? 'tokens' : 'requests'} · ${share.toFixed(1)}%`
+                const measured = mode === 'notional'
+                  ? amount.toLocaleString(undefined, { style: 'currency', currency: 'USD' })
+                  : `${amount.toLocaleString()} ${mode === 'tokens' ? 'tokens' : 'requests'}`
+                return `${measured} · ${share.toFixed(1)}%`
               }}
             />
             <Legend />
@@ -67,14 +74,14 @@ interface Props { from?: Date; to?: Date }
 
 export default function ProviderSplit({ from, to }: Props) {
   const aggregates = useAggregates(from, to)
-  const [mode, setMode] = useState<ProviderSplitMode>('tokens')
+  const [mode, setMode] = useState<ProviderSplitMode>('notional')
   const data = useMemo(() => buildProviderSlices(aggregates, mode), [aggregates, mode])
 
   return (
     <>
       <div className="chart-controls">
         <div className="chart-toggle" role="group" aria-label="Provider share metric">
-          {(['tokens', 'activity'] as const).map(option => (
+          {(['notional', 'tokens', 'activity'] as const).map(option => (
             <button
               key={option}
               type="button"
@@ -82,7 +89,7 @@ export default function ProviderSplit({ from, to }: Props) {
               className={`chart-toggle-btn ${mode === option ? 'chart-toggle-btn--active' : ''}`}
               onClick={() => setMode(option)}
             >
-              {option === 'tokens' ? 'Tokens' : 'Activity'}
+              {option === 'notional' ? 'Notional' : option === 'tokens' ? 'Tokens' : 'Activity'}
             </button>
           ))}
         </div>
