@@ -40,6 +40,13 @@ describe('currentBillingPeriodStart', () => {
     expect(currentBillingPeriodStart(1, DATE_2024_03_01)).toBe(DATE_2024_03_01)
     expect(currentBillingPeriodStart(1, DATE_2024_03_15)).toBe(DATE_2024_03_01)
   })
+
+  it.each([
+    ['2026-08-27', '2026-07-02'],
+    ['2026-06-30', '2025-07-02'],
+  ])('uses the annual renewal month and day on %s', (today, expected) => {
+    expect(currentBillingPeriodStart(2, today, 'annual', 7)).toBe(expected)
+  })
 })
 
 describe('notionalValueUsd', () => {

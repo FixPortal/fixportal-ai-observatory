@@ -39,14 +39,14 @@ public static class SubscriptionsEndpoints
         CancellationToken ct
     )
     {
-        var error = ValidateSubscription(req, out var provider, out var currency);
+        var error = ValidateSubscription(req, out var provider, out var currency, out var billingInterval);
         if (error is not null)
         {
             return error;
         }
 
         var sub = new Subscription();
-        Apply(req, provider, currency, sub);
+        Apply(req, provider, currency, billingInterval, sub);
         db.Subscriptions.Add(sub);
         await db.SaveChangesAsync(ct);
         return Results.CreatedAtRoute("GetSubscriptionById", new { id = sub.Id }, sub);
@@ -59,7 +59,7 @@ public static class SubscriptionsEndpoints
         CancellationToken ct
     )
     {
-        var error = ValidateSubscription(req, out var provider, out var currency);
+        var error = ValidateSubscription(req, out var provider, out var currency, out var billingInterval);
         if (error is not null)
         {
             return error;
@@ -71,7 +71,7 @@ public static class SubscriptionsEndpoints
             return Results.NotFound();
         }
 
-        Apply(req, provider, currency, sub);
+        Apply(req, provider, currency, billingInterval, sub);
         await db.SaveChangesAsync(ct);
         return Results.Ok(sub);
     }
@@ -108,12 +108,27 @@ public static class SubscriptionsEndpoints
         return Results.NoContent();
     }
 
-    private static IResult? ValidateSubscription(SubscriptionRequest req, out Provider provider, out string currency)
+    private static IResult? ValidateSubscription(
+        SubscriptionRequest req,
+        out Provider provider,
+        out string currency,
+        out SubscriptionBillingInterval billingInterval
+    )
     {
         if (!Enum.TryParse(req.Provider, ignoreCase: true, out provider) || !Enum.IsDefined(provider))
         {
             currency = "";
+            billingInterval = default;
             return Results.BadRequest($"Unknown provider: {req.Provider}");
+        }
+
+        if (
+            !Enum.TryParse(req.BillingInterval, ignoreCase: true, out billingInterval)
+            || !Enum.IsDefined(billingInterval)
+        )
+        {
+            currency = "";
+            return Results.BadRequest($"Unknown billing interval: {req.BillingInterval}");
         }
 
         if (string.IsNullOrWhiteSpace(req.Name) || req.Name.Length > 200)
@@ -127,6 +142,11 @@ public static class SubscriptionsEndpoints
             currency = "";
             return Results.BadRequest("BillingDay must be between 1 and 31");
         }
+        if (billingInterval == SubscriptionBillingInterval.Annual && req.BillingMonth is not (>= 1 and <= 12))
+        {
+            currency = "";
+            return Results.BadRequest("BillingMonth must be between 1 and 12 for annual subscriptions");
+        }
 
         if (req.CostAmount < 0)
         {
@@ -138,12 +158,20 @@ public static class SubscriptionsEndpoints
         return currency is not ("GBP" or "USD") ? Results.BadRequest("Currency must be GBP or USD") : null;
     }
 
-    private static void Apply(SubscriptionRequest req, Provider provider, string currency, Subscription sub)
+    private static void Apply(
+        SubscriptionRequest req,
+        Provider provider,
+        string currency,
+        SubscriptionBillingInterval billingInterval,
+        Subscription sub
+    )
     {
         sub.Provider = provider;
         sub.Name = req.Name;
         sub.CostAmount = req.CostAmount;
         sub.Currency = currency;
+        sub.BillingInterval = billingInterval;
+        sub.BillingMonth = billingInterval == SubscriptionBillingInterval.Annual ? req.BillingMonth : null;
         sub.BillingDay = req.BillingDay;
         sub.ActiveFrom = req.ActiveFrom;
         sub.ActiveTo = req.ActiveTo;
@@ -157,6 +185,8 @@ public record SubscriptionRequest(
     string Currency,
     int BillingDay,
     LocalDate ActiveFrom,
+    string BillingInterval = "monthly",
+    int? BillingMonth = null,
     LocalDate? ActiveTo = null
 );
 

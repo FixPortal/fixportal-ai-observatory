@@ -385,6 +385,9 @@ public class AiObservatoryDbContext(DbContextOptions<AiObservatoryDbContext> opt
         modelBuilder.Entity<Subscription>(b =>
         {
             b.Property(s => s.Provider).HasConversion<string>();
+            b.Property(s => s.BillingInterval)
+                .HasConversion<string>()
+                .HasDefaultValue(SubscriptionBillingInterval.Monthly);
         });
 
         modelBuilder.Entity<Insight>(b =>

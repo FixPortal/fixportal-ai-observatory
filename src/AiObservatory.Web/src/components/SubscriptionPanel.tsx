@@ -5,12 +5,10 @@ import { patchExtraUsage, type Subscription } from '../api/client'
 import { useSubscriptions, useAggregates, localDate } from '../api/queries'
 import { providerColor } from '../theme/providerColors'
 import { gbp, useUsdToGbp, formatCurrency } from '../lib/currency'
-import { currentBillingPeriodStart, notionalValueUsd } from '../lib/subscriptions'
+import { billingMonthName, currentBillingPeriodStart, notionalValueUsd } from '../lib/subscriptions'
 import SubscriptionModal from './SubscriptionModal'
 import { isReadonly } from '../auth/msal'
-
-const PROVIDER_ORDER: Record<string, number> = { anthropic: 0, copilot: 1, google: 2 }
-const capitalize = (s: string) => s.charAt(0).toUpperCase() + s.slice(1)
+import { PROVIDER_ORDER, providerDisplayName } from '../config/providers'
 
 function ordinal(n: number): string {
   const s = ['th', 'st', 'nd', 'rd']
@@ -100,6 +98,8 @@ interface GroupedSubscription {
   costAmount: number
   extraUsageCost: number | null
   currency: string
+  billingInterval: 'monthly' | 'annual'
+  billingMonth: number | null
   billingDay: number
   activeFrom: string
   activeTo: string | null
@@ -121,19 +121,18 @@ export default function SubscriptionPanel() {
         .sort((a, b) => {
           const ak = a.provider.toLowerCase()
           const bk = b.provider.toLowerCase()
-          return (PROVIDER_ORDER[ak] ?? 99) - (PROVIDER_ORDER[bk] ?? 99)
+          const ai = PROVIDER_ORDER.indexOf(ak as typeof PROVIDER_ORDER[number])
+          const bi = PROVIDER_ORDER.indexOf(bk as typeof PROVIDER_ORDER[number])
+          return (ai < 0 ? 99 : ai) - (bi < 0 ? 99 : bi)
         }),
     [subscriptions, today]
   )
 
-  // Collapse subscriptions into one card ONLY when they share provider AND currency AND
-  // billing day. Merging across different currencies summed raw amounts into a nonsense
-  // total and % denominator; merging different billing days measured the second sub against
-  // the wrong period window and mislabelled the renewal day. Differing subs stay separate.
+  // Collapse only subscriptions that share provider, currency, and billing cycle.
   const collapsed = useMemo(() => {
     const groups: Record<string, GroupedSubscription> = {}
     for (const sub of active) {
-      const key = `${sub.provider.toLowerCase()}|${sub.currency.toUpperCase()}|${sub.billingDay}`
+      const key = `${sub.provider.toLowerCase()}|${sub.currency.toUpperCase()}|${sub.billingInterval}|${sub.billingMonth ?? ''}|${sub.billingDay}`
       if (!groups[key]) {
         groups[key] = {
           provider: sub.provider,
@@ -141,6 +140,8 @@ export default function SubscriptionPanel() {
           costAmount: 0,
           extraUsageCost: null,
           currency: sub.currency,
+          billingInterval: sub.billingInterval,
+          billingMonth: sub.billingMonth,
           billingDay: sub.billingDay,
           activeFrom: sub.activeFrom,
           activeTo: sub.activeTo,
@@ -197,7 +198,7 @@ export default function SubscriptionPanel() {
           <div className="sub-cards">
             {collapsed.map(sub => {
               const providerKey = sub.provider.toLowerCase()
-              const start = currentBillingPeriodStart(sub.billingDay, today)
+              const start = currentBillingPeriodStart(sub.billingDay, today, sub.billingInterval, sub.billingMonth)
               const windowStart = sub.activeFrom > start ? sub.activeFrom : start
               const periodNotionalUsd = notionalValueUsd(aggregates, providerKey, windowStart)
               const periodNotionalGbp = periodNotionalUsd * rate
@@ -211,17 +212,17 @@ export default function SubscriptionPanel() {
               const accentColor = providerColor(providerKey)
 
               return (
-                <div key={providerKey} className="sub-card" style={{ borderLeftColor: accentColor }}>
+                <div key={`${providerKey}|${sub.billingInterval}|${sub.billingMonth ?? ''}|${sub.billingDay}`} className="sub-card" style={{ borderLeftColor: accentColor }}>
                   <div className="sub-card__header">
                     <span className="sub-card__provider" style={{ color: accentColor }}>
-                      {capitalize(sub.provider)}
+                      {providerDisplayName(providerKey)}
                     </span>
                     <span className="sub-card__plan">{sub.name}</span>
                   </div>
 
                   <div className="sub-card__cost">
                     {formatCurrency(sub.costAmount, sub.currency)}
-                    <span className="sub-card__cost-unit"> /mo</span>
+                    <span className="sub-card__cost-unit"> /{sub.billingInterval === 'annual' ? 'yr' : 'mo'}</span>
                   </div>
 
                   <div className="sub-card__extra">
@@ -242,7 +243,9 @@ export default function SubscriptionPanel() {
                   </div>
 
                   <div className="sub-card__billing-day">
-                    Renews on the {ordinal(sub.billingDay)}
+                    {sub.billingInterval === 'annual'
+                      ? `Renews annually on ${sub.billingDay} ${billingMonthName(sub.billingMonth ?? 0)}`
+                      : `Renews on the ${ordinal(sub.billingDay)}`}
                   </div>
 
                   <div className="sub-card__period-row">
