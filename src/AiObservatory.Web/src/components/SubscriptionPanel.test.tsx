@@ -1,8 +1,15 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { render, screen } from '@testing-library/react'
-import { describe, expect, test, vi } from 'vitest'
+import { beforeEach, describe, expect, test, vi } from 'vitest'
 import type { Subscription } from '../api/client'
 import SubscriptionPanel from './SubscriptionPanel'
+
+const mockData = vi.hoisted(() => ({
+  aggregates: [{
+    provider: 'google', date: '2026-08-01', costBasis: 'notional', costUsd: 0,
+    requestCount: 7, unknownCostCount: 7,
+  }],
+}))
 
 const annualSubscription = {
   id: 'google-one',
@@ -20,10 +27,7 @@ const annualSubscription = {
 
 vi.mock('../api/queries', () => ({
   useSubscriptions: () => ({ subscriptions: [annualSubscription], isError: false, isLoading: false }),
-  useAggregates: () => [{
-    provider: 'google', date: '2026-08-01', costBasis: 'notional', costUsd: 0,
-    requestCount: 7, unknownCostCount: 7,
-  }],
+  useAggregates: () => mockData.aggregates,
   localDate: () => '2026-08-27',
 }))
 
@@ -36,6 +40,13 @@ vi.mock('../lib/currency', () => ({
 vi.mock('../auth/msal', () => ({ isReadonly: true }))
 
 describe('SubscriptionPanel', () => {
+  beforeEach(() => {
+    mockData.aggregates = [{
+      provider: 'google', date: '2026-08-01', costBasis: 'notional', costUsd: 0,
+      requestCount: 7, unknownCostCount: 7,
+    }]
+  })
+
   test('renders annual price and renewal date', () => {
     render(
       <QueryClientProvider client={new QueryClient()}>
@@ -57,5 +68,21 @@ describe('SubscriptionPanel', () => {
     expect(screen.getByText('Not reported')).toBeInTheDocument()
     expect(screen.getByText('7 requests recorded · value not reported')).toBeInTheDocument()
     expect(screen.queryByText('£0.00')).not.toBeInTheDocument()
+  })
+
+  test('qualifies a partial monetary value with the unpriced request count', () => {
+    mockData.aggregates = [{
+      provider: 'google', date: '2026-08-01', costBasis: 'notional', costUsd: 5,
+      requestCount: 7, unknownCostCount: 2,
+    }]
+
+    render(
+      <QueryClientProvider client={new QueryClient()}>
+        <SubscriptionPanel />
+      </QueryClientProvider>,
+    )
+
+    expect(screen.getByText('£5.00')).toBeInTheDocument()
+    expect(screen.getByText(/2 requests not reported/)).toBeInTheDocument()
   })
 })

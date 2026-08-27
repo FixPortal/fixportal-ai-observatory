@@ -23,6 +23,7 @@ export function subscriptionUsage(aggregates: NotionalAggregate[], provider: str
       ? period.filter(a => a.requestCount > a.unknownCostCount).reduce((total, a) => total + a.costUsd, 0)
       : null,
     requestCount,
+    unknownCostCount,
   }
 }
 
