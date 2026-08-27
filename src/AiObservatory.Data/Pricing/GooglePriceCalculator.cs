@@ -10,12 +10,13 @@ public sealed class GooglePriceCalculator : IProviderPriceCalculator
     public UsagePriceQuote? Calculate(UsageEvent usage, string normalizedCatalog)
     {
         using var evidence = ProviderPricingJson.Evidence(usage.RawPayload);
-        if (
+        var isNotional = usage.CostBasis == CostBasis.Notional;
+        var isDeveloperApi =
             ProviderPricingJson.TryString(evidence.RootElement, "service", out var service)
-            && service.Equals("Gemini Developer API", StringComparison.OrdinalIgnoreCase)
-        )
+            && service.Equals("Gemini Developer API", StringComparison.OrdinalIgnoreCase);
+        if (isNotional || isDeveloperApi)
         {
-            return CalculateDeveloperApi(usage, evidence.RootElement, normalizedCatalog);
+            return CalculateDeveloperApi(usage, evidence.RootElement, normalizedCatalog, isNotional);
         }
 
         if (
@@ -66,20 +67,26 @@ public sealed class GooglePriceCalculator : IProviderPriceCalculator
     private static UsagePriceQuote? CalculateDeveloperApi(
         UsageEvent usage,
         System.Text.Json.JsonElement evidence,
-        string normalizedCatalog
+        string normalizedCatalog,
+        bool isNotional
     )
     {
-        if (
-            string.IsNullOrWhiteSpace(usage.Model)
-            || !ProviderPricingJson.TryString(evidence, "tier", out var tier)
-            || !ProviderPricingJson.TryString(evidence, "context", out var context)
-        )
+        if (string.IsNullOrWhiteSpace(usage.Model))
         {
             return null;
         }
+        var hasTier = ProviderPricingJson.TryString(evidence, "tier", out var tier);
+        var hasContext = ProviderPricingJson.TryString(evidence, "context", out var context);
+        if (!isNotional && (!hasTier || !hasContext))
+        {
+            return null;
+        }
+        tier = hasTier ? tier : "standard";
+        context = hasContext ? context : "short";
 
         var catalog = PricingCatalogJson.Deserialize<GeminiDeveloperPriceCatalog>(normalizedCatalog);
-        var entry = catalog.Resolve(usage.Model, tier, context, usage.OccurredAt.InUtc().Date);
+        var pricingDate = isNotional ? catalog.RetrievedAt.InUtc().Date : usage.OccurredAt.InUtc().Date;
+        var entry = catalog.Resolve(usage.Model, tier, context, pricingDate);
         if (entry is null)
         {
             return null;

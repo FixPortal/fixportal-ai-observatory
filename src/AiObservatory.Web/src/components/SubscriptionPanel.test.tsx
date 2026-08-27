@@ -9,6 +9,7 @@ const mockData = vi.hoisted(() => ({
     provider: 'google', date: '2026-08-01', costBasis: 'notional', costUsd: 0,
     requestCount: 7, unknownCostCount: 7,
   }],
+  aggregateRange: [] as Date[],
 }))
 
 const annualSubscription = {
@@ -27,7 +28,10 @@ const annualSubscription = {
 
 vi.mock('../api/queries', () => ({
   useSubscriptions: () => ({ subscriptions: [annualSubscription], isError: false, isLoading: false }),
-  useAggregates: () => mockData.aggregates,
+  useAggregates: (...range: Date[]) => {
+    mockData.aggregateRange = range
+    return mockData.aggregates
+  },
   localDate: () => '2026-08-27',
 }))
 
@@ -41,6 +45,7 @@ vi.mock('../auth/msal', () => ({ isReadonly: true }))
 
 describe('SubscriptionPanel', () => {
   beforeEach(() => {
+    mockData.aggregateRange = []
     mockData.aggregates = [{
       provider: 'google', date: '2026-08-01', costBasis: 'notional', costUsd: 0,
       requestCount: 7, unknownCostCount: 7,
@@ -56,6 +61,18 @@ describe('SubscriptionPanel', () => {
 
     expect(screen.getByText('/yr')).toBeInTheDocument()
     expect(screen.getByText('Renews annually on 2 July')).toBeInTheDocument()
+  })
+
+  test('requests aggregates for the full current subscription period', () => {
+    render(
+      <QueryClientProvider client={new QueryClient()}>
+        <SubscriptionPanel />
+      </QueryClientProvider>,
+    )
+
+    expect(mockData.aggregateRange).toHaveLength(2)
+    expect(mockData.aggregateRange[0]).toEqual(new Date(2026, 6, 2))
+    expect(mockData.aggregateRange[1]).toEqual(new Date(2026, 7, 27))
   })
 
   test('reports activity without inventing a zero monetary value', () => {
