@@ -381,6 +381,55 @@ public sealed class UsagePriceResolverTests : IAsyncLifetime
     }
 
     [Fact]
+    public async Task ResolverValuesGoogleSubscriptionUsageAtStandardGeminiDeveloperApiRates()
+    {
+        var usage = Event(
+            Provider.Google,
+            "gemini-3.1-pro-high",
+            "{}",
+            input: 1_000_000,
+            output: 1_000_000,
+            thought: 1_000_000,
+            costBasis: CostBasis.Notional
+        );
+        var catalog = new GeminiDeveloperPriceCatalog(
+            "USD",
+            "https://ai.google.dev/gemini-api/docs/pricing",
+            RetrievedAt,
+            [
+                new(
+                    "gemini-3.1-pro-preview",
+                    ["gemini-3.1-pro-preview", "gemini-3.1-pro"],
+                    EffectiveFrom,
+                    false,
+                    "standard",
+                    "short",
+                    2m,
+                    0.2m,
+                    12m
+                ),
+            ]
+        );
+        const string evidence = "Gemini Developer API pricing evidence";
+        await _store.ActivateAsync(
+            new PricingSnapshotCandidate(
+                Provider.Google,
+                PricingSourceIds.GeminiDeveloperApi,
+                RetrievedAt,
+                catalog.SourceUrl,
+                Convert.ToHexStringLower(SHA256.HashData(Encoding.UTF8.GetBytes(evidence))),
+                evidence,
+                Json(catalog)
+            ),
+            TestContext.Current.CancellationToken
+        );
+
+        var quote = await Resolver().ResolveAsync(usage, TestContext.Current.CancellationToken);
+
+        quote.Should().Be(new UsagePriceQuote(26m, 0m));
+    }
+
+    [Fact]
     public async Task ResolverUsesTheUsageLocalDateAndReturnsNullBeforeTheEffectiveWindow()
     {
         var ct = TestContext.Current.CancellationToken;

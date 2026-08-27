@@ -207,6 +207,11 @@ public sealed class PricingSnapshotStore(AiObservatoryDbContext db)
 
     private static string? GetSourceId(UsageEvent usage)
     {
+        if (usage.Provider == Provider.Google && usage.CostBasis == CostBasis.Notional)
+        {
+            return PricingSourceIds.GeminiDeveloperApi;
+        }
+
         if (usage.Provider != Provider.Google)
         {
             return GetSourceId(usage.Provider);

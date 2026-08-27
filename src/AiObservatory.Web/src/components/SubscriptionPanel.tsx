@@ -135,7 +135,6 @@ interface GroupedSubscription {
 
 export default function SubscriptionPanel() {
   const { subscriptions, isError: subscriptionsError, isLoading: subscriptionsLoading } = useSubscriptions()
-  const aggregates = useAggregates()
   const rate = useUsdToGbp()
   const [modalOpen, setModalOpen] = useState(false)
   const today = localDate(new Date())
@@ -191,6 +190,16 @@ export default function SubscriptionPanel() {
     return Object.values(groups)
   }, [active])
 
+  const aggregateRange = useMemo(() => {
+    const from = collapsed.reduce<string | null>((earliest, sub) => {
+      const start = currentBillingPeriodStart(sub.billingDay, today, sub.billingInterval, sub.billingMonth)
+      const windowStart = sub.activeFrom > start ? sub.activeFrom : start
+      return earliest === null || windowStart < earliest ? windowStart : earliest
+    }, null)
+    return from === null ? [] : [new Date(`${from}T00:00:00`), new Date(`${today}T00:00:00`)]
+  }, [collapsed, today])
+  const aggregates = useAggregates(...aggregateRange)
+
   return (
     <div className="sub-panel">
       <div className="panel">
@@ -199,7 +208,7 @@ export default function SubscriptionPanel() {
             <span className="sub-panel-title">Subscriptions</span>
             <InfoPopover id="subscriptions-info" title="Subscriptions">
               <p>Notional usage value applies current public API list prices to eligible subscription activity. It is a comparison, not money charged.</p>
-              <p>When subscription logs omit API-only routing flags, standard/global pricing is assumed; unknown Claude cache-write duration uses the published five-minute rate.</p>
+              <p>When subscription logs omit API-only routing flags, standard/global pricing is assumed; Google uses the published short-context rate, and unknown Claude cache-write duration uses the published five-minute rate.</p>
               <p>The cycle resets on the renewal day shown in each card. The progress bar shows notional usage value as a percentage of the subscription price.</p>
             </InfoPopover>
           </div>
