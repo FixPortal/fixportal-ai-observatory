@@ -19,7 +19,7 @@ export function subscriptionUsage(aggregates: NotionalAggregate[], provider: str
   const requestCount = period.reduce((total, a) => total + a.requestCount, 0)
   const unknownCostCount = period.reduce((total, a) => total + a.unknownCostCount, 0)
   return {
-    notionalUsd: requestCount > unknownCostCount
+    notionalUsd: requestCount === 0 || requestCount > unknownCostCount
       ? period.filter(a => a.requestCount > a.unknownCostCount).reduce((total, a) => total + a.costUsd, 0)
       : null,
     requestCount,

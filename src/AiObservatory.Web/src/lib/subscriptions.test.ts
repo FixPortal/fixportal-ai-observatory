@@ -56,6 +56,14 @@ describe('currentBillingPeriodStart', () => {
 })
 
 describe('subscriptionUsage', () => {
+  it('reports zero value when the billing period has no activity', () => {
+    expect(subscriptionUsage([], 'anthropic', '2026-08-01')).toEqual({
+      notionalUsd: 0,
+      requestCount: 0,
+      unknownCostCount: 0,
+    })
+  })
+
   it('keeps activity visible when every monetary value is unreported', () => {
     expect(subscriptionUsage([
       { provider: 'anthropic', date: '2026-08-01', costBasis: 'notional', costUsd: 0, requestCount: 12, unknownCostCount: 12 },
