@@ -1227,7 +1227,10 @@ namespace AiObservatory.Data.Migrations
 
                     b.HasKey("Id");
 
-                    b.ToTable("Subscriptions");
+                    b.ToTable("Subscriptions", t =>
+                        {
+                            t.HasCheckConstraint("CK_Subscription_BillingMonth_Valid", "(\"BillingInterval\" = 'Monthly' AND \"BillingMonth\" IS NULL) OR (\"BillingInterval\" = 'Annual' AND \"BillingMonth\" BETWEEN 1 AND 12)");
+                        });
                 });
 
             modelBuilder.Entity("AiObservatory.Data.Entities.UsageEvent", b =>

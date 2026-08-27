@@ -388,6 +388,12 @@ public class AiObservatoryDbContext(DbContextOptions<AiObservatoryDbContext> opt
             b.Property(s => s.BillingInterval)
                 .HasConversion<string>()
                 .HasDefaultValue(SubscriptionBillingInterval.Monthly);
+            b.ToTable(t =>
+                t.HasCheckConstraint(
+                    "CK_Subscription_BillingMonth_Valid",
+                    "(\"BillingInterval\" = 'Monthly' AND \"BillingMonth\" IS NULL) OR (\"BillingInterval\" = 'Annual' AND \"BillingMonth\" BETWEEN 1 AND 12)"
+                )
+            );
         });
 
         modelBuilder.Entity<Insight>(b =>

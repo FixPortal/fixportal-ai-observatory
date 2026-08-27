@@ -47,6 +47,12 @@ describe('currentBillingPeriodStart', () => {
   ])('uses the annual renewal month and day on %s', (today, expected) => {
     expect(currentBillingPeriodStart(2, today, 'annual', 7)).toBe(expected)
   })
+
+  it.each([0, 13])('rejects annual renewal month %s', billingMonth => {
+    expect(() => currentBillingPeriodStart(2, '2026-08-27', 'annual', billingMonth)).toThrow(
+      'billingMonth must be between 1 and 12.',
+    )
+  })
 })
 
 describe('notionalValueUsd', () => {

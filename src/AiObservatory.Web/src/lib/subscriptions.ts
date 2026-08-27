@@ -44,6 +44,7 @@ export function currentBillingPeriodStart(
 
   if (billingInterval === 'annual') {
     if (billingMonth === null) throw new Error('Annual subscriptions require a billing month.')
+    if (billingMonth < 1 || billingMonth > 12) throw new Error('billingMonth must be between 1 and 12.')
     const renewalDay = clamp(year, billingMonth)
     const renewalPassed = month > billingMonth || (month === billingMonth && day >= renewalDay)
     const startYear = renewalPassed ? year : year - 1
