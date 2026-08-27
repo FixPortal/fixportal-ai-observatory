@@ -209,6 +209,7 @@ public sealed class UsagePriceResolverTests : IAsyncLifetime
     [Theory]
     [InlineData("{}")]
     [InlineData("{\"service_tier\":\"standard\",\"speed\":\"standard\"}")]
+    [InlineData("{\"service_tier\":\"standard\",\"speed\":\"standard\",\"inference_geo\":\"not_available\"}")]
     [InlineData(
         "{\"service_tier\":\"standard\",\"speed\":\"fast\",\"inference_geo\":\"global\",\"cache_creation\":{\"ephemeral_5m_input_tokens\":1,\"ephemeral_1h_input_tokens\":0}}"
     )]

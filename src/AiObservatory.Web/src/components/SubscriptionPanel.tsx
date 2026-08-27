@@ -19,6 +19,7 @@ function ordinal(n: number): string {
 function usagePresentation(
   valueGbp: number | null,
   requestCount: number,
+  unknownCostCount: number,
   totalGbp: number,
   totalAmount: number,
   currency: string,
@@ -31,10 +32,13 @@ function usagePresentation(
     }
   }
   const ratio = totalGbp > 0 ? valueGbp / totalGbp : 0
+  const unknownLabel = unknownCostCount > 0
+    ? ` · ${unknownCostCount.toLocaleString()} ${unknownCostCount === 1 ? 'request' : 'requests'} not reported`
+    : ''
   return {
     value: gbp(valueGbp),
     ratio,
-    label: `${Math.round(ratio * 100)}% of ${formatCurrency(totalAmount, currency)} subscription price`,
+    label: `${Math.round(ratio * 100)}% of ${formatCurrency(totalAmount, currency)} subscription price${unknownLabel}`,
   }
 }
 
@@ -195,7 +199,7 @@ export default function SubscriptionPanel() {
             <span className="sub-panel-title">Subscriptions</span>
             <InfoPopover id="subscriptions-info" title="Subscriptions">
               <p>Notional usage value applies current public API list prices to eligible subscription activity. It is a comparison, not money charged.</p>
-              <p>When subscription logs omit API-only routing flags, standard pricing is assumed.</p>
+              <p>When subscription logs omit API-only routing flags, standard/global pricing is assumed; unknown Claude cache-write duration uses the published five-minute rate.</p>
               <p>The cycle resets on the renewal day shown in each card. The progress bar shows notional usage value as a percentage of the subscription price.</p>
             </InfoPopover>
           </div>
@@ -229,7 +233,7 @@ export default function SubscriptionPanel() {
               const total = sub.costAmount + (sub.extraUsageCost ?? 0)
               const totalGbp = sub.currency.toUpperCase() === 'USD' ? total * rate : total
               
-              const presentation = usagePresentation(periodNotionalGbp, usage.requestCount, totalGbp, total, sub.currency)
+              const presentation = usagePresentation(periodNotionalGbp, usage.requestCount, usage.unknownCostCount, totalGbp, total, sub.currency)
               const ratio = presentation.ratio
               const pct = Math.min(ratio * 100, 100)
               const isOver = ratio > 1

@@ -107,8 +107,11 @@ public sealed class AnthropicPriceCalculator : IProviderPriceCalculator
         speed = StandardDefault(speed, hasSpeed, useStandardDefaults);
         geography =
             !hasGeography
-            || geography.Equals("unknown", StringComparison.OrdinalIgnoreCase)
-            || geography.Equals("not_available", StringComparison.OrdinalIgnoreCase)
+            || useStandardDefaults
+                && (
+                    geography.Equals("unknown", StringComparison.OrdinalIgnoreCase)
+                    || geography.Equals("not_available", StringComparison.OrdinalIgnoreCase)
+                )
                 ? "global"
                 : geography.ToLowerInvariant();
         return tier is "standard" or "batch"
