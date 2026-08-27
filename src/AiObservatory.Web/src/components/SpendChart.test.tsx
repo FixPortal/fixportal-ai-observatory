@@ -79,6 +79,14 @@ describe('buildUsageSeries', () => {
     expect(Object.keys(result.byDate[0])).toHaveLength(2)
   })
 
+  test('counts cached input in token usage', () => {
+    const result = buildUsageSeries([
+      aggregate({ inputTokens: 10, outputTokens: 5, cacheReadTokens: 100, cacheWriteTokens: 7 }),
+    ], 'tokens', 1)
+
+    expect(Object.values(result.byDate[0]).filter(value => typeof value === 'number')).toEqual([122])
+  })
+
   test('retains a fully known zero-cost estimate as reported evidence', () => {
     const result = buildUsageSeries([
       aggregate({ costUsd: 0, requestCount: 1, unknownCostCount: 0 }),
@@ -90,11 +98,11 @@ describe('buildUsageSeries', () => {
   })
 })
 
-test('defaults to tokens and reports an unavailable selected estimate without inventing zero rows', async () => {
-  data.aggregates = [aggregate({ costBasis: 'listPriceEstimate' })]
+test('defaults usage value to subscription notional and reports an unavailable selected estimate', async () => {
+  data.aggregates = [aggregate({ costBasis: 'notional' })]
   render(<SpendChart />)
 
-  expect(screen.getByRole('button', { name: 'Tokens' })).toHaveAttribute('aria-pressed', 'true')
+  expect(screen.getByRole('button', { name: 'Notional' })).toHaveAttribute('aria-pressed', 'true')
   const providerEstimate = screen.getByRole('button', { name: 'Provider estimate' })
   providerEstimate.focus()
   expect(providerEstimate).toHaveFocus()
@@ -137,6 +145,7 @@ test('renders full source signatures in a bounded legend outside the fixed-heigh
   ]
   render(<SpendChart />)
 
+  await userEvent.click(screen.getByRole('button', { name: 'Tokens' }))
   const legend = await screen.findByRole('list', { name: 'Usage series' })
   expect(within(legend).getByText('OpenAI · Usage API · API · List-price estimate')).toBeInTheDocument()
   expect(within(legend).getByText('OpenAI · Codex local · Subscription · Notional')).toBeInTheDocument()
