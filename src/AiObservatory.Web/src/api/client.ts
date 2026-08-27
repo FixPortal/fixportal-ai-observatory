@@ -98,10 +98,12 @@ export interface Insight {
 
 export interface Subscription {
   id: string
-  provider: string          // 'anthropic' | 'copilot' | 'google'
+  provider: string
   name: string
   costAmount: number
   currency: string
+  billingInterval: 'monthly' | 'annual'
+  billingMonth: number | null
   billingDay: number
   activeFrom: string        // ISO date yyyy-MM-dd
   activeTo: string | null

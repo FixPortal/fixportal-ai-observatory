@@ -8,6 +8,7 @@ import {
 } from '../api/client'
 import { useSubscriptions } from '../api/queries'
 import { formatCurrency } from '../lib/currency'
+import { billingMonthName } from '../lib/subscriptions'
 import { PROVIDERS, getProvider } from '../config/providers'
 
 interface Props {
@@ -20,6 +21,8 @@ interface FormValues {
   name: string
   costAmount: string
   currency: string
+  billingInterval: 'monthly' | 'annual'
+  billingMonth: string
   billingDay: string
   activeFrom: string
   activeTo: string
@@ -30,6 +33,8 @@ const EMPTY_FORM: FormValues = {
   name: '',
   costAmount: '',
   currency: 'GBP',
+  billingInterval: 'monthly',
+  billingMonth: '',
   billingDay: '',
   activeFrom: '',
   activeTo: '',
@@ -41,6 +46,8 @@ function subToForm(sub: Subscription): FormValues {
     name: sub.name,
     costAmount: String(sub.costAmount),
     currency: sub.currency,
+    billingInterval: sub.billingInterval,
+    billingMonth: sub.billingMonth === null ? '' : String(sub.billingMonth),
     billingDay: String(sub.billingDay),
     activeFrom: sub.activeFrom,
     activeTo: sub.activeTo ?? '',
@@ -159,6 +166,10 @@ export default function SubscriptionModal({ open, onClose }: Props) {
       name: state.formValues.name,
       costAmount: parseFloat(state.formValues.costAmount) || 0,
       currency: state.formValues.currency,
+      billingInterval: state.formValues.billingInterval,
+      billingMonth: state.formValues.billingInterval === 'annual'
+        ? parseInt(state.formValues.billingMonth, 10)
+        : null,
       billingDay: parseInt(state.formValues.billingDay, 10) || 1,
       activeFrom: state.formValues.activeFrom,
       activeTo: state.formValues.activeTo || null,
@@ -170,7 +181,11 @@ export default function SubscriptionModal({ open, onClose }: Props) {
     if (!state.formValues.name.trim()) return 'Plan name is required.'
     if (!state.formValues.activeFrom) return 'Active from date is required.'
     const cost = parseFloat(state.formValues.costAmount)
-    if (!Number.isFinite(cost) || cost < 0) return 'Monthly cost must be a positive number.'
+    if (!Number.isFinite(cost) || cost < 0) return 'Cost must be zero or more.'
+    if (state.formValues.billingInterval === 'annual') {
+      const month = parseInt(state.formValues.billingMonth, 10)
+      if (!Number.isInteger(month) || month < 1 || month > 12) return 'Renewal month is required.'
+    }
     const day = parseInt(state.formValues.billingDay, 10)
     if (!Number.isInteger(day) || day < 1 || day > 31) return 'Billing day must be between 1 and 31.'
     const curr = state.formValues.currency.toUpperCase()
@@ -211,14 +226,15 @@ export default function SubscriptionModal({ open, onClose }: Props) {
 
         <ul className="sub-list">
           {subscriptions.map(sub => {
-            const colours = getProvider(sub.provider.toLowerCase())?.badgeStyle ?? FALLBACK_BADGE
+            const provider = getProvider(sub.provider.toLowerCase())
+            const colours = provider?.badgeStyle ?? FALLBACK_BADGE
             return (
               <li key={sub.id} className="sub-list-row">
                 <span className="sub-list__badge" style={colours}>
-                  {capitalize(sub.provider)}
+                  {provider?.displayName ?? capitalize(sub.provider)}
                 </span>
                 <span className="sub-list__name">{sub.name}</span>
-                <span className="sub-list__cost">{formatCurrency(sub.costAmount, sub.currency)}/mo</span>
+                <span className="sub-list__cost">{formatCurrency(sub.costAmount, sub.currency)}/{sub.billingInterval === 'annual' ? 'yr' : 'mo'}</span>
 
                 {state.confirmDeleteId === sub.id ? (
                   <span className="sub-list__confirm">
@@ -304,7 +320,9 @@ export default function SubscriptionModal({ open, onClose }: Props) {
                 />
               </div>
               <div>
-                <label htmlFor="sub-form-cost" className="sub-form__label">Monthly cost</label>
+                <label htmlFor="sub-form-cost" className="sub-form__label">
+                  {state.formValues.billingInterval === 'annual' ? 'Annual cost' : 'Monthly cost'}
+                </label>
                 <input
                   id="sub-form-cost"
                   className="sub-form__input"
@@ -316,6 +334,34 @@ export default function SubscriptionModal({ open, onClose }: Props) {
                   placeholder="100.00"
                 />
               </div>
+              <div>
+                <label htmlFor="sub-form-billing-interval" className="sub-form__label">Billing interval</label>
+                <select
+                  id="sub-form-billing-interval"
+                  className="sub-form__select"
+                  value={state.formValues.billingInterval}
+                  onChange={e => set('billingInterval', e.target.value)}
+                >
+                  <option value="monthly">Monthly</option>
+                  <option value="annual">Annual</option>
+                </select>
+              </div>
+              {state.formValues.billingInterval === 'annual' && (
+                <div>
+                  <label htmlFor="sub-form-billing-month" className="sub-form__label">Renewal month</label>
+                  <select
+                    id="sub-form-billing-month"
+                    className="sub-form__select"
+                    value={state.formValues.billingMonth}
+                    onChange={e => set('billingMonth', e.target.value)}
+                  >
+                    <option value="">Select month</option>
+                    {Array.from({ length: 12 }, (_, index) => index + 1).map(month => (
+                      <option key={month} value={month}>{billingMonthName(month)}</option>
+                    ))}
+                  </select>
+                </div>
+              )}
               <div>
                 <label htmlFor="sub-form-currency" className="sub-form__label">Currency</label>
                 <select

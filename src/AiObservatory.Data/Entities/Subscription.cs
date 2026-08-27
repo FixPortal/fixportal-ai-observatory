@@ -9,6 +9,8 @@ public sealed class Subscription
     public string Name { get; set; } = "";
     public decimal CostAmount { get; set; }
     public string Currency { get; set; } = "GBP";
+    public SubscriptionBillingInterval BillingInterval { get; set; } = SubscriptionBillingInterval.Monthly;
+    public int? BillingMonth { get; set; }
     public int BillingDay { get; set; }
     public LocalDate ActiveFrom { get; set; }
     public LocalDate? ActiveTo { get; set; }

@@ -72,8 +72,9 @@ public class PromptBuilder
                 var costInGbp = s.Currency.Equals("USD", StringComparison.OrdinalIgnoreCase)
                     ? s.CostAmount * usdToGbp
                     : s.CostAmount;
+                var isAnnual = s.BillingInterval == SubscriptionBillingInterval.Annual;
                 sb.AppendLine(
-                    $"  {s.Name}: GBP {costInGbp.ToString("F2", CultureInfo.InvariantCulture)}/month (~{(costInGbp / 30).ToString("F2", CultureInfo.InvariantCulture)}/day)"
+                    $"  {s.Name}: GBP {costInGbp.ToString("F2", CultureInfo.InvariantCulture)}/{(isAnnual ? "year" : "month")} (~GBP {(costInGbp / (isAnnual ? 365 : 30)).ToString("F2", CultureInfo.InvariantCulture)}/day)"
                 );
             }
         }

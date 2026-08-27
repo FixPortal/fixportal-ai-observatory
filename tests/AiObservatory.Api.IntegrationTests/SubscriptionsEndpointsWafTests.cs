@@ -1,5 +1,6 @@
 using System.Net;
 using System.Net.Http.Json;
+using System.Text.Json;
 using AwesomeAssertions;
 
 namespace AiObservatory.Api.IntegrationTests;
@@ -106,6 +107,57 @@ public class SubscriptionsEndpointsWafTests(AiObservatoryApiFactory factory)
             TestContext.Current.CancellationToken
         );
         subscription!.Provider.Should().Be("openai");
+    }
+
+    [Fact]
+    public async Task PostSubscription_WhenAnnual_PersistsBillingIntervalAndMonth()
+    {
+        using var client = factory.CreateAdminClient();
+
+        var response = await client.PostAsJsonAsync(
+            "/api/subscriptions",
+            new
+            {
+                Provider = "google",
+                Name = "Google One",
+                CostAmount = 189.99m,
+                Currency = "GBP",
+                BillingInterval = "annual",
+                BillingMonth = 7,
+                BillingDay = 2,
+                ActiveFrom = "2026-07-02",
+            },
+            TestContext.Current.CancellationToken
+        );
+
+        response.StatusCode.Should().Be(HttpStatusCode.Created);
+        var subscription = await response.Content.ReadFromJsonAsync<JsonElement>(TestContext.Current.CancellationToken);
+        subscription.TryGetProperty("billingInterval", out var interval).Should().BeTrue();
+        interval.GetString().Should().Be("annual");
+        subscription.GetProperty("billingMonth").GetInt32().Should().Be(7);
+    }
+
+    [Fact]
+    public async Task PostSubscription_WhenAnnualMonthMissing_ReturnsBadRequest()
+    {
+        using var client = factory.CreateAdminClient();
+
+        var response = await client.PostAsJsonAsync(
+            "/api/subscriptions",
+            new
+            {
+                Provider = "google",
+                Name = "Annual plan",
+                CostAmount = 100m,
+                Currency = "GBP",
+                BillingInterval = "annual",
+                BillingDay = 2,
+                ActiveFrom = "2026-07-02",
+            },
+            TestContext.Current.CancellationToken
+        );
+
+        response.StatusCode.Should().Be(HttpStatusCode.BadRequest);
     }
 
     [Fact]

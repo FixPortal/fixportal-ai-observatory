@@ -7,6 +7,13 @@ interface NotionalAggregate {
   unknownCostCount: number
 }
 
+const MONTHS = [
+  'January', 'February', 'March', 'April', 'May', 'June',
+  'July', 'August', 'September', 'October', 'November', 'December',
+]
+
+export const billingMonthName = (month: number): string => MONTHS[month - 1] ?? ''
+
 export function notionalValueUsd(aggregates: NotionalAggregate[], provider: string, from: string): number {
   return aggregates
     .filter(a => a.provider === provider && a.date >= from && a.costBasis === 'notional' && a.requestCount > a.unknownCostCount)
@@ -19,7 +26,12 @@ export function notionalValueUsd(aggregates: NotionalAggregate[], provider: stri
  *
  * E.g. billingDay=31 in February returns the last day of February.
  */
-export function currentBillingPeriodStart(billingDay: number, today: string): string {
+export function currentBillingPeriodStart(
+  billingDay: number,
+  today: string,
+  billingInterval: 'monthly' | 'annual' = 'monthly',
+  billingMonth: number | null = null,
+): string {
   const [yearStr, monthStr, dayStr] = today.split('-')
   const year = parseInt(yearStr, 10)
   const month = parseInt(monthStr, 10) // 1–12
@@ -29,6 +41,14 @@ export function currentBillingPeriodStart(billingDay: number, today: string): st
   // new Date(y, m, 0) uses JS's 0-based month index; day 0 = last day of prior month.
   const daysIn = (y: number, m: number) => new Date(y, m, 0).getDate()
   const clamp = (y: number, m: number) => Math.min(billingDay, daysIn(y, m))
+
+  if (billingInterval === 'annual') {
+    if (billingMonth === null) throw new Error('Annual subscriptions require a billing month.')
+    const renewalDay = clamp(year, billingMonth)
+    const renewalPassed = month > billingMonth || (month === billingMonth && day >= renewalDay)
+    const startYear = renewalPassed ? year : year - 1
+    return `${startYear}-${String(billingMonth).padStart(2, '0')}-${String(clamp(startYear, billingMonth)).padStart(2, '0')}`
+  }
 
   const clampedThisMonth = clamp(year, month)
   if (day >= clampedThisMonth) {

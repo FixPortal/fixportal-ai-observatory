@@ -79,4 +79,27 @@ public class PromptBuilderTests
 
         prompt.Should().Contain("cache");
     }
+
+    [Fact]
+    public void Build_describes_annual_subscription_cost_per_year()
+    {
+        var subscriptions = new List<Subscription>
+        {
+            new()
+            {
+                Provider = Provider.Google,
+                Name = "Google One",
+                CostAmount = 189.99m,
+                Currency = "GBP",
+                BillingInterval = SubscriptionBillingInterval.Annual,
+                BillingMonth = 7,
+                BillingDay = 2,
+            },
+        };
+
+        var sut = new PromptBuilder();
+        var prompt = sut.Build([], subscriptions, new LocalDate(2026, 8, 1), new LocalDate(2026, 8, 27), 1m);
+
+        prompt.Should().Contain("GBP 189.99/year (~GBP 0.52/day)");
+    }
 }
