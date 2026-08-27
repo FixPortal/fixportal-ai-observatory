@@ -24,11 +24,19 @@ namespace AiObservatory.Data.Migrations
                 type: "integer",
                 nullable: true
             );
+
+            migrationBuilder.AddCheckConstraint(
+                name: "CK_Subscription_BillingMonth_Valid",
+                table: "Subscriptions",
+                sql: "(\"BillingInterval\" = 'Monthly' AND \"BillingMonth\" IS NULL) OR (\"BillingInterval\" = 'Annual' AND \"BillingMonth\" BETWEEN 1 AND 12)"
+            );
         }
 
         /// <inheritdoc />
         protected override void Down(MigrationBuilder migrationBuilder)
         {
+            migrationBuilder.DropCheckConstraint(name: "CK_Subscription_BillingMonth_Valid", table: "Subscriptions");
+
             migrationBuilder.DropColumn(name: "BillingInterval", table: "Subscriptions");
 
             migrationBuilder.DropColumn(name: "BillingMonth", table: "Subscriptions");

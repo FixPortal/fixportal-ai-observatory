@@ -36,6 +36,36 @@ public class UsageMigrationTests : IAsyncLifetime
         await db.Database.EnsureDeletedAsync();
     }
 
+    [Theory]
+    [InlineData(SubscriptionBillingInterval.Annual, 13)]
+    [InlineData(SubscriptionBillingInterval.Monthly, 7)]
+    public async Task SubscriptionBillingMigration_RejectsInvalidIntervalMonthPairs(
+        SubscriptionBillingInterval interval,
+        int billingMonth
+    )
+    {
+        var ct = TestContext.Current.CancellationToken;
+        await using var db = new AiObservatoryDbContext(_options);
+        await db.Database.MigrateAsync(ct);
+        db.Subscriptions.Add(
+            new Subscription
+            {
+                Provider = Provider.Google,
+                Name = "Invalid subscription",
+                CostAmount = 1m,
+                Currency = "GBP",
+                BillingInterval = interval,
+                BillingMonth = billingMonth,
+                BillingDay = 1,
+                ActiveFrom = new LocalDate(2026, 1, 1),
+            }
+        );
+
+        var save = () => db.SaveChangesAsync(ct);
+
+        await save.Should().ThrowAsync<DbUpdateException>();
+    }
+
     [Fact]
     public async Task AddUnknownCostCoverage_BackfillsGroupedLegacyNullCostsAndAllowsKnownZeroCorrection()
     {
