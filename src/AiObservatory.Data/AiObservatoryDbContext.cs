@@ -391,7 +391,7 @@ public class AiObservatoryDbContext(DbContextOptions<AiObservatoryDbContext> opt
             b.ToTable(t =>
                 t.HasCheckConstraint(
                     "CK_Subscription_BillingMonth_Valid",
-                    "(\"BillingInterval\" = 'Monthly' AND \"BillingMonth\" IS NULL) OR (\"BillingInterval\" = 'Annual' AND \"BillingMonth\" BETWEEN 1 AND 12)"
+                    "(\"BillingInterval\" = 'Monthly' AND \"BillingMonth\" IS NULL) OR (\"BillingInterval\" = 'Annual' AND \"BillingMonth\" IS NOT NULL AND \"BillingMonth\" BETWEEN 1 AND 12)"
                 )
             );
         });
