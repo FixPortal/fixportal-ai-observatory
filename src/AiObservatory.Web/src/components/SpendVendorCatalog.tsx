@@ -27,6 +27,7 @@ export default function SpendVendorCatalog({ vendors, categories }: Props) {
   const [mutationError, setMutationError] = useState<string | null>(null)
   const [renamingId, setRenamingId] = useState<string | null>(null)
   const [renameValue, setRenameValue] = useState('')
+  const [categoryDraft, setCategoryDraft] = useState<{ vendorId: string; value: string } | null>(null)
 
   const liveCategories = useMemo(() => categories.filter(c => c.archivedAt === null), [categories])
   const providerName = (key: string | null) => PROVIDERS.find(p => p.key === key)?.displayName ?? 'No provider'
@@ -56,7 +57,7 @@ export default function SpendVendorCatalog({ vendors, categories }: Props) {
   const patch = useMutation({
     mutationFn: ({ id, body }: { id: string; body: Parameters<typeof patchSpendVendor>[1] }) =>
       patchSpendVendor(id, body),
-    onSuccess: () => { invalidate(); setRenamingId(null) },
+    onSuccess: () => { invalidate(); setRenamingId(null); setCategoryDraft(null) },
     onError: (err: Error) => setMutationError(err.message),
   })
 
@@ -94,20 +95,23 @@ export default function SpendVendorCatalog({ vendors, categories }: Props) {
   // "" is the None option — send an explicit null so the API clears the column, rather
   // than omitting the key (which means "leave it alone" and is how clearing used to be
   // impossible). See SpendVendorPatch for the tri-state contract.
-  function changeDefaultCategory(v: SpendVendor, value: string) {
+  function saveDefaultCategory(v: SpendVendor) {
+    if (categoryDraft?.vendorId !== v.id) return
     setMutationError(null)
-    patch.mutate({ id: v.id, body: { defaultCategoryId: value || null } })
+    patch.mutate({ id: v.id, body: { defaultCategoryId: categoryDraft.value || null } })
   }
 
   return (
     <div>
       {mutationError && <p className="modal__error" role="alert">{mutationError}</p>}
 
+      <p className="catalog-help">Vendors are suppliers; categories describe what was purchased, so one vendor can span several categories.</p>
+
       {vendors.length === 0 && <p className="panel-empty">No vendors yet.</p>}
 
       <ul className="sub-list">
         {vendors.map(v => (
-          <li key={v.id} className="sub-list-row">
+          <li key={v.id} className="sub-list-row sub-list-row--vendor">
             <code className="catalog-key">{v.key}</code>
 
             {renamingId === v.id ? (
@@ -122,7 +126,7 @@ export default function SpendVendorCatalog({ vendors, categories }: Props) {
                   value={renameValue}
                   onChange={e => setRenameValue(e.target.value)}
                 />
-                <span className="sub-list__actions">
+                <span className="sub-list__actions sub-list__actions--fixed">
                   <button type="button" className="sub-list__btn" onClick={() => saveRename(v.id)} disabled={patch.isPending}>
                     Save
                   </button>
@@ -133,45 +137,62 @@ export default function SpendVendorCatalog({ vendors, categories }: Props) {
               </>
             ) : (
               <>
-                <span className="sub-list__name">{v.displayName}</span>
-                <span className="sub-list__cost">{providerName(v.provider)}</span>
-                <label className="visually-hidden" htmlFor={`vendor-category-${v.id}`}>
-                  {`Default category for ${v.displayName}`}
-                </label>
-                <select
-                  id={`vendor-category-${v.id}`}
-                  className="sub-list__select"
-                  value={v.defaultCategoryId ?? ''}
-                  disabled={patch.isPending}
-                  onChange={e => changeDefaultCategory(v, e.target.value)}
-                >
-                  <option value="">No default category</option>
-                  {categoryOptions(v).map(c => (
-                    <option key={c.id} value={c.id}>
-                      {c.displayName}{c.archivedAt !== null && ' (archived)'}
-                    </option>
-                  ))}
-                </select>
-                {v.archivedAt !== null && <span className="catalog-badge">Archived</span>}
-                <span className="sub-list__actions">
-                  <button
-                    type="button"
-                    className="sub-list__btn"
-                    onClick={() => startRename(v)}
-                    aria-label={`Rename ${v.displayName}`}
-                  >
-                    Rename
-                  </button>
-                  <button
-                    type="button"
-                    className="sub-list__btn"
-                    onClick={() => toggleArchive(v)}
-                    disabled={patch.isPending}
-                    aria-label={`${v.archivedAt === null ? 'Archive' : 'Unarchive'} ${v.displayName}`}
-                  >
-                    {v.archivedAt === null ? 'Archive' : 'Unarchive'}
-                  </button>
-                </span>
+                <div className="vendor-catalog__details">
+                  <div className="vendor-catalog__identity">
+                    <span className="sub-list__name">{v.displayName}</span>
+                    {v.archivedAt !== null && <span className="catalog-badge">Archived</span>}
+                  </div>
+                  <div className="vendor-catalog__metadata">
+                    <span className="sub-list__cost">{providerName(v.provider)}</span>
+                    <label className="visually-hidden" htmlFor={`vendor-category-${v.id}`}>
+                      {`Default category for ${v.displayName}`}
+                    </label>
+                    <select
+                      id={`vendor-category-${v.id}`}
+                      className="sub-list__select"
+                      value={categoryDraft?.vendorId === v.id ? categoryDraft.value : v.defaultCategoryId ?? ''}
+                      disabled={patch.isPending}
+                      onChange={e => setCategoryDraft({ vendorId: v.id, value: e.target.value })}
+                    >
+                      <option value="">No default category</option>
+                      {categoryOptions(v).map(c => (
+                        <option key={c.id} value={c.id}>
+                          {c.displayName}{c.archivedAt !== null && ' (archived)'}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                </div>
+                {categoryDraft?.vendorId === v.id ? (
+                  <span className="sub-list__actions sub-list__actions--fixed">
+                    <button type="button" className="sub-list__btn" onClick={() => saveDefaultCategory(v)} disabled={patch.isPending}>
+                      Save
+                    </button>
+                    <button type="button" className="sub-list__btn" onClick={() => setCategoryDraft(null)}>
+                      Cancel
+                    </button>
+                  </span>
+                ) : (
+                  <span className="sub-list__actions sub-list__actions--fixed">
+                    <button
+                      type="button"
+                      className="sub-list__btn"
+                      onClick={() => startRename(v)}
+                      aria-label={`Rename ${v.displayName}`}
+                    >
+                      Rename
+                    </button>
+                    <button
+                      type="button"
+                      className="sub-list__btn"
+                      onClick={() => toggleArchive(v)}
+                      disabled={patch.isPending}
+                      aria-label={`${v.archivedAt === null ? 'Archive' : 'Unarchive'} ${v.displayName}`}
+                    >
+                      {v.archivedAt === null ? 'Archive' : 'Unarchive'}
+                    </button>
+                  </span>
+                )}
               </>
             )}
           </li>

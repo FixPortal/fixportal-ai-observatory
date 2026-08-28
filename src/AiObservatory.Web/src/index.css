@@ -865,7 +865,6 @@ td.budget-rules__actions { display: table-cell; padding: 6px 0 6px 8px; text-ali
 .date-range__input:focus-visible,
 .date-range__apply:focus-visible,
 .spend-filters__field select:focus-visible,
-.spend-filters__add:focus-visible,
 .catalog-tab:focus-visible,
 .sub-card__extra-input:focus-visible,
 .sub-list__btn:focus-visible,
@@ -1048,6 +1047,7 @@ td.budget-rules__actions { display: table-cell; padding: 6px 0 6px 8px; text-ali
   margin: auto;
   padding: 0;
   background: var(--card-bg);
+  color: var(--text);
   border: 1px solid var(--border);
   border-radius: var(--r-panel);
   width: calc(100% - 2rem);
@@ -1102,6 +1102,18 @@ td.budget-rules__actions { display: table-cell; padding: 6px 0 6px 8px; text-ali
   border-bottom: 1px solid var(--border);
 }
 .sub-list-row:last-of-type { border-bottom: none; }
+.sub-list-row--vendor {
+  display: grid;
+  grid-template-columns: minmax(7rem, auto) minmax(0, 1fr) auto;
+}
+.sub-list-row--vendor .catalog-key {
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+.vendor-catalog__details { min-width: 0; display: grid; gap: var(--space-1); }
+.vendor-catalog__identity,
+.vendor-catalog__metadata { display: flex; align-items: center; flex-wrap: wrap; gap: var(--space-2); }
+.vendor-catalog__metadata .sub-list__select { min-width: 0; }
 .sub-list__badge {
   font-size: 10px;
   font-weight: 700;
@@ -1138,7 +1150,16 @@ td.budget-rules__actions { display: table-cell; padding: 6px 0 6px 8px; text-ali
   outline-offset: 1px;
 }
 .sub-list__select:disabled { cursor: default; opacity: 0.6; }
-.sub-list__actions { display: flex; gap: var(--space-2); flex-shrink: 0; }
+.sub-list__actions {
+  display: flex;
+  gap: var(--space-2);
+  flex-shrink: 0;
+}
+.sub-list__actions--fixed {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  width: 9.5rem;
+}
 .sub-list__confirm { display: flex; align-items: center; gap: var(--space-2); flex-shrink: 0; }
 .sub-list__confirm-text { font-size: 12px; color: var(--bad-text); }
 .sub-list__btn {
@@ -1248,6 +1269,7 @@ td.budget-rules__actions { display: table-cell; padding: 6px 0 6px 8px; text-ali
 
 /* ---- Spend catalog panel (Task 9) ---- */
 .catalog-tabs { display: flex; gap: var(--space-2); margin-bottom: var(--space-3); }
+.catalog-help { margin: 0 0 var(--space-3); color: var(--text-muted); font-size: 12px; line-height: 1.5; }
 .catalog-tab {
   appearance: none;
   font: inherit;
@@ -1492,19 +1514,19 @@ td.budget-rules__actions { display: table-cell; padding: 6px 0 6px 8px; text-ali
   border-radius: var(--r-control);
   color: var(--text);
 }
-.spend-filters__add {
-  appearance: none;
-  font: inherit;
-  font-size: 13px;
-  padding: var(--space-2) var(--space-4);
-  margin-left: auto;
-  background: var(--brand-strong);
-  border: 1px solid var(--brand-strong);
-  border-radius: var(--r-control);
-  color: var(--brand-contrast);
-  cursor: pointer;
+.spend-filters__range {
+  color: var(--text-muted);
+  font-family: var(--font-mono);
+  font-size: 12px;
+  padding-bottom: var(--space-2);
+  white-space: nowrap;
 }
-.spend-filters__add:hover { filter: brightness(1.1); }
+.spend-filters__actions {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  margin-left: auto;
+}
 
 .spend-totals {
   display: grid;
@@ -1550,6 +1572,12 @@ td.budget-rules__actions { display: table-cell; padding: 6px 0 6px 8px; text-ali
 
 @media (max-width: 760px) {
   .spend-totals { grid-template-columns: 1fr; }
+}
+@media (max-width: 600px) {
+  .sub-list-row--vendor { grid-template-columns: minmax(0, 1fr) auto; align-items: start; }
+  .sub-list-row--vendor > .vendor-catalog__details,
+  .sub-list-row--vendor > .sub-form__input { grid-column: 1 / -1; grid-row: 2; }
+  .sub-list-row--vendor > .sub-list__actions { grid-column: 2; grid-row: 1; }
 }
 .activity-treemap__value { font-size: 10px; opacity: 0.85; }
 /* Native host context is intentionally compact; the dashboard remains the product. */
