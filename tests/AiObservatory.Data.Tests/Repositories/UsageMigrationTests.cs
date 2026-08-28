@@ -233,6 +233,94 @@ public class UsageMigrationTests : IAsyncLifetime
     }
 
     [Fact]
+    public async Task LatestMigration_RemovesOnlyLegacyGitHubRowsWithCanonicalCounterparts()
+    {
+        var ct = TestContext.Current.CancellationToken;
+        var pairedLegacyId = Guid.Parse("40000000-0000-0000-0000-000000000001");
+        var canonicalId = Guid.Parse("40000000-0000-0000-0000-000000000002");
+        var unpairedLegacyId = Guid.Parse("40000000-0000-0000-0000-000000000003");
+        var portalId = Guid.Parse("40000000-0000-0000-0000-000000000004");
+        const string observationKey = "github:2026-08:actions:Actions Linux";
+        const string rawPayload = "{}";
+
+        await using (var beforeCleanup = new AiObservatoryDbContext(_options))
+        {
+            var migrator = beforeCleanup.Database.GetService<IMigrator>();
+            await migrator.MigrateAsync("20260827152216_AddSubscriptionBillingInterval", ct);
+            var vendorId = await beforeCleanup
+                .SpendVendors.Where(vendor => vendor.Key == "github-actions")
+                .Select(vendor => vendor.Id)
+                .SingleAsync(ct);
+            var categoryId = await beforeCleanup
+                .SpendCategories.Where(category => category.Key == "ci")
+                .Select(category => category.Id)
+                .SingleAsync(ct);
+
+            SpendEntry Row(
+                Guid id,
+                SpendSource source,
+                string sourceId,
+                string entryKey,
+                decimal amount = 10m,
+                SourceKind sourceKind = SourceKind.Legacy,
+                UsageScope usageScope = UsageScope.Unknown
+            ) =>
+                new()
+                {
+                    Id = id,
+                    OccurredOn = new LocalDate(2026, 8, 1),
+                    VendorId = vendorId,
+                    CategoryId = categoryId,
+                    Amount = amount,
+                    Currency = "GBP",
+                    AmountGbp = amount,
+                    FxRate = 1m,
+                    Description = "Migration test",
+                    Source = source,
+                    EntryKey = entryKey,
+                    RecordedAt = Instant.FromUtc(2026, 8, 24, 0, 0),
+                    RawPayload = rawPayload,
+                    SourceId = sourceId,
+                    SourceKind = sourceKind,
+                    UsageScope = usageScope,
+                    CostBasis = CostBasis.Billed,
+                    ObservedAt = Instant.FromUtc(2026, 8, 24, 0, 0),
+                };
+
+            beforeCleanup.SpendEntries.AddRange(
+                Row(pairedLegacyId, SpendSource.Api, UsageSourceIds.LegacySpend, observationKey),
+                Row(
+                    canonicalId,
+                    SpendSource.Api,
+                    UsageSourceIds.GitHubBillingApi,
+                    $"billing:{UsageSourceIds.GitHubBillingApi}:{observationKey}",
+                    11m,
+                    SourceKind.ProviderApi,
+                    UsageScope.Mixed
+                ),
+                Row(unpairedLegacyId, SpendSource.Api, UsageSourceIds.LegacySpend, "github:2026-08:actions:Unpaired"),
+                Row(portalId, SpendSource.Portal, UsageSourceIds.LegacySpend, "expense:1")
+            );
+            await beforeCleanup.SaveChangesAsync(ct);
+            await migrator.MigrateAsync(cancellationToken: ct);
+        }
+
+        await using var afterCleanup = new AiObservatoryDbContext(_options);
+        var survivingIds = await afterCleanup
+            .SpendEntries.AsNoTracking()
+            .Where(entry =>
+                entry.Id == pairedLegacyId
+                || entry.Id == canonicalId
+                || entry.Id == unpairedLegacyId
+                || entry.Id == portalId
+            )
+            .Select(entry => entry.Id)
+            .ToListAsync(ct);
+
+        survivingIds.Should().BeEquivalentTo([canonicalId, unpairedLegacyId, portalId]);
+    }
+
+    [Fact]
     public async Task AddBudgetAlertsAndRenameThresholdToGbp_is_one_value_preserving_deployment_boundary()
     {
         var ct = TestContext.Current.CancellationToken;

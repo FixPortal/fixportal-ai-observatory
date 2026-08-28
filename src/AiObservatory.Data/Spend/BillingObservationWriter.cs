@@ -142,19 +142,34 @@ public class BillingObservationWriter(AiObservatoryDbContext db, FxRateProvider 
         CancellationToken cancellationToken
     )
     {
-        var matches = await db
+        var canonicalMatches = await db
             .SpendEntries.Where(entry =>
                 entry.Source == SpendSource.Api
                 && entry.SourceId == observation.SourceId
                 && (entry.EntryKey == entryKey || entry.EntryKey == observation.ObservationKey)
             )
             .ToListAsync(cancellationToken);
-        return matches.Count switch
+        var canonical = canonicalMatches.Count switch
         {
             0 => null,
-            1 => matches[0],
+            1 => canonicalMatches[0],
             _ => throw new InvalidOperationException("More than one spend row matches the billing observation."),
         };
+        if (canonical is not null || observation.SourceId != UsageSourceIds.GitHubBillingApi)
+        {
+            return canonical;
+        }
+
+        // The provenance migration deliberately labelled every existing spend row as
+        // legacy-spend. GitHub rows still have an unambiguous source-specific key, so the
+        // first retained observation can adopt that row instead of inserting a second copy.
+        return await db.SpendEntries.SingleOrDefaultAsync(
+            entry =>
+                entry.Source == SpendSource.Api
+                && entry.SourceId == UsageSourceIds.LegacySpend
+                && entry.EntryKey == observation.ObservationKey,
+            cancellationToken
+        );
     }
 
     private async Task<bool> ApplySpendAsync(
