@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { postSpendEntries, type NewSpendEntry, type SpendCategory, type SpendVendor } from '../api/client'
-import { localDate } from '../api/queries'
+import { invalidateSpendData, localDate } from '../api/queries'
 
 interface Props {
   categories: SpendCategory[]
@@ -39,14 +39,14 @@ export default function SpendEntryModal({ categories, vendors, from, to, onClose
 
   const save = useMutation({
     mutationFn: (entry: NewSpendEntry) => postSpendEntries([entry]),
-    onSuccess: results => {
+    onSuccess: async results => {
       const result = results[0]
       // A per-row verdict is not an HTTP failure, so it has to be read rather than assumed.
       if (result?.status === 'rejected') {
         setVerdictError(result.reason ?? 'Entry rejected')
         return
       }
-      qc.invalidateQueries({ queryKey: ['spend-entries'] })
+      await invalidateSpendData(qc)
       onClose()
     },
     onError: (err: Error) => setVerdictError(err.message),

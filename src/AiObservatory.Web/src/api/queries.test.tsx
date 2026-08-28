@@ -12,7 +12,10 @@ const client = vi.hoisted(() => ({
 
 vi.mock('./client', async importOriginal => ({ ...await importOriginal<typeof import('./client')>(), ...client }))
 
-import { dashboardDateRange, localDate, useAggregates, useBilledReporting, useDashboardStatus } from './queries'
+import {
+  dashboardDateRange, invalidateSpendData, localDate, useAggregates,
+  useBilledReporting, useDashboardStatus, useSpendEntries,
+} from './queries'
 
 const wrapper = ({ children }: { children: ReactNode }) => (
   <QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}>{children}</QueryClientProvider>
@@ -114,5 +117,25 @@ describe('dashboard queries', () => {
 
     await waitFor(() => expect(client.getBilledReporting).toHaveBeenCalled())
     expect(client.getBilledReporting).toHaveBeenCalledWith('2026-08-01', '2026-08-31', 'azure-id', 'cloud-id')
+  })
+
+  test('passes spend vendor and category filters to the capped ledger query', async () => {
+    renderHook(
+      () => useSpendEntries(new Date('2026-08-01'), new Date('2026-08-31'), 'azure-id', 'cloud-id'),
+      { wrapper },
+    )
+
+    await waitFor(() => expect(client.getSpendEntries).toHaveBeenCalled())
+    expect(client.getSpendEntries).toHaveBeenCalledWith('2026-08-01', '2026-08-31', 'azure-id', 'cloud-id')
+  })
+
+  test('invalidates both ledger and authoritative reporting after a write', async () => {
+    const queryClient = new QueryClient()
+    const invalidate = vi.spyOn(queryClient, 'invalidateQueries').mockResolvedValue()
+
+    await invalidateSpendData(queryClient)
+
+    expect(invalidate).toHaveBeenCalledWith({ queryKey: ['spend-entries'] })
+    expect(invalidate).toHaveBeenCalledWith({ queryKey: ['billed-reporting'] })
   })
 })

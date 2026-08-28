@@ -9,7 +9,7 @@ vi.mock('../auth/msal', () => msalMock)
 
 import {
   getAggregates, getSourceStatuses, ApiError,
-  getBilledReporting,
+  getBilledReporting, getSpendEntries,
   createSpendCategory, patchSpendCategory, createSpendVendor, patchSpendVendor,
   SPEND_SOURCE_VALUES,
 } from './client'
@@ -117,6 +117,16 @@ test('gets the authoritative billed-reporting projection for the complete date r
 
   await expect(getBilledReporting('2026-08-01', '2026-08-02')).resolves.toEqual(response)
   expect(fetchMock.mock.calls[0][0]).toContain('/spend/reporting?from=2026-08-01&to=2026-08-02')
+})
+
+test('passes filters to spend entries before the server-side cap', async () => {
+  const fetchMock = mockFetchOnce(200, [])
+
+  await getSpendEntries('2026-08-01', '2026-08-31', 'azure-id', 'cloud-id')
+
+  expect(fetchMock.mock.calls[0][0]).toContain(
+    '/spend/entries?from=2026-08-01&to=2026-08-31&vendorId=azure-id&categoryId=cloud-id',
+  )
 })
 
 test('keeps unknown aggregate provenance strings and every source-aware field from the wire', async () => {

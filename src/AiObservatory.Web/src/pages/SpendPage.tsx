@@ -1,4 +1,4 @@
-import { lazy, Suspense, useState, useMemo } from 'react'
+import { lazy, Suspense, useState } from 'react'
 import { useMutation, useQueryClient } from '@tanstack/react-query'
 import SpendFilterBar from '../components/SpendFilterBar'
 import SpendTotals from '../components/SpendTotals'
@@ -8,10 +8,9 @@ import SpendCatalogModal from '../components/SpendCatalogModal'
 import SpendRangeControls from '../components/SpendRangeControls'
 import {
   useSpendCategories, useSpendVendors, useBilledReporting,
-  useAllSpendCategories, useAllSpendVendors, useSpendEntries,
+  useAllSpendCategories, useAllSpendVendors, useSpendEntries, invalidateSpendData,
 } from '../api/queries'
 import { deleteSpendEntry } from '../api/client'
-import { filterEntries } from '../lib/spendFilters'
 import { isReadonly } from '../auth/msal'
 import { useDateRange } from '../lib/dateRange'
 
@@ -38,13 +37,9 @@ export default function SpendPage() {
   // lists above so a retired one cannot be selected again.
   const allCategories = useAllSpendCategories()
   const allVendors = useAllSpendVendors()
-  const { entries, isLoading, isError } = useSpendEntries(from, to)
+  const { entries, isLoading, isError } = useSpendEntries(from, to, vendorId, categoryId)
   const primaryReporting = useBilledReporting(from, to, vendorId, categoryId)
   const comparisonReporting = useBilledReporting(comparisonFrom, comparisonTo, vendorId, categoryId)
-
-  const visible = useMemo(
-    () => filterEntries(entries, { categoryId, vendorId }),
-    [entries, categoryId, vendorId])
 
   const total = primaryReporting.report?.totalGbp ?? 0
   const largestCategory = primaryReporting.report?.categorySeries[0]?.name ?? null
@@ -52,7 +47,7 @@ export default function SpendPage() {
 
   const remove = useMutation({
     mutationFn: deleteSpendEntry,
-    onSuccess: () => qc.invalidateQueries({ queryKey: ['spend-entries'] }),
+    onSuccess: () => invalidateSpendData(qc),
     onError: (err: Error) => alert(`Failed to delete entry: ${err.message}`),
   })
 
@@ -129,7 +124,7 @@ export default function SpendPage() {
       {isLoading
         ? <p>Loading spend…</p>
         : <SpendLedgerTable
-            entries={visible}
+            entries={entries}
             categories={allCategories}
             vendors={allVendors}
             onDelete={id => remove.mutate(id)}

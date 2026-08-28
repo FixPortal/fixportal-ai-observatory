@@ -422,8 +422,8 @@ export const patchSpendVendor = async (id: string, body: SpendVendorPatch): Prom
   return res.json() as Promise<SpendVendor>
 }
 
-export const getSpendEntries = (from: string, to: string) =>
-  getJson<SpendEntry[]>('/spend/entries', { from, to })
+export const getSpendEntries = (from: string, to: string, vendorId?: string, categoryId?: string) =>
+  getJson<SpendEntry[]>('/spend/entries', { from, to, vendorId, categoryId })
 
 export interface BilledReporting {
   entryCount: number
