@@ -1,5 +1,5 @@
 import { useMemo } from 'react'
-import { useQuery } from '@tanstack/react-query'
+import { useQuery, type QueryClient } from '@tanstack/react-query'
 import {
   getAggregates, getInsights, getSubscriptions,
   getAdversarialReviewRuns, getAdversarialReviewStats, getCavemanStats,
@@ -15,6 +15,11 @@ import {
 } from './client'
 import { dashboardDateRange } from '../lib/dateRange'
 export { AGGREGATES_DAYS_RANGE, dashboardDateRange } from '../lib/dateRange'
+
+export const invalidateSpendData = (queryClient: QueryClient) => Promise.all([
+  queryClient.invalidateQueries({ queryKey: ['spend-entries'] }),
+  queryClient.invalidateQueries({ queryKey: ['billed-reporting'] }),
+])
 
 // Shared query hooks. Components subscribe directly (react-query deduplicates by
 // key), so data is not props-drilled from the page and each panel can resolve
@@ -161,14 +166,14 @@ export function useAllSpendVendors(): SpendVendor[] {
   return data
 }
 
-export function useSpendEntries(from: Date, to: Date): {
+export function useSpendEntries(from: Date, to: Date, vendorId?: string, categoryId?: string): {
   entries: SpendEntry[]
   isLoading: boolean
   isError: boolean
 } {
   const { data = [], isPending, isError } = useQuery({
-    queryKey: ['spend-entries', localDate(from), localDate(to)],
-    queryFn: () => getSpendEntries(localDate(from), localDate(to)),
+    queryKey: ['spend-entries', localDate(from), localDate(to), vendorId, categoryId],
+    queryFn: () => getSpendEntries(localDate(from), localDate(to), vendorId, categoryId),
   })
   return { entries: data, isLoading: isPending, isError }
 }

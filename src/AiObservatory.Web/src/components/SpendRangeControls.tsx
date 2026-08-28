@@ -31,7 +31,14 @@ const inputDate = (date: Date) => {
   return `${year}-${month}-${day}`
 }
 
-const parseInput = (value: string) => new Date(`${value}T00:00:00`)
+const parseInput = (value: string) => {
+  const date = new Date(`${value}T00:00:00`)
+  return Number.isNaN(date.getTime()) ? undefined : date
+}
+const withInputDate = (value: string, apply: (date: Date) => void) => {
+  const date = parseInput(value)
+  if (date) apply(date)
+}
 const label = (from: Date, to: Date) => `${DATE_FORMAT.format(from)} – ${DATE_FORMAT.format(to)}`
 
 export default function SpendRangeControls({
@@ -59,9 +66,9 @@ export default function SpendRangeControls({
           <span className="spend-periods__eyebrow">Selected</span>
           <strong>{label(from, to)}</strong>
           <div className="spend-periods__dates">
-            <label>Selected from<input aria-label="Selected from" type="date" value={inputDate(from)} onChange={event => onCustom(parseInput(event.target.value), to)} /></label>
+            <label>Selected from<input aria-label="Selected from" type="date" value={inputDate(from)} onChange={event => withInputDate(event.target.value, date => onCustom(date, to))} /></label>
             <span aria-hidden="true">→</span>
-            <label>Selected to<input aria-label="Selected to" type="date" value={inputDate(to)} onChange={event => onCustom(from, parseInput(event.target.value))} /></label>
+            <label>Selected to<input aria-label="Selected to" type="date" value={inputDate(to)} onChange={event => withInputDate(event.target.value, date => onCustom(from, date))} /></label>
           </div>
         </div>
 
@@ -80,9 +87,9 @@ export default function SpendRangeControls({
           </div>
           <strong>{label(comparisonFrom, comparisonTo)}</strong>
           <div className="spend-periods__dates">
-            <label>Compare from<input aria-label="Compare from" type="date" value={inputDate(comparisonFrom)} onChange={event => onComparison(parseInput(event.target.value), comparisonTo)} /></label>
+            <label>Compare from<input aria-label="Compare from" type="date" value={inputDate(comparisonFrom)} onChange={event => withInputDate(event.target.value, date => onComparison(date, comparisonTo))} /></label>
             <span aria-hidden="true">→</span>
-            <label>Compare to<input aria-label="Compare to" type="date" value={inputDate(comparisonTo)} onChange={event => onComparison(comparisonFrom, parseInput(event.target.value))} /></label>
+            <label>Compare to<input aria-label="Compare to" type="date" value={inputDate(comparisonTo)} onChange={event => withInputDate(event.target.value, date => onComparison(comparisonFrom, date))} /></label>
           </div>
         </div>
       </div>
