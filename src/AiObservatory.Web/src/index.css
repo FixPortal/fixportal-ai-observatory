@@ -1491,6 +1491,86 @@ td.budget-rules__actions { display: table-cell; padding: 6px 0 6px 8px; text-ali
 /* ---- Spend tab ---- */
 .spend-page { display: flex; flex-direction: column; gap: var(--space-4); }
 
+.spend-periods {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  padding: var(--space-4);
+  background: var(--card-bg);
+  border: 1px solid var(--border);
+  border-radius: var(--r-panel);
+}
+.spend-periods__presets { display: flex; flex-wrap: wrap; gap: var(--space-1); }
+.spend-periods__rail {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
+  align-items: stretch;
+  gap: var(--space-3);
+}
+.spend-periods__period {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: var(--space-2);
+  padding: var(--space-3);
+  background: var(--app-bg);
+  border: 1px solid var(--border);
+  border-radius: var(--r-control);
+}
+.spend-periods__period strong {
+  overflow-wrap: anywhere;
+  font-family: var(--font-mono);
+  font-size: 14px;
+  font-variant-numeric: tabular-nums;
+}
+.spend-periods__period--comparison { border-style: dashed; }
+.spend-periods__eyebrow {
+  color: var(--text-muted);
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+}
+.spend-periods__versus {
+  align-self: center;
+  color: var(--text-muted);
+  font-family: var(--font-mono);
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+}
+.spend-periods__comparison-heading { display: flex; align-items: center; justify-content: space-between; gap: var(--space-2); }
+.spend-periods__previous {
+  min-height: 32px;
+  padding: var(--space-1) var(--space-2);
+  color: var(--text-muted);
+  font: inherit;
+  font-size: 11px;
+  background: transparent;
+  border: 1px solid var(--border);
+  border-radius: var(--r-chip);
+  cursor: pointer;
+}
+.spend-periods__previous:hover { color: var(--text); border-color: var(--brand); }
+.spend-periods__previous:focus-visible { outline: 2px solid var(--brand-ring); outline-offset: 2px; }
+.spend-periods__previous--active { color: var(--brand-text); border-color: var(--brand); background: var(--brand-tint); }
+.spend-periods__dates { display: flex; align-items: flex-end; gap: var(--space-2); color: var(--text-muted); }
+.spend-periods__dates label { display: flex; min-width: 0; flex: 1; flex-direction: column; gap: var(--space-1); font-size: 11px; }
+.spend-periods__dates input {
+  width: 100%;
+  min-height: 36px;
+  padding: var(--space-1) var(--space-2);
+  color: var(--text);
+  color-scheme: light dark;
+  font: inherit;
+  font-family: var(--font-mono);
+  font-size: 12px;
+  background: var(--app-bg);
+  border: 1px solid var(--border);
+  border-radius: var(--r-control);
+}
+.spend-periods__dates input:focus-visible { outline: 2px solid var(--brand-ring); outline-offset: 1px; }
+
 .spend-filters {
   display: flex;
   flex-wrap: wrap;
@@ -1530,7 +1610,7 @@ td.budget-rules__actions { display: table-cell; padding: 6px 0 6px 8px; text-ali
 
 .spend-totals {
   display: grid;
-  grid-template-columns: repeat(3, 1fr);
+  grid-template-columns: 1.25fr repeat(3, 1fr);
   gap: var(--space-4);
 }
 .spend-totals__card {
@@ -1553,7 +1633,20 @@ td.budget-rules__actions { display: table-cell; padding: 6px 0 6px 8px; text-ali
   font-size: 20px;
   font-weight: 600;
   color: var(--text);
+  font-variant-numeric: tabular-nums;
 }
+.spend-totals__card:first-child .spend-totals__value { font-size: 24px; color: var(--brand-text); }
+.spend-totals__comparison { color: var(--text-muted); font-family: var(--font-mono); font-size: 12px; font-variant-numeric: tabular-nums; }
+.spend-totals__card--lower .spend-totals__value { color: var(--ok-text); }
+.spend-totals__card--higher .spend-totals__value { color: var(--bad-text); }
+.spend-totals--loading { min-height: 96px; }
+.spend-totals--loading .chart-skeleton { grid-column: 1 / -1; }
+
+.spend-chart { min-width: 0; }
+.spend-chart__legend { display: flex; flex-wrap: wrap; gap: var(--space-4); margin-top: var(--space-2); color: var(--text-muted); font-size: 12px; }
+.spend-chart__legend span { display: inline-flex; align-items: center; gap: var(--space-2); }
+.spend-chart__swatch { width: 8px; height: 8px; border-radius: 2px; background: var(--brand); }
+.spend-chart__swatch--comparison { background: var(--text-muted); opacity: 0.55; }
 
 .spend-ledger__wrapper { overflow-x: auto; }
 .spend-ledger__num { text-align: right; }
@@ -1571,9 +1664,15 @@ td.budget-rules__actions { display: table-cell; padding: 6px 0 6px 8px; text-ali
 }
 
 @media (max-width: 760px) {
-  .spend-totals { grid-template-columns: 1fr; }
+  .spend-periods__rail { grid-template-columns: 1fr; }
+  .spend-periods__versus { display: none; }
+  .spend-totals { grid-template-columns: repeat(2, 1fr); }
 }
 @media (max-width: 600px) {
+  .spend-periods { padding: var(--space-3); }
+  .spend-periods__dates { align-items: stretch; flex-direction: column; }
+  .spend-periods__dates > span { display: none; }
+  .spend-totals { grid-template-columns: 1fr; }
   .sub-list-row--vendor { grid-template-columns: minmax(0, 1fr) auto; align-items: start; }
   .sub-list-row--vendor > .vendor-catalog__details,
   .sub-list-row--vendor > .sub-form__input { grid-column: 1 / -1; grid-row: 2; }

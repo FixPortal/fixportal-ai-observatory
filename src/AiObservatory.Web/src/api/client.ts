@@ -434,10 +434,11 @@ export interface BilledReporting {
   topVendorGbp: number | null
   dailySeries: { date: string; amountGbp: number }[]
   vendorSeries: { vendorId: string; name: string; amountGbp: number }[]
+  categorySeries: { categoryId: string; name: string; amountGbp: number }[]
 }
 
-export const getBilledReporting = (from: string, to: string) =>
-  getJson<BilledReporting>('/spend/reporting', { from, to })
+export const getBilledReporting = (from: string, to: string, vendorId?: string, categoryId?: string) =>
+  getJson<BilledReporting>('/spend/reporting', { from, to, vendorId, categoryId })
 
 /** Always an array — the manual form sends one. */
 export const postSpendEntries = async (entries: NewSpendEntry[]): Promise<SpendEntryResult[]> => {

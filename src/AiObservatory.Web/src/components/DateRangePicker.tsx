@@ -1,11 +1,12 @@
 import { useEffect, useRef, useState } from 'react'
+import type { DateRangePreset } from '../lib/dateRange'
 
 const PRESETS = [7, 31, 90] as const
 
 interface Props {
   from: Date
   to: Date
-  preset: 7 | 31 | 90 | 'custom'
+  preset: DateRangePreset | 'custom'
   onPreset: (days: 7 | 31 | 90) => void
   onCustom: (from: Date, to: Date) => void
 }

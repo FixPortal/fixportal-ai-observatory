@@ -32,7 +32,8 @@ For the dates displayed by the card:
    - `reporting.totalGbp`;
    - the sum of raw `amountGbp` rows;
    - the sum of `dailySeries.amountGbp`;
-   - the sum of `vendorSeries.amountGbp`.
+   - the sum of `vendorSeries.amountGbp`;
+   - the sum of `categorySeries.amountGbp`.
 4. Group raw rows by `sourceId`, vendor, category, currency, and entry-key identity. Arithmetic agreement proves only internal consistency; it does not prove that two rows are not the same supplier charge.
 5. Reconcile each acquisition lane to its authority:
    - `portal`: matching Tax Portal expense IDs and the feed's VAT basis;
@@ -88,7 +89,18 @@ The raw ledger sum, `reporting.totalGbp`, daily series, and vendor series all ag
 
 Spend is the ledger drill-down for Overview. Its default unfiltered date range is therefore the same rolling 31-calendar-day inclusive window as `Billed spend`; for the same mounted end date, its entry count and total must reconcile exactly with the Overview card.
 
-Before 2026-08-28, Spend silently used a separate 90-day window. On that date it showed 54 rows totalling £4,358.0181 for 2026-05-30 through 2026-08-28, while the Overview window contained 17 rows totalling £976.9121. The additional £3,381.1060 across 37 rows was valid older spend, not an arithmetic discrepancy. Spend now uses the shared `dashboardDateRange` and displays its dates explicitly.
+Before 2026-08-28, Spend silently used a separate 90-day window. On that date it showed 54 rows totalling £4,358.0181 for 2026-05-30 through 2026-08-28, while the Overview window contained 17 rows totalling £976.9121. The additional £3,381.1060 across 37 rows was valid older spend, not an arithmetic discrepancy. Spend now takes its default from the shared `dashboardDateRange` and displays its dates explicitly.
+
+### Spend range and comparison semantics
+
+- The initial selected range is the Overview's rolling 31-calendar-day inclusive window. Changing Spend's range does not change Overview.
+- Rolling 7-, 31-, and 90-day presets end on the current local calendar date. `This month` runs from the first of the current month through today; `Last month` is the complete preceding calendar month; `This quarter` runs from the first day of the current calendar quarter through today. Native From/To inputs accept any other inclusive range.
+- Comparison is enabled by default. Rolling and custom ranges compare with the immediately preceding range of the same inclusive day count. Calendar month presets compare with the complete preceding calendar month; `This quarter` compares with the complete preceding calendar quarter.
+- Editing either comparison date switches the comparison to an arbitrary custom range. `Previous period` restores the automatic rule for the currently selected range. Inverted From/To inputs are normalised rather than sent as an invalid range.
+- Totals, entry count, largest category, and chart data come from `GET /api/spend/reporting`. Optional `vendorId` and `categoryId` filters are applied to `SpendEntries` before the database aggregate, and both selected and comparison requests receive the same filters. These are `AsNoTracking` reads; range and comparison controls do not create, update, or delete ledger rows.
+- The reporting response is not subject to the ledger list endpoint's 5,000-row ceiling. The table remains a drill-down of the selected period only; the comparison period is not mixed into it.
+- The headline change is `selected total - comparison total`. A lower signed total is presented as lower spend and a higher signed total as higher spend. A percentage is shown only when the comparison total is positive; zero or negative baselines retain the absolute GBP change without a mathematically misleading percentage.
+- The comparison chart aligns periods by ordinal day, using signed frozen GBP values and filling days without entries with zero. Ranges longer than 92 days are grouped into consecutive seven-day buckets to keep the chart legible. The chart is evidential only and does not feed any stored calculation.
 
 Catalog semantics:
 

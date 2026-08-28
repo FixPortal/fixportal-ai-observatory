@@ -111,6 +111,7 @@ test('gets the authoritative billed-reporting projection for the complete date r
     topVendorGbp: 4991,
     dailySeries: [{ date: '2026-08-01', amountGbp: 5001 }],
     vendorSeries: [{ vendorId: 'a', name: 'Anthropic', amountGbp: 4991 }],
+    categorySeries: [{ categoryId: 'c', name: 'Credits', amountGbp: 4991 }],
   }
   const fetchMock = mockFetchOnce(200, response)
 

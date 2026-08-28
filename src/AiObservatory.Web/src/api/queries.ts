@@ -13,14 +13,12 @@ import {
   type GitHubPr, type GitHubCommitSummary, type GitHubCiSummary,
   type SpendCategory, type SpendVendor, type SpendEntry, type BilledReporting, type SourceStatusResponse,
 } from './client'
+import { dashboardDateRange } from '../lib/dateRange'
+export { AGGREGATES_DAYS_RANGE, dashboardDateRange } from '../lib/dateRange'
 
 // Shared query hooks. Components subscribe directly (react-query deduplicates by
 // key), so data is not props-drilled from the page and each panel can resolve
 // and render independently.
-
-// Single source of truth for the dashboard window: the aggregates query, the
-// spend-card label, and the chart all derive from this so they cannot drift.
-export const AGGREGATES_DAYS_RANGE = 31
 
 // Local calendar date (yyyy-MM-dd) from the machine's timezone — NOT toISOString(),
 // which emits the UTC date and, in the 00:00–00:59 local window under a positive offset
@@ -31,12 +29,6 @@ export const localDate = (d: Date) => {
   const m = String(d.getMonth() + 1).padStart(2, '0')
   const day = String(d.getDate()).padStart(2, '0')
   return `${y}-${m}-${day}`
-}
-
-export const dashboardDateRange = (to = new Date()) => {
-  const from = new Date(to)
-  from.setDate(from.getDate() - (AGGREGATES_DAYS_RANGE - 1))
-  return { from, to: new Date(to) }
 }
 
 const aggregatesQueryFn = () => {
@@ -181,14 +173,18 @@ export function useSpendEntries(from: Date, to: Date): {
   return { entries: data, isLoading: isPending, isError }
 }
 
-export function useBilledReporting(from: Date, to: Date): {
+export function useBilledReporting(from: Date, to: Date, vendorId?: string, categoryId?: string): {
   report: BilledReporting | undefined
   isLoading: boolean
   isError: boolean
 } {
   const { data, isPending, isError } = useQuery({
-    queryKey: ['billed-reporting', localDate(from), localDate(to)],
-    queryFn: () => getBilledReporting(localDate(from), localDate(to)),
+    queryKey: vendorId || categoryId
+      ? ['billed-reporting', localDate(from), localDate(to), vendorId, categoryId]
+      : ['billed-reporting', localDate(from), localDate(to)],
+    queryFn: () => vendorId || categoryId
+      ? getBilledReporting(localDate(from), localDate(to), vendorId, categoryId)
+      : getBilledReporting(localDate(from), localDate(to)),
   })
   return { report: data, isLoading: isPending, isError }
 }

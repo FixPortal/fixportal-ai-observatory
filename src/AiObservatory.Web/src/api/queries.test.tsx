@@ -100,4 +100,19 @@ describe('dashboard queries', () => {
     await waitFor(() => expect(client.getBilledReporting).toHaveBeenCalledOnce())
     expect(result.current.isLoading).toBe(true)
   })
+
+  test('passes spend vendor and category filters to billed reporting', async () => {
+    const from = new Date('2026-08-01')
+    const to = new Date('2026-08-31')
+
+    renderHook(
+      () => (useBilledReporting as unknown as (
+        from: Date, to: Date, vendorId?: string, categoryId?: string,
+      ) => unknown)(from, to, 'azure-id', 'cloud-id'),
+      { wrapper },
+    )
+
+    await waitFor(() => expect(client.getBilledReporting).toHaveBeenCalled())
+    expect(client.getBilledReporting).toHaveBeenCalledWith('2026-08-01', '2026-08-31', 'azure-id', 'cloud-id')
+  })
 })
