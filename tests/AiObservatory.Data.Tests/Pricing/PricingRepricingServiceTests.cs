@@ -25,6 +25,9 @@ public sealed class PricingRepricingServiceTests : IAsyncLifetime
     private UsageRepository _repository = null!;
     private PricingSnapshotStore _store = null!;
     private PricingRepricingService _repricing = null!;
+    private readonly ITestOutputHelper _output;
+
+    public PricingRepricingServiceTests(ITestOutputHelper output) => _output = output;
 
     public async ValueTask InitializeAsync()
     {
@@ -98,6 +101,71 @@ public sealed class PricingRepricingServiceTests : IAsyncLifetime
         aggregate.UnknownCostCount.Should().Be(1);
         aggregate.CacheSavingsUsd.Should().Be(0m);
         aggregate.UnknownCacheSavingsCount.Should().Be(1);
+    }
+
+    [Fact(Explicit = true)]
+    [Trait("Category", "Performance")]
+    public async Task QualificationRepricesEveryEligibleEventAndItsAggregate()
+    {
+        const int eventCount = 1_000;
+        var ct = TestContext.Current.CancellationToken;
+        await _store.ActivateAsync(Candidate("qualification-old", 1m), ct);
+        _db.UsageEvents.AddRange(
+            Enumerable
+                .Range(0, eventCount)
+                .Select(index => Event($"qualification-{index}", CostBasis.ListPriceEstimate, 1m, 0m))
+        );
+        _db.DailyAggregates.Add(
+            new DailyAggregate
+            {
+                Date = new LocalDate(2026, 8, 25),
+                Provider = Provider.OpenAI,
+                Model = "gpt-test",
+                SourceId = "repricing-test",
+                SourceKind = SourceKind.ProviderApi,
+                UsageScope = UsageScope.Api,
+                CostBasis = CostBasis.ListPriceEstimate,
+                InputTokens = eventCount * 1_000_000L,
+                CostUsd = eventCount,
+                CacheSavingsUsd = 0m,
+                RequestCount = eventCount,
+            }
+        );
+        await _db.SaveChangesAsync(ct);
+        _db.ChangeTracker.Clear();
+
+        await _store.ActivateAsync(
+            Candidate("qualification-warmup", 2m),
+            ct,
+            (_, callbackCt) => _repricing.RepriceProviderAsync(Provider.OpenAI, callbackCt)
+        );
+
+        var elapsed = new List<TimeSpan>();
+        foreach (var (price, iteration) in new[] { 3m, 4m, 5m }.Select((price, index) => (price, index)))
+        {
+            var stopwatch = System.Diagnostics.Stopwatch.StartNew();
+            var activation = await _store.ActivateAsync(
+                Candidate($"qualification-{iteration}", price),
+                ct,
+                (_, callbackCt) => _repricing.RepriceProviderAsync(Provider.OpenAI, callbackCt)
+            );
+            stopwatch.Stop();
+            activation.Should().Be(PricingActivationResult.Activated);
+            elapsed.Add(stopwatch.Elapsed);
+        }
+
+        var median = elapsed.Order().ElementAt(elapsed.Count / 2);
+        _output.WriteLine(
+            $"events={eventCount}; measuredIterations={elapsed.Count}; medianMs={median.TotalMilliseconds:F1}; "
+                + $"eventsPerSecond={eventCount / median.TotalSeconds:F1}; "
+                + $"runsMs=[{string.Join(", ", elapsed.Select(run => run.TotalMilliseconds.ToString("F1")))}]"
+        );
+
+        var repricedCount = await _db.UsageEvents.AsNoTracking().CountAsync(usage => usage.CostUsd == 5m, ct);
+        repricedCount.Should().Be(eventCount);
+        var aggregate = await _db.DailyAggregates.AsNoTracking().SingleAsync(ct);
+        aggregate.CostUsd.Should().Be(eventCount * 5m);
+        aggregate.RequestCount.Should().Be(eventCount);
     }
 
     [Fact]
