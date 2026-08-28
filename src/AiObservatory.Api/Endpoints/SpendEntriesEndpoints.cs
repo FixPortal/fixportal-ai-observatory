@@ -350,7 +350,13 @@ public static class SpendEntriesEndpoints
                 db.SpendCategories.AsNoTracking(),
                 row => row.Entry.CategoryId,
                 category => category.Id,
-                (row, category) => new { row.Entry, row.Vendor, Category = category }
+                (row, category) =>
+                    new
+                    {
+                        row.Entry,
+                        row.Vendor,
+                        Category = category,
+                    }
             )
             .GroupBy(row => new
             {
