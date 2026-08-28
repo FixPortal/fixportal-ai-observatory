@@ -79,6 +79,7 @@ describe('getAccessToken', () => {
   afterEach(() => {
     vi.doUnmock('@azure/msal-browser')
     vi.unstubAllEnvs()
+    vi.useRealTimers()
   })
 
   test('returns null without constructing an MSAL instance when auth is disabled (no client id baked)', async () => {
@@ -146,6 +147,31 @@ describe('getAccessToken', () => {
 
     await expect(mod.getAccessToken()).rejects.toBe(transientError)
     expect(acquireTokenRedirect).not.toHaveBeenCalled()
+  })
+
+  test('rejects when silent token acquisition does not settle', async () => {
+    vi.useFakeTimers()
+    const account = { homeAccountId: 'acc-1' }
+    const instance = {
+      getActiveAccount: vi.fn().mockReturnValue(account),
+      getAllAccounts: vi.fn().mockReturnValue([account]),
+      acquireTokenSilent: vi.fn().mockReturnValue(new Promise(() => {})),
+      acquireTokenRedirect: vi.fn(),
+    }
+    vi.doMock('@azure/msal-browser', () => ({
+      PublicClientApplication: vi.fn().mockImplementation(function () { return instance }),
+      InteractionRequiredAuthError: class extends Error {},
+    }))
+    vi.stubEnv('VITE_AAD_CLIENT_ID', 'test-client-id')
+
+    const mod = await import('./msal')
+    const result = mod.getAccessToken().then(
+      () => 'resolved',
+      error => error instanceof Error ? error.message : String(error),
+    )
+
+    await vi.advanceTimersByTimeAsync(10_000)
+    await expect(result).resolves.toBe('Sign-in timed out')
   })
 
   test('returns null when no account is signed in', async () => {

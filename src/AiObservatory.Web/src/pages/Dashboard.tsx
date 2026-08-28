@@ -15,7 +15,7 @@ import { BrandWordmark } from '../design/BrandWordmark'
 import { ThemeToggle } from '../design/ThemeToggle'
 import { useDashboardStatus } from '../api/queries'
 import { ApiError } from '../api/client'
-import { authEnabled, isReadonly, signIn } from '../auth/msal'
+import { authEnabled, isReadonly, signIn, TokenAcquisitionTimeoutError } from '../auth/msal'
 import { useTheme } from '../theme/useTheme'
 
 type DashboardTab = 'overview' | 'adversarial-review' | 'reporting' | 'activity' | 'github' | 'spend'
@@ -35,7 +35,8 @@ const SpendChart = lazy(() => import('../components/SpendChart'))
 const ProviderSplit = lazy(() => import('../components/ProviderSplit'))
 
 function ErrorBanner({ error }: { error: unknown }) {
-  const isAuthError = error instanceof ApiError && (error.status === 401 || error.status === 403)
+  const isAuthError = error instanceof TokenAcquisitionTimeoutError
+    || (error instanceof ApiError && (error.status === 401 || error.status === 403))
   if (isAuthError) {
     return (
       <div className="error-banner" role="alert">
