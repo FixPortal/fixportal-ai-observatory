@@ -342,7 +342,7 @@ public sealed class BillingObservationWriterTests : IAsyncLifetime
     }
 
     [Fact]
-    public async Task FirstWriteAdoptsAndRekeysTheLegacyGitHubApiRow()
+    public async Task FirstWriteAdoptsAndRekeysTheMigratedLegacyGitHubApiRow()
     {
         var ct = TestContext.Current.CancellationToken;
         var observation = Observation(
@@ -371,8 +371,8 @@ public sealed class BillingObservationWriterTests : IAsyncLifetime
                 Source = SpendSource.Api,
                 EntryKey = observation.ObservationKey,
                 RecordedAt = RecordedAt.Minus(Duration.FromDays(1)),
-                SourceId = observation.SourceId,
-                SourceKind = SourceKind.ProviderApi,
+                SourceId = UsageSourceIds.LegacySpend,
+                SourceKind = SourceKind.Legacy,
                 UsageScope = UsageScope.Unknown,
                 CostBasis = CostBasis.Billed,
                 ObservedAt = ObservedAt.Minus(Duration.FromDays(1)),
@@ -384,7 +384,31 @@ public sealed class BillingObservationWriterTests : IAsyncLifetime
 
         var spend = await _db.SpendEntries.AsNoTracking().SingleAsync(ct);
         spend.EntryKey.Should().Be("billing:github-billing-api:github:2026-08:actions:linux");
+        spend.SourceId.Should().Be(UsageSourceIds.GitHubBillingApi);
+        spend.SourceKind.Should().Be(SourceKind.ProviderApi);
+        spend.UsageScope.Should().Be(UsageScope.Api);
         (await _db.BillingObservations.AsNoTracking().CountAsync(ct)).Should().Be(1);
+
+        await using var replayDb = new AiObservatoryDbContext(_options);
+        var disposition = await Writer(replayDb, 0.75m)
+            .RecordAsync(
+                Observation(
+                    provider: "github",
+                    source: UsageSourceIds.GitHubBillingApi,
+                    key: "github:2026-08:actions:linux",
+                    gross: 8m,
+                    credit: 0m,
+                    net: 8m,
+                    service: "actions",
+                    sku: "linux"
+                ),
+                "github-actions",
+                "ci",
+                ct
+            );
+
+        disposition.Should().Be(BillingWriteDisposition.Unchanged);
+        (await replayDb.SpendEntries.AsNoTracking().CountAsync(ct)).Should().Be(1);
     }
 
     [Fact]
