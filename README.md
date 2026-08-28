@@ -115,6 +115,12 @@ Run the solution checks before a pull request:
 dotnet test --solution AiObservatory.slnx --configuration Release
 ```
 
+Run the opt-in PostgreSQL repricing qualification workload separately; it reports the median of three 1,000-event pricing activations and does not enforce a machine-specific timing threshold:
+
+```powershell
+dotnet run --project tests/AiObservatory.Data.Tests/AiObservatory.Data.Tests.csproj --configuration Release -- --explicit only --filter-method AiObservatory.Data.Tests.Pricing.PricingRepricingServiceTests.QualificationRepricesEveryEligibleEventAndItsAggregate --show-live-output on --output Detailed
+```
+
 ```powershell
 npm --prefix src/AiObservatory.Web test -- --run
 ```
