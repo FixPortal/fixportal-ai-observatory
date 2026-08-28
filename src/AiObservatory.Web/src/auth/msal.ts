@@ -13,6 +13,14 @@ export const authEnabled = clientId.length > 0
 
 /** Scopes requested for the API access token (and at interactive sign-in). */
 export const loginRequest: RedirectRequest = { scopes: apiScope ? [apiScope] : [] }
+const TOKEN_TIMEOUT_MS = 10_000
+
+export class TokenAcquisitionTimeoutError extends Error {
+  constructor() {
+    super('Sign-in timed out')
+    this.name = 'TokenAcquisitionTimeoutError'
+  }
+}
 
 const config: Configuration = {
   auth: {
@@ -48,8 +56,14 @@ export async function getAccessToken(): Promise<string | null> {
   const instance = msalInstance
   const account = instance.getActiveAccount() ?? instance.getAllAccounts()[0]
   if (!account) return null
+  let timeoutId: number | undefined
   try {
-    const result = await instance.acquireTokenSilent({ ...loginRequest, account })
+    const result = await Promise.race([
+      instance.acquireTokenSilent({ ...loginRequest, account }),
+      new Promise<never>((_, reject) => {
+        timeoutId = window.setTimeout(() => reject(new TokenAcquisitionTimeoutError()), TOKEN_TIMEOUT_MS)
+      }),
+    ])
     return result.accessToken
   } catch (err) {
     // Only an interaction-required failure (expired/revoked consent) warrants an
@@ -65,6 +79,8 @@ export async function getAccessToken(): Promise<string | null> {
       .catch(() => { /* interaction_in_progress or redirect aborted; page will reload */ })
     await redirectInFlight
     return null
+  } finally {
+    if (timeoutId !== undefined) window.clearTimeout(timeoutId)
   }
 }
 

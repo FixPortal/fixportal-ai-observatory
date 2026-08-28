@@ -387,10 +387,6 @@ td.budget-rules__actions { display: table-cell; padding: 6px 0 6px 8px; text-ali
 /* Initial-load banner — App Service cold start makes the first request slow, so
    give the user a signal instead of an empty dashboard of zeros. */
 .loading-banner {
-  position: absolute;
-  z-index: 1;
-  left: 50%;
-  transform: translateX(-50%);
   width: 100%;
   margin: 0;
   padding: var(--space-3) var(--space-4);

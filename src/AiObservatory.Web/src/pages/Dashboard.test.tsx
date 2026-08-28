@@ -1,10 +1,16 @@
 import { render, screen } from '@testing-library/react'
-import { expect, test, vi } from 'vitest'
+import { beforeEach, expect, test, vi } from 'vitest'
 import Dashboard from './Dashboard'
 
-vi.mock('../api/queries', () => ({ useDashboardStatus: () => ({ isError: false, isLoading: false, error: null }) }))
+const dashboardStatus = vi.hoisted(() => ({ isError: false, isLoading: false, error: null as unknown }))
+const authMock = vi.hoisted(() => ({
+  TokenAcquisitionTimeoutError: class extends Error {},
+  signIn: vi.fn(),
+}))
+
+vi.mock('../api/queries', () => ({ useDashboardStatus: () => dashboardStatus }))
 vi.mock('../theme/useTheme', () => ({ useTheme: () => ({ mode: 'dark', setMode: vi.fn() }) }))
-vi.mock('../auth/msal', () => ({ authEnabled: false, isReadonly: false, signIn: vi.fn() }))
+vi.mock('../auth/msal', () => ({ authEnabled: true, isReadonly: false, ...authMock }))
 vi.mock('../components/SummaryCards', () => ({ default: () => <section aria-label="Summary evidence">Summary</section> }))
 vi.mock('../components/SourceStatusPanel', () => ({ default: () => <div className="source-status-zone"><section aria-label="Source freshness">Sources</section></div> }))
 vi.mock('../components/CavemanStatsPanel', () => ({ default: () => <section aria-label="Caveman statistics" /> }))
@@ -13,6 +19,23 @@ vi.mock('../components/ModelBreakdown', () => ({ default: () => null }))
 vi.mock('../components/InsightsFeed', () => ({ default: () => null }))
 vi.mock('../components/SpendChart', () => ({ default: () => null }))
 vi.mock('../components/ProviderSplit', () => ({ default: () => null }))
+
+beforeEach(() => {
+  dashboardStatus.isError = false
+  dashboardStatus.isLoading = false
+  dashboardStatus.error = null
+  authMock.signIn.mockClear()
+})
+
+test('offers sign-in recovery when token acquisition stalls', () => {
+  dashboardStatus.isError = true
+  dashboardStatus.error = new authMock.TokenAcquisitionTimeoutError()
+
+  render(<Dashboard />)
+
+  expect(screen.getByText(/session has expired or you’re not authorised/i)).toBeInTheDocument()
+  expect(screen.getByRole('button', { name: 'Sign in again' })).toBeInTheDocument()
+})
 
 test('keeps source freshness out of the focal overview and communicates usage-only chart truth', async () => {
   render(<Dashboard />)
