@@ -91,6 +91,20 @@ describe('SpendVendorCatalog', () => {
     expect(patch).not.toHaveBeenCalled()
   })
 
+  it('drops the draft when the default category is changed back to its persisted value', () => {
+    const patch = vi.spyOn(client, 'patchSpendVendor')
+    renderPanel()
+
+    const select = screen.getByLabelText('Default category for Anthropic') as HTMLSelectElement
+    fireEvent.change(select, { target: { value: '' } })
+    fireEvent.change(select, { target: { value: 'k1' } })
+
+    const row = screen.getByText('anthropic').closest('li')!
+    expect(within(row).queryByRole('button', { name: /^save$/i })).not.toBeInTheDocument()
+    expect(within(row).queryByRole('button', { name: /^cancel$/i })).not.toBeInTheDocument()
+    expect(patch).not.toHaveBeenCalled()
+  })
+
   it('keeps an already-archived default category selectable so the row does not misread as None', () => {
     const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } })
     // v3's default points at 'k2', which has since been archived.

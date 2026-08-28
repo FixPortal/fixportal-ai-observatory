@@ -152,7 +152,11 @@ export default function SpendVendorCatalog({ vendors, categories }: Props) {
                       className="sub-list__select"
                       value={categoryDraft?.vendorId === v.id ? categoryDraft.value : v.defaultCategoryId ?? ''}
                       disabled={patch.isPending}
-                      onChange={e => setCategoryDraft({ vendorId: v.id, value: e.target.value })}
+                      onChange={e => setCategoryDraft(
+                        (e.target.value || null) === v.defaultCategoryId
+                          ? null
+                          : { vendorId: v.id, value: e.target.value },
+                      )}
                     >
                       <option value="">No default category</option>
                       {categoryOptions(v).map(c => (
