@@ -32,4 +32,55 @@ describe('useDateRange', () => {
     expect(result.current.from).toEqual(from)
     expect(result.current.to).toEqual(to)
   })
+
+  it('sets calendar month and quarter ranges from the local current date', () => {
+    const { result } = renderHook(() => useDateRange())
+
+    act(() => result.current.setPreset('thisMonth' as never))
+    expect(result.current.from).toEqual(new Date('2026-06-01T00:00:00'))
+    expect(result.current.to).toEqual(new Date('2026-06-21T12:00:00Z'))
+
+    act(() => result.current.setPreset('lastMonth' as never))
+    expect(result.current.from).toEqual(new Date('2026-05-01T00:00:00'))
+    expect(result.current.to).toEqual(new Date('2026-05-31T00:00:00'))
+
+    act(() => result.current.setPreset('thisQuarter' as never))
+    expect(result.current.from).toEqual(new Date('2026-04-01T00:00:00'))
+    expect(result.current.to).toEqual(new Date('2026-06-21T12:00:00Z'))
+  })
+
+  it('defaults comparison to the preceding equivalent period', () => {
+    const { result } = renderHook(() => useDateRange())
+
+    expect(result.current.comparisonFrom).toEqual(new Date('2026-04-21T12:00:00Z'))
+    expect(result.current.comparisonTo).toEqual(new Date('2026-05-21T12:00:00Z'))
+
+    act(() => result.current.setPreset('thisMonth' as never))
+    expect(result.current.comparisonFrom).toEqual(new Date('2026-05-01T00:00:00'))
+    expect(result.current.comparisonTo).toEqual(new Date('2026-05-31T00:00:00'))
+  })
+
+  it('allows an arbitrary comparison range', () => {
+    const { result } = renderHook(() => useDateRange())
+    const comparisonFrom = new Date('2026-01-01')
+    const comparisonTo = new Date('2026-03-31')
+
+    act(() => result.current.setComparison(comparisonFrom, comparisonTo))
+
+    expect(result.current.comparisonMode).toBe('custom')
+    expect(result.current.comparisonFrom).toEqual(comparisonFrom)
+    expect(result.current.comparisonTo).toEqual(comparisonTo)
+  })
+
+  it('normalises inverted selected and comparison dates', () => {
+    const { result } = renderHook(() => useDateRange())
+
+    act(() => result.current.setCustom(new Date('2026-05-31'), new Date('2026-05-01')))
+    expect(result.current.from).toEqual(new Date('2026-05-01'))
+    expect(result.current.to).toEqual(new Date('2026-05-31'))
+
+    act(() => result.current.setComparison(new Date('2026-03-31'), new Date('2026-01-01')))
+    expect(result.current.comparisonFrom).toEqual(new Date('2026-01-01'))
+    expect(result.current.comparisonTo).toEqual(new Date('2026-03-31'))
+  })
 })

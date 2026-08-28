@@ -42,6 +42,7 @@ beforeEach(() => {
     topVendorGbp: 8,
     dailySeries: [],
     vendorSeries: [],
+    categorySeries: [],
   }
   data.insights = []
 })

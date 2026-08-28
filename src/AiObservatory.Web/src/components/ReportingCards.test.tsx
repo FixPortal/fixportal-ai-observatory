@@ -12,6 +12,7 @@ test('keeps an incomplete top-vendor projection truthful instead of formatting n
     topVendorGbp: null,
     dailySeries: [],
     vendorSeries: [],
+    categorySeries: [],
   }} />)
 
   const card = screen.getByText('Top vendor').parentElement!
@@ -29,6 +30,7 @@ test('does not present an empty ledger as a zero-cost claim', () => {
     topVendorGbp: null,
     dailySeries: [],
     vendorSeries: [],
+    categorySeries: [],
   }} />)
 
   const card = screen.getByText('Billed spend').parentElement!
@@ -46,6 +48,7 @@ test('reports a non-empty ledger that nets to zero as zero billed spend', () => 
     topVendorGbp: 0,
     dailySeries: [],
     vendorSeries: [],
+    categorySeries: [],
   }} />)
 
   expect(screen.getByText('Billed spend').parentElement).toHaveTextContent('£0.00')

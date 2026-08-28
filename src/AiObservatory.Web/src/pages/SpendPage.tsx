@@ -1,19 +1,21 @@
-import { useState, useMemo } from 'react'
+import { lazy, Suspense, useState, useMemo } from 'react'
 import { useMutation, useQueryClient } from '@tanstack/react-query'
 import SpendFilterBar from '../components/SpendFilterBar'
 import SpendTotals from '../components/SpendTotals'
 import SpendLedgerTable from '../components/SpendLedgerTable'
 import SpendEntryModal from '../components/SpendEntryModal'
 import SpendCatalogModal from '../components/SpendCatalogModal'
+import SpendRangeControls from '../components/SpendRangeControls'
 import {
-  dashboardDateRange, useSpendCategories, useSpendVendors,
+  useSpendCategories, useSpendVendors, useBilledReporting,
   useAllSpendCategories, useAllSpendVendors, useSpendEntries,
 } from '../api/queries'
 import { deleteSpendEntry } from '../api/client'
-import { filterEntries, totalGbp } from '../lib/spendFilters'
+import { filterEntries } from '../lib/spendFilters'
 import { isReadonly } from '../auth/msal'
+import { useDateRange } from '../lib/dateRange'
 
-const DATE_FORMAT = new Intl.DateTimeFormat('en-GB', { day: '2-digit', month: 'short', year: 'numeric' })
+const BilledSpendChart = lazy(() => import('../components/BilledSpendChart'))
 
 export default function SpendPage() {
   const qc = useQueryClient()
@@ -22,10 +24,12 @@ export default function SpendPage() {
   const [adding, setAdding] = useState(false)
   const [managingCatalog, setManagingCatalog] = useState(false)
 
-  // Spend is the ledger drill-down for Overview, so both screens share one
-  // inclusive reporting window and their unfiltered totals reconcile.
-  const { from, to } = useMemo(() => dashboardDateRange(), [])
-  const rangeLabel = `${DATE_FORMAT.format(from)} – ${DATE_FORMAT.format(to)}`
+  // The default remains Overview's inclusive rolling 31-day window; Spend can then
+  // move to calendar or arbitrary periods without changing Overview's definition.
+  const {
+    from, to, preset, setPreset, setCustom,
+    comparisonFrom, comparisonTo, comparisonMode, setComparison, compareWithPrevious,
+  } = useDateRange()
 
   const categories = useSpendCategories()
   const vendors = useSpendVendors()
@@ -35,22 +39,16 @@ export default function SpendPage() {
   const allCategories = useAllSpendCategories()
   const allVendors = useAllSpendVendors()
   const { entries, isLoading, isError } = useSpendEntries(from, to)
+  const primaryReporting = useBilledReporting(from, to, vendorId, categoryId)
+  const comparisonReporting = useBilledReporting(comparisonFrom, comparisonTo, vendorId, categoryId)
 
   const visible = useMemo(
     () => filterEntries(entries, { categoryId, vendorId }),
     [entries, categoryId, vendorId])
 
-  const total = useMemo(() => totalGbp(visible), [visible])
-
-  const largestCategory = useMemo(() => {
-    if (visible.length === 0) return null
-    const byCategory = new Map<string, number>()
-    for (const e of visible) {
-      byCategory.set(e.categoryId, (byCategory.get(e.categoryId) ?? 0) + e.amountGbp)
-    }
-    const [topId] = [...byCategory.entries()].sort((a, b) => b[1] - a[1])[0]
-    return allCategories.find(c => c.id === topId)?.displayName ?? null
-  }, [visible, allCategories])
+  const total = primaryReporting.report?.totalGbp ?? 0
+  const largestCategory = primaryReporting.report?.categorySeries[0]?.name ?? null
+  const comparisonLabel = comparisonMode === 'previous' ? 'previous period' : 'comparison period'
 
   const remove = useMutation({
     mutationFn: deleteSpendEntry,
@@ -58,12 +56,45 @@ export default function SpendPage() {
     onError: (err: Error) => alert(`Failed to delete entry: ${err.message}`),
   })
 
-  if (isError) {
+  if (isError || primaryReporting.isError || comparisonReporting.isError) {
     return <div className="error-banner">Couldn’t load spend. Check the API service and try refreshing.</div>
+  }
+
+  const reportingLoading = primaryReporting.isLoading || comparisonReporting.isLoading
+  const bothReportsEmpty = (primaryReporting.report?.entryCount ?? 0) === 0
+    && (comparisonReporting.report?.entryCount ?? 0) === 0
+  let chartContent = <div className="chart-skeleton" />
+  if (!reportingLoading) {
+    chartContent = bothReportsEmpty ? (
+      <p className="panel-empty">No billed spend reported for either period.</p>
+    ) : (
+      <Suspense fallback={<div className="chart-skeleton" />}>
+        <BilledSpendChart
+          data={primaryReporting.report?.dailySeries ?? []}
+          range={{ from, to }}
+          comparisonData={comparisonReporting.report?.dailySeries ?? []}
+          comparisonRange={{ from: comparisonFrom, to: comparisonTo }}
+          comparisonLabel={comparisonLabel}
+        />
+      </Suspense>
+    )
   }
 
   return (
     <section className="spend-page">
+      <SpendRangeControls
+        from={from}
+        to={to}
+        preset={preset}
+        comparisonFrom={comparisonFrom}
+        comparisonTo={comparisonTo}
+        comparisonMode={comparisonMode}
+        onPreset={setPreset}
+        onCustom={setCustom}
+        onComparison={setComparison}
+        onPreviousComparison={compareWithPrevious}
+      />
+
       <SpendFilterBar
         categories={categories}
         vendors={vendors}
@@ -73,11 +104,27 @@ export default function SpendPage() {
         onVendorChange={setVendorId}
         onAddEntry={() => setAdding(true)}
         onManageCatalog={() => setManagingCatalog(true)}
-        rangeLabel={rangeLabel}
         canEdit={!isReadonly}
       />
 
-      <SpendTotals total={total} entryCount={visible.length} largestCategory={largestCategory} />
+      {reportingLoading ? (
+        <div className="spend-totals spend-totals--loading" aria-label="Loading spend totals">
+          <div className="chart-skeleton" />
+        </div>
+      ) : (
+        <SpendTotals
+          total={total}
+          entryCount={primaryReporting.report?.entryCount ?? 0}
+          largestCategory={largestCategory}
+          comparisonTotal={comparisonReporting.report?.totalGbp ?? 0}
+          comparisonLabel={comparisonLabel}
+        />
+      )}
+
+      <div className="panel spend-chart">
+        <div className="panel-title">Billed spend over time</div>
+        {chartContent}
+      </div>
 
       {isLoading
         ? <p>Loading spend…</p>

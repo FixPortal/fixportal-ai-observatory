@@ -701,6 +701,36 @@ public class SpendEntriesEndpointsWafTests(AiObservatoryApiFactory factory) : IC
     }
 
     [Fact]
+    public async Task ReportingFiltersVendorAndCategoryBeforeAggregating()
+    {
+        using var client = factory.CreateAdminClient();
+        var ct = TestContext.Current.CancellationToken;
+        var (includedCategoryId, includedVendorId) = await SeedCatalogAsync(client);
+        var (otherCategoryId, otherVendorId) = await SeedCatalogAsync(client);
+
+        await CreateEntryAsync(client, includedCategoryId, includedVendorId, 30m);
+        await CreateEntryAsync(client, otherCategoryId, otherVendorId, 70m);
+
+        var report = await client.GetFromJsonAsync<JsonElement>(
+            $"/api/spend/reporting?from=2026-07-12&to=2026-07-12&vendorId={includedVendorId}&categoryId={includedCategoryId}",
+            ct
+        );
+
+        report.GetProperty("entryCount").GetInt32().Should().Be(1);
+        report.GetProperty("totalGbp").GetDecimal().Should().Be(30m);
+        report
+            .GetProperty("vendorSeries")
+            .EnumerateArray()
+            .Should()
+            .ContainSingle(point => point.GetProperty("vendorId").GetGuid() == includedVendorId);
+        report
+            .GetProperty("categorySeries")
+            .EnumerateArray()
+            .Should()
+            .ContainSingle(point => point.GetProperty("categoryId").GetGuid() == includedCategoryId);
+    }
+
+    [Fact]
     public async Task Refund_FreezesANegativeAmountGbpAtTheChargeDateRate()
     {
         // USD, not GBP: GBP short-circuits to rate 1 before any FX lookup, so a GBP row

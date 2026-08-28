@@ -302,7 +302,9 @@ public static class SpendEntriesEndpoints
         AiObservatoryDbContext db,
         CancellationToken ct,
         string? from = null,
-        string? to = null
+        string? to = null,
+        Guid? vendorId = null,
+        Guid? categoryId = null
     )
     {
         if (ParseDate(from, out var fromDate) is { } fromError)
@@ -325,26 +327,46 @@ public static class SpendEntriesEndpoints
         // One grouped statement gives every card and series the same PostgreSQL statement
         // snapshot. Only date/vendor aggregates cross the wire; the capped ledger endpoint is
         // intentionally not involved in financial reporting.
-        var aggregateRows = await db
+        var entries = db
             .SpendEntries.AsNoTracking()
-            .Where(entry => entry.OccurredOn >= fromDate && entry.OccurredOn <= toDate)
+            .Where(entry => entry.OccurredOn >= fromDate && entry.OccurredOn <= toDate);
+        if (vendorId is { } vendor)
+        {
+            entries = entries.Where(entry => entry.VendorId == vendor);
+        }
+        if (categoryId is { } category)
+        {
+            entries = entries.Where(entry => entry.CategoryId == category);
+        }
+
+        var aggregateRows = await entries
             .Join(
                 db.SpendVendors.AsNoTracking(),
                 entry => entry.VendorId,
                 vendor => vendor.Id,
                 (entry, vendor) => new { Entry = entry, Vendor = vendor }
             )
+            .Join(
+                db.SpendCategories.AsNoTracking(),
+                row => row.Entry.CategoryId,
+                category => category.Id,
+                (row, category) => new { row.Entry, row.Vendor, Category = category }
+            )
             .GroupBy(row => new
             {
                 row.Entry.OccurredOn,
                 row.Vendor.Id,
-                row.Vendor.DisplayName,
+                VendorName = row.Vendor.DisplayName,
+                CategoryId = row.Category.Id,
+                CategoryName = row.Category.DisplayName,
             })
             .Select(group => new
             {
                 Date = group.Key.OccurredOn,
                 VendorId = group.Key.Id,
-                Name = group.Key.DisplayName,
+                group.Key.VendorName,
+                group.Key.CategoryId,
+                group.Key.CategoryName,
                 AmountGbp = group.Sum(row => row.Entry.AmountGbp),
                 EntryCount = group.Count(),
             })
@@ -358,10 +380,20 @@ public static class SpendEntriesEndpoints
             .Select(group => new BilledDailyPoint(group.Key, group.Sum(point => point.AmountGbp)))
             .ToList();
         var vendorSeries = aggregateRows
-            .GroupBy(point => new { point.VendorId, point.Name })
+            .GroupBy(point => new { point.VendorId, point.VendorName })
             .Select(group => new BilledVendorPoint(
                 group.Key.VendorId,
-                group.Key.Name,
+                group.Key.VendorName,
+                group.Sum(point => point.AmountGbp)
+            ))
+            .OrderByDescending(point => point.AmountGbp)
+            .ThenBy(point => point.Name)
+            .ToList();
+        var categorySeries = aggregateRows
+            .GroupBy(point => new { point.CategoryId, point.CategoryName })
+            .Select(group => new BilledCategoryPoint(
+                group.Key.CategoryId,
+                group.Key.CategoryName,
                 group.Sum(point => point.AmountGbp)
             ))
             .OrderByDescending(point => point.AmountGbp)
@@ -379,7 +411,8 @@ public static class SpendEntriesEndpoints
                 topVendor?.Name,
                 topVendor?.AmountGbp,
                 dailySeries,
-                vendorSeries
+                vendorSeries,
+                categorySeries
             )
         );
     }
@@ -577,10 +610,13 @@ public sealed record BilledReportingResponse(
     string? TopVendorName,
     decimal? TopVendorGbp,
     IReadOnlyList<BilledDailyPoint> DailySeries,
-    IReadOnlyList<BilledVendorPoint> VendorSeries
+    IReadOnlyList<BilledVendorPoint> VendorSeries,
+    IReadOnlyList<BilledCategoryPoint> CategorySeries
 );
 
 public sealed record BilledDailyPoint(LocalDate Date, decimal AmountGbp);
 
 public sealed record BilledVendorPoint(Guid VendorId, string Name, decimal AmountGbp);
+
+public sealed record BilledCategoryPoint(Guid CategoryId, string Name, decimal AmountGbp);
 // ReSharper restore NotAccessedPositionalProperty.Global

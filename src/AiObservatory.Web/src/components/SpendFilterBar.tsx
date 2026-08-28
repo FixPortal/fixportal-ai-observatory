@@ -10,7 +10,7 @@ interface Props {
   onVendorChange: (id: string | undefined) => void
   onAddEntry: () => void
   onManageCatalog: () => void
-  rangeLabel: string
+  rangeLabel?: string
   canEdit: boolean
 }
 
@@ -43,7 +43,7 @@ export default function SpendFilterBar({
         </select>
       </label>
 
-      <span className="spend-filters__range">{rangeLabel}</span>
+      {rangeLabel && <span className="spend-filters__range">{rangeLabel}</span>}
 
       {canEdit && (
         <div className="spend-filters__actions" role="group" aria-label="Spend actions">
