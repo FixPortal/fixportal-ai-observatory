@@ -1,4 +1,5 @@
 import type { SpendCategory, SpendVendor } from '../api/client'
+import { Button } from '../design/Button'
 
 interface Props {
   categories: SpendCategory[]
@@ -9,13 +10,14 @@ interface Props {
   onVendorChange: (id: string | undefined) => void
   onAddEntry: () => void
   onManageCatalog: () => void
+  rangeLabel: string
   canEdit: boolean
 }
 
 /** Region 1. One filter state, lifted to SpendPage, drives every other region. */
 export default function SpendFilterBar({
   categories, vendors, categoryId, vendorId,
-  onCategoryChange, onVendorChange, onAddEntry, onManageCatalog, canEdit,
+  onCategoryChange, onVendorChange, onAddEntry, onManageCatalog, rangeLabel, canEdit,
 }: Props) {
   return (
     <div className="spend-filters">
@@ -41,15 +43,15 @@ export default function SpendFilterBar({
         </select>
       </label>
 
+      <span className="spend-filters__range">{rangeLabel}</span>
+
       {canEdit && (
-        <>
-          <button type="button" className="spend-filters__add" onClick={onAddEntry}>
-            Add entry
-          </button>
-          <button type="button" className="spend-filters__add" onClick={onManageCatalog}>
+        <div className="spend-filters__actions" role="group" aria-label="Spend actions">
+          <Button variant="ghost" onClick={onManageCatalog}>
             Manage catalog
-          </button>
-        </>
+          </Button>
+          <Button onClick={onAddEntry}>Add entry</Button>
+        </div>
       )}
     </div>
   )

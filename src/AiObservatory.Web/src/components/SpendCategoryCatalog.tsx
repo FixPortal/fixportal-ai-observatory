@@ -11,7 +11,7 @@ interface Props {
   categories: SpendCategory[]
 }
 
-const EMPTY_FORM = { key: '', displayName: '', colorVar: '', sortOrder: '0' }
+const EMPTY_FORM = { key: '', displayName: '', sortOrder: '0' }
 
 /** One axis of the spend catalog panel: list (incl. archived), create, rename,
  * archive/un-archive. Key is set once at creation and never edited afterward --
@@ -57,7 +57,7 @@ export default function SpendCategoryCatalog({ categories }: Props) {
     create.mutate({
       key: form.key.trim(),
       displayName: form.displayName.trim(),
-      colorVar: form.colorVar.trim() || null,
+      colorVar: null,
       sortOrder,
     })
   }
@@ -165,17 +165,6 @@ export default function SpendCategoryCatalog({ categories }: Props) {
                 value={form.displayName}
                 onChange={e => setForm(f => ({ ...f, displayName: e.target.value }))}
                 maxLength={100}
-              />
-            </div>
-            <div>
-              <label htmlFor="new-category-color" className="sub-form__label">Colour variable (optional)</label>
-              <input
-                id="new-category-color"
-                className="sub-form__input"
-                value={form.colorVar}
-                onChange={e => setForm(f => ({ ...f, colorVar: e.target.value }))}
-                maxLength={60}
-                placeholder="--provider-anthropic"
               />
             </div>
             <div>

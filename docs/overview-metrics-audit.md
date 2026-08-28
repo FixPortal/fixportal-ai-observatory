@@ -70,3 +70,31 @@ Remediation:
 - [`BillingObservationWriter.cs`](../src/AiObservatory.Data/Spend/BillingObservationWriter.cs) adopts an unpaired migrated GitHub row on first retained observation, preventing recurrence when an older database is upgraded.
 - Portal and genuinely unpaired legacy spend are retained.
 - This audit reconciled the Observatory to Tax Portal source records and GitHub's billing API. It did not independently inspect every supplier invoice or receipt.
+
+### Post-remediation verification — 2026-08-28
+
+After the duplicate-removal migration deployed, the same inclusive window contained **17 rows totalling £976.9121**, displayed as **£976.91**:
+
+| Source | Rows | GBP |
+| --- | ---: | ---: |
+| Tax Portal expenses | 8 | 810.6400 |
+| Canonical GitHub provider observations | 9 | 166.2721 |
+| Migrated legacy GitHub snapshots | 0 | 0.0000 |
+| **Reconciled total** | **17** | **976.9121** |
+
+The raw ledger sum, `reporting.totalGbp`, daily series, and vendor series all agreed at £976.9121. The small movement from figures recorded earlier in the audit was additional canonical GitHub source activity, not reintroduced legacy duplication.
+
+## Spend page relationship
+
+Spend is the ledger drill-down for Overview. Its default unfiltered date range is therefore the same rolling 31-calendar-day inclusive window as `Billed spend`; for the same mounted end date, its entry count and total must reconcile exactly with the Overview card.
+
+Before 2026-08-28, Spend silently used a separate 90-day window. On that date it showed 54 rows totalling £4,358.0181 for 2026-05-30 through 2026-08-28, while the Overview window contained 17 rows totalling £976.9121. The additional £3,381.1060 across 37 rows was valid older spend, not an arithmetic discrepancy. Spend now uses the shared `dashboardDateRange` and displays its dates explicitly.
+
+Catalog semantics:
+
+- A **vendor** is the supplier identity used for ledger grouping, not a distinct billing lane or purchase type.
+- A **category** describes what was purchased and sits on each entry. One vendor can span several categories.
+- Anthropic therefore appears once in the vendor catalog even when its entries include both Subscription and Credits. In the 90-day audit above, its seven rows comprised four Credits entries (£718.28) and three Subscription entries (£450.00).
+- `SpendVendor.Provider` is only an optional link to a token-metered provider; it does not split the supplier into separate vendors.
+- `SpendCategory.ColorVar` is an internal compatibility field retained by the API/data model. The current Spend UI does not consume it, so catalog users are not asked to enter CSS variables.
+- Renames and default-category edits require an explicit row-level Save; Cancel restores the persisted value without writing. Archive/unarchive remains an explicit reversible action.

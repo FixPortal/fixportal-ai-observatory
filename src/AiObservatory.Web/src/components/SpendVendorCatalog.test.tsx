@@ -43,6 +43,16 @@ describe('SpendVendorCatalog', () => {
     expect(within(row).getByText(/no provider/i)).toBeInTheDocument()
   })
 
+  it('groups vendor details separately from the fixed action column', () => {
+    renderPanel()
+    const row = screen.getByText('anthropic').closest('li')!
+    const details = row.querySelector('.vendor-catalog__details')
+
+    expect(details).toContainElement(within(row).getByText('Anthropic', { selector: '.sub-list__name' }))
+    expect(details).toContainElement(screen.getByLabelText('Default category for Anthropic'))
+    expect(row.querySelector('.sub-list__actions--fixed')).not.toBeNull()
+  })
+
   it('offers only live categories as the default-category choice, not the archived one', () => {
     renderPanel()
     // Exact label: the per-row pickers below are labelled "Default category for <vendor>",
@@ -53,24 +63,32 @@ describe('SpendVendorCatalog', () => {
     expect(optionLabels).not.toContain('Legacy')
   })
 
-  it('clears a default category by sending an explicit null, not an omitted field', async () => {
+  it('does not write a default-category change until the user saves it', async () => {
     const patch = vi.spyOn(client, 'patchSpendVendor').mockResolvedValue({ ...vendors[0], defaultCategoryId: null })
     renderPanel()
 
     fireEvent.change(screen.getByLabelText('Default category for Anthropic'), { target: { value: '' } })
+
+    expect(patch).not.toHaveBeenCalled()
+    const row = screen.getByText('anthropic').closest('li')!
+    fireEvent.click(within(row).getByRole('button', { name: /^save$/i }))
 
     // Explicit null is the whole point — omitting the key means "leave it alone", which
     // is why the default category was previously set-once and unclearable.
     await waitFor(() => expect(patch).toHaveBeenCalledWith('v1', { defaultCategoryId: null }))
   })
 
-  it('repoints a default category to another live category', async () => {
-    const patch = vi.spyOn(client, 'patchSpendVendor').mockResolvedValue({ ...vendors[1], defaultCategoryId: 'k1' })
+  it('cancels a pending default-category change without writing it', () => {
+    const patch = vi.spyOn(client, 'patchSpendVendor')
     renderPanel()
 
-    fireEvent.change(screen.getByLabelText('Default category for GitHub Actions'), { target: { value: 'k1' } })
+    const select = screen.getByLabelText('Default category for Anthropic') as HTMLSelectElement
+    fireEvent.change(select, { target: { value: '' } })
+    const row = screen.getByText('anthropic').closest('li')!
+    fireEvent.click(within(row).getByRole('button', { name: /^cancel$/i }))
 
-    await waitFor(() => expect(patch).toHaveBeenCalledWith('v2', { defaultCategoryId: 'k1' }))
+    expect(select.value).toBe('k1')
+    expect(patch).not.toHaveBeenCalled()
   })
 
   it('keeps an already-archived default category selectable so the row does not misread as None', () => {
@@ -165,5 +183,10 @@ describe('SpendVendorCatalog', () => {
     fireEvent.click(screen.getByRole('button', { name: /^save$/i }))
 
     await waitFor(() => expect(patch).toHaveBeenCalledWith('v1', { displayName: 'Anthropic Inc' }))
+  })
+
+  it('explains that one vendor can span several spend categories', () => {
+    renderPanel()
+    expect(screen.getByText(/suppliers; categories describe what was purchased/i)).toBeInTheDocument()
   })
 })

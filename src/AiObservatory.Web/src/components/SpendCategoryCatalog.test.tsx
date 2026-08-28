@@ -52,8 +52,13 @@ describe('SpendCategoryCatalog', () => {
 
     await waitFor(() => expect(create).toHaveBeenCalledTimes(1))
     expect(create).toHaveBeenCalledWith(
-      expect.objectContaining({ key: 'inference', displayName: 'Inference' }),
+      expect.objectContaining({ key: 'inference', displayName: 'Inference', colorVar: null }),
     )
+  })
+
+  it('does not expose the internal CSS colour variable to catalog users', () => {
+    renderPanel()
+    expect(screen.queryByLabelText(/colour variable/i)).not.toBeInTheDocument()
   })
 
   it('surfaces a 409 duplicate-key failure from the server rather than a generic message', async () => {

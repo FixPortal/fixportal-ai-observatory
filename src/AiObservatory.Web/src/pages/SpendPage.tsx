@@ -5,12 +5,15 @@ import SpendTotals from '../components/SpendTotals'
 import SpendLedgerTable from '../components/SpendLedgerTable'
 import SpendEntryModal from '../components/SpendEntryModal'
 import SpendCatalogModal from '../components/SpendCatalogModal'
-import { useSpendCategories, useSpendVendors, useAllSpendCategories, useAllSpendVendors, useSpendEntries } from '../api/queries'
+import {
+  dashboardDateRange, useSpendCategories, useSpendVendors,
+  useAllSpendCategories, useAllSpendVendors, useSpendEntries,
+} from '../api/queries'
 import { deleteSpendEntry } from '../api/client'
 import { filterEntries, totalGbp } from '../lib/spendFilters'
 import { isReadonly } from '../auth/msal'
 
-const RANGE_DAYS = 90
+const DATE_FORMAT = new Intl.DateTimeFormat('en-GB', { day: '2-digit', month: 'short', year: 'numeric' })
 
 export default function SpendPage() {
   const qc = useQueryClient()
@@ -19,10 +22,10 @@ export default function SpendPage() {
   const [adding, setAdding] = useState(false)
   const [managingCatalog, setManagingCatalog] = useState(false)
 
-  // Fixed 90-day window in phase 1; the configurable date range arrives with the
-  // charts in phase 2, where it earns its keep.
-  const [to] = useState(() => new Date())
-  const from = useMemo(() => new Date(to.getTime() - RANGE_DAYS * 86_400_000), [to])
+  // Spend is the ledger drill-down for Overview, so both screens share one
+  // inclusive reporting window and their unfiltered totals reconcile.
+  const { from, to } = useMemo(() => dashboardDateRange(), [])
+  const rangeLabel = `${DATE_FORMAT.format(from)} – ${DATE_FORMAT.format(to)}`
 
   const categories = useSpendCategories()
   const vendors = useSpendVendors()
@@ -70,6 +73,7 @@ export default function SpendPage() {
         onVendorChange={setVendorId}
         onAddEntry={() => setAdding(true)}
         onManageCatalog={() => setManagingCatalog(true)}
+        rangeLabel={rangeLabel}
         canEdit={!isReadonly}
       />
 
