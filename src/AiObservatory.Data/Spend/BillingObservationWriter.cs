@@ -155,7 +155,11 @@ public class BillingObservationWriter(AiObservatoryDbContext db, FxRateProvider 
             1 => canonicalMatches[0],
             _ => throw new InvalidOperationException("More than one spend row matches the billing observation."),
         };
-        if (canonical is not null || observation.SourceId != UsageSourceIds.GitHubBillingApi)
+        if (
+            canonical is not null
+            || observation.SourceId != UsageSourceIds.GitHubBillingApi
+            || !observation.ObservationKey.StartsWith("github:", StringComparison.Ordinal)
+        )
         {
             return canonical;
         }
