@@ -412,6 +412,58 @@ public sealed class BillingObservationWriterTests : IAsyncLifetime
     }
 
     [Fact]
+    public async Task GitHubWriteDoesNotAdoptANonGitHubLegacyKeyCollision()
+    {
+        var ct = TestContext.Current.CancellationToken;
+        const string collisionKey = "portal:collision";
+        var vendor = await _db.SpendVendors.SingleAsync(candidate => candidate.Key == "github-actions", ct);
+        var category = await _db.SpendCategories.SingleAsync(candidate => candidate.Key == "ci", ct);
+        _db.SpendEntries.Add(
+            new SpendEntry
+            {
+                OccurredOn = new LocalDate(2026, 8, 1),
+                VendorId = vendor.Id,
+                CategoryId = category.Id,
+                Amount = 8m,
+                Currency = "USD",
+                AmountGbp = 6m,
+                FxRate = 0.75m,
+                Description = "unrelated legacy row",
+                Source = SpendSource.Api,
+                EntryKey = collisionKey,
+                RecordedAt = RecordedAt.Minus(Duration.FromDays(1)),
+                SourceId = UsageSourceIds.LegacySpend,
+                SourceKind = SourceKind.Legacy,
+                UsageScope = UsageScope.Unknown,
+                CostBasis = CostBasis.Billed,
+                ObservedAt = ObservedAt.Minus(Duration.FromDays(1)),
+            }
+        );
+        await _db.SaveChangesAsync(ct);
+
+        await Writer(_db, 0.75m)
+            .RecordAsync(
+                Observation(
+                    provider: "github",
+                    source: UsageSourceIds.GitHubBillingApi,
+                    key: collisionKey,
+                    gross: 8m,
+                    credit: 0m,
+                    net: 8m,
+                    service: "actions",
+                    sku: "linux"
+                ),
+                "github-actions",
+                "ci",
+                ct
+            );
+
+        var spend = await _db.SpendEntries.AsNoTracking().ToListAsync(ct);
+        spend.Should().ContainSingle(entry => entry.SourceId == UsageSourceIds.LegacySpend);
+        spend.Should().ContainSingle(entry => entry.SourceId == UsageSourceIds.GitHubBillingApi);
+    }
+
+    [Fact]
     public async Task PostgreSqlEnforcesJsonAndProviderBillingConstraints()
     {
         var ct = TestContext.Current.CancellationToken;
