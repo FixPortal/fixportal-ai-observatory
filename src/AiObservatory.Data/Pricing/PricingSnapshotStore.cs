@@ -114,15 +114,32 @@ public sealed class PricingSnapshotStore(AiObservatoryDbContext db)
         Provider provider,
         LocalDate usageDate,
         CancellationToken cancellationToken = default
-    ) => GetCatalogForDateAsync(GetSourceId(provider), usageDate, cancellationToken);
+    ) => GetCatalogForDateAsync(GetSourceId(provider), usageDate, snapshotsBySourceId: null, cancellationToken);
 
     public Task<PricingSnapshot?> GetCatalogForDateAsync(
         UsageEvent usage,
         CancellationToken cancellationToken = default
+    ) => GetCatalogForDateAsync(usage, snapshotsBySourceId: null, cancellationToken);
+
+    /// <summary>
+    /// As <see cref="GetCatalogForDateAsync(UsageEvent, CancellationToken)"/>, but reads each source's
+    /// snapshot rows through <paramref name="snapshotsBySourceId"/>, so a pass over many events queries
+    /// them once rather than once per event. The effective-date filter still runs per event, so events on
+    /// different dates resolve to different snapshots exactly as they do uncached.
+    /// </summary>
+    internal Task<PricingSnapshot?> GetCatalogForDateAsync(
+        UsageEvent usage,
+        Dictionary<string, List<PricingSnapshot>>? snapshotsBySourceId,
+        CancellationToken cancellationToken
     ) =>
         usage.CostBasis == CostBasis.Notional
             ? GetActiveForUsageAsync(usage, cancellationToken)
-            : GetCatalogForDateAsync(GetSourceId(usage), usage.OccurredAt.InUtc().Date, cancellationToken);
+            : GetCatalogForDateAsync(
+                GetSourceId(usage),
+                usage.OccurredAt.InUtc().Date,
+                snapshotsBySourceId,
+                cancellationToken
+            );
 
     private Task<PricingSnapshot?> GetActiveForUsageAsync(UsageEvent usage, CancellationToken cancellationToken)
     {
@@ -133,6 +150,7 @@ public sealed class PricingSnapshotStore(AiObservatoryDbContext db)
     private async Task<PricingSnapshot?> GetCatalogForDateAsync(
         string? sourceId,
         LocalDate usageDate,
+        Dictionary<string, List<PricingSnapshot>>? snapshotsBySourceId,
         CancellationToken cancellationToken
     )
     {
@@ -141,12 +159,17 @@ public sealed class PricingSnapshotStore(AiObservatoryDbContext db)
             return null;
         }
 
-        var snapshots = await db
-            .PricingSnapshots.AsNoTracking()
-            .Where(candidate => candidate.SourceId == sourceId)
-            .OrderByDescending(candidate => candidate.RetrievedAt)
-            .ThenByDescending(candidate => candidate.IsActive)
-            .ToListAsync(cancellationToken);
+        if (snapshotsBySourceId is null || !snapshotsBySourceId.TryGetValue(sourceId, out var snapshots))
+        {
+            snapshots = await db
+                .PricingSnapshots.AsNoTracking()
+                .Where(candidate => candidate.SourceId == sourceId)
+                .OrderByDescending(candidate => candidate.RetrievedAt)
+                .ThenByDescending(candidate => candidate.IsActive)
+                .ToListAsync(cancellationToken);
+            snapshotsBySourceId?.Add(sourceId, snapshots);
+        }
+
         return snapshots.FirstOrDefault(snapshot => Covers(snapshot, usageDate));
     }
 
