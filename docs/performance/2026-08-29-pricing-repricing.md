@@ -72,7 +72,7 @@ Disposition: accepted, not a violation. The warning flags the raw SQL string the
 
 Composition review (one frontier reviewer, verified read-only): Q1 restart-replay `clear`, Q2 idempotency `clear`, Q4 fence pairing `clear`, Q5 partial failure `clear`. Q5 independently confirms the dropped cleanup strands nothing; Q2 independently confirms the `INSERT`-branch repair path is value-identical to the old two-leg outcome.
 
-**Open, and not addressed by this change:** Q3 ordering returned a `finding` that the reviewer states is **pre-existing and not introduced by this diff** — in the standalone (non-activation) reprice path, where no advisory lock is held, a concurrent estimated-ingest correction can land between the `AsNoTracking` read and the locked write, so a price is computed from tokens the event no longer has. Event and aggregate stay mutually consistent but both wrong until the next daily pass recomputes and self-heals. This is carried forward for a separate decision; it blocks a `quality-gate-review` PASS until fixed or explicitly accepted.
+**Not addressed by this change, since closed:** Q3 ordering returned a `finding` that the reviewer states is **pre-existing and not introduced by this diff** — in the standalone (non-activation) reprice path, where no advisory lock is held, a concurrent estimated-ingest correction can land between the `AsNoTracking` read and the locked write, so a price is computed from tokens the event no longer has. Event and aggregate stay mutually consistent but both wrong until the next daily pass recomputes and self-heals. Fixed separately in PR #198: `UpdateEventPricingAsync` now takes the event as it was read and compares the locked row against it, leaving a moved row for the next pass.
 
 Displaced costs: none identified. The change removes work rather than trading it — no new allocation, cache, retained memory, connection or configuration. A shorter `pg_advisory_xact_lock` hold also lowers the contention ceiling for concurrent ingest during an activation.
 
@@ -81,3 +81,80 @@ Commercial impact: `currencyCost: unknown`. No repricing volume, deployment topo
 ## Benchmark
 
 `not retained` as a new artefact. The workload already lives in the repository as the opt-in `[Fact(Explicit = true)]` qualification added by PR #196 and is reused as-is. No CI performance gate was added and none is proposed.
+
+---
+
+# Accepted finding — `PERF-003`
+
+"Pricing snapshot catalog is re-queried and re-materialised once per event within a single activation".
+
+- Audit: as above. Experiment record: `E:\Documents\Obsidian Vault\Claude\Performance Audit\fixportal-ai-observatory\2026-08-29-0905-PERF-003-experiment.md`.
+- Approval: Chris, "Please continue with 1) first and then 2)", where item 2 was PERF-002 and PERF-003.
+- Audited commit `9fca4f1`; **baseline commit `59cd019`** (`reviewer-findings-batch16` = `main` at `bdaa846` plus the Q3 fix), candidate on `performance/perf-003-catalog-memo`.
+
+## Re-baselining
+
+HEAD had moved from the audited `9fca4f1` through `bdaa846` (PERF-001) to `59cd019`, and PERF-001 changed this same path, so the audit's published baseline of 10 round trips per event no longer described it. Both arms were re-measured in one session on one harness from `59cd019`. Every figure below is against that fresh baseline.
+
+## Change and rollback
+
+`PricingSnapshotStore.GetCatalogForDateAsync` issued one query per event for **all** snapshot rows of the source, materialised each into an EF entity carrying its `NormalizedCatalog` and `RawEvidence` JSON, then discarded all but the covering one. Within one pass those rows cannot change: an activation holds `pg_advisory_xact_lock` across its whole repricing, and a standalone pass reprices only what it read.
+
+`RepriceProviderAsync` now creates a `Dictionary<string, List<PricingSnapshot>>` as a **local** and threads it through `UsagePriceResolver.ResolveAsync` to the store, which reads each source's rows once and serves the rest of the pass from it. `UsagePriceResolver` and `PricingSnapshotStore` gain one `internal` overload each; the existing public signatures are unchanged and pass `null`, so `RecordEstimatedEventAsync` and every other caller are unaffected.
+
+The cache holds the **row list**, not the resolved snapshot, and `Covers(...)` still runs per event — so two events on different dates in one pass still resolve to different snapshots. That is what `ActivationCallbackCommitsEffectiveDateRepricingWithTheSnapshot` checks, and caching the resolved snapshot instead would fail it.
+
+Lifetime is structural rather than asserted: the dictionary is a local, no field or static holds it, so it cannot outlive the pass or the advisory lock.
+
+Behavioural surface: none — same queries, fewer of them. Rollback: revert the three-file change. No migration, configuration, data repair or dependency.
+
+## Evidence
+
+Same command, harness and environment as PERF-001 above, on container `aiobs-perf003-harness` (`postgres:17`, `shared_preload_libraries=pg_stat_statements`, port 55432), `pg_stat_statements` reset before each arm.
+
+| Statistic | Baseline (`59cd019`) | Candidate | Delta |
+| --- | --- | --- | --- |
+| Median activation (1,000 events) | 5,227.7 ms | **4,581.9 ms** | **−12.4%** |
+| Throughput | 191.3 events/s | 218.2 events/s | +14.1% |
+| Activations | 5,114.2 / 5,227.7 / 5,360.4 ms | 4,757.4 / 4,494.5 / 4,581.9 ms | spread 4.7% / 5.7% of median |
+| `SELECT` on `PricingSnapshots` | 4,000 calls, 14,000 rows, 95.4 ms | **4 calls**, 14 rows, 0.1 ms | one per pass |
+| Statements, whole run | 29,375 | **25,379** | −3,996 |
+| Server execution, whole run | 877.1 ms | 794.7 ms | −82.4 ms |
+| Round trips per repriced event | 7 | **6** | −14% |
+
+Materiality threshold (at most 8 calls of that shape per 4,000 repricings **and** at least 5% median improvement against a same-session baseline) is met on both counts.
+
+Predicted improvement from removing one round trip at the audited ~0.651 ms was 0.651 ms/event; measured was **0.646 ms/event** — agreement within 1%. Server execution fell by only 82.4 ms of the 645.8 ms of wall time saved, so round-trip overhead is again the mechanism rather than server work.
+
+**A discarded first pair.** The first baseline ran while the box was still busy and returned 10,918.5 ms, which against the candidate reads as −56% — about four times what removing one of seven round trips can account for. That discrepancy was treated as a measurement fault, not a result: both arms were re-run on a quiet box and only the quiet pair is recorded here.
+
+### Correctness and normal gates
+
+| Gate | Result |
+| --- | --- |
+| Focused correctness | the qualification workload's own assertions passed in every run of both arms |
+| Format | `dotnet csharpier check .` — 244 files, exit 0 |
+| Build | `dotnet build AiObservatory.slnx` — 0 errors, same pre-existing `S3776` warning |
+| Test | `dotnet test AiObservatory.slnx` — **1,050 total, 0 failed** on this branch; 1,052 on the measured base, whose two extra tests are PR #198's |
+
+Invariants, each against an existing passing test rather than a new one: `ActivationCallbackCommitsEffectiveDateRepricingWithTheSnapshot` (two dates in one pass, expecting 3.00 and 2.00 — the load-bearing one), `RepricingUpdatesOnlyEligibleEstimatesAndRepairsAggregateCoverage` (two activations, `Notional` basis), `ActivationCallbackFailureRollsBackSnapshotEventsAndAggregates` (rollback). No new test was needed.
+
+## Boundary and review
+
+`test-managed-product-boundary.ps1 -BaseRef reviewer-findings-batch16` returned `passed: true`, zero violations, **zero warnings**. Manual diff review: no generated code, reflection, interop, package change, or ambiguous raw source. The diff is two `internal` overloads, one local, and a `TryGetValue`/`Add` around an existing query.
+
+Displaced costs: peak working set rises for the duration of a pass by the retained catalog rows for one source — the manifest's expected trade-off, unmeasured here.
+
+Limitations: the wall-time figure comes from a synthetic catalog smaller than production's, on one machine. The gain scales with rows-per-source, so it grows as activation history accumulates; the measured 3.5 rows per event is not a stable figure.
+
+Commercial impact: `currencyCost: unknown`, on the same missing inputs as PERF-001.
+
+## Rejected in the same pass — `PERF-002`
+
+`PERF-002` proposed removing `ctx.Entry(existing).ReloadAsync(ct)` from `FindEventByIdForUpdateAsync` as a redundant round trip, **conditional** on establishing that it does not reconcile EF Core change-tracker state. It does, so the finding's own rejection condition fired and no product code changed.
+
+Record: `E:\Documents\Obsidian Vault\Claude\Performance Audit\fixportal-ai-observatory\2026-08-29-0817-PERF-002-experiment.md`. Removing the reload and running a focused test on the by-id path leaves the aggregate at 6.00 instead of 5.00. That test is retained, in PR #198.
+
+## Benchmark
+
+`not retained`. The qualification workload is unchanged and was already retained under PERF-001's separate approval. No CI performance gate was added and none is proposed.
