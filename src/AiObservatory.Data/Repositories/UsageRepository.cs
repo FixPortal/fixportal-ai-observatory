@@ -275,6 +275,13 @@ public class UsageRepository(
     // RequestCount and the token columns net to zero, so no row can reach RequestCount 0 here and the cleanup
     // delete is unreachable. ApplyAggregateDeltaAsync stays as-is for the ingest path, where CopyCanonicalValues
     // can move key dimensions and the pair is genuinely not collapsible.
+    //
+    // Precondition, because the SET list deliberately diverges from the INSERT list: only reprice an event whose
+    // aggregate row is maintained by this same per-event delta discipline. On conflict this preserves the token
+    // and RequestCount columns rather than rebuilding them from evt, so reusing it for a key whose row is
+    // populated from some other source would keep that row's existing token values. UpdateEventPricingAsync is
+    // the only caller and satisfies this. The invariant is not asserted here on purpose: checking it needs a read
+    // of the row, which is the round trip this method exists to remove.
     private async Task ApplyRepricingCostDeltaAsync(
         UsageEvent evt,
         decimal? previousCostUsd,
