@@ -127,8 +127,9 @@ public class UsageRepository(
         return canonicalEventKey == evt.EventKey ? evt : CopyWithEventKey(evt, canonicalEventKey);
     }
 
-    public async Task UpdateEventPricingAsync(Guid eventId, UsagePriceQuote? quote, CancellationToken ct = default)
+    public async Task UpdateEventPricingAsync(UsageEvent priced, UsagePriceQuote? quote, CancellationToken ct = default)
     {
+        ArgumentNullException.ThrowIfNull(priced);
         IDbContextTransaction? transaction = null;
         if (ctx.Database.CurrentTransaction is null)
         {
@@ -139,10 +140,11 @@ public class UsageRepository(
         {
             try
             {
-                var existing = await FindEventByIdForUpdateAsync(eventId, ct);
+                var existing = await FindEventByIdForUpdateAsync(priced.Id, ct);
                 if (
                     existing is null
                     || existing.CostBasis is not (CostBasis.ListPriceEstimate or CostBasis.Notional)
+                    || !PricingInputsEqual(existing, priced)
                     || existing.CostUsd == quote?.CostUsd && existing.CacheSavingsUsd == quote?.CacheSavingsUsd
                 )
                 {
@@ -389,6 +391,31 @@ public class UsageRepository(
             ObservedAt = source.ObservedAt,
             EventKey = eventKey,
         };
+
+    // The repricing scan reads events unlocked, prices them, then writes each one under a row lock. A
+    // concurrent ingest correction landing in that gap would otherwise have its tokens overwritten with a
+    // price calculated from the tokens it replaced, and its aggregate delta routed by the stale key
+    // dimensions. Every field the resolver, the calculators or the aggregate key read is compared here, so a
+    // moved row is left for the next reprice pass to price from its current values.
+    //
+    // ponytail: ordinal compare on RawPayload rather than the JSON deep-equals CanonicalEquals uses. Both
+    // reads return the same stored text unless a correction rewrote it, and a spurious mismatch only defers
+    // one event by one pass. Compare structurally if a producer starts rewriting payload text in place.
+    private static bool PricingInputsEqual(UsageEvent locked, UsageEvent priced) =>
+        locked.Provider == priced.Provider
+        && locked.OccurredAt == priced.OccurredAt
+        && locked.Model == priced.Model
+        && locked.InputTokens == priced.InputTokens
+        && locked.OutputTokens == priced.OutputTokens
+        && locked.CacheReadTokens == priced.CacheReadTokens
+        && locked.CacheWriteTokens == priced.CacheWriteTokens
+        && locked.CacheWrite1hTokens == priced.CacheWrite1hTokens
+        && locked.ThoughtTokens == priced.ThoughtTokens
+        && locked.CostBasis == priced.CostBasis
+        && locked.SourceId == priced.SourceId
+        && locked.SourceKind == priced.SourceKind
+        && locked.UsageScope == priced.UsageScope
+        && string.Equals(locked.RawPayload, priced.RawPayload, StringComparison.Ordinal);
 
     private static bool CanonicalEquals(UsageEvent left, UsageEvent right) =>
         left.Provider == right.Provider
