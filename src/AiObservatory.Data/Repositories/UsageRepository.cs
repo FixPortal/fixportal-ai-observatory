@@ -154,10 +154,11 @@ public class UsageRepository(
                     return;
                 }
 
-                await ApplyAggregateDeltaAsync(existing, -1, ct);
+                var previousCostUsd = existing.CostUsd;
+                var previousCacheSavingsUsd = existing.CacheSavingsUsd;
                 existing.CostUsd = quote?.CostUsd;
                 existing.CacheSavingsUsd = quote?.CacheSavingsUsd;
-                await ApplyAggregateDeltaAsync(existing, +1, ct);
+                await ApplyRepricingCostDeltaAsync(existing, previousCostUsd, previousCacheSavingsUsd, ct);
                 await ctx.SaveChangesAsync(ct);
                 if (transaction is not null)
                 {
@@ -266,6 +267,54 @@ public class UsageRepository(
                 && a.RequestCount == 0
             )
             .ExecuteDeleteAsync(ct);
+    }
+
+    // ponytail: repricing changes only CostUsd/CacheSavingsUsd, and neither is part of the conflict key, so
+    // the old -1 then +1 delta pair always hit the same row and collapse to one net upsert. The INSERT branch
+    // still carries the full event values so a missing aggregate row is repaired exactly as the +1 leg did.
+    // RequestCount and the token columns net to zero, so no row can reach RequestCount 0 here and the cleanup
+    // delete is unreachable. ApplyAggregateDeltaAsync stays as-is for the ingest path, where CopyCanonicalValues
+    // can move key dimensions and the pair is genuinely not collapsible.
+    private async Task ApplyRepricingCostDeltaAsync(
+        UsageEvent evt,
+        decimal? previousCostUsd,
+        decimal? previousCacheSavingsUsd,
+        CancellationToken ct
+    )
+    {
+        var date = evt.OccurredAt.InUtc().Date;
+        var provider = evt.Provider.ToString();
+        var model = evt.Model ?? "unknown";
+        var sourceKind = evt.SourceKind.ToString();
+        var usageScope = evt.UsageScope.ToString();
+        var costBasis = evt.CostBasis.ToString();
+        var costDelta = (evt.CostUsd ?? 0m) - (previousCostUsd ?? 0m);
+        var unknownCostDelta = (evt.CostUsd is null ? 1 : 0) - (previousCostUsd is null ? 1 : 0);
+        var cacheSavingsDelta = (evt.CacheSavingsUsd ?? 0m) - (previousCacheSavingsUsd ?? 0m);
+        var unknownCacheSavingsDelta =
+            (evt.CacheSavingsUsd is null ? 1 : 0) - (previousCacheSavingsUsd is null ? 1 : 0);
+        var insertInput = Math.Max(0, evt.InputTokens);
+        var insertOutput = Math.Max(0, evt.OutputTokens);
+        var insertCacheRead = Math.Max(0, evt.CacheReadTokens ?? 0L);
+        var insertCacheWrite = Math.Max(0, evt.CacheWriteTokens ?? 0L);
+        var insertCacheWrite1h = Math.Max(0, evt.CacheWrite1hTokens ?? 0L);
+        var insertCost = Math.Max(0, evt.CostUsd ?? 0m);
+        var insertUnknownCost = evt.CostUsd is null ? 1 : 0;
+        var insertCacheSavings = evt.CacheSavingsUsd ?? 0m;
+        var insertUnknownCacheSavings = evt.CacheSavingsUsd is null ? 1 : 0;
+
+        await ctx.Database.ExecuteSqlInterpolatedAsync(
+            $"""
+            INSERT INTO "DailyAggregates" ("Date", "Provider", "Model", "SourceId", "SourceKind", "UsageScope", "CostBasis", "InputTokens", "OutputTokens", "CacheReadTokens", "CacheWriteTokens", "CacheWrite1hTokens", "CostUsd", "UnknownCostCount", "CacheSavingsUsd", "UnknownCacheSavingsCount", "RequestCount")
+            VALUES ({date}, {provider}, {model}, {evt.SourceId}, {sourceKind}, {usageScope}, {costBasis}, {insertInput}, {insertOutput}, {insertCacheRead}, {insertCacheWrite}, {insertCacheWrite1h}, {insertCost}, {insertUnknownCost}, {insertCacheSavings}, {insertUnknownCacheSavings}, 1)
+            ON CONFLICT ("Date", "Provider", "Model", "SourceId", "SourceKind", "UsageScope", "CostBasis") DO UPDATE SET
+                "CostUsd" = "DailyAggregates"."CostUsd" + {costDelta},
+                "UnknownCostCount" = "DailyAggregates"."UnknownCostCount" + {unknownCostDelta},
+                "CacheSavingsUsd" = "DailyAggregates"."CacheSavingsUsd" + {cacheSavingsDelta},
+                "UnknownCacheSavingsCount" = "DailyAggregates"."UnknownCacheSavingsCount" + {unknownCacheSavingsDelta}
+            """,
+            ct
+        );
     }
 
     private async Task<UsageEvent?> FindEventForUpdateAsync(string sourceId, string eventKey, CancellationToken ct)
