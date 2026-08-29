@@ -27,7 +27,19 @@ public sealed class UsagePriceResolver
         _logger = logger;
     }
 
-    public async Task<UsagePriceQuote?> ResolveAsync(UsageEvent usage, CancellationToken cancellationToken = default)
+    public Task<UsagePriceQuote?> ResolveAsync(UsageEvent usage, CancellationToken cancellationToken = default) =>
+        ResolveAsync(usage, snapshotsBySourceId: null, cancellationToken);
+
+    /// <summary>
+    /// As <see cref="ResolveAsync(UsageEvent, CancellationToken)"/>, but resolves the snapshot through
+    /// <paramref name="snapshotsBySourceId"/> so a pass over many events does not re-query it per event.
+    /// The dictionary belongs to the caller and must not outlive the pass that created it.
+    /// </summary>
+    internal async Task<UsagePriceQuote?> ResolveAsync(
+        UsageEvent usage,
+        Dictionary<string, List<PricingSnapshot>>? snapshotsBySourceId,
+        CancellationToken cancellationToken
+    )
     {
         ArgumentNullException.ThrowIfNull(usage);
         if (IsExactZeroUsage(usage))
@@ -41,7 +53,7 @@ public sealed class UsagePriceResolver
             return null;
         }
 
-        var snapshot = await _store.GetCatalogForDateAsync(usage, cancellationToken);
+        var snapshot = await _store.GetCatalogForDateAsync(usage, snapshotsBySourceId, cancellationToken);
         if (snapshot is null)
         {
             WarnOnce(usage, "catalog");
