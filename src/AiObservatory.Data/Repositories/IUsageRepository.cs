@@ -103,7 +103,14 @@ public interface IUsageRepository
     /// Replaces pricing on an eligible estimated event and applies the signed aggregate delta.
     /// Joins the current database transaction when activation is in progress.
     /// </summary>
-    Task UpdateEventPricingAsync(Guid eventId, UsagePriceQuote? quote, CancellationToken ct = default);
+    /// <param name="priced">
+    /// The event as it was read when <paramref name="quote"/> was calculated. The write is skipped
+    /// if the locked row's pricing inputs have since moved, so a quote is never applied to an event
+    /// it was not calculated from.
+    /// </param>
+    /// <param name="quote">The price calculated from <paramref name="priced"/>.</param>
+    /// <param name="ct">Cancellation token.</param>
+    Task UpdateEventPricingAsync(UsageEvent priced, UsagePriceQuote? quote, CancellationToken ct = default);
 
     /// <summary>
     /// Deletes ALL usage data for one provider — both the raw <c>UsageEvents</c> and the

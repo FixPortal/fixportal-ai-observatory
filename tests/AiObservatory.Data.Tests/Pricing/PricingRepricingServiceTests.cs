@@ -103,6 +103,36 @@ public sealed class PricingRepricingServiceTests : IAsyncLifetime
         aggregate.UnknownCacheSavingsCount.Should().Be(1);
     }
 
+    [Fact]
+    public async Task RepricingSkipsAnEventCorrectedAfterItsQuoteWasCalculated()
+    {
+        var ct = TestContext.Current.CancellationToken;
+        await _store.ActivateAsync(Candidate("old", 1m), ct);
+        var original = Event("raced", CostBasis.ListPriceEstimate, 1m, 0m);
+        await _repository.RecordEventAsync(original, ct);
+
+        // What the unlocked repricing scan read, and the quote it calculated from that read.
+        var scanned = await _db.UsageEvents.AsNoTracking().SingleAsync(row => row.EventKey == "raced", ct);
+        await _store.ActivateAsync(Candidate("new", 2m), ct);
+        var quote = await Resolver(_store).ResolveAsync(scanned, ct);
+        quote!.CostUsd.Should().Be(2m);
+
+        // A concurrent ingest correction lands in the gap, doubling the tokens and pricing them itself.
+        var corrected = Event("raced", CostBasis.ListPriceEstimate, 4m, 0m);
+        corrected.InputTokens = 2_000_000;
+        corrected.ObservedAt = original.ObservedAt.Plus(Duration.FromMinutes(1));
+        await _repository.RecordEventAsync(corrected, ct);
+
+        await _repository.UpdateEventPricingAsync(scanned, quote, ct);
+
+        var saved = await _db.UsageEvents.AsNoTracking().SingleAsync(row => row.EventKey == "raced", ct);
+        saved.InputTokens.Should().Be(2_000_000);
+        saved.CostUsd.Should().Be(4m);
+        var aggregate = await _db.DailyAggregates.AsNoTracking().SingleAsync(ct);
+        aggregate.InputTokens.Should().Be(2_000_000);
+        aggregate.CostUsd.Should().Be(4m);
+    }
+
     [Fact(Explicit = true)]
     [Trait("Category", "Performance")]
     public async Task QualificationRepricesEveryEligibleEventAndItsAggregate()

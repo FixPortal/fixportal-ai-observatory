@@ -26,7 +26,7 @@ public sealed class PricingRepricingService(
             var quote = await resolver.ResolveAsync(usage, cancellationToken);
             if (usage.CostUsd != quote?.CostUsd || usage.CacheSavingsUsd != quote?.CacheSavingsUsd)
             {
-                await repository.UpdateEventPricingAsync(usage.Id, quote, cancellationToken);
+                await repository.UpdateEventPricingAsync(usage, quote, cancellationToken);
             }
         }
     }
