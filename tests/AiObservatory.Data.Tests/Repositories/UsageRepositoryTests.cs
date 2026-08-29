@@ -1,5 +1,6 @@
 using System.Text.Json;
 using AiObservatory.Data.Entities;
+using AiObservatory.Data.Pricing;
 using AiObservatory.Data.Repositories;
 using AwesomeAssertions;
 using Microsoft.EntityFrameworkCore;
@@ -634,6 +635,40 @@ public class UsageRepositoryTests : IAsyncLifetime
         var rows = await _ctx.DailyAggregates.AsNoTracking().ToListAsync(ct);
         rows.Single(x => x.SourceId == UsageSourceIds.CodexLocal).CostUsd.Should().Be(3m);
         rows.Single(x => x.SourceId == UsageSourceIds.OpenAiUsageApi).CostUsd.Should().Be(1m);
+    }
+
+    // The by-id FOR UPDATE lookup returns the already-tracked instance when the context has one, so it
+    // reloads it. Without that reload the repricing delta is calculated from the pre-correction cost and
+    // the aggregate ends up 1.00 too high, which no other test covered.
+    [Fact]
+    public async Task UpdateEventPricing_refreshes_a_stale_tracked_snapshot()
+    {
+        var ct = TestContext.Current.CancellationToken;
+        var options = new DbContextOptionsBuilder<AiObservatoryDbContext>()
+            .UseNpgsql(_connStr, o => o.UseNodaTime())
+            .Options;
+
+        var first = NewEvent(cost: 1m, cacheSavings: 0m);
+        first.CostBasis = CostBasis.ListPriceEstimate;
+        await _repo.RecordEventAsync(first, ct);
+
+        await using (var other = new AiObservatoryDbContext(options))
+        {
+            var otherRepository = new UsageRepository(other);
+            var corrected = NewEvent(cost: 2m, cacheSavings: 0m, observedAt: Instant.FromUtc(2026, 8, 24, 12, 3));
+            corrected.CostBasis = CostBasis.ListPriceEstimate;
+            (await otherRepository.RecordEventAsync(corrected, ct))
+                .Disposition.Should()
+                .Be(RecordEventDisposition.Corrected);
+            (await other.DailyAggregates.AsNoTracking().SingleAsync(ct)).CostUsd.Should().Be(2m);
+        }
+
+        var current = await _ctx.UsageEvents.AsNoTracking().SingleAsync(ct);
+        await _repo.UpdateEventPricingAsync(current, new UsagePriceQuote(5m, 0m), ct);
+
+        _ctx.ChangeTracker.Clear();
+        (await _ctx.UsageEvents.AsNoTracking().SingleAsync(ct)).CostUsd.Should().Be(5m);
+        (await _ctx.DailyAggregates.AsNoTracking().SingleAsync(ct)).CostUsd.Should().Be(5m);
     }
 
     [Fact]
