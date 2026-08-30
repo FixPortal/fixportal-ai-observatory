@@ -5,7 +5,7 @@ import type { DailyAggregate } from '../api/client'
 import ProviderSplit, { buildProviderSlices } from './ProviderSplit'
 
 const data = vi.hoisted(() => ({ aggregates: [] as DailyAggregate[] }))
-vi.mock('../api/queries', () => ({ useAggregates: () => data.aggregates }))
+vi.mock('../api/queries', () => ({ useAggregates: () => ({ aggregates: data.aggregates, isError: false, isLoading: false }) }))
 
 const aggregate = (overrides: Partial<DailyAggregate> = {}): DailyAggregate => ({
   date: '2026-08-24', provider: 'openai', model: 'gpt-5', sourceId: 'openai-usage-api',

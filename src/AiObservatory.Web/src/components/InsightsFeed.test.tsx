@@ -6,7 +6,7 @@ import type { Insight } from '../api/client'
 import InsightsFeed from './InsightsFeed'
 
 const data = vi.hoisted(() => ({ insights: [] as Insight[] }))
-vi.mock('../api/queries', () => ({ useInsights: () => data.insights }))
+vi.mock('../api/queries', () => ({ useInsights: () => ({ insights: data.insights, isError: false, isLoading: false }) }))
 
 const insight = (number: number): Insight => ({
   id: String(number),

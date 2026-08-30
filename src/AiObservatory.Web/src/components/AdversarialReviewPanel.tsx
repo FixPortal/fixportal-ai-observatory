@@ -1,11 +1,14 @@
 import { useMemo, useState } from 'react'
+import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { useAdversarialReviewRuns, useAdversarialReviewStats } from '../api/queries'
-import type { AdversarialReviewStats } from '../api/client'
+import { deleteAdversarialReviewRun, type AdversarialReviewStats } from '../api/client'
 import { participantColor } from '../theme/providerColors'
 import { CollapsiblePanel } from './CollapsiblePanel'
+import { Button } from '../design/Button'
+import { isReadonly } from '../auth/msal'
 import { groupRuns, formatSeconds, formatMinutes, bankersRound, type RunGroup } from './adversarialReviewGrouping'
-import { filterStats, sortStats, filterRunGroups, sortRunGroups } from './adversarialReviewSort'
-import type { StatsSortField, RunSortField, SortDirection } from './adversarialReviewSort'
+import { filterStats, sortStats, filterRunGroups, filterRunGroupsByStatus, sortRunGroups } from './adversarialReviewSort'
+import type { StatsSortField, RunSortField, SortDirection, CompletenessFilter, ValidityFilter } from './adversarialReviewSort'
 import GitHubSortableHeader from './GitHubSortableHeader'
 import SearchIcon from '../design/SearchIcon'
 
@@ -64,10 +67,11 @@ function RunSummary({ group }: { group: RunGroup }) {
 
 interface StatsTableProps {
   stats: AdversarialReviewStats[]
+  isLoading: boolean
   isError: boolean
 }
 
-function StatsTable({ stats, isError }: StatsTableProps) {
+function StatsTable({ stats, isLoading, isError }: StatsTableProps) {
   const [query, setQuery] = useState('')
   const [sortField, setSortField] = useState<StatsSortField>('reviewer')
   const [sortDirection, setSortDirection] = useState<SortDirection>('asc')
@@ -80,6 +84,7 @@ function StatsTable({ stats, isError }: StatsTableProps) {
     else { setSortField(field); setSortDirection('desc') }
   }
 
+  if (isLoading) return <p className="panel-empty">Loading review stats...</p>
   if (isError) return <p className="panel-empty">Couldn’t load review stats — try refreshing.</p>
   if (stats.length === 0) return <p className="panel-empty">No adversarial-review runs recorded yet.</p>
 
@@ -141,18 +146,33 @@ function StatsTable({ stats, isError }: StatsTableProps) {
 
 interface RunsListProps {
   groups: RunGroup[]
+  isLoading: boolean
   isError: boolean
 }
 
-function RunsList({ groups, isError }: RunsListProps) {
+function RunsList({ groups, isLoading, isError }: RunsListProps) {
+  const qc = useQueryClient()
   const [query, setQuery] = useState('')
   const [sortField, setSortField] = useState<RunSortField>('recordedAt')
   const [sortDirection, setSortDirection] = useState<SortDirection>('desc')
+  const [completeness, setCompleteness] = useState<CompletenessFilter>('all')
+  const [validity, setValidity] = useState<ValidityFilter>('all')
+  const [confirmDeleteRunId, setConfirmDeleteRunId] = useState<string | null>(null)
   const visible = useMemo(
-    () => sortRunGroups(filterRunGroups(groups, query), sortField, sortDirection),
-    [groups, query, sortField, sortDirection],
+    () => sortRunGroups(filterRunGroupsByStatus(filterRunGroups(groups, query), completeness, validity), sortField, sortDirection),
+    [groups, query, completeness, validity, sortField, sortDirection],
   )
 
+  const deleteRun = useMutation({
+    mutationFn: deleteAdversarialReviewRun,
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['adversarial-review-runs'] })
+      qc.invalidateQueries({ queryKey: ['adversarial-review-stats'] })
+      setConfirmDeleteRunId(null)
+    },
+  })
+
+  if (isLoading) return <p className="panel-empty">Loading runs...</p>
   if (isError) return <p className="panel-empty">Couldn’t load runs — try refreshing.</p>
   if (groups.length === 0) return <p className="panel-empty">No runs recorded yet.</p>
 
@@ -170,6 +190,26 @@ function RunsList({ groups, isError }: RunsListProps) {
             aria-label="Search runs by repo or summary"
           />
         </div>
+        <select
+          value={completeness}
+          onChange={(e) => setCompleteness(e.target.value as CompletenessFilter)}
+          className="breakdown-sort__field"
+          aria-label="Filter runs by completeness"
+        >
+          <option value="all">All runs</option>
+          <option value="complete">Complete only</option>
+          <option value="incomplete">Incomplete only</option>
+        </select>
+        <select
+          value={validity}
+          onChange={(e) => setValidity(e.target.value as ValidityFilter)}
+          className="breakdown-sort__field"
+          aria-label="Filter runs by validity"
+        >
+          <option value="all">All runs</option>
+          <option value="valid">Valid only</option>
+          <option value="invalid">Invalid only</option>
+        </select>
         <div className="breakdown-sort">
           <select
             value={sortField}
@@ -204,6 +244,28 @@ function RunsList({ groups, isError }: RunsListProps) {
             title={group.summary ?? formatRecordedAt(group.recordedAt)}
             summary={<RunSummary group={group} />}
           >
+            {!isReadonly && (
+              <div className="adv-run__actions">
+                {confirmDeleteRunId === group.runId ? (
+                  <span>
+                    Remove this sweep and every participant's numbers?{' '}
+                    <Button
+                      variant="danger"
+                      onClick={() => deleteRun.mutate(group.runId)}
+                      disabled={deleteRun.isPending}
+                    >
+                      {deleteRun.isPending ? 'Removing…' : 'Confirm remove'}
+                    </Button>{' '}
+                    <Button variant="ghost" onClick={() => setConfirmDeleteRunId(null)}>Cancel</Button>
+                  </span>
+                ) : (
+                  <Button variant="ghost" onClick={() => setConfirmDeleteRunId(group.runId)}>Remove sweep</Button>
+                )}
+                {deleteRun.isError && deleteRun.variables === group.runId && (
+                  <p className="panel-empty">Couldn’t remove the sweep — try again.</p>
+                )}
+              </div>
+            )}
             <div className="model-table-wrap">
               <table className="model-table">
               <thead>
@@ -238,20 +300,20 @@ function RunsList({ groups, isError }: RunsListProps) {
 }
 
 export default function AdversarialReviewPanel() {
-  const { stats, isError: statsError } = useAdversarialReviewStats()
-  const { runs, isError: runsError } = useAdversarialReviewRuns()
+  const { stats, isError: statsError, isLoading: statsLoading } = useAdversarialReviewStats()
+  const { runs, isError: runsError, isLoading: runsLoading } = useAdversarialReviewRuns()
   const groups = useMemo(() => groupRuns(runs), [runs])
 
   return (
     <div className="adv-review-panel">
       <div className="panel">
         <div className="panel-title">Stats by reviewer &amp; model</div>
-        <StatsTable stats={stats} isError={statsError} />
+        <StatsTable stats={stats} isLoading={statsLoading} isError={statsError} />
       </div>
 
       <div className="panel">
         <div className="panel-title">Recent runs</div>
-        <RunsList groups={groups} isError={runsError} />
+        <RunsList groups={groups} isLoading={runsLoading} isError={runsError} />
       </div>
       {(stats.some(s => isPutativeCost(s.reviewer)) || groups.some(g => g.participants.some(p => isPutativeCost(p.reviewer)))) && (
         <p className="panel-note">{PUTATIVE_NOTE}</p>

@@ -39,6 +39,7 @@ interface Props {
   comparisonProjects?: ProjectActivity[]
   selectedProject: string | null
   onSelectProject: (project: string | null) => void
+  isLoading?: boolean
 }
 
 function formatComparisonChange(activeSeconds: number, comparisonActiveSeconds: number | null) {
@@ -48,7 +49,7 @@ function formatComparisonChange(activeSeconds: number, comparisonActiveSeconds: 
   return `${percentage >= 0 ? '+' : ''}${percentage}%`
 }
 
-export default function ProjectBreakdown({ projects, comparisonProjects, selectedProject, onSelectProject }: Props) {
+export default function ProjectBreakdown({ projects, comparisonProjects, selectedProject, onSelectProject, isLoading = false }: Props) {
   const [searchQuery, setSearchQuery] = useState('')
   const [sortField, setSortField] = useState<ProjectSortField>('activeSeconds')
   const [sortDirection, setSortDirection] = useState<SortDirection>('desc')
@@ -75,6 +76,7 @@ export default function ProjectBreakdown({ projects, comparisonProjects, selecte
     [projects],
   )
 
+  if (isLoading) return <div className="chart-skeleton" />
   if (comparableProjects.length === 0) return <p className="panel-empty">No activity data for either period.</p>
 
   const handleSort = (field: ProjectSortField) => {

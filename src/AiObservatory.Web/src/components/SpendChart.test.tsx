@@ -5,7 +5,7 @@ import type { DailyAggregate } from '../api/client'
 import SpendChart, { buildUsageSeries } from './SpendChart'
 
 const data = vi.hoisted(() => ({ aggregates: [] as DailyAggregate[] }))
-vi.mock('../api/queries', () => ({ useAggregates: () => data.aggregates }))
+vi.mock('../api/queries', () => ({ useAggregates: () => ({ aggregates: data.aggregates, isError: false, isLoading: false }) }))
 vi.mock('../lib/currency', () => ({ useUsdToGbp: () => 0.8, gbp: (value: number) => `£${value.toFixed(2)}` }))
 
 const aggregate = (overrides: Partial<DailyAggregate> = {}): DailyAggregate => ({

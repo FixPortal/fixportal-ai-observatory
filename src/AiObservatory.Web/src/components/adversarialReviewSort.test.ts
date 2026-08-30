@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { filterStats, sortStats, filterRunGroups, sortRunGroups } from './adversarialReviewSort'
+import { filterStats, sortStats, filterRunGroups, filterRunGroupsByStatus, sortRunGroups } from './adversarialReviewSort'
 import type { AdversarialReviewStats } from '../api/client'
 import type { RunGroup } from './adversarialReviewGrouping'
 
@@ -53,7 +53,7 @@ describe('sortStats', () => {
 const group = (overrides: Partial<RunGroup>): RunGroup => ({
   runId: 'R1', repo: 'fix-portal/example', summary: null, recordedAt: '2026-07-01T09:00:00Z',
   participants: [], totals: { raised: 1, accepted: 1, costUsd: 1, durationMs: 1000 },
-  isComplete: true, statusReason: 'complete', chunkCount: null,
+  isComplete: true, statusReason: 'complete', isValid: true, chunkCount: null,
   ...overrides,
 })
 
@@ -65,6 +65,36 @@ describe('filterRunGroups', () => {
     )
     expect(result).toHaveLength(1)
     expect(result[0].runId).toBe('R2')
+  })
+})
+
+describe('filterRunGroupsByStatus', () => {
+  const complete = group({ runId: 'R1', isComplete: true, isValid: true })
+  const incompleteValid = group({ runId: 'R2', isComplete: false, isValid: true })
+  const incompleteInvalid = group({ runId: 'R3', isComplete: false, isValid: false })
+
+  it('passes everything through with "all"/"all"', () => {
+    expect(filterRunGroupsByStatus([complete, incompleteValid, incompleteInvalid], 'all', 'all')).toHaveLength(3)
+  })
+
+  it('filters to complete only', () => {
+    const result = filterRunGroupsByStatus([complete, incompleteValid], 'complete', 'all')
+    expect(result.map((g) => g.runId)).toEqual(['R1'])
+  })
+
+  it('filters to incomplete only', () => {
+    const result = filterRunGroupsByStatus([complete, incompleteValid], 'incomplete', 'all')
+    expect(result.map((g) => g.runId)).toEqual(['R2'])
+  })
+
+  it('filters to invalid only', () => {
+    const result = filterRunGroupsByStatus([incompleteValid, incompleteInvalid], 'all', 'invalid')
+    expect(result.map((g) => g.runId)).toEqual(['R3'])
+  })
+
+  it('combines completeness and validity filters', () => {
+    const result = filterRunGroupsByStatus([complete, incompleteValid, incompleteInvalid], 'incomplete', 'valid')
+    expect(result.map((g) => g.runId)).toEqual(['R2'])
   })
 })
 

@@ -8,6 +8,11 @@ const REVIEWER_ORDER = ['anthropic', 'google', 'openai', 'moonshot']
 // "N of 4".
 const EXPECTED_REVIEWER_VENDORS = REVIEWER_ORDER.length
 
+// A run below this reviewer-vendor count is too thin to carry cross-vendor signal at
+// all — distinct from "incomplete" (missing one vendor off the full roster, still a
+// meaningful comparison). This is a UI triage default, not a scored business rule.
+export const MIN_VALID_REVIEWERS = 2
+
 export interface RunGroup {
   runId: string
   repo: string | null
@@ -17,6 +22,8 @@ export interface RunGroup {
   totals: { raised: number; accepted: number; costUsd: number; durationMs: number }
   isComplete: boolean
   statusReason: string
+  /** false when the panel had too few reviewer vendors (< MIN_VALID_REVIEWERS) to trust. */
+  isValid: boolean
   /** Chunks aggregated into this run when it was a batched review; null for a single-diff run. */
   chunkCount: number | null
 }
@@ -97,6 +104,7 @@ export function groupRuns(runs: AdversarialReviewRun[]): RunGroup[] {
       },
       isComplete,
       statusReason,
+      isValid: reviewerCount >= MIN_VALID_REVIEWERS,
       // A batched run carries the same chunk count on every participant; take the
       // first non-null. Null when no participant reported one (single-diff run).
       chunkCount: participants.find(p => p.chunkCount != null)?.chunkCount ?? null,

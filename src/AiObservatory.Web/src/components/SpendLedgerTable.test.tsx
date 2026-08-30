@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest'
-import { render, screen } from '@testing-library/react'
+import { fireEvent, render, screen } from '@testing-library/react'
 import SpendLedgerTable from './SpendLedgerTable'
 import type { SpendCategory, SpendEntry, SpendVendor } from '../api/client'
 
@@ -135,5 +135,43 @@ describe('SpendLedgerTable', () => {
     )
 
     expect(screen.getByRole('button', { name: /delete entry/i })).toHaveClass('fpds-btn--danger')
+  })
+
+  it('requires a confirm click before calling onDelete, so a stray click cannot delete a real spend record', () => {
+    const onDelete = vi.fn()
+    render(
+      <SpendLedgerTable
+        entries={[entryAgainstArchivedCategory]}
+        categories={[liveCategory, archivedCategory]}
+        vendors={[vendor]}
+        onDelete={onDelete}
+        canEdit
+      />,
+    )
+
+    fireEvent.click(screen.getByRole('button', { name: /delete entry/i }))
+    expect(onDelete).not.toHaveBeenCalled()
+
+    fireEvent.click(screen.getByRole('button', { name: /confirm delete entry/i }))
+    expect(onDelete).toHaveBeenCalledWith('e1')
+  })
+
+  it('cancels the pending delete without calling onDelete', () => {
+    const onDelete = vi.fn()
+    render(
+      <SpendLedgerTable
+        entries={[entryAgainstArchivedCategory]}
+        categories={[liveCategory, archivedCategory]}
+        vendors={[vendor]}
+        onDelete={onDelete}
+        canEdit
+      />,
+    )
+
+    fireEvent.click(screen.getByRole('button', { name: /delete entry/i }))
+    fireEvent.click(screen.getByRole('button', { name: 'Cancel' }))
+
+    expect(onDelete).not.toHaveBeenCalled()
+    expect(screen.getByRole('button', { name: /delete entry/i })).toBeInTheDocument()
   })
 })

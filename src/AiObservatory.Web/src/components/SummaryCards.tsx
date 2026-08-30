@@ -8,11 +8,25 @@ import { InfoPopover } from './InfoPopover'
 
 const notReported = 'Not reported'
 
+// Shared "loading / not-reported / value" rendering for the three USD estimate cards.
+function moneyCardValue(loading: boolean, usd: number | null, rate: number): string {
+  if (loading) return '…'
+  if (usd === null) return notReported
+  return formatGbp(usd, rate)
+}
+
+function tokensCardValue(loading: boolean, hasAggregates: boolean, totalTokens: number): string {
+  if (loading) return '…'
+  if (!hasAggregates) return notReported
+  if (totalTokens === 0) return '0'
+  return `${(totalTokens / 1_000_000).toFixed(1)}M`
+}
+
 export default function SummaryCards() {
   const range = useMemo(() => dashboardDateRange(), [])
-  const aggregates = useAggregates(range.from, range.to)
+  const { aggregates, isLoading: aggregatesLoading } = useAggregates(range.from, range.to)
   const { report: billedReporting } = useBilledReporting(range.from, range.to)
-  const insights = useInsights()
+  const { insights, isLoading: insightsLoading } = useInsights()
   const rate = useUsdToGbp()
   const summary = summarizeCosts(aggregates, [])
   const billedGbp = billedReporting?.entryCount ? billedReporting.totalGbp : null
@@ -47,7 +61,7 @@ export default function SummaryCards() {
             <p>This uses the same rolling {AGGREGATES_DAYS_RANGE}-day window as every financial lane.</p>
           </InfoPopover>
         </div>
-        <div className="card-value">{summary.listPriceEstimateUsd === null ? notReported : formatGbp(summary.listPriceEstimateUsd, rate)}</div>
+        <div className="card-value">{moneyCardValue(aggregatesLoading, summary.listPriceEstimateUsd, rate)}</div>
         <div className="card-sub">USD basis; shown in GBP when reported</div>
       </Card>
       <Card>
@@ -58,7 +72,7 @@ export default function SummaryCards() {
             <p>This uses the same rolling {AGGREGATES_DAYS_RANGE}-day window as every financial lane.</p>
           </InfoPopover>
         </div>
-        <div className="card-value">{summary.providerEstimateUsd === null ? notReported : formatGbp(summary.providerEstimateUsd, rate)}</div>
+        <div className="card-value">{moneyCardValue(aggregatesLoading, summary.providerEstimateUsd, rate)}</div>
         <div className="card-sub">USD basis; shown in GBP when reported</div>
       </Card>
       <Card>
@@ -69,12 +83,12 @@ export default function SummaryCards() {
             <p>This uses the same rolling {AGGREGATES_DAYS_RANGE}-day window as every financial lane.</p>
           </InfoPopover>
         </div>
-        <div className="card-value">{summary.notionalUsd === null ? notReported : formatGbp(summary.notionalUsd, rate)}</div>
+        <div className="card-value">{moneyCardValue(aggregatesLoading, summary.notionalUsd, rate)}</div>
         <div className="card-sub">USD basis; shown in GBP when reported</div>
       </Card>
       <Card>
         <div className="card-label">Tokens</div>
-        <div className="card-value">{aggregates.length === 0 ? notReported : totalTokens === 0 ? '0' : `${(totalTokens / 1_000_000).toFixed(1)}M`}</div>
+        <div className="card-value">{tokensCardValue(aggregatesLoading, aggregates.length > 0, totalTokens)}</div>
         {totalTokens > 0 && (
           <div className="card-sub">
             <div>{formatInt(totalInputTokens)} in / {formatInt(totalOutputTokens)} out</div>
@@ -93,8 +107,14 @@ export default function SummaryCards() {
       </Card>
       <Card>
         <div className="card-label">New insights</div>
-        <div className="card-value">{unread}</div>
+        <div className="card-value">{insightsLoading ? '…' : unread}</div>
       </Card>
+      {summary.unclassifiedUsd !== null && (
+        <p className="panel-note summary-cards__unclassified">
+          {formatGbp(summary.unclassifiedUsd, rate)} reported under a cost basis the cards above don’t
+          categorize — see the Model breakdown table below for the full figure.
+        </p>
+      )}
     </div>
   )
 }

@@ -198,7 +198,7 @@ export default function SubscriptionPanel() {
     }, null)
     return from === null ? [] : [new Date(`${from}T00:00:00`), new Date(`${today}T00:00:00`)]
   }, [collapsed, today])
-  const aggregates = useAggregates(...aggregateRange)
+  const { aggregates } = useAggregates(...aggregateRange)
 
   return (
     <div className="sub-panel">

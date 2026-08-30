@@ -23,6 +23,7 @@ interface Props {
 export default function SpendLedgerTable({ entries, categories, vendors, onDelete, canEdit, isDeleting = false }: Props) {
   const [sortField, setSortField] = useState<SortKey>('occurredOn')
   const [sortDirection, setSortDirection] = useState<SortDirection>('desc')
+  const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null)
 
   const categoryName = useMemo(
     () => new Map(categories.map(c => [c.id, c.displayName])), [categories])
@@ -90,15 +91,30 @@ export default function SpendLedgerTable({ entries, categories, vendors, onDelet
               <td>{e.source}</td>
               {canEdit && (
                 <td>
-                  <Button
-                    variant="danger"
-                    size="sm"
-                    onClick={() => onDelete(e.id)}
-                    disabled={isDeleting}
-                    aria-label={`Delete entry from ${e.occurredOn}`}
-                  >
-                    Delete
-                  </Button>
+                  {confirmDeleteId === e.id ? (
+                    <span className="budget-rules__actions">
+                      <Button
+                        variant="danger"
+                        size="sm"
+                        onClick={() => { onDelete(e.id); setConfirmDeleteId(null) }}
+                        disabled={isDeleting}
+                        aria-label={`Confirm delete entry from ${e.occurredOn}`}
+                      >
+                        {isDeleting ? 'Removing…' : 'Confirm'}
+                      </Button>
+                      <Button variant="ghost" size="sm" onClick={() => setConfirmDeleteId(null)}>Cancel</Button>
+                    </span>
+                  ) : (
+                    <Button
+                      variant="danger"
+                      size="sm"
+                      onClick={() => setConfirmDeleteId(e.id)}
+                      disabled={isDeleting}
+                      aria-label={`Delete entry from ${e.occurredOn}`}
+                    >
+                      Delete
+                    </Button>
+                  )}
                 </td>
               )}
             </tr>

@@ -9,15 +9,18 @@ function fmtTokens(n: number): string {
   return String(n)
 }
 
-export default function CavemanStatsPanel() {
-  const { stats, isError } = useCavemanStats()
-  const rate = useUsdToGbp()
+function summaryLine(
+  isError: boolean, isLoading: boolean, stats: { sessions: number; totalEstSavedUsd: number } | undefined, rate: number,
+): string {
+  if (isError) return 'Couldn’t load stats'
+  if (isLoading) return 'Loading stats…'
+  if (stats && stats.sessions > 0) return `${stats.sessions.toLocaleString()} sessions · ${formatGbp(stats.totalEstSavedUsd, rate)} saved`
+  return 'No sessions yet'
+}
 
-  const summaryLine = isError
-    ? 'Couldn’t load stats'
-    : stats && stats.sessions > 0
-      ? `${stats.sessions.toLocaleString()} sessions · ${formatGbp(stats.totalEstSavedUsd, rate)} saved`
-      : 'No sessions yet'
+export default function CavemanStatsPanel() {
+  const { stats, isError, isLoading } = useCavemanStats()
+  const rate = useUsdToGbp()
 
   const totalTokens = (stats?.totalOutputTokens ?? 0) + (stats?.totalEstSavedTokens ?? 0)
   const compressionPct = totalTokens > 0
@@ -25,7 +28,7 @@ export default function CavemanStatsPanel() {
     : 0
 
   return (
-    <CollapsiblePanel id="caveman" title="Caveman" summary={summaryLine}>
+    <CollapsiblePanel id="caveman" title="Caveman" summary={summaryLine(isError, isLoading, stats, rate)}>
       <div className="summary-cards">
         <Card>
           <div className="card-label">Caveman sessions</div>

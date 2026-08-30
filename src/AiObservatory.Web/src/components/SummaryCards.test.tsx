@@ -5,14 +5,16 @@ import SummaryCards from './SummaryCards'
 
 const data = vi.hoisted(() => ({
   aggregates: [] as DailyAggregate[],
+  aggregatesLoading: false,
   insights: [] as Insight[],
+  insightsLoading: false,
   billedReporting: undefined as BilledReporting | undefined,
 }))
 
 vi.mock('../api/queries', () => ({
   AGGREGATES_DAYS_RANGE: 31,
-  useAggregates: () => data.aggregates,
-  useInsights: () => data.insights,
+  useAggregates: () => ({ aggregates: data.aggregates, isError: false, isLoading: data.aggregatesLoading }),
+  useInsights: () => ({ insights: data.insights, isError: false, isLoading: data.insightsLoading }),
   useBilledReporting: () => ({ report: data.billedReporting, isLoading: false, isError: false }),
   dashboardDateRange: () => ({ from: new Date('2026-08-01T12:00:00'), to: new Date('2026-08-31T12:00:00') }),
 }))
@@ -45,6 +47,22 @@ beforeEach(() => {
     categorySeries: [],
   }
   data.insights = []
+  data.aggregatesLoading = false
+  data.insightsLoading = false
+})
+
+describe('SummaryCards loading state', () => {
+  test('does not show "Not reported" or zero-valued cards while aggregates/insights are still loading', () => {
+    data.aggregates = []
+    data.aggregatesLoading = true
+    data.insights = []
+    data.insightsLoading = true
+    render(<SummaryCards />)
+
+    expect(screen.queryByText('Not reported')).not.toBeInTheDocument()
+    expect(screen.getByText('Tokens').closest('.fpds-card')).toHaveTextContent('…')
+    expect(screen.getByText('New insights').closest('.fpds-card')).toHaveTextContent('…')
+  })
 })
 
 describe('SummaryCards', () => {
@@ -94,6 +112,21 @@ describe('SummaryCards', () => {
     expect(screen.queryByText(/saved £/i)).not.toBeInTheDocument()
     expect(screen.queryByText(/vs prior/i)).not.toBeInTheDocument()
     expect(screen.queryByText(/Top model/i)).not.toBeInTheDocument()
+  })
+
+  test('flags spend reported under an unrecognized cost basis instead of silently dropping it', () => {
+    // Regression: a "unknown"-basis row with a known costUsd used to disappear from
+    // every card with zero indication, understating tracked spend against what the
+    // Model breakdown table lower on the same screen shows for the same rows.
+    data.aggregates = [...data.aggregates, aggregate({ costBasis: 'unknown', costUsd: 31.5, requestCount: 28 })]
+    render(<SummaryCards />)
+
+    expect(screen.getByText(/£25\.20 reported under a cost basis/)).toBeInTheDocument()
+  })
+
+  test('shows no unclassified-cost note when every row has a recognized basis', () => {
+    render(<SummaryCards />)
+    expect(screen.queryByText(/reported under a cost basis/)).not.toBeInTheDocument()
   })
 
   test('opens every financial popover within the summary structure', () => {

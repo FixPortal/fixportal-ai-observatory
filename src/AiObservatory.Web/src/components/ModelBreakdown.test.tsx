@@ -5,7 +5,7 @@ import type { DailyAggregate } from '../api/client'
 import ModelBreakdown, { groupModelRows } from './ModelBreakdown'
 
 const data = vi.hoisted(() => ({ aggregates: [] as DailyAggregate[] }))
-vi.mock('../api/queries', () => ({ useAggregates: () => data.aggregates }))
+vi.mock('../api/queries', () => ({ useAggregates: () => ({ aggregates: data.aggregates, isError: false, isLoading: false }) }))
 vi.mock('../lib/currency', () => ({ useUsdToGbp: () => 0.8, formatGbp: (usd: number, rate: number) => `£${(usd * rate).toFixed(2)}` }))
 
 const aggregate = (overrides: Partial<DailyAggregate> = {}): DailyAggregate => ({

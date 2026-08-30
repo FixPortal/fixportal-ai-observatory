@@ -53,7 +53,7 @@ export default function ActivityPage() {
       <div className="panel">
         <div className="panel-title">Project share</div>
         <Suspense fallback={<div className="chart-skeleton" />}>
-          <ProjectTreemap projects={primary.projects} selectedProject={selectedProject} onSelectProject={setSelectedProject} />
+          <ProjectTreemap projects={primary.projects} selectedProject={selectedProject} onSelectProject={setSelectedProject} isLoading={primary.isLoading} />
         </Suspense>
       </div>
       <div className="panel">
@@ -63,6 +63,7 @@ export default function ActivityPage() {
           comparisonProjects={comparison.projects}
           selectedProject={selectedProject}
           onSelectProject={setSelectedProject}
+          isLoading={primary.isLoading || comparison.isLoading}
         />
       </div>
     </div>

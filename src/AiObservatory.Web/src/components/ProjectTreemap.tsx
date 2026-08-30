@@ -16,11 +16,13 @@ interface Props {
   projects: ProjectActivity[]
   selectedProject: string | null
   onSelectProject: (project: string | null) => void
+  isLoading?: boolean
 }
 
-export default function ProjectTreemap({ projects, selectedProject, onSelectProject }: Props) {
+export default function ProjectTreemap({ projects, selectedProject, onSelectProject, isLoading = false }: Props) {
   const blocks = useMemo(() => buildTreemapBlocks(projects), [projects])
 
+  if (isLoading) return <div className="chart-skeleton" />
   if (blocks.length === 0) return <p className="panel-empty">No activity data for this period.</p>
 
   const data = blocks.map((block, index) => ({

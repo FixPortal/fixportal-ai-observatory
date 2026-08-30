@@ -34,7 +34,33 @@ describe('summarizeCosts', () => {
       unknownCostObservations: 1,
       cacheSavingsUsd: null,
       unknownCacheSavingsObservations: 1,
+      // The "billed" row above (costUsd: 99) has an unrecognized basis for this
+      // summarizer (billed spend comes from the ledger, not aggregates) so it lands
+      // in unclassifiedUsd rather than silently vanishing.
+      unclassifiedUsd: 99,
     })
+  })
+
+  test('surfaces a known cost under an unrecognized basis instead of silently dropping it', () => {
+    // Distinct from the fully-unknown row above: here unknownCostCount is 0 (every
+    // request has a known cost), but costBasis itself is "unknown" — a real shape
+    // seen in seeded data (a provider row whose pricing tier isn't classified).
+    // Without a default branch this $31.50 would vanish from every summary card.
+    const result = summarizeCosts([
+      aggregate({ costBasis: 'unknown', costUsd: 31.5, unknownCostCount: 0, requestCount: 28 }),
+    ], [])
+    expect(result.unclassifiedUsd).toBe(31.5)
+    expect(result.listPriceEstimateUsd).toBeNull()
+    expect(result.providerEstimateUsd).toBeNull()
+    expect(result.notionalUsd).toBeNull()
+  })
+
+  test('also catches "billed" and "none" cost bases reaching the aggregate summarizer', () => {
+    const result = summarizeCosts([
+      aggregate({ costBasis: 'billed', costUsd: 10, requestCount: 1 }),
+      aggregate({ costBasis: 'none', costUsd: 5, requestCount: 1 }),
+    ], [])
+    expect(result.unclassifiedUsd).toBe(15)
   })
 
   test('preserves absence separately from a represented legitimate zero', () => {

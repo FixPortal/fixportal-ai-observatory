@@ -23,4 +23,5 @@ public interface IAdversarialReviewRepository
     Task<IReadOnlyList<AdversarialReviewRun>> GetRunsAsync(string? runId = null, CancellationToken ct = default);
     Task<IReadOnlyList<AdversarialReviewStats>> GetStatsAsync(CancellationToken ct = default);
     Task<int> DeleteAllRunsAsync(CancellationToken ct = default);
+    Task<int> DeleteRunAsync(string runId, CancellationToken ct = default);
 }
