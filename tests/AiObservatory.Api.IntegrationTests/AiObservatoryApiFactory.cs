@@ -37,6 +37,7 @@ public sealed class AiObservatoryApiFactory : WebApplicationFactory<Program>, IA
     // ReSharper disable once AutoPropertyCanBeMadeGetOnly.Global
     public string? ReadOnlyKeyOverride { get; set; } = ReadOnlyKey;
     public string? IdeKeyOverride { get; set; } = IdeKey;
+
     // Every test in this collection shares one fixture instance, so the whole suite's request
     // volume runs through one 120-req/min bucket -- comfortably fine locally, but the full
     // integration suite finishes in under a minute in CI and trips it (429s with no test-level
