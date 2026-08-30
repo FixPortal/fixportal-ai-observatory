@@ -546,7 +546,9 @@ public class UsageRepository(
 
     public async Task<NotificationSettings?> GetNotificationSettingsAsync(CancellationToken ct = default)
     {
-        return await ctx.NotificationSettings.AsNoTracking().FirstOrDefaultAsync(ct);
+        return await ctx
+            .NotificationSettings.AsNoTracking()
+            .FirstOrDefaultAsync(s => s.Id == NotificationSettings.SingletonId, ct);
     }
 
     public async Task<BudgetAlertClaimResult> GetOrCreateBudgetAlertAsync(

@@ -122,6 +122,30 @@ public class NotificationSettingsEndpointsWafTests(AiObservatoryApiFactory facto
         response.StatusCode.Should().Be(HttpStatusCode.BadRequest);
     }
 
+    [Theory]
+    [InlineData("https://hooks.slack.com@attacker.example/services/x")] // userinfo trick: real host is attacker.example
+    [InlineData("https://attacker.example/services/x?redirect=hooks.slack.com")]
+    [InlineData("https://hooks.slack.com.attacker.example/services/x")] // subdomain-suffix trick
+    [InlineData("http://hooks.slack.com/services/x")] // not https
+    [InlineData("https://hooks.slack.com:8443/services/x")] // not the default port
+    public async Task Put_WithSpoofedSlackHost_ReturnsBadRequestAndIsNotPersisted(string url)
+    {
+        var ct = TestContext.Current.CancellationToken;
+        using var client = factory.CreateAdminClient();
+        var before = await client.GetFromJsonAsync<JsonElement>("/api/notification-settings", ct);
+
+        var response = await client.PutAsJsonAsync("/api/notification-settings", new { slackWebhookUrl = url }, ct);
+
+        response.StatusCode.Should().Be(HttpStatusCode.BadRequest);
+        var after = await client.GetFromJsonAsync<JsonElement>("/api/notification-settings", ct);
+        after
+            .GetProperty("slackConfigured")
+            .GetBoolean()
+            .Should()
+            .Be(before.GetProperty("slackConfigured").GetBoolean());
+        after.GetProperty("slackMasked").ToString().Should().Be(before.GetProperty("slackMasked").ToString());
+    }
+
     [Fact]
     public async Task Put_WithNonStringAlertEmailTo_ReturnsBadRequestNotServerError()
     {

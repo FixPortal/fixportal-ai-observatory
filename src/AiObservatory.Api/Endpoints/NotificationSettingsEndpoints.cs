@@ -16,7 +16,9 @@ public static class NotificationSettingsEndpoints
             "/notification-settings",
             async (AiObservatoryDbContext db, CancellationToken ct) =>
             {
-                var settings = await db.NotificationSettings.AsNoTracking().FirstOrDefaultAsync(ct);
+                var settings = await db
+                    .NotificationSettings.AsNoTracking()
+                    .FirstOrDefaultAsync(s => s.Id == Data.Entities.NotificationSettings.SingletonId, ct);
                 return Results.Ok(ToResponse(settings?.AlertEmailTo, settings?.SlackWebhookUrl));
             }
         );
@@ -80,7 +82,10 @@ public static class NotificationSettingsEndpoints
                     return Results.BadRequest("slackWebhookUrl must start with https://hooks.slack.com/");
                 }
 
-                var settings = await db.NotificationSettings.FirstOrDefaultAsync(ct);
+                var settings = await db.NotificationSettings.FirstOrDefaultAsync(
+                    s => s.Id == Data.Entities.NotificationSettings.SingletonId,
+                    ct
+                );
                 var inserting = settings is null;
                 if (settings is null)
                 {
@@ -103,7 +108,10 @@ public static class NotificationSettingsEndpoints
                         // winner's row and reapply THIS request's edits on top of it -- a
                         // bounded, single reload-and-reapply, not a general retry loop.
                         db.Entry(settings).State = EntityState.Detached;
-                        settings = await db.NotificationSettings.SingleAsync(ct);
+                        settings = await db.NotificationSettings.SingleAsync(
+                            s => s.Id == Data.Entities.NotificationSettings.SingletonId,
+                            ct
+                        );
                         ApplyFields(settings, body, clock);
                         await db.SaveChangesAsync(ct);
                     }
@@ -167,8 +175,17 @@ public static class NotificationSettingsEndpoints
         }
     }
 
+    // A plain StartsWith("https://hooks.slack.com/") check is bypassable with URL userinfo:
+    // "https://hooks.slack.com@attacker.example/services/x" starts with that exact prefix
+    // but actually targets attacker.example (the text before '@' is credentials, not host).
+    // Parsing the URI and checking scheme/userinfo/host/port/path explicitly closes that.
     private static bool IsValidSlackWebhookUrl(string url) =>
-        url.StartsWith("https://hooks.slack.com/", StringComparison.Ordinal);
+        Uri.TryCreate(url, UriKind.Absolute, out var uri)
+        && uri.Scheme == Uri.UriSchemeHttps
+        && string.IsNullOrEmpty(uri.UserInfo)
+        && string.Equals(uri.Host, "hooks.slack.com", StringComparison.OrdinalIgnoreCase)
+        && uri.IsDefaultPort
+        && uri.AbsolutePath.StartsWith("/services/", StringComparison.Ordinal);
 }
 
 public static class NotificationMasking
