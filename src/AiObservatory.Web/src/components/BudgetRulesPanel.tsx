@@ -1,8 +1,8 @@
 import { useState } from 'react'
 import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { Button } from '../design/Button'
-import { createBudgetRule, deleteBudgetRule } from '../api/client'
-import { useBudgetRules, useInsights, useEmailStatus } from '../api/queries'
+import { createBudgetRule, deleteBudgetRule, updateNotificationSettings } from '../api/client'
+import { useBudgetRules, useInsights, useNotificationSettings } from '../api/queries'
 import { isReadonly } from '../auth/msal'
 import { gbp } from '../lib/currency'
 
@@ -11,12 +11,123 @@ const PERIODS = ['daily', 'weekly', 'monthly'] as const
 
 const capitalize = (s: string) => s.charAt(0).toUpperCase() + s.slice(1)
 
-function WebhookChip({ configured }: { configured: boolean | undefined }) {
-  if (configured === undefined) return null
+type Channel = 'email' | 'slack'
+
+interface NotificationChannelRowProps {
+  channel: Channel
+  label: string
+  configured: boolean
+  masked: string | null
+  onSave: (value: string) => void
+  onClear: () => void
+  isSaving: boolean
+}
+
+function NotificationChannelRow({ channel, label, configured, masked, onSave, onClear, isSaving }: NotificationChannelRowProps) {
+  const [editing, setEditing] = useState(false)
+  const [confirmingRemove, setConfirmingRemove] = useState(false)
+  const [value, setValue] = useState('')
+  const fieldId = `notification-${channel}-input`
+  const fieldLabel = channel === 'email' ? 'Email address' : 'Slack webhook URL'
+
+  if (editing) {
+    return (
+      <div className="budget-rules__channel-row">
+        <span className="budget-rules__channel-label">{label}</span>
+        <label htmlFor={fieldId} className="visually-hidden">{fieldLabel}</label>
+        <input
+          id={fieldId}
+          type="text"
+          value={value}
+          onChange={e => setValue(e.target.value)}
+          placeholder={channel === 'email' ? 'you@example.com' : 'https://hooks.slack.com/services/...'}
+          className="budget-rules__control"
+        />
+        <Button variant="primary" size="sm" disabled={isSaving || value.trim() === ''} onClick={() => { onSave(value.trim()); setEditing(false); setValue('') }}>
+          Save
+        </Button>
+        <Button variant="ghost" size="sm" onClick={() => { setEditing(false); setValue('') }}>
+          Cancel
+        </Button>
+      </div>
+    )
+  }
+
   return (
-    <span className={`budget-rules__channel${configured ? ' budget-rules__channel--configured' : ''}`}>
-      Email: {configured ? 'configured' : 'not configured'}
-    </span>
+    <div className="budget-rules__channel-row">
+      <span className="budget-rules__channel-label">{label}</span>
+      {configured ? (
+        <>
+          <span className="budget-rules__channel-value">{masked}</span>
+          {!isReadonly && (
+            confirmingRemove ? (
+              <>
+                <Button variant="danger" size="sm" disabled={isSaving} onClick={() => { onClear(); setConfirmingRemove(false) }}>
+                  Confirm
+                </Button>
+                <Button variant="ghost" size="sm" onClick={() => setConfirmingRemove(false)}>
+                  Cancel
+                </Button>
+              </>
+            ) : (
+              <>
+                <Button variant="ghost" size="sm" aria-label={`Edit ${label.toLowerCase()}`} onClick={() => setEditing(true)}>
+                  Edit
+                </Button>
+                <Button variant="danger" size="sm" aria-label={`Remove ${label.toLowerCase()}`} onClick={() => setConfirmingRemove(true)}>
+                  Remove
+                </Button>
+              </>
+            )
+          )}
+        </>
+      ) : (
+        <>
+          <span className="budget-rules__channel-value budget-rules__channel-value--unset">Not set</span>
+          {!isReadonly && (
+            <Button variant="ghost" size="sm" aria-label={`Add ${label.toLowerCase()}`} onClick={() => setEditing(true)}>
+              Add
+            </Button>
+          )}
+        </>
+      )}
+    </div>
+  )
+}
+
+function NotificationSettingsSection() {
+  const qc = useQueryClient()
+  const { settings } = useNotificationSettings()
+
+  const save = useMutation({
+    mutationFn: updateNotificationSettings,
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['notification-settings'] }),
+  })
+
+  if (!settings) return null
+
+  return (
+    <div className="panel budget-rules__history">
+      <div className="panel-title">Notifications</div>
+      <NotificationChannelRow
+        channel="email"
+        label="Email"
+        configured={settings.emailConfigured}
+        masked={settings.emailMasked}
+        onSave={value => save.mutate({ alertEmailTo: value })}
+        onClear={() => save.mutate({ alertEmailTo: null })}
+        isSaving={save.isPending}
+      />
+      <NotificationChannelRow
+        channel="slack"
+        label="Slack"
+        configured={settings.slackConfigured}
+        masked={settings.slackMasked}
+        onSave={value => save.mutate({ slackWebhookUrl: value })}
+        onClear={() => save.mutate({ slackWebhookUrl: null })}
+        isSaving={save.isPending}
+      />
+    </div>
   )
 }
 
@@ -24,7 +135,6 @@ export default function BudgetRulesPanel() {
   const qc = useQueryClient()
   const { rules, isLoading, isError } = useBudgetRules()
   const { insights } = useInsights()
-  const { configured } = useEmailStatus()
 
   const [panelOpen, setPanelOpen] = useState(false)
   const [provider, setProvider] = useState<string>('')
@@ -58,8 +168,6 @@ export default function BudgetRulesPanel() {
     onError: (e: Error) => setMutationError(`Couldn’t add the rule: ${e.message}`),
   })
 
-  // Match by title, not insightType: budget-alert insights are typed BudgetAlert now but
-  // older rows are Anomaly, and the title prefix is the stable marker across both.
   const budgetAlerts = insights
     .filter(i => i.title.startsWith('Budget alert:'))
     .sort((a, b) => b.generatedAt.localeCompare(a.generatedAt))
@@ -87,7 +195,6 @@ export default function BudgetRulesPanel() {
             <span className="panel-title">
               Budget Rules
             </span>
-            <WebhookChip configured={configured} />
           </div>
           {!isReadonly && (
             <Button variant="ghost" size="sm" onClick={handleOpenPanel} disabled={panelOpen}>
@@ -232,6 +339,8 @@ export default function BudgetRulesPanel() {
           </form>
         </div>
       )}
+
+      <NotificationSettingsSection />
 
       <div className="panel budget-rules__history">
         <div className="panel-title">Alert History</div>

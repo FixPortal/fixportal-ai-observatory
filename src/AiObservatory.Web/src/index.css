@@ -246,15 +246,10 @@ body {
 .budget-rules__header { display: flex; align-items: center; justify-content: space-between; gap: var(--space-3); flex-wrap: wrap; }
 .budget-rules__title-row { display: flex; align-items: center; gap: var(--space-3); flex-wrap: wrap; }
 .budget-rules__title-row .panel-title { margin-bottom: 0; padding-bottom: 0; border-bottom: none; }
-.budget-rules__channel {
-  padding: 2px var(--space-2);
-  border: 1px solid var(--border);
-  border-radius: var(--r-control);
-  color: var(--text-muted);
-  font-size: 12px;
-  font-weight: 500;
-}
-.budget-rules__channel--configured { background: var(--ok-bg); border-color: var(--ok-border); color: var(--ok-text); }
+.budget-rules__channel-row { display: flex; align-items: center; gap: var(--space-2); padding: var(--space-2) 0; }
+.budget-rules__channel-label { font-weight: 600; min-width: 60px; }
+.budget-rules__channel-value { font-family: var(--font-mono); color: var(--text-muted); }
+.budget-rules__channel-value--unset { font-style: italic; }
 .budget-rules__body { margin-top: var(--space-3); border-top: 1px solid var(--border); padding-top: var(--space-3); }
 .budget-rules__table { width: 100%; border-collapse: collapse; font-size: 13px; }
 .budget-rules__table th:first-child { padding-left: 0; }
