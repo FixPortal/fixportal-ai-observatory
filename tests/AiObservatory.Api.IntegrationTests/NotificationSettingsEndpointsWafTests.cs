@@ -133,6 +133,25 @@ public class NotificationSettingsEndpointsWafTests(AiObservatoryApiFactory facto
         response.StatusCode.Should().Be(HttpStatusCode.BadRequest);
     }
 
+    [Theory]
+    [InlineData("[]")]
+    [InlineData("\"a string\"")]
+    [InlineData("42")]
+    [InlineData("null")]
+    public async Task Put_WithNonObjectBody_ReturnsBadRequestNotServerError(string json)
+    {
+        var ct = TestContext.Current.CancellationToken;
+        using var client = factory.CreateAdminClient();
+
+        var response = await client.PutAsync(
+            "/api/notification-settings",
+            new StringContent(json, System.Text.Encoding.UTF8, "application/json"),
+            ct
+        );
+
+        response.StatusCode.Should().Be(HttpStatusCode.BadRequest);
+    }
+
     [Fact]
     public async Task Put_WithoutAdminKey_ReturnsUnauthorized()
     {
