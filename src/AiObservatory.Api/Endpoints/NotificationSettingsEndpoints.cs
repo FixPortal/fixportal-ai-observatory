@@ -34,6 +34,24 @@ public static class NotificationSettingsEndpoints
             async (JsonElement body, AiObservatoryDbContext db, IClock clock, CancellationToken ct) =>
             {
                 if (
+                    body.TryGetProperty("alertEmailTo", out var emailKindProp)
+                    && emailKindProp.ValueKind != JsonValueKind.String
+                    && emailKindProp.ValueKind != JsonValueKind.Null
+                )
+                {
+                    return Results.BadRequest("alertEmailTo must be a string or null");
+                }
+
+                if (
+                    body.TryGetProperty("slackWebhookUrl", out var slackKindProp)
+                    && slackKindProp.ValueKind != JsonValueKind.String
+                    && slackKindProp.ValueKind != JsonValueKind.Null
+                )
+                {
+                    return Results.BadRequest("slackWebhookUrl must be a string or null");
+                }
+
+                if (
                     body.TryGetProperty("alertEmailTo", out var emailProp)
                     && emailProp.ValueKind == JsonValueKind.String
                     && !string.IsNullOrWhiteSpace(emailProp.GetString())

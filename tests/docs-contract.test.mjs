@@ -113,8 +113,10 @@ test('documentation describes the source-aware setup contract', async () => {
   assert.match(collection.variable.find(variable => variable.key === 'api_key')?.description ?? '', /GET.*both `OBSERVATORY_API_KEY` and `OBSERVATORY_READONLY_API_KEY` are unset/i, 'Postman API key variable must describe GET behavior')
   assert.match(collection.variable.find(variable => variable.key === 'api_key')?.description ?? '', /Non-GET.*`OBSERVATORY_API_KEY` is unset/i, 'Postman API key variable must describe write behavior')
   assert.ok(collectionRequests.some(item => item.request?.method === 'GET' && item.request.url.raw === '{{base_url}}/sources/status'), 'Postman needs source status')
-  assert.ok(collectionRequests.some(item => item.request?.method === 'GET' && item.request.url.raw === '{{base_url}}/budget-rules/email-status'), 'Postman needs email status')
+  assert.ok(!collectionRequests.some(item => item.request?.url.raw === '{{base_url}}/budget-rules/email-status'), 'Postman must not include retired email status')
   assert.ok(!collectionRequests.some(item => item.request?.url.raw === '{{base_url}}/budget-rules/webhook-status'), 'Postman must not include retired webhook status')
+  assert.ok(collectionRequests.some(item => item.request?.method === 'GET' && item.request.url.raw === '{{base_url}}/notification-settings'), 'Postman needs get notification settings')
+  assert.ok(collectionRequests.some(item => item.request?.method === 'PUT' && item.request.url.raw === '{{base_url}}/notification-settings'), 'Postman needs update notification settings')
   const eventPosts = collectionRequests.filter(item => item.request?.method === 'POST' && item.request.url.raw === '{{base_url}}/events' && item.request.body?.mode === 'raw' && item.request.body.options?.raw?.language === 'json')
   for (const item of eventPosts) {
     const body = JSON.parse(item.request.body.raw)

@@ -46,7 +46,7 @@ builder.Services.AddSingleton(
 builder.Services.AddTransient<MailKit.Net.Smtp.ISmtpClient, MailKit.Net.Smtp.SmtpClient>();
 builder.Services.AddKeyedTransient<IAlertNotifier, EmailAlertNotifier>("email");
 builder.Services.AddHttpClient<SlackAlertNotifier>().ConfigureHttpClient(c => c.Timeout = TimeSpan.FromSeconds(10));
-builder.Services.AddKeyedTransient<IAlertNotifier, SlackAlertNotifier>("slack");
+builder.Services.AddKeyedTransient<IAlertNotifier>("slack", (sp, _) => sp.GetRequiredService<SlackAlertNotifier>());
 builder.Services.AddTransient<IAlertNotifier, CompositeAlertNotifier>();
 builder.Services.AddScoped<BudgetAlertService>();
 builder.Services.AddScoped<AdversarialReviewService>();
@@ -130,6 +130,23 @@ using (var scope = app.Services.CreateScope())
 {
     var db = scope.ServiceProvider.GetRequiredService<AiObservatoryDbContext>();
     await db.Database.MigrateAsync();
+
+    // One-time backfill: an existing deployment's BUDGET_ALERT_EMAIL_TO env var predates the
+    // NotificationSettings table, so without this a pre-existing deployment would silently stop
+    // emailing budget alerts on upgrade until someone visited the settings UI. Self-retiring --
+    // once a row exists (created here or via the UI) this is a permanent no-op.
+    if (!await db.NotificationSettings.AnyAsync())
+    {
+        var legacyEmail = builder.Configuration["BUDGET_ALERT_EMAIL_TO"];
+        if (!string.IsNullOrWhiteSpace(legacyEmail))
+        {
+            var clock = scope.ServiceProvider.GetRequiredService<IClock>();
+            db.NotificationSettings.Add(
+                new NotificationSettings { AlertEmailTo = legacyEmail, UpdatedAt = clock.GetCurrentInstant() }
+            );
+            await db.SaveChangesAsync();
+        }
+    }
 }
 
 app.UseForwardedHeaders();

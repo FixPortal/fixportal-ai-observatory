@@ -23,9 +23,48 @@ interface NotificationChannelRowProps {
   isSaving: boolean
 }
 
+interface ConfiguredChannelActionsProps {
+  label: string
+  isSaving: boolean
+  onEdit: () => void
+  onClear: () => void
+}
+
+// ponytail: split out of NotificationChannelRow's configured branch purely to bring that
+// branch's conditional count under sonarjs/expression-complexity's limit of 3 -- no behavior
+// change (Minor #7).
+function ConfiguredChannelActions({ label, isSaving, onEdit, onClear }: ConfiguredChannelActionsProps) {
+  const [confirmingRemove, setConfirmingRemove] = useState(false)
+
+  if (isReadonly) return null
+
+  if (confirmingRemove) {
+    return (
+      <>
+        <Button variant="danger" size="sm" disabled={isSaving} onClick={() => { onClear(); setConfirmingRemove(false) }}>
+          Confirm
+        </Button>
+        <Button variant="ghost" size="sm" onClick={() => setConfirmingRemove(false)}>
+          Cancel
+        </Button>
+      </>
+    )
+  }
+
+  return (
+    <>
+      <Button variant="ghost" size="sm" aria-label={`Edit ${label.toLowerCase()}`} onClick={onEdit}>
+        Edit
+      </Button>
+      <Button variant="danger" size="sm" aria-label={`Remove ${label.toLowerCase()}`} onClick={() => setConfirmingRemove(true)}>
+        Remove
+      </Button>
+    </>
+  )
+}
+
 function NotificationChannelRow({ channel, label, configured, masked, onSave, onClear, isSaving }: NotificationChannelRowProps) {
   const [editing, setEditing] = useState(false)
-  const [confirmingRemove, setConfirmingRemove] = useState(false)
   const [value, setValue] = useState('')
   const fieldId = `notification-${channel}-input`
   const fieldLabel = channel === 'email' ? 'Email address' : 'Slack webhook URL'
@@ -59,27 +98,7 @@ function NotificationChannelRow({ channel, label, configured, masked, onSave, on
       {configured ? (
         <>
           <span className="budget-rules__channel-value">{masked}</span>
-          {!isReadonly && (
-            confirmingRemove ? (
-              <>
-                <Button variant="danger" size="sm" disabled={isSaving} onClick={() => { onClear(); setConfirmingRemove(false) }}>
-                  Confirm
-                </Button>
-                <Button variant="ghost" size="sm" onClick={() => setConfirmingRemove(false)}>
-                  Cancel
-                </Button>
-              </>
-            ) : (
-              <>
-                <Button variant="ghost" size="sm" aria-label={`Edit ${label.toLowerCase()}`} onClick={() => setEditing(true)}>
-                  Edit
-                </Button>
-                <Button variant="danger" size="sm" aria-label={`Remove ${label.toLowerCase()}`} onClick={() => setConfirmingRemove(true)}>
-                  Remove
-                </Button>
-              </>
-            )
-          )}
+          <ConfiguredChannelActions label={label} isSaving={isSaving} onEdit={() => setEditing(true)} onClear={onClear} />
         </>
       ) : (
         <>
@@ -97,18 +116,31 @@ function NotificationChannelRow({ channel, label, configured, masked, onSave, on
 
 function NotificationSettingsSection() {
   const qc = useQueryClient()
-  const { settings } = useNotificationSettings()
+  const { settings, isError: loadError } = useNotificationSettings()
+  const [saveError, setSaveError] = useState<string | null>(null)
 
   const save = useMutation({
     mutationFn: updateNotificationSettings,
+    onMutate: () => setSaveError(null),
     onSuccess: () => qc.invalidateQueries({ queryKey: ['notification-settings'] }),
+    onError: (e: Error) => setSaveError(`Couldn’t save notification settings: ${e.message}`),
   })
+
+  if (loadError) {
+    return (
+      <div className="panel budget-rules__history">
+        <div className="panel-title">Notifications</div>
+        <p className="panel-empty" role="alert">Failed to load notification settings.</p>
+      </div>
+    )
+  }
 
   if (!settings) return null
 
   return (
     <div className="panel budget-rules__history">
       <div className="panel-title">Notifications</div>
+      {saveError && <p className="panel-empty" role="alert">{saveError}</p>}
       <NotificationChannelRow
         channel="email"
         label="Email"

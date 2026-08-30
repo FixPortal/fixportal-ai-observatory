@@ -8,12 +8,13 @@ const data = vi.hoisted(() => ({
   rules: [] as BudgetRule[],
   insights: [] as Insight[],
   settings: { emailConfigured: false, emailMasked: null, slackConfigured: false, slackMasked: null } as NotificationSettings,
+  settingsError: false,
 }))
 
 vi.mock('../api/queries', () => ({
   useBudgetRules: () => ({ rules: data.rules, isLoading: false, isError: false }),
   useInsights: () => ({ insights: data.insights, isError: false, isLoading: false }),
-  useNotificationSettings: () => ({ settings: data.settings, isLoading: false, isError: false }),
+  useNotificationSettings: () => ({ settings: data.settings, isLoading: false, isError: data.settingsError }),
 }))
 
 const updateNotificationSettings = vi.hoisted(() => vi.fn(() => Promise.resolve({
@@ -38,7 +39,11 @@ beforeEach(() => {
   data.rules = []
   data.insights = []
   data.settings = { emailConfigured: false, emailMasked: null, slackConfigured: false, slackMasked: null }
+  data.settingsError = false
   updateNotificationSettings.mockClear()
+  updateNotificationSettings.mockImplementation(() => Promise.resolve({
+    emailConfigured: true, emailMasked: 'ch***@fixportal.org', slackConfigured: false, slackMasked: null,
+  }))
 })
 
 describe('BudgetRulesPanel notification settings', () => {
@@ -71,6 +76,27 @@ describe('BudgetRulesPanel notification settings', () => {
     )
   })
 
+  test('shows an error message instead of silently rendering nothing when the GET fails', () => {
+    data.settingsError = true
+    renderPanel()
+
+    expect(screen.getByText(/failed to load notification settings/i)).toBeInTheDocument()
+    expect(screen.queryByText('Email')).not.toBeInTheDocument()
+  })
+
+  test('a rejected save surfaces an error message', async () => {
+    updateNotificationSettings.mockImplementation(() => Promise.reject(new Error('Bad Request')))
+    renderPanel()
+
+    fireEvent.click(screen.getByRole('button', { name: /add email/i }))
+    fireEvent.change(screen.getByLabelText('Email address'), { target: { value: 'chris@fixportal.org' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Save' }))
+
+    await waitFor(() =>
+      expect(screen.getByText(/couldn.t save notification settings/i)).toBeInTheDocument(),
+    )
+  })
+
   test('removing a configured Slack webhook requires a confirm click', async () => {
     data.settings = {
       emailConfigured: false, emailMasked: null,
@@ -87,6 +113,8 @@ describe('BudgetRulesPanel notification settings', () => {
     )
   })
 
+  // Must remain the last test in this file -- vi.doMock('../auth/msal', ...) below is never
+  // restored, so a test appended after this one would silently inherit isReadonly: true.
   test('hides every notification control for a readonly viewer', async () => {
     vi.doMock('../auth/msal', () => ({ isReadonly: true }))
     vi.resetModules()
