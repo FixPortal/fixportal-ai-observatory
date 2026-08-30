@@ -1,7 +1,10 @@
 using System.Net;
 using System.Net.Http.Json;
 using System.Text.Json;
+using AiObservatory.Data;
+using AiObservatory.Data.Entities;
 using AwesomeAssertions;
+using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using NodaTime;
 
@@ -72,4 +75,69 @@ public class BudgetRulesEndpointsWafTests(AiObservatoryApiFactory factory)
 
         response.StatusCode.Should().Be(HttpStatusCode.BadRequest);
     }
+
+    [Fact]
+    public async Task GetBudgetRules_ReturnsProviderFilteredSpendForTheRulesActiveWindow()
+    {
+        var ct = TestContext.Current.CancellationToken;
+        using var client = factory.CreateAdminClient();
+        var createdResponse = await client.PostAsJsonAsync(
+            "/api/budget-rules",
+            new
+            {
+                Provider = "openai",
+                Period = "monthly",
+                ThresholdGbp = 25m,
+            },
+            ct
+        );
+        var created = await createdResponse.Content.ReadFromJsonAsync<JsonElement>(ct);
+        var ruleId = created.GetProperty("id").GetGuid();
+        var today = factory.Services.GetRequiredService<IClock>().GetCurrentInstant().InUtc().Date;
+
+        await using (var scope = factory.Services.CreateAsyncScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<AiObservatoryDbContext>();
+            var openAi = await db.SpendVendors.SingleAsync(v => v.Provider == Provider.OpenAI, ct);
+            var anthropic = await db.SpendVendors.SingleAsync(v => v.Provider == Provider.Anthropic, ct);
+            var categoryId = await db.SpendCategories.Select(category => category.Id).FirstAsync(ct);
+            var recordedAt = factory.Services.GetRequiredService<IClock>().GetCurrentInstant();
+            db.SpendEntries.AddRange(
+                Spend(openAi.Id, categoryId, today, 12.34m, recordedAt),
+                Spend(anthropic.Id, categoryId, today, 99m, recordedAt),
+                Spend(openAi.Id, categoryId, new LocalDate(today.Year, today.Month, 1).PlusDays(-1), 1000m, recordedAt)
+            );
+            await db.SaveChangesAsync(ct);
+        }
+
+        var response = await client.GetFromJsonAsync<JsonElement>("/api/budget-rules", ct);
+        var rule = response.EnumerateArray().Single(item => item.GetProperty("id").GetGuid() == ruleId);
+
+        rule.TryGetProperty("currentSpendGbp", out var currentSpend).Should().BeTrue();
+        currentSpend.GetDecimal().Should().Be(12.34m);
+        rule.GetProperty("windowStart").GetString().Should().Be(today.ToString("yyyy-MM-dd", null));
+        rule.GetProperty("windowEnd").GetString().Should().Be(today.ToString("yyyy-MM-dd", null));
+    }
+
+    private static SpendEntry Spend(
+        Guid vendorId,
+        Guid categoryId,
+        LocalDate occurredOn,
+        decimal amountGbp,
+        Instant recordedAt
+    ) =>
+        new()
+        {
+            VendorId = vendorId,
+            CategoryId = categoryId,
+            OccurredOn = occurredOn,
+            Amount = amountGbp,
+            AmountGbp = amountGbp,
+            Currency = "GBP",
+            FxRate = 1m,
+            Source = SpendSource.Manual,
+            RecordedAt = recordedAt,
+            ObservedAt = recordedAt,
+            CostBasis = CostBasis.Billed,
+        };
 }

@@ -105,6 +105,7 @@ body {
   max-width: 1200px;
   margin-inline: auto;
   padding-inline: var(--space-6);
+  overflow-x: clip;
 }
 .summary-cards, .source-status, .sub-panel, .main-grid, .bottom-grid { width: 100%; }
 .summary-cards { margin-top: var(--space-6); }
@@ -261,6 +262,9 @@ body {
 .budget-rules__table td:first-child { padding-left: 0; }
 .budget-rules__table td:nth-child(3) { text-align: right; }
 .budget-rules__table td:nth-child(4) { color: var(--text-muted); }
+.budget-rules__amount { display: block; white-space: nowrap; font-family: var(--font-mono); font-variant-numeric: tabular-nums; }
+.budget-rules__status { display: block; color: var(--ok-text); font-size: 11px; }
+.budget-rules__status--over { color: var(--bad-text); }
 .budget-rules__actions { display: inline-flex; gap: var(--space-2); justify-content: flex-end; }
 td.budget-rules__actions { display: table-cell; padding: 6px 0 6px 8px; text-align: center; }
 .budget-rules__form-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: var(--space-3); margin-bottom: var(--space-4); }
@@ -880,6 +884,7 @@ td.budget-rules__actions { display: table-cell; padding: 6px 0 6px 8px; text-ali
 .recharts-cartesian-axis-tick-value { fill: var(--text-muted); }
 .recharts-legend-item-text { color: var(--text-muted) !important; }
 .recharts-cartesian-axis-line, .recharts-cartesian-axis-tick-line { stroke: var(--border); }
+.recharts-tooltip-cursor { fill: var(--brand-pill-bg); }
 .usage-chart-plot { min-width: 0; height: 160px; }
 .usage-chart-legend {
   display: grid;
@@ -1307,12 +1312,25 @@ td.budget-rules__actions { display: table-cell; padding: 6px 0 6px 8px; text-ali
 /* ---- Responsive additions ---- */
 @media (max-width: 760px) {
   .sub-cards { grid-template-columns: 1fr; }
+  .budget-rules__table { min-width: 0; }
+  .budget-rules__table thead {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip-path: inset(50%);
+  }
+  .budget-rules__table :is(tbody, tr) { display: block; }
+  .budget-rules__table tr { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--space-3); padding: var(--space-3) 0; }
+  .budget-rules__table td { display: block; padding: 0; border: 0; text-align: left; }
+  .budget-rules__table td::before { display: block; margin-bottom: var(--space-1); color: var(--text-muted); font-size: 10px; font-weight: 600; letter-spacing: 0.05em; text-transform: uppercase; content: attr(data-label); }
+  .budget-rules__table td:nth-child(3) { grid-column: 1 / -1; text-align: left; }
+  td.budget-rules__actions { display: block; padding: 0; text-align: left; }
+  td.budget-rules__actions::before { content: none; }
 }
 
 /* ---- Reporting/activity/GitHub page layout ---- */
 .reporting-page { display: flex; flex-direction: column; gap: var(--space-4); }
-.reporting-range-bar { display: flex; align-items: center; gap: var(--space-3); flex-wrap: wrap; padding: var(--space-3) 0; }
-.reporting-range-label { color: var(--text-muted); font-size: 14px; }
 
 /* ---- Collapsible optional panels ---- */
 .collapsible-panel-zone {
@@ -1425,6 +1443,7 @@ td.budget-rules__actions { display: table-cell; padding: 6px 0 6px 8px; text-ali
 .project-table__select:hover { text-decoration: underline; text-underline-offset: 2px; }
 .project-table__select:focus-visible { outline: 2px solid var(--brand-ring); outline-offset: 2px; }
 .project-table__row--selected { background: var(--brand-tint); }
+.project-table :is(th, td):first-child { min-width: 16rem; white-space: nowrap; }
 .project-table__share { display: flex; align-items: center; gap: var(--space-2); }
 .project-table__bar-track {
   flex: 1;
@@ -1437,41 +1456,28 @@ td.budget-rules__actions { display: table-cell; padding: 6px 0 6px 8px; text-ali
 
 /* ---- Activity tab: treemap ---- */
 .activity-treemap {
-  display: flex;
-  gap: 2px;
-  height: 160px;
+  width: 100%;
+  min-height: 240px;
   border-radius: var(--r-chip);
-  /* Each block has a min-width floor (see .activity-treemap__block) so it stays
-     legible; with enough projects that floor can exceed the panel's width.
-     Scroll rather than clip (overflow: hidden silently hid blocks past the
-     edge) or let the column stretch (see .main-grid's minmax(0, 1fr) note). */
-  overflow-x: auto;
+  overflow: hidden;
 }
-.activity-treemap__block {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  gap: var(--space-1);
-  min-width: 48px;
-  border: none;
-  color: var(--card-bg);
-  cursor: pointer;
-  text-align: center;
-  padding: var(--space-2);
+.activity-treemap .recharts-wrapper { max-width: 100%; }
+.activity-treemap__cell { cursor: pointer; outline: none; }
+.activity-treemap__cell[aria-disabled="true"] { cursor: default; }
+.activity-treemap__cell rect {
+  stroke: var(--card-bg);
+  stroke-width: 2px;
   transition: filter var(--transition-fast);
 }
-.activity-treemap__block:hover:not(:disabled) { filter: brightness(1.1); }
-.activity-treemap__block:focus-visible { outline: 2px solid var(--brand-ring); outline-offset: -2px; }
-.activity-treemap__block:disabled { cursor: default; }
-.activity-treemap__block--selected { outline: 2px solid var(--brand-strong); outline-offset: -2px; }
+.activity-treemap__cell:hover:not([aria-disabled="true"]) rect { filter: brightness(1.1); }
+.activity-treemap__cell:focus-visible rect,
+.activity-treemap__cell--selected rect { stroke: var(--brand-strong); stroke-width: 4px; }
 .activity-treemap__label {
+  fill: var(--card-bg);
+  font-family: var(--font-sans);
   font-size: 11px;
   font-weight: 600;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  max-width: 100%;
+  pointer-events: none;
 }
 
 /* ---- Visually hidden but screen-reader accessible (e.g. a table header with
@@ -1571,21 +1577,24 @@ td.budget-rules__actions { display: table-cell; padding: 6px 0 6px 8px; text-ali
 }
 .spend-periods__dates input:focus-visible { outline: 2px solid var(--brand-ring); outline-offset: 1px; }
 
-.spend-filters {
+.filter-row {
   display: flex;
   flex-wrap: wrap;
   align-items: flex-end;
   gap: var(--space-4);
-  padding: var(--space-3) 0;
+  padding: var(--space-3);
+  background: var(--card-bg);
+  border: 1px solid var(--border);
+  border-radius: var(--r-panel);
 }
-.spend-filters__field {
+.filter-row__field {
   display: flex;
   flex-direction: column;
   gap: var(--space-1);
   font-size: 12px;
   color: var(--text-muted);
 }
-.spend-filters__field select {
+.filter-row__field select {
   font: inherit;
   font-size: 13px;
   padding: var(--space-2) var(--space-3);
@@ -1594,6 +1603,28 @@ td.budget-rules__actions { display: table-cell; padding: 6px 0 6px 8px; text-ali
   border-radius: var(--r-control);
   color: var(--text);
 }
+.comparison-summary {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: var(--space-2);
+  align-items: stretch;
+}
+.comparison-summary__metric {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: var(--space-1) var(--space-3);
+  padding: var(--space-3);
+  background: var(--card-bg);
+  border: 1px solid var(--border);
+  border-radius: var(--r-control);
+  font-family: var(--font-mono);
+  font-size: 12px;
+}
+.comparison-summary__metric strong { grid-row: 1 / 3; grid-column: 2; align-self: center; font-size: 20px; color: var(--text); }
+.comparison-summary__metric span:not(.comparison-summary__label) { color: var(--text-muted); }
+.comparison-summary__metric b { color: var(--brand-text); font-weight: 600; }
+.comparison-summary__label { color: var(--text-muted); font-family: var(--font-sans); font-weight: 600; }
+.comparison-summary__basis { grid-column: 1 / -1; order: -1; color: var(--text-muted); font-size: 12px; }
 .spend-filters__range {
   color: var(--text-muted);
   font-family: var(--font-mono);
@@ -1607,6 +1638,17 @@ td.budget-rules__actions { display: table-cell; padding: 6px 0 6px 8px; text-ali
   gap: var(--space-2);
   margin-left: auto;
 }
+
+.github-summary-grid {
+  grid-template-columns: minmax(0, 1fr);
+  margin-top: 0;
+}
+.github-table :is(th, td):first-child {
+  min-width: 14rem;
+  white-space: nowrap;
+}
+.github-pr-table :is(th, td):nth-child(2) { min-width: 20rem; }
+.github-pr-table td.github-pr-table__title { font-family: var(--font-sans); }
 
 .spend-totals {
   display: grid;
@@ -1667,6 +1709,7 @@ td.budget-rules__actions { display: table-cell; padding: 6px 0 6px 8px; text-ali
   .spend-periods__rail { grid-template-columns: 1fr; }
   .spend-periods__versus { display: none; }
   .spend-totals { grid-template-columns: repeat(2, 1fr); }
+  .comparison-summary { grid-template-columns: 1fr; }
 }
 @media (max-width: 600px) {
   .spend-periods { padding: var(--space-3); }

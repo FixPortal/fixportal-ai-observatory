@@ -30,7 +30,7 @@ export default function GitHubCommitTable({ summary, isLoading = false, isError 
 
   return (
     <div className="model-table-wrap">
-      <table className="project-table">
+      <table className="project-table github-table">
         <thead>
           <tr>
             <GitHubSortableHeader field="repo" label="Repo" sortField={sortField} sortDirection={sortDirection} onSort={handleSort} />

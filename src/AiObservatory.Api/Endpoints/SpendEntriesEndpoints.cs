@@ -363,6 +363,7 @@ public static class SpendEntriesEndpoints
                 row.Entry.OccurredOn,
                 row.Vendor.Id,
                 VendorName = row.Vendor.DisplayName,
+                row.Vendor.Provider,
                 CategoryId = row.Category.Id,
                 CategoryName = row.Category.DisplayName,
             })
@@ -371,6 +372,7 @@ public static class SpendEntriesEndpoints
                 Date = group.Key.OccurredOn,
                 VendorId = group.Key.Id,
                 group.Key.VendorName,
+                group.Key.Provider,
                 group.Key.CategoryId,
                 group.Key.CategoryName,
                 AmountGbp = group.Sum(row => row.Entry.AmountGbp),
@@ -386,10 +388,16 @@ public static class SpendEntriesEndpoints
             .Select(group => new BilledDailyPoint(group.Key, group.Sum(point => point.AmountGbp)))
             .ToList();
         var vendorSeries = aggregateRows
-            .GroupBy(point => new { point.VendorId, point.VendorName })
+            .GroupBy(point => new
+            {
+                point.VendorId,
+                point.VendorName,
+                point.Provider,
+            })
             .Select(group => new BilledVendorPoint(
                 group.Key.VendorId,
                 group.Key.VendorName,
+                group.Key.Provider,
                 group.Sum(point => point.AmountGbp)
             ))
             .OrderByDescending(point => point.AmountGbp)
@@ -622,7 +630,7 @@ public sealed record BilledReportingResponse(
 
 public sealed record BilledDailyPoint(LocalDate Date, decimal AmountGbp);
 
-public sealed record BilledVendorPoint(Guid VendorId, string Name, decimal AmountGbp);
+public sealed record BilledVendorPoint(Guid VendorId, string Name, Provider? Provider, decimal AmountGbp);
 
 public sealed record BilledCategoryPoint(Guid CategoryId, string Name, decimal AmountGbp);
 // ReSharper restore NotAccessedPositionalProperty.Global

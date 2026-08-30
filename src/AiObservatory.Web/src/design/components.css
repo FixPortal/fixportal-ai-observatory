@@ -109,6 +109,16 @@
   color: var(--brand-contrast);
 }
 
+.fpds-btn--danger {
+  background: transparent;
+  color: var(--bad-text);
+  border: 1px solid var(--bad-border);
+}
+.fpds-btn--danger:hover:not(:disabled),
+.fpds-btn--danger:active:not(:disabled) {
+  background: var(--bad-bg);
+}
+
 .fpds-btn--text {
   min-height: 24px;
   padding: 2px 4px;

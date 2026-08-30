@@ -1,6 +1,7 @@
 import { useState, useMemo } from 'react'
 import type { SpendCategory, SpendEntry, SpendVendor } from '../api/client'
 import { gbp, formatCurrency } from '../lib/currency'
+import { Button } from '../design/Button'
 import GitHubSortableHeader from './GitHubSortableHeader'
 import type { SortDirection } from './githubSort'
 
@@ -89,14 +90,15 @@ export default function SpendLedgerTable({ entries, categories, vendors, onDelet
               <td>{e.source}</td>
               {canEdit && (
                 <td>
-                  <button
-                    type="button"
+                  <Button
+                    variant="danger"
+                    size="sm"
                     onClick={() => onDelete(e.id)}
                     disabled={isDeleting}
                     aria-label={`Delete entry from ${e.occurredOn}`}
                   >
                     Delete
-                  </button>
+                  </Button>
                 </td>
               )}
             </tr>

@@ -64,6 +64,13 @@ public class BilledReportingEndpointsTests : IAsyncLifetime
             .Select(VendorPoint)
             .Should()
             .BeEquivalentTo([("Anthropic", 4991m), ("OpenAI", 20m)]);
+        body.GetProperty("vendorSeries")
+            .EnumerateArray()
+            .Single(point => point.GetProperty("name").GetString() == "Anthropic")
+            .TryGetProperty("provider", out var provider)
+            .Should()
+            .BeTrue();
+        provider.GetString().Should().Be("anthropic");
     }
 
     private static (string Date, decimal Amount) Point(JsonElement point) =>
