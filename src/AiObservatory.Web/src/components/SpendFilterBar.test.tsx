@@ -21,6 +21,12 @@ function renderBar(canEdit: boolean, onManageCatalog = vi.fn(), onAddEntry = vi.
 }
 
 describe('SpendFilterBar', () => {
+  it('exposes the page-wide controls as a named filter row', () => {
+    renderBar(false)
+
+    expect(screen.getByRole('group', { name: /spend filters/i })).toBeInTheDocument()
+  })
+
   it('shows a "Manage catalog" button beside "Add entry" when the viewer can edit', () => {
     renderBar(true)
     const actions = screen.getByRole('group', { name: /spend actions/i })

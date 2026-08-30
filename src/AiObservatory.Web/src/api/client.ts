@@ -287,14 +287,17 @@ export interface BudgetRule {
   provider: string | null
   period: 'daily' | 'weekly' | 'monthly'
   thresholdGbp: number
+  evaluationStartsOn: string
   lastTriggeredAt: string | null
+  currentSpendGbp: number
+  windowStart: string
+  windowEnd: string
 }
 
 export const getBudgetRules = () => getJson<BudgetRule[]>('/budget-rules')
 
-export const createBudgetRule = async (body: Omit<BudgetRule, 'id' | 'lastTriggeredAt'>): Promise<BudgetRule> => {
-  const res = await request('/budget-rules', { method: 'POST', headers: jsonHeaders, body: JSON.stringify(body) })
-  return res.json() as Promise<BudgetRule>
+export const createBudgetRule = async (body: Pick<BudgetRule, 'provider' | 'period' | 'thresholdGbp'>): Promise<void> => {
+  await request('/budget-rules', { method: 'POST', headers: jsonHeaders, body: JSON.stringify(body) })
 }
 
 export const deleteBudgetRule = async (id: string): Promise<void> => {
@@ -433,7 +436,7 @@ export interface BilledReporting {
   topVendorName: string | null
   topVendorGbp: number | null
   dailySeries: { date: string; amountGbp: number }[]
-  vendorSeries: { vendorId: string; name: string; amountGbp: number }[]
+  vendorSeries: { vendorId: string; name: string; provider: string | null; amountGbp: number }[]
   categorySeries: { categoryId: string; name: string; amountGbp: number }[]
 }
 

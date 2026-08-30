@@ -36,26 +36,46 @@ const SortableHeader = ({ field, label, sortField, sortDirection, onSort }: Sort
 
 interface Props {
   projects: ProjectActivity[]
+  comparisonProjects?: ProjectActivity[]
   selectedProject: string | null
   onSelectProject: (project: string | null) => void
 }
 
-export default function ProjectBreakdown({ projects, selectedProject, onSelectProject }: Props) {
+function formatComparisonChange(activeSeconds: number, comparisonActiveSeconds: number | null) {
+  if (comparisonActiveSeconds == null) return '—'
+  if (comparisonActiveSeconds === 0) return activeSeconds > 0 ? 'New' : '—'
+  const percentage = Math.round((activeSeconds - comparisonActiveSeconds) / comparisonActiveSeconds * 100)
+  return `${percentage >= 0 ? '+' : ''}${percentage}%`
+}
+
+export default function ProjectBreakdown({ projects, comparisonProjects, selectedProject, onSelectProject }: Props) {
   const [searchQuery, setSearchQuery] = useState('')
   const [sortField, setSortField] = useState<ProjectSortField>('activeSeconds')
   const [sortDirection, setSortDirection] = useState<SortDirection>('desc')
 
+  const comparableProjects = useMemo(() => {
+    if (!comparisonProjects) return projects.map(project => ({ ...project, comparisonActiveSeconds: null }))
+    const comparison = new Map(comparisonProjects.map(project => [project.project, project.activeSeconds]))
+    const currentNames = new Set(projects.map(project => project.project))
+    return [
+      ...projects.map(project => ({ ...project, comparisonActiveSeconds: comparison.get(project.project) ?? 0 })),
+      ...comparisonProjects
+        .filter(project => !currentNames.has(project.project))
+        .map(project => ({ project: project.project, sessionCount: 0, activeSeconds: 0, sharePercent: 0, comparisonActiveSeconds: project.activeSeconds })),
+    ]
+  }, [comparisonProjects, projects])
+
   const visible = useMemo(() => {
-    const base = selectedProject ? projects.filter((p) => p.project === selectedProject) : projects
+    const base = selectedProject ? comparableProjects.filter((p) => p.project === selectedProject) : comparableProjects
     return sortProjects(filterProjects(base, searchQuery), sortField, sortDirection)
-  }, [projects, selectedProject, searchQuery, sortField, sortDirection])
+  }, [comparableProjects, selectedProject, searchQuery, sortField, sortDirection])
 
   const maxActiveSeconds = useMemo(
     () => projects.reduce((m, p) => (p.activeSeconds > m ? p.activeSeconds : m), 1),
     [projects],
   )
 
-  if (projects.length === 0) return <p className="panel-empty">No activity data for this period.</p>
+  if (comparableProjects.length === 0) return <p className="panel-empty">No activity data for either period.</p>
 
   const handleSort = (field: ProjectSortField) => {
     if (sortField === field) {
@@ -68,7 +88,7 @@ export default function ProjectBreakdown({ projects, selectedProject, onSelectPr
 
   return (
     <>
-      <div className="breakdown-controls">
+      <div className="filter-row breakdown-controls" role="group" aria-label="Project filters">
         <div className="breakdown-search-container">
           <SearchIcon />
           <input
@@ -104,6 +124,8 @@ export default function ProjectBreakdown({ projects, selectedProject, onSelectPr
               <SortableHeader field="project" label="Project" sortField={sortField} sortDirection={sortDirection} onSort={handleSort} />
               <SortableHeader field="sessions" label="Sessions" sortField={sortField} sortDirection={sortDirection} onSort={handleSort} />
               <SortableHeader field="activeSeconds" label="Active time" sortField={sortField} sortDirection={sortDirection} onSort={handleSort} />
+              {comparisonProjects && <th>Previous active</th>}
+              {comparisonProjects && <th>Change</th>}
               <th>Share</th>
             </tr>
           </thead>
@@ -127,6 +149,8 @@ export default function ProjectBreakdown({ projects, selectedProject, onSelectPr
                 </td>
                 <td>{p.sessionCount.toLocaleString()}</td>
                 <td>{formatActiveTime(p.activeSeconds)}</td>
+                {comparisonProjects && <td>{formatActiveTime(p.comparisonActiveSeconds ?? 0)}</td>}
+                {comparisonProjects && <td>{formatComparisonChange(p.activeSeconds, p.comparisonActiveSeconds)}</td>}
                 <td>
                   <div className="project-table__share">
                     <div className="project-table__bar-track">

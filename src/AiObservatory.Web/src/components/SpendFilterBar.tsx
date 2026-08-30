@@ -20,8 +20,8 @@ export default function SpendFilterBar({
   onCategoryChange, onVendorChange, onAddEntry, onManageCatalog, rangeLabel, canEdit,
 }: Props) {
   return (
-    <div className="spend-filters">
-      <label className="spend-filters__field">
+    <div className="filter-row spend-filters" role="group" aria-label="Spend filters">
+      <label className="filter-row__field">
         <span>Category</span>
         <select
           value={categoryId ?? ''}
@@ -32,7 +32,7 @@ export default function SpendFilterBar({
         </select>
       </label>
 
-      <label className="spend-filters__field">
+      <label className="filter-row__field">
         <span>Vendor</span>
         <select
           value={vendorId ?? ''}

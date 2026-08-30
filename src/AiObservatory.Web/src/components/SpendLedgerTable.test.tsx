@@ -122,4 +122,18 @@ describe('SpendLedgerTable', () => {
 
     expect(screen.getByRole('button', { name: /delete entry/i })).toBeDisabled()
   })
+
+  it('renders deletion as a themed destructive action', () => {
+    render(
+      <SpendLedgerTable
+        entries={[entryAgainstArchivedCategory]}
+        categories={[liveCategory, archivedCategory]}
+        vendors={[vendor]}
+        onDelete={vi.fn()}
+        canEdit
+      />,
+    )
+
+    expect(screen.getByRole('button', { name: /delete entry/i })).toHaveClass('fpds-btn--danger')
+  })
 })

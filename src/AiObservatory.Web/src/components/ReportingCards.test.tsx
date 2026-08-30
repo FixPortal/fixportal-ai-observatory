@@ -53,3 +53,20 @@ test('reports a non-empty ledger that nets to zero as zero billed spend', () => 
 
   expect(screen.getByText('Billed spend').parentElement).toHaveTextContent('£0.00')
 })
+
+test('names the monthly projection as a 30-day run rate', () => {
+  render(<ReportingCards report={{
+    entryCount: 1,
+    totalGbp: 10,
+    dailyAverageGbp: 2,
+    projectedMonthlyGbp: 60,
+    topVendorName: 'OpenAI',
+    topVendorGbp: 10,
+    dailySeries: [],
+    vendorSeries: [],
+    categorySeries: [],
+  }} />)
+
+  expect(screen.getByText('30-day run rate')).toBeInTheDocument()
+  expect(screen.queryByText('Projected / month')).not.toBeInTheDocument()
+})

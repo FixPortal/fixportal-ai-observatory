@@ -10,21 +10,22 @@ const projects: ProjectActivity[] = [
 
 test('renders a block per project', () => {
   render(<ProjectTreemap projects={projects} selectedProject={null} onSelectProject={vi.fn()} />)
-  expect(screen.getByText('fixportal-ai-observatory')).toBeInTheDocument()
-  expect(screen.getByText('Training')).toBeInTheDocument()
+  expect(screen.getByRole('group', { name: 'Project share treemap' })).toBeInTheDocument()
+  expect(screen.getByRole('button', { name: /fixportal-ai-observatory/ })).toBeInTheDocument()
+  expect(screen.getByRole('button', { name: /Training/ })).toBeInTheDocument()
 })
 
 test('clicking a block selects that project', () => {
   const onSelectProject = vi.fn()
   render(<ProjectTreemap projects={projects} selectedProject={null} onSelectProject={onSelectProject} />)
-  fireEvent.click(screen.getByText('Training'))
+  fireEvent.click(screen.getByRole('button', { name: /Training/ }))
   expect(onSelectProject).toHaveBeenCalledWith('Training')
 })
 
 test('clicking the already-selected block deselects it', () => {
   const onSelectProject = vi.fn()
   render(<ProjectTreemap projects={projects} selectedProject="Training" onSelectProject={onSelectProject} />)
-  fireEvent.click(screen.getByText('Training'))
+  fireEvent.click(screen.getByRole('button', { name: /Training/ }))
   expect(onSelectProject).toHaveBeenCalledWith(null)
 })
 

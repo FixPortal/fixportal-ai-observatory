@@ -49,7 +49,7 @@ export default function GitHubPrTable({ prs, isLoading = false, isError = false 
         <p className="panel-empty">No matching PRs found.</p>
       ) : (
         <div className="model-table-wrap">
-          <table className="model-table">
+          <table className="model-table github-table github-pr-table">
           <thead>
             <tr>
               <GitHubSortableHeader field="repo" label="Repo" sortField={sortField} sortDirection={sortDirection} onSort={handleSort} />
@@ -66,7 +66,7 @@ export default function GitHubPrTable({ prs, isLoading = false, isError = false 
             {visible.map((p) => (
               <tr key={`${p.repo}#${p.number}`}>
                 <td>{p.repo}</td>
-                <td>#{p.number} {p.title}</td>
+                <td className="github-pr-table__title">#{p.number} {p.title}</td>
                 <td>{p.author}</td>
                 <td>{p.state}</td>
                 <td>{new Date(p.createdAt).toLocaleDateString()}</td>

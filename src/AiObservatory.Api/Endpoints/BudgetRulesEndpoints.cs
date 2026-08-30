@@ -14,10 +14,7 @@ public static class BudgetRulesEndpoints
     // ReSharper disable once UnusedMethodReturnValue.Global
     public static IEndpointRouteBuilder MapBudgetRulesEndpoints(this IEndpointRouteBuilder app)
     {
-        app.MapGet(
-            "/budget-rules",
-            async (AiObservatoryDbContext db) => Results.Ok(await db.BudgetRules.AsNoTracking().ToListAsync())
-        );
+        app.MapGet("/budget-rules", GetBudgetRulesAsync);
 
         app.MapGet(
             "/budget-rules/email-status",
@@ -70,6 +67,93 @@ public static class BudgetRulesEndpoints
 
         return app;
     }
+
+    private static async Task<IResult> GetBudgetRulesAsync(
+        AiObservatoryDbContext db,
+        IClock clock,
+        CancellationToken ct
+    )
+    {
+        var rules = await db.BudgetRules.AsNoTracking().ToListAsync(ct);
+        if (rules.Count == 0)
+        {
+            return Results.Ok(Array.Empty<BudgetRuleResponse>());
+        }
+
+        var today = clock.GetCurrentInstant().InUtc().Date;
+        var windowStarts = rules.ToDictionary(rule => rule.Id, rule => CurrentWindowStart(rule, today));
+        var earliest = windowStarts.Values.Min();
+        var spend = await db
+            .SpendEntries.AsNoTracking()
+            .Where(entry => entry.OccurredOn >= earliest && entry.OccurredOn <= today)
+            .Join(
+                db.SpendVendors.AsNoTracking(),
+                entry => entry.VendorId,
+                vendor => vendor.Id,
+                (entry, vendor) =>
+                    new
+                    {
+                        entry.OccurredOn,
+                        entry.AmountGbp,
+                        vendor.Provider,
+                    }
+            )
+            .GroupBy(row => new { row.OccurredOn, row.Provider })
+            .Select(group => new
+            {
+                group.Key.OccurredOn,
+                group.Key.Provider,
+                AmountGbp = group.Sum(row => row.AmountGbp),
+            })
+            .ToListAsync(ct);
+
+        return Results.Ok(
+            rules.Select(rule =>
+            {
+                var windowStart = windowStarts[rule.Id];
+                var currentSpend = spend
+                    .Where(row =>
+                        row.OccurredOn >= windowStart && (rule.Provider is null || row.Provider == rule.Provider)
+                    )
+                    .Sum(row => row.AmountGbp);
+                return new BudgetRuleResponse(
+                    rule.Id,
+                    rule.Provider,
+                    rule.Period,
+                    rule.ThresholdGbp,
+                    rule.EvaluationStartsOn,
+                    rule.LastTriggeredAt,
+                    currentSpend,
+                    windowStart,
+                    today
+                );
+            })
+        );
+    }
+
+    private static LocalDate CurrentWindowStart(BudgetRule rule, LocalDate today)
+    {
+        var nominalStart = rule.Period switch
+        {
+            BillingPeriod.Daily => today,
+            BillingPeriod.Weekly => today.PlusDays(-6),
+            BillingPeriod.Monthly => new LocalDate(today.Year, today.Month, 1),
+            _ => today,
+        };
+        return nominalStart > rule.EvaluationStartsOn ? nominalStart : rule.EvaluationStartsOn;
+    }
 }
 
 public sealed record CreateBudgetRuleRequest(Provider? Provider, BillingPeriod Period, decimal ThresholdGbp);
+
+public sealed record BudgetRuleResponse(
+    Guid Id,
+    Provider? Provider,
+    BillingPeriod Period,
+    decimal ThresholdGbp,
+    LocalDate EvaluationStartsOn,
+    Instant? LastTriggeredAt,
+    decimal CurrentSpendGbp,
+    LocalDate WindowStart,
+    LocalDate WindowEnd
+);

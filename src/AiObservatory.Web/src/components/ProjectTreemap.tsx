@@ -1,4 +1,6 @@
 import { useMemo } from 'react'
+import { ResponsiveContainer, Treemap } from 'recharts'
+import type { TreemapNode } from 'recharts/types/chart/Treemap'
 import type { ProjectActivity } from '../api/client'
 import { buildTreemapBlocks } from './treemapBlocks'
 import { formatActiveTime } from '../lib/duration'
@@ -21,24 +23,60 @@ export default function ProjectTreemap({ projects, selectedProject, onSelectProj
 
   if (blocks.length === 0) return <p className="panel-empty">No activity data for this period.</p>
 
+  const data = blocks.map((block, index) => ({
+    ...block,
+    name: block.project,
+    value: block.activeSeconds,
+    color: block.isOther ? OTHER_COLOR : PALETTE[index % PALETTE.length],
+  }))
+
+  const renderCell = (node: TreemapNode) => {
+    if (node.depth === 0) return <g />
+    const isOther = Boolean(node.isOther)
+    const project = String(node.name)
+    const activeSeconds = Number(node.activeSeconds)
+    const label = `${project} — ${formatActiveTime(activeSeconds)} (${node.percent}%)`
+    const select = () => { if (!isOther) onSelectProject(project === selectedProject ? null : project) }
+    return (
+      <g
+        role="button"
+        aria-label={label}
+        aria-disabled={isOther || undefined}
+        tabIndex={isOther ? -1 : 0}
+        className={`activity-treemap__cell${project === selectedProject ? ' activity-treemap__cell--selected' : ''}`}
+        style={{ background: String(node.color) }}
+        onClick={select}
+        onKeyDown={event => {
+          if (event.key === 'Enter' || event.key === ' ') {
+            event.preventDefault()
+            select()
+          }
+        }}
+      >
+        <title>{label}</title>
+        <rect x={node.x} y={node.y} width={node.width} height={node.height} fill={String(node.color)} />
+        {node.width >= 96 && node.height >= 44 && (
+          <text x={node.x + 10} y={node.y + 22} className="activity-treemap__label">
+            <tspan>{project}</tspan>
+            <tspan x={node.x + 10} dy="18" className="activity-treemap__value">{formatActiveTime(activeSeconds)}</tspan>
+          </text>
+        )}
+      </g>
+    )
+  }
+
   return (
-    <div className="activity-treemap">
-      {blocks.map((b, i) => (
-        <button
-          key={b.isOther ? '__other__' : b.project}
-          type="button"
-          className={`activity-treemap__block${!b.isOther && b.project === selectedProject ? ' activity-treemap__block--selected' : ''}`}
-          style={{ flexGrow: b.activeSeconds, background: b.isOther ? OTHER_COLOR : PALETTE[i % PALETTE.length] }}
-          // The "Other" bucket aggregates everything past the top N — there's no
-          // single project to filter the table to, so it's not interactive.
-          disabled={b.isOther}
-          onClick={() => onSelectProject(b.project === selectedProject ? null : b.project)}
-          title={`${b.project} — ${formatActiveTime(b.activeSeconds)} (${b.percent}%)`}
-        >
-          <span className="activity-treemap__label">{b.project}</span>
-          <span className="activity-treemap__value">{formatActiveTime(b.activeSeconds)}</span>
-        </button>
-      ))}
+    <div className="activity-treemap" role="group" aria-label="Project share treemap">
+      <ResponsiveContainer width="100%" height={240} initialDimension={{ width: 1000, height: 240 }}>
+        <Treemap
+          data={data}
+          dataKey="value"
+          nameKey="name"
+          nodeGap={2}
+          isAnimationActive={false}
+          content={renderCell}
+        />
+      </ResponsiveContainer>
     </div>
   )
 }

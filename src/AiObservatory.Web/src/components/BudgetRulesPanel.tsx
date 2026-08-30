@@ -114,7 +114,7 @@ export default function BudgetRulesPanel() {
                     Period
                   </th>
                   <th>
-                    Threshold (GBP)
+                    Current / limit
                   </th>
                   <th>
                     Last fired
@@ -125,16 +125,19 @@ export default function BudgetRulesPanel() {
               <tbody>
                 {rules.map(rule => (
                   <tr key={rule.id}>
-                    <td>
+                    <td data-label="Provider">
                       {rule.provider ? capitalize(rule.provider) : 'All providers'}
                     </td>
-                    <td>
+                    <td data-label="Period">
                       {capitalize(rule.period)}
                     </td>
-                    <td>
-                      {gbp(rule.thresholdGbp)}
+                    <td data-label="Current / limit">
+                      <span className="budget-rules__amount">{gbp(rule.currentSpendGbp)} / {gbp(rule.thresholdGbp)}</span>
+                      <span className={`budget-rules__status${rule.currentSpendGbp > rule.thresholdGbp ? ' budget-rules__status--over' : ''}`}>
+                        {rule.currentSpendGbp > rule.thresholdGbp ? 'Over limit' : 'Within limit'}
+                      </span>
                     </td>
-                    <td>
+                    <td data-label="Last fired">
                       {rule.lastTriggeredAt
                         ? new Date(rule.lastTriggeredAt).toLocaleString()
                         : 'Never'}
@@ -144,7 +147,7 @@ export default function BudgetRulesPanel() {
                         {confirmDeleteId === rule.id ? (
                           <span>
                             <Button
-                              variant="ghost"
+                              variant="danger"
                               size="sm"
                               onClick={() => deleteRule.mutate(rule.id)}
                               disabled={deleteRule.isPending}
@@ -156,7 +159,7 @@ export default function BudgetRulesPanel() {
                             </Button>
                           </span>
                         ) : (
-                          <Button variant="ghost" size="sm" onClick={() => setConfirmDeleteId(rule.id)}>
+                          <Button variant="danger" size="sm" onClick={() => setConfirmDeleteId(rule.id)}>
                             Remove
                           </Button>
                         )}
