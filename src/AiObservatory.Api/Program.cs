@@ -366,6 +366,7 @@ api.MapAggregatesEndpoints();
 api.MapInsightsEndpoints();
 api.MapSubscriptionsEndpoints();
 api.MapBudgetRulesEndpoints();
+api.MapNotificationSettingsEndpoints();
 api.MapSpendCatalogEndpoints();
 api.MapSpendEntriesEndpoints();
 api.MapSourceStatusEndpoints();
