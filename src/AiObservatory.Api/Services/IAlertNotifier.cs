@@ -11,7 +11,8 @@ public record BudgetAlertPayload(
     decimal ThresholdGbp,
     decimal ActualSpendGbp,
     DateTimeOffset TriggeredAt,
-    string MessageId
+    string MessageId,
+    Guid ClaimId
 );
 
 public interface IAlertNotifier

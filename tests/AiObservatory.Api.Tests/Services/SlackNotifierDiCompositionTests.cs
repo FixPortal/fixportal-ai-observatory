@@ -2,6 +2,7 @@ using AiObservatory.Api.Services;
 using AiObservatory.Data.Repositories;
 using AwesomeAssertions;
 using Microsoft.Extensions.DependencyInjection;
+using NodaTime;
 using NSubstitute;
 
 namespace AiObservatory.Api.Tests.Services;
@@ -21,6 +22,7 @@ public class SlackNotifierDiCompositionTests
         var services = new ServiceCollection();
         services.AddLogging();
         services.AddSingleton(Substitute.For<IUsageRepository>());
+        services.AddSingleton<IClock>(SystemClock.Instance);
         services.AddHttpClient<SlackAlertNotifier>().ConfigureHttpClient(c => c.Timeout = TimeSpan.FromSeconds(10));
         services.AddKeyedTransient<IAlertNotifier>("slack", (sp, _) => sp.GetRequiredService<SlackAlertNotifier>());
 

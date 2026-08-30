@@ -15,4 +15,5 @@ public sealed class BudgetAlertClaim
     public Guid? EmailLeaseId { get; set; }
     public Instant? EmailLeaseAcquiredAt { get; set; }
     public Instant? EmailSentAt { get; set; }
+    public Instant? SlackSentAt { get; set; }
 }

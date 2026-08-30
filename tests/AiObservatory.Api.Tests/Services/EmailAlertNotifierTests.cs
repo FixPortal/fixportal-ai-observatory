@@ -21,7 +21,8 @@ public class EmailAlertNotifierTests
             10m,
             15m,
             DateTimeOffset.UtcNow,
-            "budget-alert-10000000000000000000000000000001@observatory.fixportal.com"
+            "budget-alert-10000000000000000000000000000001@observatory.fixportal.com",
+            Guid.NewGuid()
         );
 
     [Fact]

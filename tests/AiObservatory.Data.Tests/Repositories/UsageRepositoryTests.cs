@@ -980,6 +980,38 @@ public class UsageRepositoryTests : IAsyncLifetime
     }
 
     [Fact]
+    public async Task Budget_alert_slack_sent_fence_starts_false_and_is_set_by_marking()
+    {
+        var ct = TestContext.Current.CancellationToken;
+        var rule = new BudgetRule { Period = BillingPeriod.Daily, ThresholdGbp = 10m };
+        _ctx.BudgetRules.Add(rule);
+        await _ctx.SaveChangesAsync(ct);
+
+        var period = new LocalDate(2026, 8, 1);
+        var triggeredAt = Instant.FromUtc(2026, 8, 2, 0, 5);
+        var claimResult = await _repo.GetOrCreateBudgetAlertAsync(
+            rule.Id,
+            period,
+            period,
+            10m,
+            15m,
+            AlertInsight(period, triggeredAt),
+            triggeredAt,
+            ct
+        );
+
+        (await _repo.GetBudgetAlertSlackSentAsync(claimResult.ClaimId, ct)).Should().BeFalse();
+
+        var sentAt = triggeredAt.Plus(Duration.FromMinutes(1));
+        await _repo.MarkBudgetAlertSlackSentAsync(claimResult.ClaimId, sentAt, ct);
+
+        (await _repo.GetBudgetAlertSlackSentAsync(claimResult.ClaimId, ct)).Should().BeTrue();
+        (await _ctx.BudgetAlertClaims.AsNoTracking().SingleAsync(c => c.Id == claimResult.ClaimId, ct))
+            .SlackSentAt.Should()
+            .Be(sentAt);
+    }
+
+    [Fact]
     public async Task Budget_alert_delivery_index_excludes_sent_history_and_covers_lease_filtering()
     {
         var definition = await _ctx

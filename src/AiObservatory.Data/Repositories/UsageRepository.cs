@@ -723,6 +723,20 @@ public class UsageRepository(
             .ExecuteUpdateAsync(setters => setters.SetProperty(claim => claim.EmailSentAt, sentAt), ct);
     }
 
+    public async Task<bool> GetBudgetAlertSlackSentAsync(Guid claimId, CancellationToken ct = default) =>
+        await ctx
+            .BudgetAlertClaims.AsNoTracking()
+            .Where(claim => claim.Id == claimId)
+            .Select(claim => claim.SlackSentAt != null)
+            .SingleOrDefaultAsync(ct);
+
+    public async Task MarkBudgetAlertSlackSentAsync(Guid claimId, Instant at, CancellationToken ct = default)
+    {
+        await ctx
+            .BudgetAlertClaims.Where(claim => claim.Id == claimId)
+            .ExecuteUpdateAsync(setters => setters.SetProperty(claim => claim.SlackSentAt, at), ct);
+    }
+
     public async Task AddInsightAsync(Insight insight, CancellationToken ct = default)
     {
         ArgumentNullException.ThrowIfNull(insight);

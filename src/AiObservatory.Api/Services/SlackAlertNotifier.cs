@@ -1,22 +1,34 @@
 using System.Net.Http.Json;
 using AiObservatory.Data.Repositories;
+using NodaTime;
 
 namespace AiObservatory.Api.Services;
 
 /// <summary>
-/// Posts a Slack incoming-webhook message. Best-effort: no retry, no lease -- a failure is
-/// logged and swallowed by the caller (<see cref="CompositeAlertNotifier"/>), never surfaced
-/// as a delivery failure that would cause <c>BudgetAlertService</c> to re-attempt the whole
-/// payload (which would re-send email too).
+/// Posts a Slack incoming-webhook message. Best-effort: no retry -- a failure is logged and
+/// swallowed by the caller (<see cref="CompositeAlertNotifier"/>), never surfaced as a delivery
+/// failure that would cause <c>BudgetAlertService</c> to re-attempt the whole payload (which
+/// would re-send email too). Fenced by <see cref="BudgetAlertClaim.SlackSentAt"/> so a claim
+/// still being retried by the email lease (see <c>BudgetAlertService.DeliverEmailAsync</c>)
+/// only ever gets one Slack attempt, not one per email retry cycle.
 /// </summary>
-public sealed class SlackAlertNotifier(HttpClient http, IUsageRepository repository, ILogger<SlackAlertNotifier> logger)
-    : IAlertNotifier
+public sealed class SlackAlertNotifier(
+    HttpClient http,
+    IUsageRepository repository,
+    IClock clock,
+    ILogger<SlackAlertNotifier> logger
+) : IAlertNotifier
 {
     public async Task NotifyAsync(BudgetAlertPayload payload, CancellationToken ct = default)
     {
         var settings = await repository.GetNotificationSettingsAsync(ct);
         var webhookUrl = settings?.SlackWebhookUrl;
         if (string.IsNullOrEmpty(webhookUrl))
+        {
+            return;
+        }
+
+        if (await repository.GetBudgetAlertSlackSentAsync(payload.ClaimId, ct))
         {
             return;
         }
@@ -34,6 +46,9 @@ public sealed class SlackAlertNotifier(HttpClient http, IUsageRepository reposit
                 response.StatusCode,
                 payload.MessageId
             );
+            return;
         }
+
+        await repository.MarkBudgetAlertSlackSentAsync(payload.ClaimId, clock.GetCurrentInstant(), ct);
     }
 }
