@@ -175,6 +175,8 @@ public interface IUsageRepository
     Task AcknowledgeInsightAsync(Guid insightId, Instant at, CancellationToken ct = default);
     Task<LocalDate?> GetLatestInsightPeriodEndAsync(CancellationToken ct = default);
 
+    Task<NotificationSettings?> GetNotificationSettingsAsync(CancellationToken ct = default);
+
     Task<IReadOnlyList<Subscription>> GetActiveSubscriptionsAsync(LocalDate today, CancellationToken ct = default);
 
     /// <summary>
