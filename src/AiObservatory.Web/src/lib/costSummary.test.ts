@@ -55,12 +55,30 @@ describe('summarizeCosts', () => {
     expect(result.notionalUsd).toBeNull()
   })
 
-  test('also catches "billed" and "none" cost bases reaching the aggregate summarizer', () => {
+  test('catches "billed" reaching the aggregate summarizer, but excludes "none"', () => {
     const result = summarizeCosts([
       aggregate({ costBasis: 'billed', costUsd: 10, requestCount: 1 }),
-      aggregate({ costBasis: 'none', costUsd: 5, requestCount: 1 }),
+      aggregate({ costBasis: 'none', costUsd: 0, requestCount: 1 }),
     ], [])
-    expect(result.unclassifiedUsd).toBe(15)
+    expect(result.unclassifiedUsd).toBe(10)
+  })
+
+  test('never flags the always-zero "none" basis as unclassified spend (Copilot daily reports)', () => {
+    // CostBasis.None is a legitimate, DB-constraint-enforced always-zero basis
+    // (CK_CopilotDailyReport_NoCost). Without excluding it, hitting this branch even
+    // once flips unclassifiedUsd from null to 0, and the summary note fires
+    // permanently at "£0.00" on any dashboard load that includes Copilot data.
+    const result = summarizeCosts([
+      aggregate({ costBasis: 'none', costUsd: 0, requestCount: 5 }),
+    ], [])
+    expect(result.unclassifiedUsd).toBeNull()
+  })
+
+  test('excludes any zero-cost row from unclassifiedUsd regardless of basis', () => {
+    const result = summarizeCosts([
+      aggregate({ costBasis: 'unknown', costUsd: 0, requestCount: 1 }),
+    ], [])
+    expect(result.unclassifiedUsd).toBeNull()
   })
 
   test('preserves absence separately from a represented legitimate zero', () => {
