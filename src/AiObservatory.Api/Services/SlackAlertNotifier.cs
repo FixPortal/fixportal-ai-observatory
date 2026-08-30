@@ -1,0 +1,39 @@
+using System.Net.Http.Json;
+using AiObservatory.Data.Repositories;
+
+namespace AiObservatory.Api.Services;
+
+/// <summary>
+/// Posts a Slack incoming-webhook message. Best-effort: no retry, no lease -- a failure is
+/// logged and swallowed by the caller (<see cref="CompositeAlertNotifier"/>), never surfaced
+/// as a delivery failure that would cause <c>BudgetAlertService</c> to re-attempt the whole
+/// payload (which would re-send email too).
+/// </summary>
+public sealed class SlackAlertNotifier(HttpClient http, IUsageRepository repository, ILogger<SlackAlertNotifier> logger)
+    : IAlertNotifier
+{
+    public async Task NotifyAsync(BudgetAlertPayload payload, CancellationToken ct = default)
+    {
+        var settings = await repository.GetNotificationSettingsAsync(ct);
+        var webhookUrl = settings?.SlackWebhookUrl;
+        if (string.IsNullOrEmpty(webhookUrl))
+        {
+            return;
+        }
+
+        var text =
+            $"*Budget alert: {payload.Provider} {payload.Period} billed spend exceeded £{payload.ThresholdGbp:F2}*\n"
+            + $"Total {payload.Period.ToLowerInvariant()} billed spend for {payload.Provider} reached £{payload.ActualSpendGbp:F2}, "
+            + $"exceeding your £{payload.ThresholdGbp:F2} threshold.";
+
+        using var response = await http.PostAsJsonAsync(webhookUrl, new { text }, ct);
+        if (!response.IsSuccessStatusCode)
+        {
+            logger.LogError(
+                "Slack webhook delivery failed with status {StatusCode} for budget alert {MessageId}",
+                response.StatusCode,
+                payload.MessageId
+            );
+        }
+    }
+}
