@@ -37,7 +37,12 @@ public sealed class AiObservatoryApiFactory : WebApplicationFactory<Program>, IA
     // ReSharper disable once AutoPropertyCanBeMadeGetOnly.Global
     public string? ReadOnlyKeyOverride { get; set; } = ReadOnlyKey;
     public string? IdeKeyOverride { get; set; } = IdeKey;
-    public Dictionary<string, string?> ConfigurationOverrides { get; } = [];
+    // Every test in this collection shares one fixture instance, so the whole suite's request
+    // volume runs through one 120-req/min bucket -- comfortably fine locally, but the full
+    // integration suite finishes in under a minute in CI and trips it (429s with no test-level
+    // fault). No test here exercises the limiter itself, so raising it in tests only is safe.
+    public Dictionary<string, string?> ConfigurationOverrides { get; } =
+        new() { ["RateLimiting:ApiPermitLimit"] = "100000" };
 
     private string? _dbConnectionOverride;
     private bool _dbConnectionOverrideSet;
