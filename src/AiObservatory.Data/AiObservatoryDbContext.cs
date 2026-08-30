@@ -35,6 +35,7 @@ public class AiObservatoryDbContext(DbContextOptions<AiObservatoryDbContext> opt
     public DbSet<Insight> Insights => Set<Insight>();
     public DbSet<BudgetRule> BudgetRules => Set<BudgetRule>();
     public DbSet<BudgetAlertClaim> BudgetAlertClaims => Set<BudgetAlertClaim>();
+    public DbSet<NotificationSettings> NotificationSettings => Set<NotificationSettings>();
     public DbSet<AdversarialReviewRun> AdversarialReviewRuns => Set<AdversarialReviewRun>();
     public DbSet<CavemanSession> CavemanSessions => Set<CavemanSession>();
     public DbSet<ClaudeActivitySession> ClaudeActivitySessions => Set<ClaudeActivitySession>();
@@ -439,6 +440,12 @@ public class AiObservatoryDbContext(DbContextOptions<AiObservatoryDbContext> opt
                     "(\"EmailLeaseId\" IS NULL) = (\"EmailLeaseAcquiredAt\" IS NULL)"
                 );
             });
+        });
+
+        modelBuilder.Entity<NotificationSettings>(b =>
+        {
+            b.Property(s => s.AlertEmailTo).HasMaxLength(320); // RFC 5321 max
+            b.Property(s => s.SlackWebhookUrl).HasMaxLength(2048);
         });
 
         modelBuilder.Entity<CavemanSession>(b =>
