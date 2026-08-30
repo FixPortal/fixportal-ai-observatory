@@ -44,7 +44,10 @@ builder.Services.AddSingleton(
 );
 
 builder.Services.AddTransient<MailKit.Net.Smtp.ISmtpClient, MailKit.Net.Smtp.SmtpClient>();
-builder.Services.AddTransient<IAlertNotifier, EmailAlertNotifier>();
+builder.Services.AddKeyedTransient<IAlertNotifier, EmailAlertNotifier>("email");
+builder.Services.AddHttpClient<SlackAlertNotifier>().ConfigureHttpClient(c => c.Timeout = TimeSpan.FromSeconds(10));
+builder.Services.AddKeyedTransient<IAlertNotifier, SlackAlertNotifier>("slack");
+builder.Services.AddTransient<IAlertNotifier, CompositeAlertNotifier>();
 builder.Services.AddScoped<BudgetAlertService>();
 builder.Services.AddScoped<AdversarialReviewService>();
 builder.Services.AddSingleton<AnthropicIntelligenceClient>();
