@@ -10,8 +10,12 @@ namespace AiObservatory.Data.Entities;
 public sealed class NotificationSettings
 {
     // Fixed well-known id: this is a singleton row (see class doc), so a stable PK
-    // avoids the entity minting a fresh random one every time it is constructed.
-    public Guid Id { get; init; } = Guid.Parse("33333333-3333-3333-3333-333333333301");
+    // avoids the entity minting a fresh random one every time it is constructed, and
+    // every read/write filters explicitly on this id rather than trusting "there's only
+    // ever one row" -- defense in depth in case a stray extra row is ever created.
+    public static readonly Guid SingletonId = Guid.Parse("33333333-3333-3333-3333-333333333301");
+
+    public Guid Id { get; init; } = SingletonId;
     public string? AlertEmailTo { get; set; }
     public string? SlackWebhookUrl { get; set; }
     public Instant UpdatedAt { get; set; }

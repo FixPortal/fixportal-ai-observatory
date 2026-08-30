@@ -69,6 +69,21 @@ function NotificationChannelRow({ channel, label, configured, masked, onSave, on
   const fieldId = `notification-${channel}-input`
   const fieldLabel = channel === 'email' ? 'Email address' : 'Slack webhook URL'
 
+  // Only close the row and clear the typed value once the save actually succeeds —
+  // closing unconditionally discarded a rejected edit (e.g. invalid email/webhook
+  // format) with no way to see or fix what was typed. Shared by the Save button and
+  // the input's Enter key so both paths behave identically.
+  async function submit() {
+    if (isSaving || value.trim() === '') return
+    try {
+      await onSave(value.trim())
+      setEditing(false)
+      setValue('')
+    } catch {
+      // Error is surfaced by the panel-level saveError banner; keep the row open.
+    }
+  }
+
   if (editing) {
     return (
       <div className="budget-rules__channel-row">
@@ -79,26 +94,11 @@ function NotificationChannelRow({ channel, label, configured, masked, onSave, on
           type="text"
           value={value}
           onChange={e => setValue(e.target.value)}
+          onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); void submit() } }}
           placeholder={channel === 'email' ? 'you@example.com' : 'https://hooks.slack.com/services/...'}
           className="budget-rules__control"
         />
-        <Button
-          variant="primary"
-          size="sm"
-          disabled={isSaving || value.trim() === ''}
-          onClick={async () => {
-            // Only close the row and clear the typed value once the save actually succeeds —
-            // closing unconditionally on click discarded a rejected edit (e.g. invalid
-            // email/webhook format) with no way to see or fix what was typed.
-            try {
-              await onSave(value.trim())
-              setEditing(false)
-              setValue('')
-            } catch {
-              // Error is surfaced by the panel-level saveError banner; keep the row open.
-            }
-          }}
-        >
+        <Button variant="primary" size="sm" disabled={isSaving || value.trim() === ''} onClick={() => void submit()}>
           Save
         </Button>
         <Button variant="ghost" size="sm" onClick={() => { setEditing(false); setValue('') }}>

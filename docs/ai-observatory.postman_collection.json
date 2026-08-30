@@ -500,7 +500,7 @@
               "host": ["{{base_url}}"],
               "path": ["notification-settings"]
             },
-            "description": "Updates the singleton notification settings row. Either field can be omitted to leave it unchanged, or set to null/empty to clear it -- a field can never be re-sent with its real value once configured, since GET only ever returns a masked value."
+            "description": "Updates the singleton notification settings row. Either field can be omitted to leave it unchanged, or set to null/empty to clear it. GET returns masked values only; provide a non-empty replacement value to change a configured field."
           }
         }
       ]

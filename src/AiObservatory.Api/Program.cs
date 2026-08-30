@@ -136,7 +136,7 @@ using (var scope = app.Services.CreateScope())
     // NotificationSettings table, so without this a pre-existing deployment would silently stop
     // emailing budget alerts on upgrade until someone visited the settings UI. Self-retiring --
     // once a row exists (created here or via the UI) this is a permanent no-op.
-    if (!await db.NotificationSettings.AnyAsync())
+    if (!await db.NotificationSettings.AnyAsync(s => s.Id == NotificationSettings.SingletonId))
     {
         var legacyEmail = builder.Configuration["BUDGET_ALERT_EMAIL_TO"];
         if (!string.IsNullOrWhiteSpace(legacyEmail))
