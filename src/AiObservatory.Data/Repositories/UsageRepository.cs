@@ -544,6 +544,11 @@ public class UsageRepository(
         return await ctx.BudgetRules.AsNoTracking().ToListAsync(ct);
     }
 
+    public async Task<NotificationSettings?> GetNotificationSettingsAsync(CancellationToken ct = default)
+    {
+        return await ctx.NotificationSettings.AsNoTracking().FirstOrDefaultAsync(ct);
+    }
+
     public async Task<BudgetAlertClaimResult> GetOrCreateBudgetAlertAsync(
         Guid ruleId,
         LocalDate periodStart,
