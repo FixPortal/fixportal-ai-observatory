@@ -45,7 +45,7 @@ vi.mock('../api/queries', () => ({
   useGitHubCi: (from: Date) => ({
     ci: from.getMonth() === 6 ? [
       { repo: 'fix-portal/a', workflowName: 'CI', totalRuns: 4, failedRuns: 1, successRate: 75 },
-      { repo: 'fix-portal/b', workflowName: 'CI', totalRuns: 6, failedRuns: 3, successRate: 50 },
+      { repo: 'fix-portal/b', workflowName: 'CI', totalRuns: 6, failedRuns: 0, successRate: 50 },
     ] : [
       { repo: 'fix-portal/a', workflowName: 'CI', totalRuns: 10, failedRuns: 0, successRate: 100 },
       { repo: 'fix-portal/b', workflowName: 'CI', totalRuns: 10, failedRuns: 2, successRate: 80 },
@@ -82,7 +82,7 @@ describe('GitHubPage', () => {
 
     fireEvent.change(screen.getByLabelText('Repo'), { target: { value: 'fix-portal/a' } })
 
-    expect(screen.getByRole('group', { name: 'Pull requests comparison' })).toHaveTextContent('1vs 2−1')
+    expect(screen.getByRole('group', { name: 'Pull requests comparison' })).toHaveTextContent('1vs 2-1')
     expect(screen.getByRole('group', { name: 'CI success comparison' })).toHaveTextContent('100%vs 75%+25 pp')
   })
 })

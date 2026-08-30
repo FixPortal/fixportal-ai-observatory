@@ -89,10 +89,10 @@ export default function GitHubPage() {
   )
 }
 
-function successRate(ci: { totalRuns: number; failedRuns: number }[]) {
+function successRate(ci: { totalRuns: number; successRate: number }[]) {
   const runs = ci.reduce((total, item) => total + item.totalRuns, 0)
-  const failures = ci.reduce((total, item) => total + item.failedRuns, 0)
-  return runs === 0 ? 0 : Math.round((runs - failures) / runs * 100)
+  const successes = ci.reduce((total, item) => total + item.successRate * item.totalRuns, 0)
+  return runs === 0 ? 0 : Math.round(successes / runs)
 }
 
 function ComparisonMetric({
@@ -105,7 +105,7 @@ function ComparisonMetric({
   deltaSuffix?: string
 }) {
   const delta = selected - comparison
-  const deltaLabel = delta > 0 ? `+${delta}` : delta < 0 ? `−${Math.abs(delta)}` : 'No change'
+  const deltaLabel = delta > 0 ? `+${delta}` : delta < 0 ? `-${Math.abs(delta)}` : 'No change'
   return (
     <div className="comparison-summary__metric" role="group" aria-label={`${label} comparison`}>
       <span className="comparison-summary__label">{label}</span>
