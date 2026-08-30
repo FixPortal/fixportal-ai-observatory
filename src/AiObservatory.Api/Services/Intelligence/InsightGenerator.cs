@@ -1,3 +1,4 @@
+using AiObservatory.Data.Entities;
 using AiObservatory.Data.Repositories;
 using AiObservatory.Data.Spend;
 using NodaTime;
@@ -43,12 +44,39 @@ public sealed class InsightGenerator(
         var json = await client.GenerateInsightsJsonAsync(prompt, ct);
         var insights = parser.Parse(json, from, analysisDate, clock.GetCurrentInstant());
 
+        // Recent, not-yet-dealt-with insights the new batch is checked against, so a
+        // repeat of an already-open story is skipped -- see InsightDeduplicator. Grown
+        // in place as insights are added, so two same-subject repeats generated in this
+        // very run are also caught, not just repeats across days.
+        var recent = (await repository.GetUnacknowledgedInsightsAsync(ct)).ToList();
+        var knownSubjects = KnownSubjects(aggregates, subscriptions);
+        var now = clock.GetCurrentInstant();
+
+        var added = 0;
         foreach (var insight in insights)
         {
+            if (InsightDeduplicator.ShouldSuppress(insight, recent, knownSubjects, now))
+            {
+                continue;
+            }
             await repository.AddInsightAsync(insight, ct);
+            recent.Add(insight);
+            added++;
         }
 
         await budgetAlertService.CheckAndAlertAsync(ct);
-        return insights.Count;
+        return added;
     }
+
+    private static IReadOnlyCollection<string> KnownSubjects(
+        IReadOnlyList<DailyAggregate> aggregates,
+        IReadOnlyList<Subscription> subscriptions
+    ) =>
+        aggregates
+            .Select(a => a.Model)
+            .Concat(aggregates.Select(a => a.Provider.ToString()))
+            .Concat(subscriptions.Select(s => s.Provider.ToString()))
+            .Where(subject => !string.IsNullOrWhiteSpace(subject) && subject.Length >= 3)
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToList();
 }

@@ -30,50 +30,13 @@ public class PromptBuilder
         var totalUnknownCosts = aggregates.Sum(a => a.UnknownCostCount);
         sb.AppendLine($"Total reported usage value: {FormatSpend(totalSpend, totalRequests, totalUnknownCosts)}");
 
-        var byProvider = aggregates
-            .GroupBy(a => a.Provider)
-            .Select(g => new
-            {
-                Provider = g.Key,
-                Spend = g.Sum(a => a.CostUsd),
-                Requests = g.Sum(a => a.RequestCount),
-                UnknownCosts = g.Sum(a => a.UnknownCostCount),
-            });
-        sb.AppendLine("Reported usage value by provider:");
-        foreach (var p in byProvider)
-        {
-            sb.AppendLine($"  {p.Provider}: {FormatSpend(p.Spend, p.Requests, p.UnknownCosts)}");
-        }
-
-        sb.AppendLine("Model breakdown:");
-        var byModel = aggregates
-            .GroupBy(a => a.Model)
-            .Select(g => new
-            {
-                Model = g.Key,
-                Spend = g.Sum(a => a.CostUsd),
-                Requests = g.Sum(a => a.RequestCount),
-                UnknownCosts = g.Sum(a => a.UnknownCostCount),
-                InputTokens = g.Sum(a => a.InputTokens),
-                OutputTokens = g.Sum(a => a.OutputTokens),
-                CacheReadTokens = g.Sum(a => a.CacheReadTokens),
-                CacheWriteTokens = g.Sum(a => a.CacheWriteTokens),
-            })
-            .OrderByDescending(m => m.Spend);
-        foreach (var m in byModel)
-        {
-            var efficiency =
-                m.InputTokens > 0
-                    ? $"{((double)m.OutputTokens / m.InputTokens).ToString("P0", CultureInfo.InvariantCulture)} output/input ratio"
-                    : "no token data";
-            var cacheInfo =
-                m.CacheReadTokens > 0 || m.CacheWriteTokens > 0
-                    ? $", Cache: {m.CacheReadTokens} read, {m.CacheWriteTokens} write"
-                    : "";
-            var spend =
-                m.Requests <= m.UnknownCosts ? "Not reported" : FormatSpend(m.Spend, m.Requests, m.UnknownCosts);
-            sb.AppendLine($"  {m.Model}: {spend}, {m.Requests} requests, {efficiency}{cacheInfo}");
-        }
+        // Grouped by (entity, CostBasis) rather than just the entity, and every figure below
+        // carries its own basis tag -- a provider or model can be a mix of real billed spend
+        // and notional (subscription-covered, never billed) usage within the same period, and
+        // a single blanket footnote at the end of the prompt isn't enough for the model to
+        // correctly attribute basis back to a specific number it already wrote about.
+        AppendProviderBreakdown(sb, aggregates, FormatSpend);
+        AppendModelBreakdown(sb, aggregates, FormatSpend);
 
         if (subscriptions.Any())
         {
@@ -110,7 +73,17 @@ public class PromptBuilder
         sb.AppendLine(
             "Not reported means usage was recorded but no monetary value was available. Never describe it as zero cost or zero usage."
         );
-        sb.AppendLine("Notional values apply public API list prices to subscription usage; they are not billed spend.");
+        sb.AppendLine(
+            "Every reported figure above is tagged with its cost basis. [BILLED] is a real invoice -- money "
+                + "actually changed hands. [NOTIONAL] applies public API list prices to usage that was fully "
+                + "covered by a flat-rate subscription -- no money changed hands for it; describe it as \"what "
+                + "this usage would have cost outside the subscription\" or similar, never as \"spend\", "
+                + "\"cost\", \"billed\", or \"API cost\" on its own. [PROVIDER ESTIMATE] and [LIST-PRICE "
+                + "ESTIMATE] are estimates, not invoices, but do reflect money that was actually charged under "
+                + "pay-per-token billing. Do not describe a NOTIONAL or ESTIMATE figure using billed-spend "
+                + "language, and do not sum figures with different cost bases into one \"total spend\" without "
+                + "saying which basis it is."
+        );
         sb.AppendLine("Note: Include analysis of cache hit rates where relevant to Anthropic usage.");
         sb.AppendLine(
             "Produce 3-5 insights covering: summary, efficiency opportunities, anomalies, and recommendations."
@@ -121,15 +94,92 @@ public class PromptBuilder
 
         return sb.ToString();
 
-        string FormatSpend(decimal spend, int requests, int unknownCosts)
+        string FormatSpend(decimal spend, int requests, int unknownCosts, CostBasis? costBasis = null)
         {
             if (requests <= unknownCosts)
             {
                 return $"Not reported ({requests} requests)";
             }
+            var tag = costBasis is { } basis ? $" {CostBasisTag(basis)}" : "";
             return unknownCosts == 0
-                ? Gbp(spend)
-                : $"{Gbp(spend)} reported ({unknownCosts} of {requests} requests not reported)";
+                ? $"{Gbp(spend)}{tag}"
+                : $"{Gbp(spend)}{tag} reported ({unknownCosts} of {requests} requests not reported)";
         }
     }
+
+    private static void AppendProviderBreakdown(
+        StringBuilder sb,
+        IReadOnlyList<DailyAggregate> aggregates,
+        Func<decimal, int, int, CostBasis?, string> formatSpend
+    )
+    {
+        var byProvider = aggregates
+            .GroupBy(a => (a.Provider, a.CostBasis))
+            .Select(g => new
+            {
+                g.Key.Provider,
+                g.Key.CostBasis,
+                Spend = g.Sum(a => a.CostUsd),
+                Requests = g.Sum(a => a.RequestCount),
+                UnknownCosts = g.Sum(a => a.UnknownCostCount),
+            })
+            .OrderBy(p => p.Provider.ToString(), StringComparer.Ordinal)
+            .ThenBy(p => p.CostBasis.ToString(), StringComparer.Ordinal);
+        sb.AppendLine("Reported usage value by provider:");
+        foreach (var p in byProvider)
+        {
+            sb.AppendLine($"  {p.Provider}: {formatSpend(p.Spend, p.Requests, p.UnknownCosts, p.CostBasis)}");
+        }
+    }
+
+    private static void AppendModelBreakdown(
+        StringBuilder sb,
+        IReadOnlyList<DailyAggregate> aggregates,
+        Func<decimal, int, int, CostBasis?, string> formatSpend
+    )
+    {
+        sb.AppendLine("Model breakdown:");
+        var byModel = aggregates
+            .GroupBy(a => (a.Model, a.CostBasis))
+            .Select(g => new
+            {
+                g.Key.Model,
+                g.Key.CostBasis,
+                Spend = g.Sum(a => a.CostUsd),
+                Requests = g.Sum(a => a.RequestCount),
+                UnknownCosts = g.Sum(a => a.UnknownCostCount),
+                InputTokens = g.Sum(a => a.InputTokens),
+                OutputTokens = g.Sum(a => a.OutputTokens),
+                CacheReadTokens = g.Sum(a => a.CacheReadTokens),
+                CacheWriteTokens = g.Sum(a => a.CacheWriteTokens),
+            })
+            .OrderByDescending(m => m.Spend);
+        foreach (var m in byModel)
+        {
+            var efficiency =
+                m.InputTokens > 0
+                    ? $"{((double)m.OutputTokens / m.InputTokens).ToString("P0", CultureInfo.InvariantCulture)} output/input ratio"
+                    : "no token data";
+            var cacheInfo =
+                m.CacheReadTokens > 0 || m.CacheWriteTokens > 0
+                    ? $", Cache: {m.CacheReadTokens} read, {m.CacheWriteTokens} write"
+                    : "";
+            var spend =
+                m.Requests <= m.UnknownCosts
+                    ? "Not reported"
+                    : formatSpend(m.Spend, m.Requests, m.UnknownCosts, m.CostBasis);
+            sb.AppendLine($"  {m.Model}: {spend}, {m.Requests} requests, {efficiency}{cacheInfo}");
+        }
+    }
+
+    private static string CostBasisTag(CostBasis costBasis) =>
+        costBasis switch
+        {
+            CostBasis.Billed => "[BILLED]",
+            CostBasis.ProviderEstimated => "[PROVIDER ESTIMATE]",
+            CostBasis.ListPriceEstimate => "[LIST-PRICE ESTIMATE]",
+            CostBasis.Notional => "[NOTIONAL]",
+            CostBasis.None => "[NO COST]",
+            _ => "[UNCLASSIFIED]",
+        };
 }

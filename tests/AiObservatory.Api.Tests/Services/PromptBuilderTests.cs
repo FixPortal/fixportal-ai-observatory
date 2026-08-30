@@ -144,8 +144,53 @@ public class PromptBuilderTests
         prompt.Should().Contain("claude-opus-4-1: Not reported, 42 requests");
         prompt.Should().NotContain("Anthropic: £0.00");
         prompt.Should().NotContain("Total API spend");
-        prompt
-            .Should()
-            .Contain("Notional values apply public API list prices to subscription usage; they are not billed spend.");
+        prompt.Should().Contain("[NOTIONAL]");
+        prompt.Should().Contain("never as \"spend\", \"cost\", \"billed\", or \"API cost\" on its own");
+    }
+
+    [Fact]
+    public void Build_tags_every_provider_and_model_figure_with_its_cost_basis()
+    {
+        // Regression: a provider/model breakdown line with no cost-basis tag let the
+        // generated narrative call fully subscription-covered (never billed) usage
+        // "spend" / "API cost" -- verified live on prod, where every aggregate row for
+        // the period was CostBasis.Notional yet insights repeatedly said "billed API
+        // spend". Every reported figure must carry its own basis tag so the model can't
+        // misattribute one after the fact.
+        var aggregates = new List<DailyAggregate>
+        {
+            new()
+            {
+                Date = new LocalDate(2026, 8, 1),
+                Provider = Provider.OpenAI,
+                Model = "gpt-5.6-sol",
+                CostBasis = CostBasis.Notional,
+                CostUsd = 900.15m,
+                RequestCount = 1,
+            },
+            new()
+            {
+                Date = new LocalDate(2026, 8, 2),
+                Provider = Provider.OpenAI,
+                Model = "gpt-5.6-terra",
+                CostBasis = CostBasis.Billed,
+                CostUsd = 12.50m,
+                RequestCount = 3,
+            },
+        };
+
+        var prompt = new PromptBuilder().Build(
+            aggregates,
+            [],
+            new LocalDate(2026, 8, 1),
+            new LocalDate(2026, 8, 2),
+            1m
+        );
+
+        prompt.Should().Contain("gpt-5.6-sol: £900.15 [NOTIONAL]");
+        prompt.Should().Contain("gpt-5.6-terra: £12.50 [BILLED]");
+        // Same provider, split across two cost-basis lines rather than one merged figure.
+        prompt.Should().Contain("OpenAI: £900.15 [NOTIONAL]");
+        prompt.Should().Contain("OpenAI: £12.50 [BILLED]");
     }
 }
