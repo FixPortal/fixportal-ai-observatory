@@ -18,7 +18,7 @@ interface NotificationChannelRowProps {
   label: string
   configured: boolean
   masked: string | null
-  onSave: (value: string) => void
+  onSave: (value: string) => Promise<unknown>
   onClear: () => void
   isSaving: boolean
 }
@@ -82,7 +82,23 @@ function NotificationChannelRow({ channel, label, configured, masked, onSave, on
           placeholder={channel === 'email' ? 'you@example.com' : 'https://hooks.slack.com/services/...'}
           className="budget-rules__control"
         />
-        <Button variant="primary" size="sm" disabled={isSaving || value.trim() === ''} onClick={() => { onSave(value.trim()); setEditing(false); setValue('') }}>
+        <Button
+          variant="primary"
+          size="sm"
+          disabled={isSaving || value.trim() === ''}
+          onClick={async () => {
+            // Only close the row and clear the typed value once the save actually succeeds —
+            // closing unconditionally on click discarded a rejected edit (e.g. invalid
+            // email/webhook format) with no way to see or fix what was typed.
+            try {
+              await onSave(value.trim())
+              setEditing(false)
+              setValue('')
+            } catch {
+              // Error is surfaced by the panel-level saveError banner; keep the row open.
+            }
+          }}
+        >
           Save
         </Button>
         <Button variant="ghost" size="sm" onClick={() => { setEditing(false); setValue('') }}>
@@ -146,7 +162,7 @@ function NotificationSettingsSection() {
         label="Email"
         configured={settings.emailConfigured}
         masked={settings.emailMasked}
-        onSave={value => save.mutate({ alertEmailTo: value })}
+        onSave={value => save.mutateAsync({ alertEmailTo: value })}
         onClear={() => save.mutate({ alertEmailTo: null })}
         isSaving={save.isPending}
       />
@@ -155,7 +171,7 @@ function NotificationSettingsSection() {
         label="Slack"
         configured={settings.slackConfigured}
         masked={settings.slackMasked}
-        onSave={value => save.mutate({ slackWebhookUrl: value })}
+        onSave={value => save.mutateAsync({ slackWebhookUrl: value })}
         onClear={() => save.mutate({ slackWebhookUrl: null })}
         isSaving={save.isPending}
       />

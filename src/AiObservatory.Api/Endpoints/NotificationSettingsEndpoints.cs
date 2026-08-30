@@ -33,6 +33,14 @@ public static class NotificationSettingsEndpoints
             "/notification-settings",
             async (JsonElement body, AiObservatoryDbContext db, IClock clock, CancellationToken ct) =>
             {
+                // TryGetProperty throws InvalidOperationException on anything but a JSON
+                // object (an array, string, number, or null body) -- reject those up front
+                // so malformed input returns 400 like every other guard below, not a 500.
+                if (body.ValueKind != JsonValueKind.Object)
+                {
+                    return Results.BadRequest("body must be a JSON object");
+                }
+
                 if (
                     body.TryGetProperty("alertEmailTo", out var emailKindProp)
                     && emailKindProp.ValueKind != JsonValueKind.String

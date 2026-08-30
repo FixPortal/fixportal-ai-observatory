@@ -95,6 +95,10 @@ describe('BudgetRulesPanel notification settings', () => {
     await waitFor(() =>
       expect(screen.getByText(/couldn.t save notification settings/i)).toBeInTheDocument(),
     )
+    // The row must stay in edit mode with the typed value intact -- closing on click
+    // unconditionally used to discard a rejected edit with no way to see or fix it.
+    expect(screen.getByLabelText('Email address')).toHaveValue('chris@fixportal.org')
+    expect(screen.getByRole('button', { name: 'Save' })).toBeInTheDocument()
   })
 
   test('removing a configured Slack webhook requires a confirm click', async () => {
