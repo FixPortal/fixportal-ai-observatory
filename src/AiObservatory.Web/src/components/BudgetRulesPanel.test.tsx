@@ -1,0 +1,103 @@
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
+import { fireEvent, render, screen, waitFor } from '@testing-library/react'
+import { beforeEach, describe, expect, test, vi } from 'vitest'
+import type { BudgetRule, Insight, NotificationSettings } from '../api/client'
+import BudgetRulesPanel from './BudgetRulesPanel'
+
+const data = vi.hoisted(() => ({
+  rules: [] as BudgetRule[],
+  insights: [] as Insight[],
+  settings: { emailConfigured: false, emailMasked: null, slackConfigured: false, slackMasked: null } as NotificationSettings,
+}))
+
+vi.mock('../api/queries', () => ({
+  useBudgetRules: () => ({ rules: data.rules, isLoading: false, isError: false }),
+  useInsights: () => ({ insights: data.insights, isError: false, isLoading: false }),
+  useNotificationSettings: () => ({ settings: data.settings, isLoading: false, isError: false }),
+}))
+
+const updateNotificationSettings = vi.hoisted(() => vi.fn(() => Promise.resolve({
+  emailConfigured: true, emailMasked: 'ch***@fixportal.org', slackConfigured: false, slackMasked: null,
+})))
+vi.mock('../api/client', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('../api/client')>()),
+  updateNotificationSettings,
+}))
+
+vi.mock('../auth/msal', () => ({ isReadonly: false }))
+
+function renderPanel() {
+  return render(
+    <QueryClientProvider client={new QueryClient()}>
+      <BudgetRulesPanel />
+    </QueryClientProvider>,
+  )
+}
+
+beforeEach(() => {
+  data.rules = []
+  data.insights = []
+  data.settings = { emailConfigured: false, emailMasked: null, slackConfigured: false, slackMasked: null }
+  updateNotificationSettings.mockClear()
+})
+
+describe('BudgetRulesPanel notification settings', () => {
+  test('shows "Not set" and an Add control for each unconfigured channel', () => {
+    renderPanel()
+
+    expect(screen.getByText('Email')).toBeInTheDocument()
+    expect(screen.getByText('Slack')).toBeInTheDocument()
+    expect(screen.getAllByText('Not set')).toHaveLength(2)
+  })
+
+  test('shows the masked value and Edit/Remove for a configured channel', () => {
+    data.settings = { emailConfigured: true, emailMasked: 'ch***@fixportal.org', slackConfigured: false, slackMasked: null }
+    renderPanel()
+
+    expect(screen.getByText('ch***@fixportal.org')).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /edit email/i })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /remove email/i })).toBeInTheDocument()
+  })
+
+  test('adding an email calls updateNotificationSettings with alertEmailTo only', async () => {
+    renderPanel()
+
+    fireEvent.click(screen.getByRole('button', { name: /add email/i }))
+    fireEvent.change(screen.getByLabelText('Email address'), { target: { value: 'chris@fixportal.org' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Save' }))
+
+    await waitFor(() =>
+      expect(updateNotificationSettings).toHaveBeenCalledWith({ alertEmailTo: 'chris@fixportal.org' }, expect.anything()),
+    )
+  })
+
+  test('removing a configured Slack webhook requires a confirm click', async () => {
+    data.settings = {
+      emailConfigured: false, emailMasked: null,
+      slackConfigured: true, slackMasked: 'https://hooks.slack.com/services/***',
+    }
+    renderPanel()
+
+    fireEvent.click(screen.getByRole('button', { name: /remove slack/i }))
+    expect(updateNotificationSettings).not.toHaveBeenCalled()
+
+    fireEvent.click(screen.getByRole('button', { name: 'Confirm' }))
+    await waitFor(() =>
+      expect(updateNotificationSettings).toHaveBeenCalledWith({ slackWebhookUrl: null }, expect.anything()),
+    )
+  })
+
+  test('hides every notification control for a readonly viewer', async () => {
+    vi.doMock('../auth/msal', () => ({ isReadonly: true }))
+    vi.resetModules()
+    const { default: ReadonlyPanel } = await import('./BudgetRulesPanel')
+    render(
+      <QueryClientProvider client={new QueryClient()}>
+        <ReadonlyPanel />
+      </QueryClientProvider>,
+    )
+
+    expect(screen.queryByRole('button', { name: /add email/i })).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: /add slack/i })).not.toBeInTheDocument()
+  })
+})
