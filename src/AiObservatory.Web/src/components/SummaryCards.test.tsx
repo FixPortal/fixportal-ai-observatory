@@ -124,6 +124,16 @@ describe('SummaryCards', () => {
     expect(screen.getByText(/£25\.20 reported under a cost basis/)).toBeInTheDocument()
   })
 
+  test('does not flag Copilot rows (always-zero "none" cost basis) as unclassified spend', () => {
+    // Regression: Copilot daily reports carry costBasis "none" with costUsd 0 by DB
+    // constraint. Without excluding it, the note used to fire permanently at "£0.00"
+    // on any dashboard load that included Copilot data.
+    data.aggregates = [...data.aggregates, aggregate({ costBasis: 'none', costUsd: 0, requestCount: 1 })]
+    render(<SummaryCards />)
+
+    expect(screen.queryByText(/reported under a cost basis/)).not.toBeInTheDocument()
+  })
+
   test('shows no unclassified-cost note when every row has a recognized basis', () => {
     render(<SummaryCards />)
     expect(screen.queryByText(/reported under a cost basis/)).not.toBeInTheDocument()

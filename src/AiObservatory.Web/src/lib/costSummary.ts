@@ -25,6 +25,10 @@ export const observedInputTokens = (aggregate: TokenAggregate) =>
 
 export const observedTokens = (aggregate: TokenAggregate) => observedInputTokens(aggregate) + aggregate.outputTokens
 
+// "none" is a legitimate, DB-constraint-enforced always-zero basis (e.g. Copilot daily
+// reports); a zero-cost row under any basis carries nothing worth flagging either way.
+const isUnclassifiedSpend = (aggregate: CostAggregate) => aggregate.costBasis !== 'none' && aggregate.costUsd !== 0
+
 export interface CostSummary {
   billedGbp: number | null
   listPriceEstimateUsd: number | null
@@ -34,8 +38,12 @@ export interface CostSummary {
   cacheSavingsUsd: number | null
   unknownCacheSavingsObservations: number
   /** costUsd from rows whose costBasis is none of the three named buckets above (e.g.
-   * "unknown", "billed", "none") — a known dollar figure that none of the summary cards
-   * would otherwise show. Null when nothing fell into this bucket. */
+   * "unknown", or an aggregate-sourced "billed" row — a smaller, distinct signal from
+   * the ledger-sourced Billed spend card) — a known nonzero dollar figure that none of
+   * the summary cards would otherwise show. Excludes "none", the legitimate always-zero
+   * basis Copilot daily reports use (a real CK_CopilotDailyReport_NoCost DB constraint),
+   * and any zero-cost row in general, so the note only surfaces real dropped spend
+   * rather than firing permanently at £0.00. Null when nothing fell into this bucket. */
   unclassifiedUsd: number | null
 }
 
@@ -72,10 +80,12 @@ export function summarizeCosts(aggregates: CostAggregate[], spendEntries: SpendA
         notionalUsd = (notionalUsd ?? 0) + aggregate.costUsd
         break
       default:
-        // A row with a known costUsd but a cost basis outside the three named
-        // buckets (e.g. "unknown", "billed", "none") would otherwise vanish from
-        // every summary card with no indication anything was left out.
-        unclassifiedUsd = (unclassifiedUsd ?? 0) + aggregate.costUsd
+        // A row with a known, nonzero costUsd but a cost basis outside the three named
+        // buckets (e.g. "unknown", "billed") would otherwise vanish from every summary
+        // card with no indication anything was left out.
+        if (isUnclassifiedSpend(aggregate)) {
+          unclassifiedUsd = (unclassifiedUsd ?? 0) + aggregate.costUsd
+        }
         break
     }
   }
