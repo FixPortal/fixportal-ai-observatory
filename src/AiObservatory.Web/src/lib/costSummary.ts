@@ -33,6 +33,10 @@ export interface CostSummary {
   unknownCostObservations: number
   cacheSavingsUsd: number | null
   unknownCacheSavingsObservations: number
+  /** costUsd from rows whose costBasis is none of the three named buckets above (e.g.
+   * "unknown", "billed", "none") — a known dollar figure that none of the summary cards
+   * would otherwise show. Null when nothing fell into this bucket. */
+  unclassifiedUsd: number | null
 }
 
 export function summarizeCosts(aggregates: CostAggregate[], spendEntries: SpendAmount[]): CostSummary {
@@ -43,6 +47,7 @@ export function summarizeCosts(aggregates: CostAggregate[], spendEntries: SpendA
   let unknownCostObservations = 0
   let cacheSavingsUsd: number | null = null
   let unknownCacheSavingsObservations = 0
+  let unclassifiedUsd: number | null = null
 
   for (const entry of spendEntries) billedGbp! += entry.amountGbp
 
@@ -66,6 +71,12 @@ export function summarizeCosts(aggregates: CostAggregate[], spendEntries: SpendA
       case 'notional':
         notionalUsd = (notionalUsd ?? 0) + aggregate.costUsd
         break
+      default:
+        // A row with a known costUsd but a cost basis outside the three named
+        // buckets (e.g. "unknown", "billed", "none") would otherwise vanish from
+        // every summary card with no indication anything was left out.
+        unclassifiedUsd = (unclassifiedUsd ?? 0) + aggregate.costUsd
+        break
     }
   }
 
@@ -77,5 +88,6 @@ export function summarizeCosts(aggregates: CostAggregate[], spendEntries: SpendA
     unknownCostObservations,
     cacheSavingsUsd,
     unknownCacheSavingsObservations,
+    unclassifiedUsd,
   }
 }

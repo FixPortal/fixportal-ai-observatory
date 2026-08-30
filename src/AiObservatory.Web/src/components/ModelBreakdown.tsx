@@ -106,7 +106,7 @@ const providerOrder = (provider: string) => {
 }
 
 export default function ModelBreakdown() {
-  const aggregates = useAggregates()
+  const { aggregates, isLoading: aggregatesLoading } = useAggregates()
   const rate = useUsdToGbp()
   const [searchQuery, setSearchQuery] = useState('')
   const [selectedProvider, setSelectedProvider] = useState('all')
@@ -137,6 +137,7 @@ export default function ModelBreakdown() {
 
   const maxCost = useMemo(() => Math.max(...rows.filter(row => row.costReported).map(row => row.cost), Number.EPSILON), [rows])
 
+  if (aggregatesLoading) return <div className="chart-skeleton" />
   if (rows.length === 0) return <p className="panel-empty">No usage data for this period.</p>
 
   const sort = (field: SortField) => {

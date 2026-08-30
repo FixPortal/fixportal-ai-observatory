@@ -41,15 +41,15 @@ const aggregatesQueryFn = () => {
   return getAggregates(localDate(from), localDate(to))
 }
 
-export function useAggregates(from?: Date, to?: Date): DailyAggregate[] {
+export function useAggregates(from?: Date, to?: Date): { aggregates: DailyAggregate[]; isError: boolean; isLoading: boolean } {
   const hasRange = from != null && to != null
-  const { data = [] } = useQuery({
+  const { data = [], isError, isPending } = useQuery({
     queryKey: hasRange ? ['aggregates', localDate(from!), localDate(to!)] : ['aggregates'],
     queryFn: hasRange
       ? () => getAggregates(localDate(from!), localDate(to!))
       : aggregatesQueryFn,
   })
-  return data
+  return { aggregates: data, isError, isLoading: isPending }
 }
 
 export function useActivityDaily(from?: Date, to?: Date): { daily: DailyActivity[]; isError: boolean; isLoading: boolean } {
@@ -101,9 +101,9 @@ export function useGitHubCi(from?: Date, to?: Date): { ci: GitHubCiSummary[]; is
   return { ci: data, isError, isLoading: isPending }
 }
 
-export function useInsights(): Insight[] {
-  const { data = [] } = useQuery({ queryKey: ['insights'], queryFn: getInsights })
-  return data
+export function useInsights(): { insights: Insight[]; isError: boolean; isLoading: boolean } {
+  const { data = [], isError, isPending } = useQuery({ queryKey: ['insights'], queryFn: getInsights })
+  return { insights: data, isError, isLoading: isPending }
 }
 
 export function useSubscriptions(): { subscriptions: Subscription[]; isError: boolean; isLoading: boolean } {

@@ -30,7 +30,7 @@ vi.mock('../api/queries', () => ({
   useSubscriptions: () => ({ subscriptions: [annualSubscription], isError: false, isLoading: false }),
   useAggregates: (...range: Date[]) => {
     mockData.aggregateRange = range
-    return mockData.aggregates
+    return { aggregates: mockData.aggregates, isError: false, isLoading: false }
   },
   localDate: () => '2026-08-27',
 }))

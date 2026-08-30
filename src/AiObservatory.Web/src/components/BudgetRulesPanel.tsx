@@ -23,7 +23,7 @@ function WebhookChip({ configured }: { configured: boolean | undefined }) {
 export default function BudgetRulesPanel() {
   const qc = useQueryClient()
   const { rules, isLoading, isError } = useBudgetRules()
-  const insights = useInsights()
+  const { insights } = useInsights()
   const { configured } = useEmailStatus()
 
   const [panelOpen, setPanelOpen] = useState(false)

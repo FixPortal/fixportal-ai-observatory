@@ -81,8 +81,9 @@ function InsightRow({ insight }: { insight: Insight }) {
 }
 
 export default function InsightsFeed() {
-  const insights = useInsights()
+  const { insights, isLoading } = useInsights()
   const unread = insights.filter(i => !i.acknowledged)
+  if (isLoading) return <p className="panel-empty">Loading insights...</p>
   if (unread.length === 0) return <p className="panel-empty">No unread insights.</p>
 
   const visible = unread.slice(0, 5)

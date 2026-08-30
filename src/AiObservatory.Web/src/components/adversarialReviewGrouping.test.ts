@@ -116,6 +116,17 @@ test('formatMinutes renders minutes to 1dp', () => {
   expect(formatMinutes(0)).toBe('0.0m')
 })
 
+test('isValid is false below MIN_VALID_REVIEWERS, true at or above', () => {
+  const solo = groupRuns([run({ runId: 'R1', reviewer: 'anthropic', role: 'reviewer' })])
+  expect(solo[0].isValid).toBe(false)
+
+  const pair = groupRuns([
+    run({ runId: 'R2', reviewer: 'anthropic', role: 'reviewer' }),
+    run({ runId: 'R2', reviewer: 'openai', role: 'reviewer' }),
+  ])
+  expect(pair[0].isValid).toBe(true)
+})
+
 test('bankersRound rounds half to even', () => {
   expect(bankersRound(0.125, 2)).toBeCloseTo(0.12) // tie → even (2)
   expect(bankersRound(0.135, 2)).toBeCloseTo(0.14) // tie → even (4)

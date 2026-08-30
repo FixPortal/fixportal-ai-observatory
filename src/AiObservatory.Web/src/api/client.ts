@@ -273,6 +273,10 @@ export const getAdversarialReviewRuns = () =>
 export const getAdversarialReviewStats = () =>
   getJson<AdversarialReviewStats[]>('/adversarial-review/stats')
 
+export const deleteAdversarialReviewRun = async (runId: string): Promise<void> => {
+  await request(`/adversarial-review/runs/${encodeURIComponent(runId)}`, { method: 'DELETE' })
+}
+
 export interface CavemanStats {
   sessions: number
   totalOutputTokens: number

@@ -22,3 +22,9 @@ test('shows project comparison values in a bordered filterable table', () => {
   expect(within(screen.getByRole('row', { name: /fixportal-ai-observatory/i })).getByText('+100%')).toBeInTheDocument()
   expect(within(screen.getByRole('row', { name: /archived-project/i })).getByText('-100%')).toBeInTheDocument()
 })
+
+test('shows a loading skeleton instead of the empty state while the fetch is pending', () => {
+  render(<ProjectBreakdown projects={[]} selectedProject={null} onSelectProject={vi.fn()} isLoading />)
+  expect(screen.queryByText('No activity data for either period.')).not.toBeInTheDocument()
+  expect(screen.queryByRole('group', { name: 'Project filters' })).not.toBeInTheDocument()
+})

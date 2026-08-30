@@ -42,8 +42,11 @@ export function toActivityComparisonRows(
   const selectedDays = Math.round((localEpoch(selectedRange.to) - selectedStart) / 86_400_000) + 1
   const comparisonDays = Math.round((localEpoch(comparisonRange.to) - comparisonStart) / 86_400_000) + 1
   const bucketDays = Math.max(selectedDays, comparisonDays) > 92 ? 7 : 1
-  const selectedByDate = new Map(selectedDaily.map(day => [day.date, day.activeSeconds]))
-  const comparisonByDate = new Map(comparisonDaily.map(day => [day.date, day.activeSeconds]))
+  // wallClockSeconds (not activeSeconds) — the single-period chart already dedupes
+  // overlapping sessions to wall-clock time; using the raw per-session sum here would
+  // make the same date range read as a bigger number when toggled into comparison mode.
+  const selectedByDate = new Map(selectedDaily.map(day => [day.date, day.wallClockSeconds]))
+  const comparisonByDate = new Map(comparisonDaily.map(day => [day.date, day.wallClockSeconds]))
 
   const rows = Array.from({ length: Math.ceil(Math.max(selectedDays, comparisonDays) / bucketDays) }, (_, index) => {
     const selectedOffset = index * bucketDays

@@ -73,7 +73,7 @@ const ChartInner = lazy(() =>
 interface Props { from?: Date; to?: Date }
 
 export default function ProviderSplit({ from, to }: Props) {
-  const aggregates = useAggregates(from, to)
+  const { aggregates, isLoading } = useAggregates(from, to)
   const [mode, setMode] = useState<ProviderSplitMode>('notional')
   const data = useMemo(() => buildProviderSlices(aggregates, mode), [aggregates, mode])
 
@@ -94,7 +94,9 @@ export default function ProviderSplit({ from, to }: Props) {
           ))}
         </div>
       </div>
-      {data.length === 0 ? (
+      {isLoading ? (
+        <div style={{ height: 200 }} className="chart-skeleton" />
+      ) : data.length === 0 ? (
         <p className="panel-empty">Not reported for this period.</p>
       ) : (
         <Suspense fallback={<div style={{ height: 200 }} className="panel-empty">Loading chart...</div>}>

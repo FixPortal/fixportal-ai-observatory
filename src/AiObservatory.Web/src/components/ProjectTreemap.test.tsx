@@ -29,6 +29,12 @@ test('clicking the already-selected block deselects it', () => {
   expect(onSelectProject).toHaveBeenCalledWith(null)
 })
 
+test('shows a loading skeleton instead of the empty state while the fetch is pending', () => {
+  render(<ProjectTreemap projects={[]} selectedProject={null} onSelectProject={vi.fn()} isLoading />)
+  expect(screen.queryByText('No activity data for this period.')).not.toBeInTheDocument()
+  expect(screen.queryByRole('group', { name: 'Project share treemap' })).not.toBeInTheDocument()
+})
+
 test('shows empty state when there is no activity', () => {
   render(<ProjectTreemap projects={[]} selectedProject={null} onSelectProject={vi.fn()} />)
   expect(screen.getByText('No activity data for this period.')).toBeInTheDocument()

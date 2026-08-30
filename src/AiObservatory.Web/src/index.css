@@ -120,6 +120,7 @@ body {
   grid-template-columns: repeat(4, 1fr);
   gap: var(--space-4);
 }
+.summary-cards__unclassified { grid-column: 1 / -1; }
 .card-label {
   font-size: 12px;
   letter-spacing: 0.06em;
@@ -1425,6 +1426,7 @@ td.budget-rules__actions { display: table-cell; padding: 6px 0 6px 8px; text-ali
 .adv-run__badge--warn { background: var(--warn-bg); color: var(--warn-text); }
 .adv-run__totals { font-size: 11px; color: var(--text); }
 .adv-run__totals b { color: var(--text); font-weight: 700; }
+.adv-run__actions { display: flex; align-items: center; gap: var(--space-2); margin-bottom: var(--space-3); }
 
 /* ---- Activity tab: project breakdown ---- */
 .adv-review-panel .model-table :is(th, td):nth-child(n + 3),

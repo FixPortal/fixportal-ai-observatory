@@ -66,6 +66,17 @@ public static class AdversarialReviewEndpoints
             }
         );
 
+        // Removes one sweep (all participant rows sharing runId). Admin-key gated
+        // by the /api group's ApiKeyEndpointFilter, same as the full purge above.
+        app.MapDelete(
+            "/adversarial-review/runs/{runId}",
+            async (string runId, IAdversarialReviewRepository repo, HttpContext ctx) =>
+            {
+                var deleted = await repo.DeleteRunAsync(runId, ctx.RequestAborted);
+                return deleted == 0 ? Results.NotFound() : Results.Ok(new { deleted });
+            }
+        );
+
         return app;
     }
 }

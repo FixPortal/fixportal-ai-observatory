@@ -117,11 +117,12 @@ const MODES: { mode: UsageChartMode; label: string }[] = [
 ]
 
 export default function SpendChart({ from, to }: Props) {
-  const aggregates = useAggregates(from, to)
+  const { aggregates, isLoading } = useAggregates(from, to)
   const rate = useUsdToGbp()
   const [mode, setMode] = useState<UsageChartMode>('notional')
   const result = useMemo(() => buildUsageSeries(aggregates, mode, rate), [aggregates, mode, rate])
 
+  if (isLoading) return <div className="chart-skeleton" />
   if (aggregates.length === 0) return <p className="panel-empty">No usage data for this period.</p>
 
   return (

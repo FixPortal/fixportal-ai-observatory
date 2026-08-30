@@ -51,6 +51,8 @@ export function sortStats(
 }
 
 export type RunSortField = 'recordedAt' | 'repo' | 'raised' | 'accepted' | 'costUsd' | 'durationMs'
+export type CompletenessFilter = 'all' | 'complete' | 'incomplete'
+export type ValidityFilter = 'all' | 'valid' | 'invalid'
 
 export function filterRunGroups(groups: RunGroup[], query: string): RunGroup[] {
   const q = query.trim().toLowerCase()
@@ -58,6 +60,18 @@ export function filterRunGroups(groups: RunGroup[], query: string): RunGroup[] {
   return groups.filter(
     (g) => (g.repo?.toLowerCase().includes(q) ?? false) || (g.summary?.toLowerCase().includes(q) ?? false),
   )
+}
+
+export function filterRunGroupsByStatus(
+  groups: RunGroup[], completeness: CompletenessFilter, validity: ValidityFilter,
+): RunGroup[] {
+  return groups.filter((g) => {
+    if (completeness === 'complete' && !g.isComplete) return false
+    if (completeness === 'incomplete' && g.isComplete) return false
+    if (validity === 'valid' && !g.isValid) return false
+    if (validity === 'invalid' && g.isValid) return false
+    return true
+  })
 }
 
 export function sortRunGroups(

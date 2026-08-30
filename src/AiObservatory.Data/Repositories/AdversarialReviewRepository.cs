@@ -105,7 +105,11 @@ public class AdversarialReviewRepository(AiObservatoryDbContext ctx) : IAdversar
                 g.Average(r => r.CostUsd),
                 g.Average(r => (double)r.IssuesRaised),
                 g.Average(r => (double)r.IssuesAccepted),
-                g.Average(r => r.CostPerAcceptedFinding), // null when every run had accepted=0
+                // Ratio of sums (total cost / total accepted), not a mean of each run's own
+                // ratio — the latter weights a 1-finding run the same as a 50-finding run and
+                // reads as inconsistent against avgCostPerRun / avgIssuesAccepted in the same
+                // row. Null only when every run in the group had zero accepted findings.
+                g.Sum(r => r.IssuesAccepted) > 0 ? g.Sum(r => r.CostUsd) / g.Sum(r => r.IssuesAccepted) : null,
                 g.Average(r => (double)r.ReviewDurationMs)
             ))
             .OrderBy(s => s.Reviewer)
@@ -116,4 +120,8 @@ public class AdversarialReviewRepository(AiObservatoryDbContext ctx) : IAdversar
 
     public Task<int> DeleteAllRunsAsync(CancellationToken ct = default) =>
         ctx.AdversarialReviewRuns.ExecuteDeleteAsync(ct);
+
+    // Removes every participant row for one sweep (all reviewers + judge sharing RunId).
+    public Task<int> DeleteRunAsync(string runId, CancellationToken ct = default) =>
+        ctx.AdversarialReviewRuns.Where(r => r.RunId == runId).ExecuteDeleteAsync(ct);
 }
