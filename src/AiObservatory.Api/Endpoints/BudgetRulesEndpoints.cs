@@ -17,12 +17,6 @@ public static class BudgetRulesEndpoints
         app.MapGet("/budget-rules", GetBudgetRulesAsync);
 
         app.MapGet(
-            "/budget-rules/email-status",
-            (IConfiguration config) =>
-                Results.Ok(new { configured = !string.IsNullOrEmpty(config["BUDGET_ALERT_EMAIL_TO"]) })
-        );
-
-        app.MapGet(
                 "/budget-rules/{id:guid}",
                 async (Guid id, AiObservatoryDbContext db) =>
                 {
