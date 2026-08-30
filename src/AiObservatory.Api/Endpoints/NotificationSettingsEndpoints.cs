@@ -66,7 +66,7 @@ public static class NotificationSettingsEndpoints
                     body.TryGetProperty("alertEmailTo", out var emailProp)
                     && emailProp.ValueKind == JsonValueKind.String
                     && !string.IsNullOrWhiteSpace(emailProp.GetString())
-                    && !IsValidEmail(emailProp.GetString()!)
+                    && (emailProp.GetString()!.Length > 320 || !IsValidEmail(emailProp.GetString()!))
                 )
                 {
                     return Results.BadRequest("alertEmailTo is not a valid email address");
@@ -76,7 +76,7 @@ public static class NotificationSettingsEndpoints
                     body.TryGetProperty("slackWebhookUrl", out var slackProp)
                     && slackProp.ValueKind == JsonValueKind.String
                     && !string.IsNullOrWhiteSpace(slackProp.GetString())
-                    && !IsValidSlackWebhookUrl(slackProp.GetString()!)
+                    && (slackProp.GetString()!.Length > 2048 || !IsValidSlackWebhookUrl(slackProp.GetString()!))
                 )
                 {
                     return Results.BadRequest("slackWebhookUrl must start with https://hooks.slack.com/");
