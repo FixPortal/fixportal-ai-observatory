@@ -109,7 +109,9 @@ public class AdversarialReviewRepository(AiObservatoryDbContext ctx) : IAdversar
                 // ratio — the latter weights a 1-finding run the same as a 50-finding run and
                 // reads as inconsistent against avgCostPerRun / avgIssuesAccepted in the same
                 // row. Null only when every run in the group had zero accepted findings.
-                g.Sum(r => r.IssuesAccepted) > 0 ? g.Sum(r => r.CostUsd) / g.Sum(r => r.IssuesAccepted) : null,
+                g.Sum(r => r.IssuesAccepted) > 0
+                    ? g.Sum(r => r.CostUsd) / g.Sum(r => r.IssuesAccepted)
+                    : null,
                 g.Average(r => (double)r.ReviewDurationMs)
             ))
             .OrderBy(s => s.Reviewer)

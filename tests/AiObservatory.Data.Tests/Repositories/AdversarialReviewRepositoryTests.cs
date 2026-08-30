@@ -172,8 +172,14 @@ public class AdversarialReviewRepositoryTests : IAsyncLifetime
         // Two very unevenly-sized runs: a naive mean of each run's own ratio (0.62625, 10)
         // would read 5.313125 - wildly inconsistent with avgCostPerRun/avgIssuesAccepted
         // in the same row. Total cost / total accepted (12.505 / 5) is the reconciling figure.
-        await _repo.RecordRunAsync(Run("R6", "openai", "reviewer", "gpt-5", costUsd: 2.505m, raised: 5, accepted: 4), ct);
-        await _repo.RecordRunAsync(Run("R7", "openai", "reviewer", "gpt-5", costUsd: 10.00m, raised: 1, accepted: 1), ct);
+        await _repo.RecordRunAsync(
+            Run("R6", "openai", "reviewer", "gpt-5", costUsd: 2.505m, raised: 5, accepted: 4),
+            ct
+        );
+        await _repo.RecordRunAsync(
+            Run("R7", "openai", "reviewer", "gpt-5", costUsd: 10.00m, raised: 1, accepted: 1),
+            ct
+        );
 
         var stats = await _repo.GetStatsAsync(ct);
         var openai = stats.Single(s => s.Reviewer == "openai");
@@ -187,7 +193,10 @@ public class AdversarialReviewRepositoryTests : IAsyncLifetime
     public async Task Stats_average_cost_per_finding_is_null_when_nothing_was_accepted()
     {
         var ct = TestContext.Current.CancellationToken;
-        await _repo.RecordRunAsync(Run("R8", "google", "reviewer", "gemini-2.5-pro", costUsd: 1m, raised: 3, accepted: 0), ct);
+        await _repo.RecordRunAsync(
+            Run("R8", "google", "reviewer", "gemini-2.5-pro", costUsd: 1m, raised: 3, accepted: 0),
+            ct
+        );
 
         var stats = await _repo.GetStatsAsync(ct);
         stats.Single(s => s.Reviewer == "google").AvgCostPerAcceptedFinding.Should().BeNull();
