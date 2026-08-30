@@ -238,7 +238,8 @@ public class BudgetAlertService(
             email.ThresholdGbp,
             email.ActualSpendGbp,
             email.CreatedAt.ToDateTimeOffset(),
-            $"budget-alert-{email.ClaimId:N}@observatory.fixportal.com"
+            $"budget-alert-{email.ClaimId:N}@observatory.fixportal.com",
+            email.ClaimId
         );
 
         try

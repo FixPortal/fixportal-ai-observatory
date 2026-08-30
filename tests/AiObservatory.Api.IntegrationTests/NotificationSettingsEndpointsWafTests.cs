@@ -153,6 +153,49 @@ public class NotificationSettingsEndpointsWafTests(AiObservatoryApiFactory facto
     }
 
     [Fact]
+    public async Task Put_ConcurrentFirstWritesToAnEmptyTable_BothSucceedAndBothEditsSurvive()
+    {
+        var ct = TestContext.Current.CancellationToken;
+
+        // Empty table, like the two other WAF tests that manage their own slate: this test
+        // targets the insert race specifically, so it must start from no row rather than
+        // relying on ordering against sibling tests sharing the same singleton row.
+        await using (var scope = factory.Services.CreateAsyncScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<AiObservatoryDbContext>();
+            await db.NotificationSettings.ExecuteDeleteAsync(ct);
+        }
+
+        using var emailClient = factory.CreateAdminClient();
+        using var slackClient = factory.CreateAdminClient();
+
+        // Two concurrent first-time PUTs touching different fields: both see no row, both try
+        // to insert. One wins the race; the loser must reload-and-reapply rather than 500 and
+        // lose its edit (Finding 4). Different fields keep the final-state assertion
+        // deterministic regardless of which write wins.
+        var emailTask = emailClient.PutAsJsonAsync(
+            "/api/notification-settings",
+            new { alertEmailTo = "chris@fixportal.org" },
+            ct
+        );
+        var slackTask = slackClient.PutAsJsonAsync(
+            "/api/notification-settings",
+            new { slackWebhookUrl = "https://hooks.slack.com/services/T0/B0/xyz" },
+            ct
+        );
+        var responses = await Task.WhenAll(emailTask, slackTask);
+
+        responses.Should().OnlyContain(response => response.StatusCode == HttpStatusCode.OK);
+
+        await using var scope2 = factory.Services.CreateAsyncScope();
+        var verifyDb = scope2.ServiceProvider.GetRequiredService<AiObservatoryDbContext>();
+        var rows = await verifyDb.NotificationSettings.ToListAsync(ct);
+        rows.Should().ContainSingle("the insert race must converge on one row, not two");
+        rows[0].AlertEmailTo.Should().Be("chris@fixportal.org");
+        rows[0].SlackWebhookUrl.Should().Be("https://hooks.slack.com/services/T0/B0/xyz");
+    }
+
+    [Fact]
     public async Task Put_WithoutAdminKey_ReturnsUnauthorized()
     {
         var ct = TestContext.Current.CancellationToken;

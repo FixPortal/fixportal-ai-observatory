@@ -6,6 +6,7 @@ using AiObservatory.Data.Repositories;
 using AwesomeAssertions;
 using Microsoft.Extensions.Logging.Abstractions;
 using NodaTime;
+using NodaTime.Testing;
 using NSubstitute;
 
 namespace AiObservatory.Api.Tests.Services;
@@ -39,6 +40,8 @@ public class SlackAlertNotifierTests
         }
     }
 
+    private static readonly Guid ClaimId = Guid.Parse("10000000-0000-0000-0000-000000000001");
+
     private static BudgetAlertPayload MakePayload() =>
         new(
             "Anthropic",
@@ -46,7 +49,8 @@ public class SlackAlertNotifierTests
             10m,
             15m,
             DateTimeOffset.UtcNow,
-            "budget-alert-10000000000000000000000000000001@observatory.fixportal.com"
+            "budget-alert-10000000000000000000000000000001@observatory.fixportal.com",
+            ClaimId
         );
 
     [Fact]
@@ -56,8 +60,9 @@ public class SlackAlertNotifierTests
         var http = new HttpClient(handler);
         var repo = Substitute.For<IUsageRepository>();
         repo.GetNotificationSettingsAsync(Arg.Any<CancellationToken>()).Returns((NotificationSettings?)null);
+        var clock = new FakeClock(Instant.FromUtc(2026, 8, 30, 0, 0));
 
-        var sut = new SlackAlertNotifier(http, repo, NullLogger<SlackAlertNotifier>.Instance);
+        var sut = new SlackAlertNotifier(http, repo, clock, NullLogger<SlackAlertNotifier>.Instance);
         await sut.NotifyAsync(MakePayload(), TestContext.Current.CancellationToken);
 
         handler.Requests.Should().BeEmpty();
@@ -77,8 +82,10 @@ public class SlackAlertNotifierTests
                     UpdatedAt = Instant.FromUtc(2026, 8, 30, 0, 0),
                 }
             );
+        repo.GetBudgetAlertSlackSentAsync(ClaimId, Arg.Any<CancellationToken>()).Returns(false);
+        var clock = new FakeClock(Instant.FromUtc(2026, 8, 30, 0, 0));
 
-        var sut = new SlackAlertNotifier(http, repo, NullLogger<SlackAlertNotifier>.Instance);
+        var sut = new SlackAlertNotifier(http, repo, clock, NullLogger<SlackAlertNotifier>.Instance);
         await sut.NotifyAsync(MakePayload(), TestContext.Current.CancellationToken);
 
         handler.Requests.Should().ContainSingle();
@@ -104,10 +111,59 @@ public class SlackAlertNotifierTests
                     UpdatedAt = Instant.FromUtc(2026, 8, 30, 0, 0),
                 }
             );
+        repo.GetBudgetAlertSlackSentAsync(ClaimId, Arg.Any<CancellationToken>()).Returns(false);
+        var clock = new FakeClock(Instant.FromUtc(2026, 8, 30, 0, 0));
 
-        var sut = new SlackAlertNotifier(http, repo, NullLogger<SlackAlertNotifier>.Instance);
+        var sut = new SlackAlertNotifier(http, repo, clock, NullLogger<SlackAlertNotifier>.Instance);
         var act = async () => await sut.NotifyAsync(MakePayload(), TestContext.Current.CancellationToken);
 
         await act.Should().NotThrowAsync();
+    }
+
+    [Fact]
+    public async Task NotifyAsync_does_not_post_when_slack_already_sent_for_this_claim()
+    {
+        var handler = new CapturingHandler(HttpStatusCode.OK);
+        var http = new HttpClient(handler);
+        var repo = Substitute.For<IUsageRepository>();
+        repo.GetNotificationSettingsAsync(Arg.Any<CancellationToken>())
+            .Returns(
+                new NotificationSettings
+                {
+                    SlackWebhookUrl = "https://hooks.slack.com/services/T0/B0/xyz",
+                    UpdatedAt = Instant.FromUtc(2026, 8, 30, 0, 0),
+                }
+            );
+        repo.GetBudgetAlertSlackSentAsync(ClaimId, Arg.Any<CancellationToken>()).Returns(true);
+        var clock = new FakeClock(Instant.FromUtc(2026, 8, 30, 0, 0));
+
+        var sut = new SlackAlertNotifier(http, repo, clock, NullLogger<SlackAlertNotifier>.Instance);
+        await sut.NotifyAsync(MakePayload(), TestContext.Current.CancellationToken);
+
+        handler.Requests.Should().BeEmpty();
+    }
+
+    [Fact]
+    public async Task NotifyAsync_marks_slack_sent_after_a_successful_post()
+    {
+        var handler = new CapturingHandler(HttpStatusCode.OK);
+        var http = new HttpClient(handler);
+        var repo = Substitute.For<IUsageRepository>();
+        repo.GetNotificationSettingsAsync(Arg.Any<CancellationToken>())
+            .Returns(
+                new NotificationSettings
+                {
+                    SlackWebhookUrl = "https://hooks.slack.com/services/T0/B0/xyz",
+                    UpdatedAt = Instant.FromUtc(2026, 8, 30, 0, 0),
+                }
+            );
+        repo.GetBudgetAlertSlackSentAsync(ClaimId, Arg.Any<CancellationToken>()).Returns(false);
+        var now = Instant.FromUtc(2026, 8, 30, 0, 0);
+        var clock = new FakeClock(now);
+
+        var sut = new SlackAlertNotifier(http, repo, clock, NullLogger<SlackAlertNotifier>.Instance);
+        await sut.NotifyAsync(MakePayload(), TestContext.Current.CancellationToken);
+
+        await repo.Received(1).MarkBudgetAlertSlackSentAsync(ClaimId, now, Arg.Any<CancellationToken>());
     }
 }

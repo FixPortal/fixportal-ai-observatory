@@ -170,6 +170,10 @@ public interface IUsageRepository
 
     Task MarkBudgetAlertEmailSentAsync(Guid claimId, Guid leaseId, Instant sentAt, CancellationToken ct = default);
 
+    Task<bool> GetBudgetAlertSlackSentAsync(Guid claimId, CancellationToken ct = default);
+
+    Task MarkBudgetAlertSlackSentAsync(Guid claimId, Instant at, CancellationToken ct = default);
+
     Task AddInsightAsync(Insight insight, CancellationToken ct = default);
     Task<IReadOnlyList<Insight>> GetUnacknowledgedInsightsAsync(CancellationToken ct = default);
     Task AcknowledgeInsightAsync(Guid insightId, Instant at, CancellationToken ct = default);

@@ -15,6 +15,7 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.Identity.Web;
 using NodaTime;
 using NodaTime.Serialization.SystemTextJson;
+using Npgsql;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -144,7 +145,17 @@ using (var scope = app.Services.CreateScope())
             db.NotificationSettings.Add(
                 new NotificationSettings { AlertEmailTo = legacyEmail, UpdatedAt = clock.GetCurrentInstant() }
             );
-            await db.SaveChangesAsync();
+            try
+            {
+                await db.SaveChangesAsync();
+            }
+            catch (DbUpdateException ex)
+                when (ex.InnerException is PostgresException { SqlState: PostgresErrorCodes.UniqueViolation })
+            {
+                // Lost the insert race to another instance starting concurrently (overlapping
+                // old/new containers during a deploy). Best-effort, one-time backfill -- someone
+                // else already won, which is the outcome this backfill wants anyway.
+            }
         }
     }
 }

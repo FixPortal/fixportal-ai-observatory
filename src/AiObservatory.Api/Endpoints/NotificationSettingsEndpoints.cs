@@ -3,6 +3,7 @@ using AiObservatory.Data;
 using Microsoft.EntityFrameworkCore;
 using MimeKit;
 using NodaTime;
+using Npgsql;
 
 namespace AiObservatory.Api.Endpoints;
 
@@ -80,32 +81,60 @@ public static class NotificationSettingsEndpoints
                 }
 
                 var settings = await db.NotificationSettings.FirstOrDefaultAsync(ct);
+                var inserting = settings is null;
                 if (settings is null)
                 {
                     settings = new Data.Entities.NotificationSettings();
                     db.NotificationSettings.Add(settings);
                 }
 
-                if (body.TryGetProperty("alertEmailTo", out var emailField))
-                {
-                    var value = emailField.ValueKind == JsonValueKind.Null ? null : emailField.GetString();
-                    settings.AlertEmailTo = string.IsNullOrWhiteSpace(value) ? null : value;
-                }
+                ApplyFields(settings, body, clock);
 
-                if (body.TryGetProperty("slackWebhookUrl", out var slackField))
+                if (inserting)
                 {
-                    var value = slackField.ValueKind == JsonValueKind.Null ? null : slackField.GetString();
-                    settings.SlackWebhookUrl = string.IsNullOrWhiteSpace(value) ? null : value;
+                    try
+                    {
+                        await db.SaveChangesAsync(ct);
+                    }
+                    catch (DbUpdateException ex)
+                        when (ex.InnerException is PostgresException { SqlState: PostgresErrorCodes.UniqueViolation })
+                    {
+                        // Lost the insert race to a concurrent first-time PUT. Reload the
+                        // winner's row and reapply THIS request's edits on top of it -- a
+                        // bounded, single reload-and-reapply, not a general retry loop.
+                        db.Entry(settings).State = EntityState.Detached;
+                        settings = await db.NotificationSettings.SingleAsync(ct);
+                        ApplyFields(settings, body, clock);
+                        await db.SaveChangesAsync(ct);
+                    }
                 }
-
-                settings.UpdatedAt = clock.GetCurrentInstant();
-                await db.SaveChangesAsync(ct);
+                else
+                {
+                    await db.SaveChangesAsync(ct);
+                }
 
                 return Results.Ok(ToResponse(settings.AlertEmailTo, settings.SlackWebhookUrl));
             }
         );
 
         return app;
+    }
+
+    private static void ApplyFields(Data.Entities.NotificationSettings settings, JsonElement body, IClock clock)
+    {
+        if (body.TryGetProperty("alertEmailTo", out var emailField))
+        {
+            var value = emailField.ValueKind == JsonValueKind.Null ? null : emailField.GetString();
+            settings.AlertEmailTo = string.IsNullOrWhiteSpace(value) ? null : value;
+        }
+
+        if (body.TryGetProperty("slackWebhookUrl", out var slackField))
+        {
+            var value = slackField.ValueKind == JsonValueKind.Null ? null : slackField.GetString();
+            settings.SlackWebhookUrl = string.IsNullOrWhiteSpace(value) ? null : value;
+        }
+
+        settings.UpdatedAt = clock.GetCurrentInstant();
     }
 
     private static object ToResponse(string? email, string? slackWebhookUrl) =>
