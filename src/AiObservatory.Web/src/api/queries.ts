@@ -3,7 +3,7 @@ import { useQuery, type QueryClient } from '@tanstack/react-query'
 import {
   getAggregates, getInsights, getSubscriptions,
   getAdversarialReviewRuns, getAdversarialReviewStats, getCavemanStats,
-  getBudgetRules, getEmailStatus,
+  getBudgetRules, getNotificationSettings,
   getActivityDaily, getActivityByProject,
   getGitHubPrs, getGitHubCommitSummary, getGitHubCi,
   getSpendCategories, getSpendVendors, getSpendEntries, getBilledReporting, getSourceStatuses,
@@ -12,6 +12,7 @@ import {
   type BudgetRule, type DailyActivity, type ProjectActivity,
   type GitHubPr, type GitHubCommitSummary, type GitHubCiSummary,
   type SpendCategory, type SpendVendor, type SpendEntry, type BilledReporting, type SourceStatusResponse,
+  type NotificationSettings,
 } from './client'
 import { dashboardDateRange } from '../lib/dateRange'
 export { AGGREGATES_DAYS_RANGE, dashboardDateRange } from '../lib/dateRange'
@@ -136,9 +137,16 @@ export function useBudgetRules(): { rules: BudgetRule[]; isLoading: boolean; isE
   return { rules: data, isLoading: isPending, isError }
 }
 
-export function useEmailStatus(): { configured: boolean | undefined } {
-  const { data } = useQuery({ queryKey: ['email-status'], queryFn: getEmailStatus })
-  return { configured: data?.configured }
+export function useNotificationSettings(): {
+  settings: NotificationSettings | undefined
+  isLoading: boolean
+  isError: boolean
+} {
+  const { data, isPending, isError } = useQuery({
+    queryKey: ['notification-settings'],
+    queryFn: getNotificationSettings,
+  })
+  return { settings: data, isLoading: isPending, isError }
 }
 
 // Live only — the pickers (SpendFilterBar, SpendEntryModal). A retired category or
