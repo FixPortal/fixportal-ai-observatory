@@ -9,7 +9,9 @@ namespace AiObservatory.Data.Entities;
 /// </summary>
 public sealed class NotificationSettings
 {
-    public Guid Id { get; init; } = Guid.NewGuid();
+    // Fixed well-known id: this is a singleton row (see class doc), so a stable PK
+    // avoids the entity minting a fresh random one every time it is constructed.
+    public Guid Id { get; init; } = Guid.Parse("33333333-3333-3333-3333-333333333301");
     public string? AlertEmailTo { get; set; }
     public string? SlackWebhookUrl { get; set; }
     public Instant UpdatedAt { get; set; }

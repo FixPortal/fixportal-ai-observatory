@@ -393,21 +393,6 @@
           }
         },
         {
-          "name": "Email status",
-          "request": {
-            "method": "GET",
-            "header": [
-              { "key": "X-Observatory-Key", "value": "{{api_key}}" }
-            ],
-            "url": {
-              "raw": "{{base_url}}/budget-rules/email-status",
-              "host": ["{{base_url}}"],
-              "path": ["budget-rules", "email-status"]
-            },
-            "description": "Returns { configured: true/false } indicating whether BUDGET_ALERT_EMAIL_TO is set."
-          }
-        },
-        {
           "name": "Create budget rule",
           "request": {
             "method": "POST",
@@ -475,6 +460,47 @@
               "host": ["{{base_url}}"],
               "path": ["budget-rules", "{{budget_rule_id}}"]
             }
+          }
+        }
+      ]
+    },
+    {
+      "name": "Notification Settings",
+      "item": [
+        {
+          "name": "Get notification settings",
+          "request": {
+            "method": "GET",
+            "header": [
+              { "key": "X-Observatory-Key", "value": "{{api_key}}" }
+            ],
+            "url": {
+              "raw": "{{base_url}}/notification-settings",
+              "host": ["{{base_url}}"],
+              "path": ["notification-settings"]
+            },
+            "description": "Returns whether an alert email and/or Slack webhook are configured, plus a masked value for each (e.g. `ch***@fixportal.org`). The real values are never returned."
+          }
+        },
+        {
+          "name": "Update notification settings",
+          "request": {
+            "method": "PUT",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "X-Observatory-Key", "value": "{{api_key}}" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"alertEmailTo\": \"chris@fixportal.org\",\n  \"slackWebhookUrl\": \"https://hooks.slack.com/services/T0/B0/xyz\"\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": {
+              "raw": "{{base_url}}/notification-settings",
+              "host": ["{{base_url}}"],
+              "path": ["notification-settings"]
+            },
+            "description": "Updates the singleton notification settings row. Either field can be omitted to leave it unchanged, or set to null/empty to clear it -- a field can never be re-sent with its real value once configured, since GET only ever returns a masked value."
           }
         }
       ]

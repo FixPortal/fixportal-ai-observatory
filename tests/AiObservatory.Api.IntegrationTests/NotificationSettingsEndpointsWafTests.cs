@@ -123,6 +123,17 @@ public class NotificationSettingsEndpointsWafTests(AiObservatoryApiFactory facto
     }
 
     [Fact]
+    public async Task Put_WithNonStringAlertEmailTo_ReturnsBadRequestNotServerError()
+    {
+        var ct = TestContext.Current.CancellationToken;
+        using var client = factory.CreateAdminClient();
+
+        var response = await client.PutAsJsonAsync("/api/notification-settings", new { alertEmailTo = 12345 }, ct);
+
+        response.StatusCode.Should().Be(HttpStatusCode.BadRequest);
+    }
+
+    [Fact]
     public async Task Put_WithoutAdminKey_ReturnsUnauthorized()
     {
         var ct = TestContext.Current.CancellationToken;
