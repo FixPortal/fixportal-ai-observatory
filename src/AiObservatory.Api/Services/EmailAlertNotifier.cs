@@ -1,14 +1,17 @@
+using AiObservatory.Data.Repositories;
 using MailKit.Net.Smtp;
 using MailKit.Security;
 using MimeKit;
 
 namespace AiObservatory.Api.Services;
 
-public sealed class EmailAlertNotifier(ISmtpClient smtpClient, IConfiguration config) : IAlertNotifier
+public sealed class EmailAlertNotifier(ISmtpClient smtpClient, IConfiguration config, IUsageRepository repository)
+    : IAlertNotifier
 {
     public async Task NotifyAsync(BudgetAlertPayload payload, CancellationToken ct = default)
     {
-        var to = config["BUDGET_ALERT_EMAIL_TO"];
+        var settings = await repository.GetNotificationSettingsAsync(ct);
+        var to = settings?.AlertEmailTo;
         if (string.IsNullOrEmpty(to))
         {
             return;
@@ -45,8 +48,6 @@ public sealed class EmailAlertNotifier(ISmtpClient smtpClient, IConfiguration co
         }
         finally
         {
-            // Disconnect even if authenticate/send throws — otherwise the scoped SMTP client
-            // is returned to the container still connected.
             if (smtpClient.IsConnected)
             {
                 await smtpClient.DisconnectAsync(true, ct);
