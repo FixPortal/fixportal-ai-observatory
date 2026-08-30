@@ -308,7 +308,21 @@ export const deleteBudgetRule = async (id: string): Promise<void> => {
   await request(`/budget-rules/${id}`, { method: 'DELETE' })
 }
 
-export const getEmailStatus = () => getJson<{ configured: boolean }>('/budget-rules/email-status')
+export interface NotificationSettings {
+  emailConfigured: boolean
+  emailMasked: string | null
+  slackConfigured: boolean
+  slackMasked: string | null
+}
+
+export const getNotificationSettings = () => getJson<NotificationSettings>('/notification-settings')
+
+export const updateNotificationSettings = async (
+  body: { alertEmailTo?: string | null; slackWebhookUrl?: string | null },
+): Promise<NotificationSettings> => {
+  const res = await request('/notification-settings', { method: 'PUT', headers: jsonHeaders, body: JSON.stringify(body) })
+  return res.json() as Promise<NotificationSettings>
+}
 
 export interface SpendCategory {
   id: string
