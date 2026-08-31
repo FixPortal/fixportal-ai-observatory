@@ -82,23 +82,9 @@ public class UsageRepository(
                     await ctx.SaveChangesAsync(ct);
                 }
 
-                if (evt.SourceKind == SourceKind.LocalTelemetry)
+                if (await RollbackIfNoOpAsync(tx, evt, result, ct) is { } noOpResult)
                 {
-                    await SourceSyncStateStore.MarkSuccessAsync(
-                        ctx,
-                        evt.SourceId,
-                        Duration.FromDays(1),
-                        evt.IngestedAt,
-                        evt.ObservedAt,
-                        ct
-                    );
-                }
-                else if (result is { Disposition: RecordEventDisposition.Unchanged, WatermarkAdvanced: false })
-                {
-                    // Nothing was persisted; roll the no-op transaction back. A watermark-advanced
-                    // duplicate DID write (above) and must commit.
-                    await tx.RollbackAsync(ct);
-                    return result;
+                    return noOpResult;
                 }
 
                 await tx.CommitAsync(ct);
@@ -122,6 +108,43 @@ public class UsageRepository(
 
             attempt++;
         }
+    }
+
+    // Returns the no-op result after rolling back when a duplicate wrote nothing; returns null
+    // when the caller should commit — marking sync success first for local telemetry. A
+    // watermark-advanced duplicate DID write, so it falls to the null (commit) path too.
+    private async Task<RecordEventResult?> RollbackIfNoOpAsync(
+        IDbContextTransaction tx,
+        UsageEvent evt,
+        RecordEventResult result,
+        CancellationToken ct
+    )
+    {
+        if (evt.SourceKind == SourceKind.LocalTelemetry)
+        {
+            await MarkLocalTelemetrySyncAsync(evt, ct);
+            return null;
+        }
+
+        if (result is { Disposition: RecordEventDisposition.Unchanged, WatermarkAdvanced: false })
+        {
+            await tx.RollbackAsync(ct);
+            return result;
+        }
+
+        return null;
+    }
+
+    private async Task MarkLocalTelemetrySyncAsync(UsageEvent evt, CancellationToken ct)
+    {
+        await SourceSyncStateStore.MarkSuccessAsync(
+            ctx,
+            evt.SourceId,
+            Duration.FromDays(1),
+            evt.IngestedAt,
+            evt.ObservedAt,
+            ct
+        );
     }
 
     private static UsageEvent PrepareEvent(UsageEvent evt)

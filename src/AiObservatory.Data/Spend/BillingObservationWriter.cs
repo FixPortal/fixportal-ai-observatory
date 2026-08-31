@@ -388,7 +388,7 @@ public class BillingObservationWriter(AiObservatoryDbContext db, FxRateProvider 
         }
         // Mirrors CK_BillingObservation_Credit_Sign: a credit reduces the gross amount, so
         // a positive credit would balance the equation above while inflating net spend.
-        ArgumentOutOfRangeException.ThrowIfGreaterThan(observation.CreditAmount, 0m, nameof(observation));
+        ArgumentOutOfRangeException.ThrowIfGreaterThan(observation.CreditAmount, 0m);
         if (observation.BillingPeriod is { } period && string.IsNullOrWhiteSpace(period))
         {
             throw new ArgumentException("BillingPeriod cannot be blank.", nameof(observation));

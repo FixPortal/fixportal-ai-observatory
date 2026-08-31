@@ -1,3 +1,4 @@
+using System.Globalization;
 using System.Net.Http.Json;
 using AiObservatory.Data.Repositories;
 using NodaTime;
@@ -40,13 +41,15 @@ public sealed class SlackAlertNotifier(
         }
 
         var text =
-            FormattableString.Invariant(
+            string.Create(
+                CultureInfo.InvariantCulture,
                 $"*Budget alert: {payload.Provider} {payload.Period} billed spend exceeded £{payload.ThresholdGbp:F2}*\n"
             )
-            + FormattableString.Invariant(
+            + string.Create(
+                CultureInfo.InvariantCulture,
                 $"Total {payload.Period.ToLowerInvariant()} billed spend for {payload.Provider} reached £{payload.ActualSpendGbp:F2}, "
             )
-            + FormattableString.Invariant($"exceeding your £{payload.ThresholdGbp:F2} threshold.");
+            + string.Create(CultureInfo.InvariantCulture, $"exceeding your £{payload.ThresholdGbp:F2} threshold.");
 
         using var response = await http.PostAsJsonAsync(webhookUrl, new { text }, ct);
         if (!response.IsSuccessStatusCode)
