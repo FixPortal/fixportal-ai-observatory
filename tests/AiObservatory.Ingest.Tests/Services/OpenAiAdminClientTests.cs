@@ -389,6 +389,44 @@ public sealed class OpenAiAdminClientTests : IDisposable
         await act.Should().ThrowAsync<InvalidDataException>();
     }
 
+    [Fact]
+    public async Task GetUsageAsync_RejectsAPartialLaneSplitThatDoesNotSumToTheTotal()
+    {
+        // input_cache_write_tokens omitted: with the uncached lane declared, the absent lane
+        // counts as zero, so 601 + 400 != 1000 is as inconsistent as a full bad split.
+        var start = From.AtStartOfDayInZone(DateTimeZone.Utc).ToInstant().ToUnixTimeSeconds();
+        var json = $$"""
+            {
+              "object": "page",
+              "data": [
+                {
+                  "object": "bucket",
+                  "start_time": {{start}},
+                  "end_time": {{start + 86_400}},
+                  "results": [
+                    {
+                      "object": "organization.usage.completions.result",
+                      "input_tokens": 1000,
+                      "input_uncached_tokens": 601,
+                      "input_cached_tokens": 400,
+                      "output_tokens": 500,
+                      "num_model_requests": 5,
+                      "model": "gpt-5.4"
+                    }
+                  ]
+                }
+              ],
+              "has_more": false,
+              "next_page": null
+            }
+            """;
+        var sut = CreateSut(new QueueHandler(_ => Ok(json)));
+
+        var act = () => sut.GetUsageAsync(From, Through, TestContext.Current.CancellationToken);
+
+        await act.Should().ThrowAsync<InvalidDataException>();
+    }
+
     private OpenAiAdminClient CreateSut(HttpMessageHandler handler)
     {
         var client = new HttpClient(handler) { BaseAddress = new Uri("https://api.openai.com") };

@@ -800,6 +800,46 @@ public class UsageRepositoryTests : IAsyncLifetime
     }
 
     [Fact]
+    public async Task PatchEventCost_noop_patch_still_stamps_CorrectedAt_and_survives_costless_replay()
+    {
+        var ct = TestContext.Current.CancellationToken;
+        // The stored cost already equals the patched figure, so the snapshot apply is a
+        // no-op -- but the re-applied patch is still an operator correction and must
+        // (re)stamp the marker, or the next cost-less replay silently undoes it.
+        await _repo.RecordEventAsync(NewEvent(cost: 3m), ct);
+
+        var patch = await _repo.PatchEventCostAsync(
+            Provider.OpenAI,
+            UsageSourceIds.OpenAiUsageApi,
+            "day:model",
+            3m,
+            ct
+        );
+        patch.Should().NotBeNull();
+        patch.OldCostUsd.Should().Be(3m);
+        patch.NewCostUsd.Should().Be(3m);
+
+        var corrected = await _ctx.UsageEvents.AsNoTracking().SingleAsync(ct);
+        corrected.CostUsd.Should().Be(3m);
+        corrected.CorrectedAt.Should().NotBeNull("a no-op patch is still an operator correction");
+
+        var replay = NewEvent(
+            cost: null,
+            cacheSavings: null,
+            input: 175,
+            observedAt: Instant.FromUtc(2026, 8, 24, 12, 5)
+        );
+        replay.CostBasis = CostBasis.Notional;
+        replay.SourceKind = SourceKind.LocalTelemetry;
+        (await _repo.RecordEventAsync(replay, ct)).Disposition.Should().Be(RecordEventDisposition.Corrected);
+
+        var saved = await _ctx.UsageEvents.AsNoTracking().SingleAsync(ct);
+        saved.InputTokens.Should().Be(175, "the replay still updates the usage figures");
+        saved.CostUsd.Should().Be(3m, "the cost-less replay must not undo the re-applied correction");
+        saved.CorrectedAt.Should().Be(corrected.CorrectedAt);
+    }
+
+    [Fact]
     public async Task Replay_with_an_explicit_cost_reasserts_source_authority_over_a_correction()
     {
         var ct = TestContext.Current.CancellationToken;

@@ -156,7 +156,8 @@ public sealed class OpenAiAdminClient(HttpClient http) : IOpenAiAdminClient
 
     // The split lanes are documented as optional: older buckets and non-cache-capable
     // models may omit them. Missing lanes default to zero and the uncached lane is
-    // derived from the total; the sum invariant applies only when all three are present.
+    // derived from the total. When the uncached lane is declared explicitly the sum
+    // invariant applies even to a partial split, with absent lanes counting as zero.
     private static (long Uncached, long Cached, long CacheWrite) InputLanes(JsonElement result, long totalInput)
     {
         var uncachedLane = OptionalNonNegativeInt64(result, "input_uncached_tokens");
@@ -166,21 +167,18 @@ public sealed class OpenAiAdminClient(HttpClient http) : IOpenAiAdminClient
         var cacheWrite = cacheWriteLane ?? 0;
         if (uncachedLane is { } declaredUncached)
         {
-            if (cachedLane.HasValue && cacheWriteLane.HasValue)
+            long splitInput;
+            try
             {
-                long splitInput;
-                try
-                {
-                    splitInput = checked(declaredUncached + cached + cacheWrite);
-                }
-                catch (OverflowException exception)
-                {
-                    throw new InvalidDataException("OpenAI input token lanes overflow.", exception);
-                }
-                if (splitInput != totalInput)
-                {
-                    throw new InvalidDataException("OpenAI input token lanes do not equal input_tokens.");
-                }
+                splitInput = checked(declaredUncached + cached + cacheWrite);
+            }
+            catch (OverflowException exception)
+            {
+                throw new InvalidDataException("OpenAI input token lanes overflow.", exception);
+            }
+            if (splitInput != totalInput)
+            {
+                throw new InvalidDataException("OpenAI input token lanes do not equal input_tokens.");
             }
             return (declaredUncached, cached, cacheWrite);
         }
