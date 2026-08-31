@@ -2,21 +2,27 @@
 // AI Observatory local usage sweeper (drop-in).
 //
 // Rebuilds cumulative daily/model snapshots from six local CLI stores, then
-// POSTs them to `/api/events`. The state file caches
-// parsed files by path + mtime; server inventory makes losing it harmless.
+// POSTs them to `/api/events`. Source ids carry a per-machine suffix
+// (`codex-local@<host>`) so machines never share a namespace or tombstone each
+// other's history. The state file caches parsed files by path + mtime; server
+// inventory makes losing it harmless.
 //
 // Zero dependencies: Node 24+ only (global fetch, fs/promises, sqlite).
 
 import { readFile, readdir, mkdir, writeFile, stat } from 'node:fs/promises'
-import { homedir } from 'node:os'
+import { homedir, hostname } from 'node:os'
 import { join, dirname, basename } from 'node:path'
 import { pathToFileURL } from 'node:url'
 
 const ALL_LOCAL_SOURCES = ['codex', 'copilot', 'claude', 'kimi', 'gemini', 'antigravity']
-const ALL_LOCAL_SOURCE_IDS = [
-  'codex-local', 'copilot-local', 'claude-local', 'kimi-local',
-  'gemini-review-local', 'antigravity-local',
-]
+const LOCAL_SOURCE_IDS = {
+  codex: 'codex-local',
+  copilot: 'copilot-local',
+  claude: 'claude-local',
+  kimi: 'kimi-local',
+  gemini: 'gemini-review-local',
+  antigravity: 'antigravity-local',
+}
 const PARSE_CACHE_VERSION = 2
 // Gemini Developer API standard-tier pricing changes above this documented prompt-token threshold.
 const GEMINI_LONG_CONTEXT_THRESHOLD = 200_000
@@ -344,9 +350,23 @@ export async function parseAntigravityDatabase(path, transcriptContent, report =
   }]
 }
 
-function sourceMetadata(tool, model) {
+/** Slugify a machine name for the per-machine source-id suffix. */
+export function machineLabel(value) {
+  const label = String(value ?? '').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '')
+  return label || 'unknown-machine'
+}
+
+/**
+ * Namespace a tool's source id per machine so sweeps on different hosts never
+ * share a namespace — and therefore never tombstone each other's history.
+ */
+function localSourceId(tool, machine) {
+  return `${LOCAL_SOURCE_IDS[tool]}@${machineLabel(machine)}`
+}
+
+function sourceMetadata(tool, model, machine) {
   switch (tool) {
-    case 'codex': return { provider: 'OpenAI', sourceId: 'codex-local', runtime: 'codex' }
+    case 'codex': return { provider: 'OpenAI', sourceId: localSourceId('codex', machine), runtime: 'codex' }
     case 'copilot': {
       const normalized = model.toLowerCase()
       const provider = ['gpt-5.6-sol', 'gpt-5.4'].some(prefix => normalized.startsWith(prefix))
@@ -355,15 +375,15 @@ function sourceMetadata(tool, model) {
             .some(prefix => normalized.startsWith(prefix))
           ? 'Anthropic'
           : 'Copilot'
-      return { provider, sourceId: 'copilot-local', runtime: 'copilot' }
+      return { provider, sourceId: localSourceId('copilot', machine), runtime: 'copilot' }
     }
-    case 'claude': return { provider: 'Anthropic', sourceId: 'claude-local', runtime: 'claude' }
-    case 'kimi': return { provider: 'Moonshot', sourceId: 'kimi-local', runtime: 'kimi' }
+    case 'claude': return { provider: 'Anthropic', sourceId: localSourceId('claude', machine), runtime: 'claude' }
+    case 'kimi': return { provider: 'Moonshot', sourceId: localSourceId('kimi', machine), runtime: 'kimi' }
     case 'gemini-review': return {
-      provider: 'Google', sourceId: 'gemini-review-local', runtime: 'gemini',
+      provider: 'Google', sourceId: localSourceId('gemini', machine), runtime: 'gemini',
       usageScope: 'api', costBasis: 'listPriceEstimate',
     }
-    case 'antigravity': return { provider: 'Google', sourceId: 'antigravity-local', runtime: 'antigravity' }
+    case 'antigravity': return { provider: 'Google', sourceId: localSourceId('antigravity', machine), runtime: 'antigravity' }
     default: return null
   }
 }
@@ -410,10 +430,10 @@ function deduplicateClaudeRecords(records) {
 }
 
 /** Rebuild stable cumulative day/model snapshots from cached per-file records. */
-export function buildDailySnapshots(records) {
+export function buildDailySnapshots(records, machine) {
   const groups = new Map()
   for (const record of deduplicateClaudeRecords(records)) {
-    const metadata = sourceMetadata(record.tool, record.model)
+    const metadata = sourceMetadata(record.tool, record.model, machine)
     if (!metadata || !record.date || !record.model) { continue }
 
     const tier = record.serviceTier ?? 'unknown'
@@ -488,6 +508,7 @@ export function buildDailySnapshots(records) {
         rawPayload: JSON.stringify({
           source: 'observatory-sweep',
           tool: group.tool,
+          machine: machineLabel(machine),
           ...(group.tool === 'codex' ? { processing: 'standard', context: 'short', region: 'global' } : {}),
           ...(group.tool === 'gemini-review' ? { service: 'Gemini Developer API', tier: 'standard', context: group.context } : {}),
           ...(group.serviceTier ? { service_tier: group.serviceTier } : {}),
@@ -604,9 +625,13 @@ async function postEvent(url, apiKey, body) {
   }
 }
 
-async function fetchSnapshotInventory(url, apiKey) {
+async function fetchSnapshotInventory(url, apiKey, enabled, machine) {
   const inventory = []
-  for (const sourceId of ALL_LOCAL_SOURCE_IDS) {
+  for (const tool of ALL_LOCAL_SOURCES) {
+    // Only the current scan's sources: fetching every source's inventory would
+    // plan zero tombstones for snapshots this run is not responsible for.
+    if (!enabled.has(tool)) { continue }
+    const sourceId = localSourceId(tool, machine)
     const response = await observatoryFetch(
       `${url}/api/events/local-snapshots?sourceId=${encodeURIComponent(sourceId)}`,
       apiKey,
@@ -759,8 +784,9 @@ export async function main({ discover = listJsonl, now = () => new Date() } = {}
   const state = await loadState(statePath)
   delete state.emitted
   const enabled = parseLocalSources(process.env.OBSERVATORY_LOCAL_SOURCES)
-  const inventory = await fetchSnapshotInventory(url, apiKey)
-  const snapshots = buildDailySnapshots(await scanRecords(cfg, state, enabled, discover))
+  const machine = machineLabel(process.env.OBSERVATORY_MACHINE ?? hostname())
+  const inventory = await fetchSnapshotInventory(url, apiKey, enabled, machine)
+  const snapshots = buildDailySnapshots(await scanRecords(cfg, state, enabled, discover), machine)
   const submissions = planSnapshotSubmissions(snapshots, inventory)
   await saveState(statePath, state)
 
@@ -781,7 +807,11 @@ export async function main({ discover = listJsonl, now = () => new Date() } = {}
     }
   }
   for (const submission of submissions.filter(item => !item.active)) {
-    if (activeSucceeded.get(submission.snapshot.sourceId) === false) { continue }
+    // Tombstones post only for a source whose active submissions all succeeded
+    // this run. `undefined` (source not in the enabled subset, or no active
+    // snapshots at all) and `false` (a replacement exhausted retries) both
+    // suppress, so a partial or disabled run can never zero server history.
+    if (activeSucceeded.get(submission.snapshot.sourceId) !== true) { continue }
     // Server inventory is the durable retry marker: a failed tombstone remains
     // visible and is compensated by the next scheduled reconciliation.
     if (await postEvent(url, apiKey, { ...submission.snapshot, observedAtUtc })) {

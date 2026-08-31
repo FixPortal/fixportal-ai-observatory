@@ -19,7 +19,7 @@ Each posted snapshot carries explicit provenance so the API preserves its subscr
   "costUsd": null,
   "eventKey": "codex:2026-08-25:codex",
   "occurredAtUtc": "2026-08-25T10:00:00.000Z",
-  "sourceId": "codex-local",
+  "sourceId": "codex-local@my-machine",
   "sourceKind": "localTelemetry",
   "usageScope": "subscription",
   "costBasis": "notional",
@@ -40,7 +40,10 @@ Each posted snapshot carries explicit provenance so the API preserves its subscr
 | Gemini review | `~/.gemini/tmp/gem-review-*/chats/session-*.jsonl`; response usage | `gemini-review-local` / API / list-price estimate; only the review wrapper's API-key-isolated sessions are included |
 | Antigravity | `~/.gemini/antigravity-cli/conversations/*.db` plus matching transcript | `antigravity-local` / subscription / notional; SQLite step totals are attributed to the transcript's selected model |
 
-Stable source-scoped keys make resubmission safe. Before posting, the sweeper reads server inventory and emits zero corrections for removed or disabled snapshots. Its state file is only a parse cache; losing it causes a safe full rescan, not a loss of server truth.
+Stable source-scoped keys make resubmission safe. Source ids carry a per-machine suffix (`codex-local@<host>`, from `OBSERVATORY_MACHINE` or the OS hostname) so sweeps on different machines never share a namespace and can never tombstone each other's history. Before posting, the sweeper reads server inventory for the enabled sources only, and emits zero corrections for removed snapshots of a source only when that source's own current snapshots all posted successfully — a subset run (`OBSERVATORY_LOCAL_SOURCES=codex`) or a failed replacement leaves every other key untouched. Its state file is only a parse cache; losing it causes a safe full rescan, not a loss of server truth.
+
+> [!NOTE]
+> Snapshots posted before the per-machine suffix was introduced sit under the un-suffixed ids (`codex-local` etc.). The sweeper no longer reads or corrects those rows: they remain as frozen history while each machine starts a fresh cumulative series under its own id. Zero or delete the legacy rows manually if the duplicated pre-upgrade history distorts the dashboards.
 
 > [!WARNING]
 > Set `OBSERVATORY_LOCAL_SOURCES` without `claude` when `claude-code-usage-api` covers the same account/activity. The two lanes do not cross-deduplicate.
@@ -67,6 +70,7 @@ node clients/observatory-sweep.mjs --dry-run --verbose
 | `OBSERVATORY_URL` | `http://localhost:5039` | API origin; HTTPS is required except for loopback development. Use `http://localhost:4173` for Compose's frontend proxy. |
 | `OBSERVATORY_STATE` | `~/.ai-observatory/sweep-state.json` | Safe-to-delete parse cache. |
 | `OBSERVATORY_LOCAL_SOURCES` | `codex,copilot,claude,kimi,gemini,antigravity` | Comma-separated collector allowlist. |
+| `OBSERVATORY_MACHINE` | OS hostname | Per-machine source-id suffix (`<tool>-local@<machine>`); slugified to lowercase `[a-z0-9-]`. Set it when the hostname is unstable or shared. |
 | `CODEX_HOME`, `COPILOT_HOME`, `CLAUDE_HOME`, `KIMI_HOME`, `GEMINI_HOME` | Tool homes above | Optional home overrides. |
 
 Schedule the same one-line command with your platform's scheduler. Re-running is safe and idempotent; there is no throttle or separate server-side sweeper state to maintain.

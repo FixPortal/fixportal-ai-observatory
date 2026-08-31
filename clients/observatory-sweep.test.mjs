@@ -15,7 +15,10 @@ import {
   parseCodex, parseCopilot, parseClaude, parseKimi,
   buildDailySnapshots, updateFileCache, parseLocalSources, listJsonl,
   planSnapshotSubmissions, scanRecords, observatoryUrl, observatoryFetch,
+  machineLabel,
 } from './observatory-sweep.mjs'
+
+const TEST_MACHINE = 'test-machine'
 
 function varint(value) {
   const bytes = []
@@ -159,7 +162,7 @@ test('parseClaude keeps sparse and rich copies for global message-id selection',
   ].join('\n')
 
   const records = parseClaude(content)
-  const snapshots = buildDailySnapshots(records)
+  const snapshots = buildDailySnapshots(records, TEST_MACHINE)
 
   assert.equal(records.length, 2)
   assert.equal(snapshots.length, 1)
@@ -176,7 +179,7 @@ test('parseClaude ignores valid JSON values that are not telemetry objects', () 
 test('buildDailySnapshots deduplicates Claude message ids across transcript files', () => {
   const line = JSON.stringify({ type: 'assistant', timestamp: '2026-08-24T12:00:00Z', message: { id: 'msg-copy', model: 'claude-opus-5', usage: { input_tokens: 2, output_tokens: 10 } } })
 
-  const snapshots = buildDailySnapshots([...parseClaude(line), ...parseClaude(line)])
+  const snapshots = buildDailySnapshots([...parseClaude(line), ...parseClaude(line)], TEST_MACHINE)
 
   assert.equal(snapshots.length, 1)
   assert.equal(snapshots[0].inputTokens, 2)
@@ -186,7 +189,7 @@ test('buildDailySnapshots keeps the richest Claude copy when duplicate transcrip
   const sparse = JSON.stringify({ type: 'assistant', timestamp: '2026-08-24T12:00:01Z', message: { id: 'msg-richest', model: 'claude-opus-5', usage: { input_tokens: 2, output_tokens: 10, cache_creation_input_tokens: 30 } } })
   const full = JSON.stringify({ type: 'assistant', timestamp: '2026-08-24T12:00:00Z', message: { id: 'msg-richest', model: 'claude-opus-5', usage: { input_tokens: 2, output_tokens: 10, cache_creation_input_tokens: 30, cache_creation: { ephemeral_5m_input_tokens: 5, ephemeral_1h_input_tokens: 25 }, service_tier: 'standard', speed: 'fast', inference_geo: 'us' } } })
 
-  const snapshots = buildDailySnapshots([...parseClaude(sparse), ...parseClaude(full)])
+  const snapshots = buildDailySnapshots([...parseClaude(sparse), ...parseClaude(full)], TEST_MACHINE)
 
   assert.equal(snapshots.length, 1)
   assert.equal(snapshots[0].eventKey, 'claude:2026-08-24:claude-opus-5:standard:fast:us')
@@ -197,7 +200,7 @@ test('buildDailySnapshots prefers a split-only richer Claude copy across files',
   const sparse = JSON.stringify({ type: 'assistant', timestamp: '2026-08-24T12:00:00Z', message: { id: 'msg-split-only', model: 'claude-opus-5', usage: { input_tokens: 2, output_tokens: 10, cache_creation_input_tokens: 30 } } })
   const split = JSON.stringify({ type: 'assistant', timestamp: '2026-08-24T12:00:01Z', message: { id: 'msg-split-only', model: 'claude-opus-5', usage: { input_tokens: 2, output_tokens: 10, cache_creation_input_tokens: 30, cache_creation: { ephemeral_5m_input_tokens: 5, ephemeral_1h_input_tokens: 25 } } } })
 
-  const snapshots = buildDailySnapshots([...parseClaude(sparse), ...parseClaude(split)])
+  const snapshots = buildDailySnapshots([...parseClaude(sparse), ...parseClaude(split)], TEST_MACHINE)
 
   assert.equal(snapshots.length, 1)
   assert.equal(snapshots[0].cacheWrite1hTokens, 25)
@@ -235,10 +238,10 @@ test('Gemini review transcripts produce API list-price snapshots', () => {
     }),
   ].join('\n'))
 
-  const [snapshot] = buildDailySnapshots(records)
+  const [snapshot] = buildDailySnapshots(records, TEST_MACHINE)
 
   assert.equal(snapshot.provider, 'Google')
-  assert.equal(snapshot.sourceId, 'gemini-review-local')
+  assert.equal(snapshot.sourceId, 'gemini-review-local@test-machine')
   assert.equal(snapshot.usageScope, 'api')
   assert.equal(snapshot.costBasis, 'listPriceEstimate')
   assert.equal(snapshot.inputTokens, 90)
@@ -246,8 +249,8 @@ test('Gemini review transcripts produce API list-price snapshots', () => {
   assert.equal(snapshot.cacheReadTokens, 10)
   assert.equal(snapshot.thoughtTokens, 5)
   assert.deepEqual(JSON.parse(snapshot.rawPayload), {
-    source: 'observatory-sweep', tool: 'gemini-review', service: 'Gemini Developer API',
-    tier: 'standard', context: 'short', thinking_tokens: 5,
+    source: 'observatory-sweep', tool: 'gemini-review', machine: 'test-machine',
+    service: 'Gemini Developer API', tier: 'standard', context: 'short', thinking_tokens: 5,
   })
 })
 
@@ -267,10 +270,10 @@ test('Antigravity databases produce subscription notional snapshots', async () =
 
   try {
     const [record] = await sweep.parseAntigravityDatabase(dbPath, transcript)
-    const [snapshot] = buildDailySnapshots([record])
+    const [snapshot] = buildDailySnapshots([record], TEST_MACHINE)
 
     assert.equal(snapshot.provider, 'Google')
-    assert.equal(snapshot.sourceId, 'antigravity-local')
+    assert.equal(snapshot.sourceId, 'antigravity-local@test-machine')
     assert.equal(snapshot.usageScope, 'subscription')
     assert.equal(snapshot.costBasis, 'notional')
     assert.equal(snapshot.model, 'gemini-3.1-pro-high')
@@ -377,7 +380,7 @@ test('buildDailySnapshots sums sessions into one stable cumulative day/model key
     { tool: 'codex', date: '2026-08-24', model: 'gpt-5.4', occurredAtUtc: '2026-08-24T12:00:00Z', cum: { input: 20, output: 3, cacheRead: 2, cacheWrite: 0 } },
   ]
 
-  const snapshots = buildDailySnapshots(records)
+  const snapshots = buildDailySnapshots(records, TEST_MACHINE)
 
   assert.equal(snapshots.length, 1)
   assert.equal(snapshots[0].eventKey, 'codex:2026-08-24:gpt-5.4')
@@ -385,12 +388,13 @@ test('buildDailySnapshots sums sessions into one stable cumulative day/model key
   assert.equal(snapshots[0].outputTokens, 5)
   assert.equal(snapshots[0].cacheReadTokens, 3)
   assert.equal(snapshots[0].occurredAtUtc, '2026-08-24T12:00:00.000Z')
-  assert.equal(snapshots[0].sourceId, 'codex-local')
+  assert.equal(snapshots[0].sourceId, 'codex-local@test-machine')
   assert.equal(snapshots[0].usageScope, 'subscription')
   assert.equal(snapshots[0].costBasis, 'notional')
   assert.equal(snapshots[0].costUsd, null)
   assert.deepEqual(JSON.parse(snapshots[0].rawPayload), {
-    source: 'observatory-sweep', tool: 'codex', processing: 'standard', context: 'short', region: 'global', thinking_tokens: 0,
+    source: 'observatory-sweep', tool: 'codex', machine: 'test-machine',
+    processing: 'standard', context: 'short', region: 'global', thinking_tokens: 0,
   })
 })
 
@@ -398,7 +402,7 @@ test('buildDailySnapshots maps only exact known Copilot model prefixes without i
   const snapshot = model => buildDailySnapshots([{
     tool: 'copilot', date: '2026-08-24', model, occurredAtUtc: '2026-08-24T12:00:00Z',
     inputTokens: 1, outputTokens: 1, cacheReadTokens: 0, cacheWriteTokens: 0,
-  }])[0]
+  }], TEST_MACHINE)[0]
 
   assert.equal(snapshot('gpt-5.4-2026-08-24').provider, 'OpenAI')
   assert.equal(snapshot('claude-opus-5-20260824').provider, 'Anthropic')
@@ -410,8 +414,8 @@ test('buildDailySnapshots maps only exact known Copilot model prefixes without i
 test('buildDailySnapshots replaces a changed transcript under the same key', () => {
   const record = input => ({ tool: 'codex', date: '2026-08-24', model: 'gpt-5.4', cum: { input, output: 2, cacheRead: 1, cacheWrite: 0 } })
 
-  const before = buildDailySnapshots([record(10)])[0]
-  const after = buildDailySnapshots([record(25)])[0]
+  const before = buildDailySnapshots([record(10)], TEST_MACHINE)[0]
+  const after = buildDailySnapshots([record(25)], TEST_MACHINE)[0]
 
   assert.equal(after.eventKey, before.eventKey)
   assert.equal(after.inputTokens, 25)
@@ -428,7 +432,7 @@ test('buildDailySnapshots keeps thought-only usage active', () => {
     cacheReadTokens: 0,
     cacheWriteTokens: 0,
     thoughtTokens: 7,
-  }])
+  }], TEST_MACHINE)
 
   assert.equal(snapshot.eventKey, 'claude:2026-08-24:claude-opus-5:unknown:unknown:unknown')
   assert.equal(snapshot.thoughtTokens, 7)
@@ -438,9 +442,9 @@ test('buildDailySnapshots keeps Claude grouping dimensions and Kimi cost unknown
   const claude = parseClaude(JSON.stringify({ type: 'assistant', timestamp: '2026-08-24T12:00:00Z', message: { id: 'msg-dimensions', model: 'claude-opus-5', usage: { input_tokens: 2, output_tokens: 10, cache_creation_input_tokens: 30, thinking_tokens: 4, cache_creation: { ephemeral_5m_input_tokens: 5, ephemeral_1h_input_tokens: 25 }, service_tier: 'standard', speed: 'fast', inference_geo: 'us' } } }))
   const kimi = parseKimi(JSON.stringify({ type: 'usage.record', time: 1787572800000, model: 'kimi-code/kimi-for-coding', usage: { inputOther: 10, output: 2, inputCacheRead: 20, inputCacheCreation: 3 } }))
 
-  const snapshots = buildDailySnapshots([...claude, ...kimi])
-  const claudeSnapshot = snapshots.find(x => x.sourceId === 'claude-local')
-  const kimiSnapshot = snapshots.find(x => x.sourceId === 'kimi-local')
+  const snapshots = buildDailySnapshots([...claude, ...kimi], TEST_MACHINE)
+  const claudeSnapshot = snapshots.find(x => x.sourceId === 'claude-local@test-machine')
+  const kimiSnapshot = snapshots.find(x => x.sourceId === 'kimi-local@test-machine')
 
   assert.equal(claudeSnapshot.eventKey, 'claude:2026-08-24:claude-opus-5:standard:fast:us')
   assert.equal(claudeSnapshot.cacheWrite1hTokens, 25)
@@ -665,7 +669,7 @@ test('touching and restoring a transcript cannot move usage to another day', asy
 test('server inventory clears a deleted final snapshot after local state loss', () => {
   const prior = buildDailySnapshots([
     { tool: 'codex', date: '2026-08-24', model: 'gpt-5.4', occurredAtUtc: '2026-08-24T12:00:00Z', cum: { input: 30, output: 5, cacheRead: 3, cacheWrite: 0 } },
-  ])[0]
+  ], TEST_MACHINE)[0]
 
   const submissions = planSnapshotSubmissions([], [prior])
 
@@ -694,7 +698,7 @@ test('server inventory clears a deleted final snapshot after local state loss', 
 test('server inventory clears a disabled source after state loss and allows re-enable', () => {
   const snapshot = buildDailySnapshots([
     { tool: 'kimi', date: '2026-08-24', model: 'kimi-code/kimi-for-coding', occurredAtUtc: '2026-08-24T12:00:00Z', inputTokens: 10, outputTokens: 2, cacheReadTokens: 20, cacheWriteTokens: 3 },
-  ])[0]
+  ], TEST_MACHINE)[0]
   const disabledSnapshots = parseLocalSources('codex').has('kimi') ? [snapshot] : []
   const [disabled] = planSnapshotSubmissions(disabledSnapshots, [snapshot])
 
@@ -713,8 +717,8 @@ test('reconciliation corrects a daily snapshot after one transcript is deleted',
     tool: 'codex', date: '2026-08-24', model: 'gpt-5.4', occurredAtUtc: '2026-08-24T12:00:00Z',
     cum: { input, output: 2, cacheRead: 1, cacheWrite: 0 },
   })
-  const prior = buildDailySnapshots([record(10), record(20)])[0]
-  const current = buildDailySnapshots([record(10)])[0]
+  const prior = buildDailySnapshots([record(10), record(20)], TEST_MACHINE)[0]
+  const current = buildDailySnapshots([record(10)], TEST_MACHINE)[0]
 
   const submissions = planSnapshotSubmissions([current], [prior])
 
@@ -733,7 +737,7 @@ test('server inventory clears the old Claude dimension key after local state los
       model: 'claude-opus-5',
       usage: { input_tokens: 2, output_tokens: 10, service_tier: 'standard', speed, inference_geo: 'us' },
     },
-  })))[0]
+  })), TEST_MACHINE)[0]
   const prior = claude('standard')
   const current = claude('fast')
 
@@ -774,36 +778,51 @@ test('parseLocalSources defaults to every collector and honors an explicit allow
   assert.deepEqual([...parseLocalSources('codex,kimi')].sort(), ['codex', 'kimi'])
 })
 
-test('main retries a failed server-inventory tombstone from persisted state and then succeeds', async () => {
+test('machineLabel slugifies host names for source-id namespacing', () => {
+  assert.equal(machineLabel('DESKTOP-ABC123'), 'desktop-abc123')
+  assert.equal(machineLabel('Chris’s MacBook Pro'), 'chris-s-macbook-pro')
+  assert.equal(machineLabel('--weird__host--'), 'weird-host')
+  assert.equal(machineLabel(''), 'unknown-machine')
+  assert.equal(machineLabel(undefined), 'unknown-machine')
+  assert.equal(machineLabel('!!!'), 'unknown-machine')
+})
+
+test('buildDailySnapshots namespaces source ids per machine so hosts never share a namespace', () => {
+  const record = {
+    tool: 'codex', date: '2026-08-24', model: 'gpt-5.4', occurredAtUtc: '2026-08-24T12:00:00Z',
+    cum: { input: 10, output: 2, cacheRead: 1, cacheWrite: 0 },
+  }
+
+  const hostA = buildDailySnapshots([record], 'host-a')[0]
+  const hostB = buildDailySnapshots([record], 'host-b')[0]
+
+  assert.equal(hostA.sourceId, 'codex-local@host-a')
+  assert.equal(hostB.sourceId, 'codex-local@host-b')
+  // Same day/model key: machines are separated by source id alone, which is
+  // also the server's dedupe and inventory scope.
+  assert.equal(hostA.eventKey, hostB.eventKey)
+  assert.equal(JSON.parse(hostA.rawPayload).machine, 'host-a')
+})
+
+test('main fetches inventory only for enabled per-machine sources and never tombstones without an active submission', async () => {
   const root = await mkdtemp(join(tmpdir(), 'observatory-sweep-main-'))
   const statePath = join(root, 'state', 'sweep.json')
   const posts = []
   const gets = []
-  let inventoryActive = true
-  const prior = {
-    provider: 'anthropic',
-    occurredAtUtc: '2026-08-24T12:00:00Z',
-    model: 'claude-opus-5',
-    inputTokens: 2,
-    outputTokens: 10,
-    cacheReadTokens: 0,
-    cacheWriteTokens: 0,
-    cacheWrite1hTokens: 0,
-    thoughtTokens: 0,
-    costUsd: 0.01,
-    runtime: 'claude',
-    sourceId: 'claude-local',
-    sourceKind: 'localTelemetry',
-    usageScope: 'subscription',
-    costBasis: 'notional',
-    eventKey: 'claude:2026-08-24:claude-opus-5:standard:standard:us',
+  const staleCodex = {
+    provider: 'openai', occurredAtUtc: '2026-08-23T12:00:00Z', model: 'gpt-5.5',
+    costUsd: 0.01, runtime: 'codex', sourceId: 'codex-local@test-machine', sourceKind: 'localTelemetry',
+    usageScope: 'subscription', costBasis: 'notional', eventKey: 'codex:2026-08-23:gpt-5.5',
   }
+  const otherMachine = { ...staleCodex, sourceId: 'codex-local@other-machine' }
   const server = createServer(async (request, response) => {
     const url = new URL(request.url, 'http://127.0.0.1')
     if (request.method === 'GET' && url.pathname === '/api/events/local-snapshots') {
       const sourceId = url.searchParams.get('sourceId')
       gets.push({ sourceId, apiKey: request.headers['x-observatory-key'] })
-      const body = inventoryActive && sourceId === 'claude-local' ? [prior] : []
+      const body = sourceId === 'codex-local@test-machine' ? [staleCodex]
+        : sourceId === 'codex-local@other-machine' ? [otherMachine]
+          : []
       response.writeHead(200, { 'Content-Type': 'application/json' }).end(JSON.stringify(body))
       return
     }
@@ -811,10 +830,83 @@ test('main retries a failed server-inventory tombstone from persisted state and 
       let body = ''
       for await (const chunk of request) { body += chunk }
       posts.push(JSON.parse(body))
-      if (posts.length === 1) {
-        response.writeHead(500).end()
+      response.writeHead(200, { 'Content-Type': 'application/json' }).end('{}')
+      return
+    }
+    response.writeHead(404).end()
+  })
+  await new Promise(resolve => server.listen(0, '127.0.0.1', resolve))
+  const address = server.address()
+  const run = promisify(execFile)
+  const env = {
+    ...process.env,
+    OBSERVATORY_URL: `http://127.0.0.1:${address.port}`,
+    OBSERVATORY_API_KEY: 'test-key',
+    OBSERVATORY_STATE: statePath,
+    OBSERVATORY_LOCAL_SOURCES: 'codex',
+    OBSERVATORY_MACHINE: 'Test Machine',
+    CODEX_HOME: join(root, 'codex'),
+    COPILOT_HOME: join(root, 'copilot'),
+    CLAUDE_HOME: join(root, 'claude'),
+    KIMI_HOME: join(root, 'kimi'),
+  }
+
+  try {
+    await run(process.execPath, [fileURLToPath(new URL('./observatory-sweep.mjs', import.meta.url))], { env })
+
+    // Only this run's enabled source is inventoried, under this machine's
+    // namespace -- the other five sources and other machines are never read.
+    assert.deepEqual(gets.map(request => request.sourceId), ['codex-local@test-machine'])
+    assert.equal(gets.every(request => request.apiKey === 'test-key'), true)
+    // Codex posted no active snapshot, so its stale server key is left alone
+    // rather than zeroed by a scan that observed nothing.
+    assert.deepEqual(posts, [])
+  } finally {
+    await new Promise(resolve => server.close(resolve))
+    await rm(root, { recursive: true, force: true })
+  }
+})
+
+test('main retries a failed server-inventory tombstone from persisted state and then succeeds', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'observatory-sweep-main-'))
+  const sessions = join(root, 'codex', 'sessions')
+  const statePath = join(root, 'state', 'sweep.json')
+  await mkdir(sessions, { recursive: true })
+  await writeFile(join(sessions, 'rollout.jsonl'), [
+    JSON.stringify({ type: 'turn_context', payload: { model: 'gpt-5.5' } }),
+    JSON.stringify({ timestamp: '2026-08-24T12:00:00Z', type: 'event_msg', payload: { type: 'token_count', info: { total_token_usage: { input_tokens: 10, cached_input_tokens: 0, output_tokens: 5 } } } }),
+  ].join('\n'))
+  const posts = []
+  const gets = []
+  let inventoryActive = true
+  let tombstoneFailures = 3
+  const activeKey = 'codex:2026-08-24:gpt-5.5'
+  const prior = {
+    provider: 'openai', occurredAtUtc: '2026-08-23T12:00:00Z', model: 'gpt-5.5',
+    inputTokens: 2, outputTokens: 10, cacheReadTokens: 0, cacheWriteTokens: 0,
+    cacheWrite1hTokens: 0, thoughtTokens: 0, costUsd: 0.01,
+    runtime: 'codex', sourceId: 'codex-local@test-machine', sourceKind: 'localTelemetry',
+    usageScope: 'subscription', costBasis: 'notional', eventKey: 'codex:2026-08-23:gpt-5.5',
+  }
+  const server = createServer(async (request, response) => {
+    const url = new URL(request.url, 'http://127.0.0.1')
+    if (request.method === 'GET' && url.pathname === '/api/events/local-snapshots') {
+      const sourceId = url.searchParams.get('sourceId')
+      gets.push({ sourceId, apiKey: request.headers['x-observatory-key'] })
+      const body = inventoryActive && sourceId === 'codex-local@test-machine' ? [prior] : []
+      response.writeHead(200, { 'Content-Type': 'application/json' }).end(JSON.stringify(body))
+      return
+    }
+    if (request.method === 'POST' && url.pathname === '/api/events') {
+      let body = ''
+      for await (const chunk of request) { body += chunk }
+      const parsed = JSON.parse(body)
+      posts.push(parsed)
+      if (JSON.parse(parsed.rawPayload).tombstone && tombstoneFailures > 0) {
+        tombstoneFailures--
+        response.writeHead(500, { 'Retry-After': '0' }).end()
       } else {
-        inventoryActive = false
+        if (JSON.parse(parsed.rawPayload).tombstone) { inventoryActive = false }
         response.writeHead(200, { 'Content-Type': 'application/json' }).end('{}')
       }
       return
@@ -830,6 +922,7 @@ test('main retries a failed server-inventory tombstone from persisted state and 
     OBSERVATORY_API_KEY: 'test-key',
     OBSERVATORY_STATE: statePath,
     OBSERVATORY_LOCAL_SOURCES: 'codex',
+    OBSERVATORY_MACHINE: 'test-machine',
     CODEX_HOME: join(root, 'codex'),
     COPILOT_HOME: join(root, 'copilot'),
     CLAUDE_HOME: join(root, 'claude'),
@@ -841,22 +934,25 @@ test('main retries a failed server-inventory tombstone from persisted state and 
     const persistedAfterFailure = JSON.parse(await readFile(statePath, 'utf8'))
     await run(process.execPath, [fileURLToPath(new URL('./observatory-sweep.mjs', import.meta.url))], { env })
 
-    assert.deepEqual(persistedAfterFailure.files.codex, {})
-    assert.equal(gets.length, 12)
-    assert.deepEqual([...new Set(gets.map(request => request.sourceId))].sort(), [
-      'antigravity-local', 'claude-local', 'codex-local', 'copilot-local',
-      'gemini-review-local', 'kimi-local',
+    assert.equal(Object.keys(persistedAfterFailure.files.codex).length, 1)
+    assert.deepEqual(gets.map(request => request.sourceId), [
+      'codex-local@test-machine', 'codex-local@test-machine',
     ])
     assert.equal(gets.every(request => request.apiKey === 'test-key'), true)
-    assert.equal(posts.length, 2)
+    // Run 1: the active snapshot posts, then the tombstone exhausts its three
+    // retries. Run 2 replays both from server inventory and lands the zero.
     assert.deepEqual(posts.map(body => ({
       eventKey: body.eventKey,
       sourceId: body.sourceId,
       inputTokens: body.inputTokens,
       outputTokens: body.outputTokens,
     })), [
-      { eventKey: prior.eventKey, sourceId: 'claude-local', inputTokens: 0, outputTokens: 0 },
-      { eventKey: prior.eventKey, sourceId: 'claude-local', inputTokens: 0, outputTokens: 0 },
+      { eventKey: activeKey, sourceId: 'codex-local@test-machine', inputTokens: 10, outputTokens: 5 },
+      { eventKey: prior.eventKey, sourceId: 'codex-local@test-machine', inputTokens: 0, outputTokens: 0 },
+      { eventKey: prior.eventKey, sourceId: 'codex-local@test-machine', inputTokens: 0, outputTokens: 0 },
+      { eventKey: prior.eventKey, sourceId: 'codex-local@test-machine', inputTokens: 0, outputTokens: 0 },
+      { eventKey: activeKey, sourceId: 'codex-local@test-machine', inputTokens: 10, outputTokens: 5 },
+      { eventKey: prior.eventKey, sourceId: 'codex-local@test-machine', inputTokens: 0, outputTokens: 0 },
     ])
   } finally {
     await new Promise(resolve => server.close(resolve))
@@ -867,8 +963,10 @@ test('main retries a failed server-inventory tombstone from persisted state and 
 test('main withholds a source tombstone after its replacement exhausts retries but continues unrelated sources', async () => {
   const root = await mkdtemp(join(tmpdir(), 'observatory-sweep-replacement-'))
   const projects = join(root, 'claude', 'projects')
+  const kimiSessions = join(root, 'kimi', 'sessions')
   const statePath = join(root, 'state', 'sweep.json')
   await mkdir(projects, { recursive: true })
+  await mkdir(kimiSessions, { recursive: true })
   await writeFile(join(projects, 'session.jsonl'), JSON.stringify({
     type: 'assistant',
     timestamp: '2026-08-24T12:00:00Z',
@@ -878,24 +976,31 @@ test('main withholds a source tombstone after its replacement exhausts retries b
       usage: { input_tokens: 2, output_tokens: 10, service_tier: 'standard', speed: 'zzz', inference_geo: 'us' },
     },
   }))
+  await writeFile(join(kimiSessions, 'wire.jsonl'), JSON.stringify({
+    type: 'usage.record', time: 1787572800000, model: 'kimi-code/kimi-for-coding',
+    usage: { inputOther: 10, output: 2, inputCacheRead: 20, inputCacheCreation: 3 },
+  }))
   const oldClaude = {
     provider: 'anthropic', occurredAtUtc: '2026-08-24T12:00:00Z', model: 'claude-opus-5',
-    costUsd: 0.01, runtime: 'claude', sourceId: 'claude-local', sourceKind: 'localTelemetry',
+    costUsd: 0.01, runtime: 'claude', sourceId: 'claude-local@test-machine', sourceKind: 'localTelemetry',
     usageScope: 'subscription', costBasis: 'notional',
     eventKey: 'claude:2026-08-24:claude-opus-5:standard:aaa:us',
   }
   const oldKimi = {
-    provider: 'moonshot', occurredAtUtc: '2026-08-24T12:00:00Z', model: 'kimi-code/kimi-for-coding',
-    costUsd: null, runtime: 'kimi', sourceId: 'kimi-local', sourceKind: 'localTelemetry',
-    usageScope: 'subscription', costBasis: 'notional', eventKey: 'kimi:2026-08-24:kimi-code/kimi-for-coding',
+    provider: 'moonshot', occurredAtUtc: '2026-08-23T12:00:00Z', model: 'kimi-code/kimi-for-coding',
+    costUsd: null, runtime: 'kimi', sourceId: 'kimi-local@test-machine', sourceKind: 'localTelemetry',
+    usageScope: 'subscription', costBasis: 'notional', eventKey: 'kimi:2026-08-23:kimi-code/kimi-for-coding',
   }
   const currentKey = 'claude:2026-08-24:claude-opus-5:standard:zzz:us'
+  const currentKimiKey = 'kimi:2026-08-24:kimi-code/kimi-for-coding'
   const posts = []
   const server = createServer(async (request, response) => {
     const url = new URL(request.url, 'http://127.0.0.1')
     if (request.method === 'GET' && url.pathname === '/api/events/local-snapshots') {
       const sourceId = url.searchParams.get('sourceId')
-      const body = sourceId === 'claude-local' ? [oldClaude] : sourceId === 'kimi-local' ? [oldKimi] : []
+      const body = sourceId === 'claude-local@test-machine' ? [oldClaude]
+        : sourceId === 'kimi-local@test-machine' ? [oldKimi]
+          : []
       response.writeHead(200, { 'Content-Type': 'application/json' }).end(JSON.stringify(body))
       return
     }
@@ -904,7 +1009,7 @@ test('main withholds a source tombstone after its replacement exhausts retries b
       for await (const chunk of request) { body += chunk }
       const parsed = JSON.parse(body)
       posts.push(parsed)
-      response.writeHead(parsed.eventKey === currentKey ? 500 : 200, { 'Content-Type': 'application/json' }).end('{}')
+      response.writeHead(parsed.eventKey === currentKey ? 500 : 200, { 'Content-Type': 'application/json', 'Retry-After': '0' }).end('{}')
       return
     }
     response.writeHead(404).end()
@@ -917,7 +1022,8 @@ test('main withholds a source tombstone after its replacement exhausts retries b
     OBSERVATORY_URL: `http://127.0.0.1:${address.port}`,
     OBSERVATORY_API_KEY: 'test-key',
     OBSERVATORY_STATE: statePath,
-    OBSERVATORY_LOCAL_SOURCES: 'claude',
+    OBSERVATORY_LOCAL_SOURCES: 'claude,kimi',
+    OBSERVATORY_MACHINE: 'test-machine',
     CODEX_HOME: join(root, 'codex'),
     COPILOT_HOME: join(root, 'copilot'),
     CLAUDE_HOME: join(root, 'claude'),
@@ -927,7 +1033,11 @@ test('main withholds a source tombstone after its replacement exhausts retries b
   try {
     await run(process.execPath, [fileURLToPath(new URL('./observatory-sweep.mjs', import.meta.url))], { env })
 
-    assert.deepEqual(posts.map(body => body.eventKey), [currentKey, currentKey, currentKey, oldKimi.eventKey])
+    // Claude's replacement exhausts retries, so its old key is NOT tombstoned;
+    // Kimi's active snapshot succeeded, so its stale key is corrected.
+    assert.deepEqual(posts.map(body => body.eventKey), [
+      currentKey, currentKey, currentKey, currentKimiKey, oldKimi.eventKey,
+    ])
     assert.equal(posts.some(body => body.eventKey === oldClaude.eventKey), false)
   } finally {
     await new Promise(resolve => server.close(resolve))
