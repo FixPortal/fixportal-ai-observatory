@@ -21,6 +21,7 @@ concurrency:
 # out and run with secret access.
 jobs:
   deploy-api:
+    timeout-minutes: 20
     name: Deploy (api)
     runs-on: ubuntu-latest
     if: ${{ (github.event_name == 'workflow_run' && github.event.workflow_run.conclusion == 'success' && github.event.workflow_run.event == 'push' && github.event.workflow_run.head_branch == 'main') || (github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main') }}
@@ -76,11 +77,13 @@ jobs:
       # that deploy AND the next one reported success. Production was down for ~25 minutes
       # with nothing red anywhere. This step is what turns that into a failed deploy.
       #
-      # Any non-5xx answer proves the app is serving: every /api route sits behind
+      # Exactly 401 proves the app is serving: every /api route sits behind
       # ApiKeyEndpointFilter, so an unauthenticated probe gets 401 from a HEALTHY app.
       # That is deliberate — it avoids putting the API key in this workflow just to
-      # health-check it. 5xx and 000 (connection refused / DNS / TLS failure) are the
-      # failure signals; 503 in particular is what App Service serves for a stopped site.
+      # health-check it. Everything else is a failure: 5xx and 000 (connection refused /
+      # DNS / TLS), but also 200 (a placeholder page on a misnamed or empty package),
+      # 3xx (a redirect), 404 (a misrouted deployment), and 403 (a stopped site) —
+      # none of which come from our code.
       - name: Verify the API is serving
         run: |
           # Bounded by a wall-clock DEADLINE, not an attempt count. With a per-request
@@ -98,16 +101,17 @@ jobs:
               https://fpaiobs-api.azurewebsites.net/api/aggregates) || code=000
             echo "probe -> HTTP $code"
             case "$code" in
-              000|5*) : ;;
-              *) echo "API is serving (HTTP $code)"; exit 0 ;;
+              401) echo "API is serving (HTTP $code)"; exit 0 ;;
+              *) : ;;
             esac
             [ "$(date +%s)" -lt "$deadline" ] || break
             sleep 15
           done
-          echo "::error::API never returned a non-5xx response after deploy — it is not serving."
+          echo "::error::API never returned the expected 401 after deploy — it is not serving our app."
           exit 1
 
   deploy-ingest:
+    timeout-minutes: 20
     name: Deploy (ingest)
     needs: deploy-api
     runs-on: ubuntu-latest
@@ -176,6 +180,7 @@ jobs:
           exit 1
 
   deploy-web:
+    timeout-minutes: 20
     name: Deploy (web)
     runs-on: ubuntu-latest
     if: ${{ (github.event_name == 'workflow_run' && github.event.workflow_run.conclusion == 'success' && github.event.workflow_run.event == 'push' && github.event.workflow_run.head_branch == 'main') || (github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main') }}
