@@ -1,5 +1,6 @@
 using System.Buffers;
 using System.Globalization;
+using System.Text;
 using System.Text.Json;
 using AiObservatory.Ingest.Sources;
 using NodaTime;
@@ -621,6 +622,35 @@ public sealed class AnthropicAdminClient(HttpClient http) : IAnthropicAdminClien
         return parsed;
     }
 
-    private static string RawEvidence(JsonElement parent, JsonElement row) =>
-        JsonSerializer.Serialize(new { bucket = parent, result = row });
+    private static string RawEvidence(JsonElement parent, JsonElement row)
+    {
+        // The parent's "results" array holds every sibling row; embedding it per record made
+        // payloads O(N^2). Keep the bucket's own fields (window bounds) and this row only.
+        using var output = new MemoryStream();
+        using (var writer = new Utf8JsonWriter(output))
+        {
+            writer.WriteStartObject();
+            writer.WritePropertyName("bucket");
+            WriteWithoutResults(writer, parent);
+            writer.WritePropertyName("result");
+            row.WriteTo(writer);
+            writer.WriteEndObject();
+        }
+        return Encoding.UTF8.GetString(output.GetBuffer(), 0, checked((int)output.Length));
+    }
+
+#pragma warning disable S3267 // Element-ordered writer side effects don't read as a LINQ Where.
+    private static void WriteWithoutResults(Utf8JsonWriter writer, JsonElement bucket)
+    {
+        writer.WriteStartObject();
+        foreach (var property in bucket.EnumerateObject())
+        {
+            if (!property.NameEquals("results"))
+            {
+                property.WriteTo(writer);
+            }
+        }
+        writer.WriteEndObject();
+    }
+#pragma warning restore S3267
 }

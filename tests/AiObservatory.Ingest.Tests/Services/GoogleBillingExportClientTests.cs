@@ -46,6 +46,9 @@ public sealed class GoogleBillingExportClientTests
 
         query.Sql.Should().Contain("@from").And.Contain("@through_exclusive").And.Contain("@changes_since");
         query.Sql.Should().Contain("export_time > @changes_since");
+        // Partition pruning: the source scan needs its own date predicate — neither the
+        // IS NOT DISTINCT FROM join nor the OR'd export_time filter lets BigQuery prune.
+        query.Sql.Should().Contain("WHERE source.usage_start_time >= @changes_since - INTERVAL 31 DAY");
         query.Sql.Should().Contain("FROM `project.dataset.table` AS source");
         query.Sql.Should().Contain("UNNEST(source.credits)");
         query.Sql.Should().Contain("CAST(source.cost * 1000000 AS INT64)");

@@ -15,9 +15,11 @@ public interface IGitHubActivityClient
         LocalDate since,
         CancellationToken ct = default
     );
-    Task<IReadOnlyList<GitHubWorkflowRunRecord>> GetWorkflowRunsAsync(
-        string repo,
-        LocalDate since,
-        CancellationToken ct = default
-    );
+    Task<GitHubWorkflowRunResult> GetWorkflowRunsAsync(string repo, LocalDate since, CancellationToken ct = default);
 }
+
+/// <param name="Truncated">
+/// True when the pagination cap stopped the listing before its final page. The caller must
+/// not mark backfill complete on a truncated result — the capped runs would never be fetched.
+/// </param>
+public sealed record GitHubWorkflowRunResult(IReadOnlyList<GitHubWorkflowRunRecord> Runs, bool Truncated);

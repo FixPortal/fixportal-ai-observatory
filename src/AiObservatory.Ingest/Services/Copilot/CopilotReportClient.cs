@@ -21,7 +21,6 @@ public sealed class CopilotReportClient(HttpClient descriptorHttp, HttpClient do
         var identities = new HashSet<(string OrganizationId, LocalDate Day)>();
         var budget = new ResponseBudget();
         long declaredBytes = 0;
-        var allowUtf8Bom = true;
 
         foreach (var link in descriptor.DownloadLinks)
         {
@@ -44,19 +43,11 @@ public sealed class CopilotReportClient(HttpClient descriptorHttp, HttpClient do
 
             await using var stream = await response.Content.ReadAsStreamAsync(cancellationToken);
             await using var limited = new BudgetedReadStream(stream, budget);
-            var lineCount = await ReadDownloadAsync(
-                limited,
-                descriptor,
-                records,
-                identities,
-                allowUtf8Bom,
-                cancellationToken
-            );
+            var lineCount = await ReadDownloadAsync(limited, descriptor, records, identities, cancellationToken);
             if (lineCount == 0)
             {
                 throw new InvalidDataException("Copilot report download is empty.");
             }
-            allowUtf8Bom = false;
         }
 
         return records.AsReadOnly();
@@ -67,7 +58,6 @@ public sealed class CopilotReportClient(HttpClient descriptorHttp, HttpClient do
         Descriptor descriptor,
         List<CopilotDailyReportRecord> records,
         HashSet<(string OrganizationId, LocalDate Day)> identities,
-        bool allowUtf8Bom,
         CancellationToken cancellationToken
     )
     {
@@ -83,7 +73,8 @@ public sealed class CopilotReportClient(HttpClient descriptorHttp, HttpClient do
             while (await reader.ReadLineAsync(cancellationToken) is { } line)
             {
                 cancellationToken.ThrowIfCancellationRequested();
-                if (allowUtf8Bom && lineCount == 0 && line.StartsWith('\uFEFF'))
+                // Each shard is an independent stream, so each may open with its own BOM.
+                if (lineCount == 0 && line.StartsWith('\uFEFF'))
                 {
                     line = line[1..];
                 }

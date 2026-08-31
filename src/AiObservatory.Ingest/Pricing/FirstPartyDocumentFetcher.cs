@@ -69,7 +69,12 @@ public sealed class FirstPartyDocumentFetcher : IDisposable
 
             if (response.StatusCode == HttpStatusCode.NotModified)
             {
-                return new FirstPartyDocument(current, null, true);
+                // No conditional headers are ever sent, so a 304 is out-of-spec for this
+                // client: only a non-conforming intermediary could produce one. Treat it as a
+                // failed fetch rather than silently skipping the refresh.
+                throw new InvalidDataException(
+                    "The first-party document returned 304 Not Modified to an unconditional request."
+                );
             }
 
             if (IsRedirect(response.StatusCode))
@@ -97,7 +102,7 @@ public sealed class FirstPartyDocumentFetcher : IDisposable
 
             response.EnsureSuccessStatusCode();
             var content = await ReadUtf8Async(response.Content, timeout.Token);
-            return new FirstPartyDocument(current, content, false);
+            return new FirstPartyDocument(current, content);
         }
     }
 
@@ -165,4 +170,4 @@ public sealed class FirstPartyDocumentFetcher : IDisposable
     }
 }
 
-public sealed record FirstPartyDocument(Uri FinalUri, string? Content, bool NotModified);
+public sealed record FirstPartyDocument(Uri FinalUri, string Content);

@@ -108,6 +108,20 @@ public sealed class KimiPricingSourceTests
     }
 
     [Fact]
+    public void ParserToleratesAFinalRowWithoutTrailingComma()
+    {
+        // A page that renders its last row without the trailing comma the other rows carry
+        // must not fail the whole source.
+        const string k3Row =
+            "[\"kimi-k3\", \"1M tokens\", <>{\"$\"}0.30</>, <>{\"$\"}3.00</>, <>{\"$\"}15.00</>, \"1,048,576 tokens\"],";
+        var fixtures = Fixtures() with { K3 = Fixtures().K3.Replace(k3Row, k3Row[..^1], StringComparison.Ordinal) };
+
+        var catalog = Parse(fixtures);
+
+        catalog.Resolve("kimi-k3", false, ObservedOn).Should().NotBeNull();
+    }
+
+    [Fact]
     public void BundledCatalogContainsOnlyTheVerifiedFiveVariants()
     {
         var catalog = PricingCatalogJson.Deserialize<KimiPriceCatalog>(Bundle("kimi.json"));

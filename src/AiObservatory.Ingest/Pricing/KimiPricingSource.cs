@@ -68,22 +68,13 @@ public sealed class KimiPricingSource : IPricingSource, IDisposable
     public async Task<PricingSnapshotCandidate?> FetchAsync(CancellationToken cancellationToken)
     {
         var index = await _indexFetcher.FetchAsync(cancellationToken);
-        if (index.NotModified)
-        {
-            return _lastCandidate;
-        }
 
-        ValidateIndex(index.Content!);
-        var pages = new List<(Uri Uri, string Content)> { (new Uri(IndexUrl), index.Content!) };
+        ValidateIndex(index.Content);
+        var pages = new List<(Uri Uri, string Content)> { (new Uri(IndexUrl), index.Content) };
         foreach (var (uri, fetcher) in _pageFetchers)
         {
             var page = await fetcher.FetchAsync(cancellationToken);
-            if (page.NotModified)
-            {
-                return _lastCandidate;
-            }
-
-            pages.Add((uri, page.Content!));
+            pages.Add((uri, page.Content));
         }
 
         var retrievedAt = _clock.GetCurrentInstant();
@@ -285,7 +276,11 @@ public sealed class KimiPricingSource : IPricingSource, IDisposable
         var normalized = line.Replace("<>{\"$\"}", "\"$", StringComparison.Ordinal)
             .Replace("</>", "\"", StringComparison.Ordinal);
         var matches = QuotedCell.Matches(normalized);
-        if (matches.Count != 6 || QuotedCell.Replace(normalized, "\"\"") != "[\"\", \"\", \"\", \"\", \"\", \"\"],")
+        // The final row of a page may render without the trailing comma the literal rows carry.
+        if (
+            matches.Count != 6
+            || QuotedCell.Replace(normalized, "\"\"").TrimEnd(',') != "[\"\", \"\", \"\", \"\", \"\", \"\"]"
+        )
         {
             throw new InvalidDataException("Kimi pricing row shape changed.");
         }

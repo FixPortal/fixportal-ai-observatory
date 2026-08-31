@@ -220,7 +220,15 @@ public class ProviderPollingWorkerService(
         }
         catch (Exception ex)
         {
-            LogStateWriteFailure(sourceId, ex);
+            // Include the source error: persisting the failure state failing must not hide
+            // the upstream cause — the compound outage is exactly when it is needed most.
+            logger.LogError(
+                ex,
+                "{SourceId} ingestion failed: {Error} — and the failure state could not be persisted: {StateError}",
+                sourceId,
+                error,
+                SanitizeError(ex.Message)
+            );
         }
     }
 

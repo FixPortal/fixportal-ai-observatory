@@ -23,6 +23,28 @@ public sealed class PricingRefreshWorkerServiceTests(ProviderPollingDatabase dat
     private static readonly Instant Now = Instant.FromUtc(2026, 8, 25, 12, 0);
 
     [Fact]
+    public async Task ExecuteAsync_WhenTheRefreshPassThrows_LogsAndKeepsTheHostAlive()
+    {
+        // RunOnceAsync's unguarded awaits (catalog load, DI resolution, state reads) must not
+        // fault the BackgroundService — the default StopHost behavior would kill the host.
+        var scopeFactory = Substitute.For<IServiceScopeFactory>();
+        // CreateAsyncScope is an extension over CreateScope, so the interface method throws.
+        scopeFactory.CreateScope().Returns(_ => throw new InvalidOperationException("database unreachable"));
+        var worker = new PricingRefreshWorkerService(
+            scopeFactory,
+            new FakeClock(Now),
+            NullLogger<PricingRefreshWorkerService>.Instance
+        );
+
+        await worker.StartAsync(TestContext.Current.CancellationToken);
+        await Task.Delay(200, TestContext.Current.CancellationToken);
+
+        worker.ExecuteTask.Should().NotBeNull();
+        worker.ExecuteTask.IsFaulted.Should().BeFalse();
+        await worker.StopAsync(CancellationToken.None);
+    }
+
+    [Fact]
     public async Task LoadsBundlesBeforeFetchingRemoteSources()
     {
         IPricingSource? source = null;

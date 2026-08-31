@@ -209,7 +209,7 @@ public class GitHubActivityClient(HttpClient http, ILogger<GitHubActivityClient>
         return results;
     }
 
-    public async Task<IReadOnlyList<GitHubWorkflowRunRecord>> GetWorkflowRunsAsync(
+    public async Task<GitHubWorkflowRunResult> GetWorkflowRunsAsync(
         string repo,
         LocalDate since,
         CancellationToken ct = default
@@ -217,6 +217,7 @@ public class GitHubActivityClient(HttpClient http, ILogger<GitHubActivityClient>
     {
         var sinceStr = LocalDatePattern.Iso.Format(since);
         var results = new List<GitHubWorkflowRunRecord>();
+        var truncated = false;
         var page = 1;
         while (true)
         {
@@ -253,11 +254,12 @@ public class GitHubActivityClient(HttpClient http, ILogger<GitHubActivityClient>
                     "GitHub workflow-runs result cap reached for {Repo}; narrowing the backfill window may be required",
                     repo
                 );
+                truncated = true;
                 break;
             }
             page++;
         }
-        return results;
+        return new GitHubWorkflowRunResult(results, truncated);
     }
 
     private static string Truncate(string value, int maxLength) =>
