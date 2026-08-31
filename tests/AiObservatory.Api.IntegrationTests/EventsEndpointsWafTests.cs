@@ -650,6 +650,51 @@ public class EventsEndpointsWafTests(AiObservatoryApiFactory factory)
     }
 
     [Fact]
+    public async Task PatchEventCost_WhenSourceIdIsOmitted_TargetsLegacyOnlyAndMissesNonLegacyEvent()
+    {
+        // AR-7: the PATCH lookup is source-scoped and an omitted sourceId defaults to the
+        // legacy source identity, so omitting it for a non-legacy event is a 404 miss —
+        // never a patch of the row that happens to share the eventKey.
+        using var client = factory.CreateAdminClient();
+        var key = $"waf-source-patch-miss-{Guid.NewGuid():N}";
+        var created = await client.PostAsJsonAsync(
+            "/api/events",
+            new
+            {
+                Provider = "openai",
+                Model = "gpt-5.4",
+                InputTokens = 1,
+                OutputTokens = 1,
+                CostUsd = 1m,
+                RawPayload = "{}",
+                EventKey = key,
+                SourceId = UsageSourceIds.CodexLocal,
+                SourceKind = "localTelemetry",
+                UsageScope = "subscription",
+                CostBasis = "unknown",
+            },
+            TestContext.Current.CancellationToken
+        );
+        created.StatusCode.Should().Be(HttpStatusCode.Created);
+        var localId = (await created.Content.ReadFromJsonAsync<JsonElement>(TestContext.Current.CancellationToken))
+            .GetProperty("id")
+            .GetGuid();
+
+        var patch = await client.PatchAsJsonAsync(
+            $"/api/events/{key}/cost?provider=openai",
+            new { CostUsd = 2m },
+            TestContext.Current.CancellationToken
+        );
+
+        patch.StatusCode.Should().Be(HttpStatusCode.NotFound);
+        (await client.GetFromJsonAsync<JsonElement>($"/api/events/{localId}", TestContext.Current.CancellationToken))
+            .GetProperty("costUsd")
+            .GetDecimal()
+            .Should()
+            .Be(1m);
+    }
+
+    [Fact]
     public async Task PostEvent_WhenLegacyProvenanceIsExplicit_PreservesClientCost()
     {
         using var client = factory.CreateAdminClient();
