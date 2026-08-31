@@ -19,7 +19,8 @@ namespace AiObservatory.Data.Migrations
                 oldClrType: typeof(string),
                 oldType: "character varying(2048)",
                 oldMaxLength: 2048,
-                oldNullable: true);
+                oldNullable: true
+            );
         }
 
         /// <inheritdoc />
@@ -34,7 +35,8 @@ namespace AiObservatory.Data.Migrations
                 oldClrType: typeof(string),
                 oldType: "character varying(4096)",
                 oldMaxLength: 4096,
-                oldNullable: true);
+                oldNullable: true
+            );
         }
     }
 }
