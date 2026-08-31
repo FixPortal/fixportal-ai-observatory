@@ -198,7 +198,7 @@ public class UsageRepositoryTests : IAsyncLifetime
     }
 
     [Fact]
-    public async Task RecordEvent_changed_observation_metadata_is_unchanged()
+    public async Task RecordEvent_identical_replay_advances_the_observed_at_watermark()
     {
         var ct = TestContext.Current.CancellationToken;
         var first = NewEvent();
@@ -210,11 +210,39 @@ public class UsageRepositoryTests : IAsyncLifetime
         await _repo.RecordEventAsync(first, ct);
         var result = await _repo.RecordEventAsync(reread, ct);
 
+        // Values and aggregates are untouched, but the watermark moves forward so a delayed
+        // stale snapshot observed between the two instants can no longer pass the ordering guard.
         result.Disposition.Should().Be(RecordEventDisposition.Unchanged);
         result.IsDuplicate.Should().BeTrue();
+        result.WatermarkAdvanced.Should().BeTrue();
         var saved = await _ctx.UsageEvents.AsNoTracking().SingleAsync(ct);
         saved.IngestedAt.Should().Be(first.IngestedAt);
-        saved.ObservedAt.Should().Be(first.ObservedAt);
+        saved.ObservedAt.Should().Be(reread.ObservedAt);
+    }
+
+    [Fact]
+    public async Task RecordEvent_stale_correction_between_replays_is_rejected_by_the_watermark()
+    {
+        var ct = TestContext.Current.CancellationToken;
+        // Explicit instants: the recorded object is the tracked row, so deriving later timestamps
+        // from first.ObservedAt after the replay would observe the advanced watermark instead.
+        var original = Instant.FromUtc(2026, 8, 24, 12, 2);
+        var first = NewEvent(observedAt: original);
+        var replay = NewEvent(observedAt: original + Duration.FromMinutes(2));
+
+        await _repo.RecordEventAsync(first, ct);
+        await _repo.RecordEventAsync(replay, ct);
+
+        // A differing snapshot observed after the original but before the replay must not roll
+        // the event (or its aggregate) back: the identical replay already advanced the watermark.
+        var delayed = NewEvent(input: 175, observedAt: original + Duration.FromMinutes(1));
+        var result = await _repo.RecordEventAsync(delayed, ct);
+
+        result.Disposition.Should().Be(RecordEventDisposition.Unchanged);
+        var saved = await _ctx.UsageEvents.AsNoTracking().SingleAsync(ct);
+        saved.InputTokens.Should().Be(first.InputTokens);
+        saved.ObservedAt.Should().Be(replay.ObservedAt);
+        (await _ctx.DailyAggregates.AsNoTracking().SingleAsync(ct)).InputTokens.Should().Be(first.InputTokens);
     }
 
     [Fact]
@@ -616,6 +644,22 @@ public class UsageRepositoryTests : IAsyncLifetime
         (await _ctx.UsageEvents.FindAsync([evt.Id], ct))!
             .CostUsd.Should()
             .Be(0.0083m);
+    }
+
+    [Fact]
+    public async Task PatchEventCost_reports_null_old_cost_for_a_previously_unpriced_event()
+    {
+        var ct = TestContext.Current.CancellationToken;
+        const string eventKey = "unpriced-cost-key";
+        await _repo.RecordEventAsync(NewEvent(cost: null, eventKey: eventKey), ct);
+
+        var result = await _repo.PatchEventCostAsync(Provider.OpenAI, UsageSourceIds.OpenAiUsageApi, eventKey, 2m, ct);
+
+        // "Was unknown" must not collapse into "was zero": the aggregate side of the same
+        // operation distinguishes them (UnknownCostCount decrements), so the result does too.
+        result.Should().NotBeNull();
+        result.OldCostUsd.Should().BeNull();
+        result.NewCostUsd.Should().Be(2m);
     }
 
     [Fact]
