@@ -15,15 +15,14 @@ namespace AiObservatory.Data.Migrations
                 name: "CorrectedAt",
                 table: "UsageEvents",
                 type: "timestamp with time zone",
-                nullable: true);
+                nullable: true
+            );
         }
 
         /// <inheritdoc />
         protected override void Down(MigrationBuilder migrationBuilder)
         {
-            migrationBuilder.DropColumn(
-                name: "CorrectedAt",
-                table: "UsageEvents");
+            migrationBuilder.DropColumn(name: "CorrectedAt", table: "UsageEvents");
         }
     }
 }

@@ -89,6 +89,32 @@ public sealed class PricingSnapshotStoreTests : IAsyncLifetime
     }
 
     [Fact]
+    public async Task ActivateReactivatesAHistoricSnapshotWhenTheSourceRevertsToIt()
+    {
+        var ct = TestContext.Current.CancellationToken;
+        var first = Candidate("first document", 1m);
+        var second = Candidate("second document", 2m, retrievedAt: RetrievedAt.Plus(Duration.FromMinutes(1)));
+        await _store.ActivateAsync(first, ct);
+        await _store.ActivateAsync(second, ct);
+
+        var reverted = first with { RetrievedAt = RetrievedAt.Plus(Duration.FromMinutes(2)) };
+        (await _store.ActivateAsync(reverted, ct)).Should().Be(PricingActivationResult.Activated);
+
+        var snapshots = await _db.PricingSnapshots.AsNoTracking().ToListAsync(ct);
+        snapshots.Should().HaveCount(2);
+        var active = snapshots.Single(x => x.IsActive);
+        active.ContentHash.Should().Be(first.ContentHash);
+        active.RetrievedAt.Should().Be(reverted.RetrievedAt);
+        (await _store.GetActiveAsync(PricingSourceIds.OpenAi, ct))!.ContentHash.Should().Be(first.ContentHash);
+
+        // Reactivating the already-active document is still a no-op.
+        (await _store.ActivateAsync(reverted, ct))
+            .Should()
+            .Be(PricingActivationResult.Unchanged);
+        (await _db.PricingSnapshots.AsNoTracking().CountAsync(ct)).Should().Be(2);
+    }
+
+    [Fact]
     public async Task ActivateRollsBackSnapshotAndCallbackWritesWhenCallbackFails()
     {
         var ct = TestContext.Current.CancellationToken;

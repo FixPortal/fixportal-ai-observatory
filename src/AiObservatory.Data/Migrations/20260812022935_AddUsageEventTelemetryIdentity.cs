@@ -1,4 +1,4 @@
-﻿using Microsoft.EntityFrameworkCore.Migrations;
+using Microsoft.EntityFrameworkCore.Migrations;
 
 #nullable disable
 
@@ -79,6 +79,23 @@ namespace AiObservatory.Data.Migrations
             migrationBuilder.DropColumn(name: "SessionId", table: "UsageEvents");
 
             migrationBuilder.DropColumn(name: "ThoughtTokens", table: "UsageEvents");
+
+            // Npgsql backfills NULLs with the column default before SET NOT NULL, so a
+            // bare AlterColumn would silently rewrite every "cost unknown" row into a
+            // genuine zero-cost row — irreversible financial-telemetry corruption (the
+            // unknown-cost aggregate counters would permanently disagree with the events).
+            // Refuse while such rows exist and let an operator decide what they become.
+            migrationBuilder.Sql(
+                """
+                DO $$
+                BEGIN
+                    IF EXISTS (SELECT 1 FROM "UsageEvents" WHERE "CostUsd" IS NULL) THEN
+                        RAISE EXCEPTION 'AddUsageEventTelemetryIdentity rollback refused: % UsageEvents rows have unknown cost ("CostUsd" IS NULL). Reprice, correct, or delete them before rolling back.',
+                            (SELECT count(*) FROM "UsageEvents" WHERE "CostUsd" IS NULL);
+                    END IF;
+                END $$;
+                """
+            );
 
             migrationBuilder.AlterColumn<decimal>(
                 name: "CostUsd",

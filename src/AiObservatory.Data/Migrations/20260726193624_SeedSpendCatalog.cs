@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using Microsoft.EntityFrameworkCore.Migrations;
 
 #nullable disable
@@ -99,8 +99,9 @@ namespace AiObservatory.Data.Migrations
         protected override void Down(MigrationBuilder migrationBuilder)
         {
             // Once any SpendEntry references a seeded vendor, DeleteBehavior.Restrict blocks
-            // this DeleteData and the rollback fails partway through, leaving a half-applied
-            // state. Fail loudly up front instead of leaving that mess.
+            // this DeleteData and the rollback fails with a foreign-key violation (aborting
+            // the migration transaction cleanly). Fail loudly up front with an actionable
+            // message instead.
             throw new NotSupportedException(
                 "SeedSpendCatalog cannot be rolled back once spend entries reference the seeded rows. "
                     + "Roll forward, or drop the spend tables via AddSpendLedger's Down."

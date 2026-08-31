@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using Microsoft.EntityFrameworkCore.Migrations;
 
 #nullable disable
@@ -38,7 +38,8 @@ namespace AiObservatory.Data.Migrations
         protected override void Down(MigrationBuilder migrationBuilder)
         {
             // DeleteBehavior.Restrict blocks this once a SpendEntry references the vendor,
-            // so the rollback would fail mid-statement. Same reasoning as SeedSpendCatalog
+            // so the rollback would fail with a foreign-key violation (aborting the
+            // migration transaction cleanly). Same reasoning as SeedSpendCatalog
             // and SeedRemainingSpendVendorsAndCloudCategory: fail up front, or archive the
             // vendor through the catalog panel, which is the soft delete it is meant to use.
             throw new NotSupportedException(
