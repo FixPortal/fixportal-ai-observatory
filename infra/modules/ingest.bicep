@@ -13,7 +13,9 @@ var requiredAppSettings = [
   { name: 'GITHUB_TOKEN', value: '@Microsoft.KeyVault(VaultName=${kvName};SecretName=github-token)' }
   // Comma-delimited owner/repo list for GitHub Activity ingestion. Held in Key Vault
   // rather than appsettings.json because most of the repos are private and this repo
-  // is public. Absent secret => empty => GitHub Activity stays disabled.
+  // is public. Absent secret => the reference stays unresolved (the literal
+  // '@Microsoft.KeyVault(...)' string), which the app's IsConfigured guard rejects =>
+  // GitHub Activity stays disabled.
   { name: 'Ingest__GitHubRepoAllowlist', value: '@Microsoft.KeyVault(VaultName=${kvName};SecretName=github-repo-allowlist)' }
   { name: 'GOOGLE_BILLING_ACCOUNT_ID', value: '@Microsoft.KeyVault(VaultName=${kvName};SecretName=google-billing-account-id)' }
   { name: 'APPLICATIONINSIGHTS_CONNECTION_STRING', value: aiConnectionString }

@@ -81,6 +81,9 @@ services:
       context: src/AiObservatory.Web
       dockerfile: Dockerfile
       args:
+        # Baked into the image layers and the served JS bundle. VITE_* is
+        # browser-shipped by definition, so the key gains no new exposure here —
+        # but do NOT publish this image anywhere the key should not be readable.
         VITE_API_KEY: ${OBSERVATORY_API_KEY:-change-me}
     # Bound to loopback only, matching db above: the dashboard is a local-only dev
     # surface and its api is served unauthenticated behind a shared change-me key.

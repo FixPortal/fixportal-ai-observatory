@@ -24,6 +24,11 @@ const LOCAL_SOURCE_IDS = {
   antigravity: 'antigravity-local',
 }
 const PARSE_CACHE_VERSION = 2
+// Token fields compared against server inventory to skip unchanged re-posts.
+const SNAPSHOT_TOKEN_FIELDS = [
+  'inputTokens', 'outputTokens', 'cacheReadTokens',
+  'cacheWriteTokens', 'cacheWrite1hTokens', 'thoughtTokens',
+]
 // Gemini Developer API standard-tier pricing changes above this documented prompt-token threshold.
 const GEMINI_LONG_CONTEXT_THRESHOLD = 200_000
 
@@ -74,7 +79,12 @@ export async function observatoryFetch(url, apiKey, options = {}) {
     if (!retryable || attempt === 3) { return response }
     const retryAfter = response.headers.get('Retry-After')
     const fallbackDelayMs = response.status === 429 ? 61_000 : 1_000
-    const delayMs = retryAfter && /^\d+$/.test(retryAfter) ? Number(retryAfter) * 1_000 : fallbackDelayMs
+    // Retry-After is honored but capped: an uncapped server hint can rate-limit
+    // the collector into overlapping scheduled runs, which is worse than retrying
+    // early and being refused again.
+    const delayMs = retryAfter && /^\d+$/.test(retryAfter)
+      ? Math.min(Number(retryAfter) * 1_000, 61_000)
+      : fallbackDelayMs
     await response.body?.cancel()
     await new Promise(resolve => setTimeout(resolve, delayMs))
   }
@@ -84,9 +94,11 @@ export async function observatoryFetch(url, apiKey, options = {}) {
  * Parse a Codex rollout into its last cumulative token_count.
  *
  * ponytail: a session that switches model mid-flight is attributed wholly to the
- * last turn_context model -- the cumulative total isn't broken down per model.
- * Upgrade path: bucket token_count deltas by the preceding turn_context if/when
- * mixed-model Codex sessions become common.
+ * last turn_context model, and the whole cumulative total is bucketed on the day
+ * of the final token_count — the cumulative total isn't broken down per model or
+ * per day. Upgrade path: bucket token_count deltas by the preceding turn_context
+ * and each row's timestamp if/when mixed-model or midnight-crossing Codex
+ * sessions become common.
  */
 export function parseCodex(content) {
   let model = null
@@ -121,7 +133,14 @@ export function parseCodex(content) {
   }
 }
 
-/** Parse the last cumulative per-model Copilot session.shutdown event. */
+/**
+ * Parse the last cumulative per-model Copilot session.shutdown event.
+ *
+ * ponytail: the whole session's cumulative per-model totals are bucketed on the
+ * shutdown event's day — a session still running across UTC midnight moves its
+ * entire total from yesterday's key into today's. Per-day bucketing would need
+ * per-event usage rows, which the session-state log does not carry.
+ */
 export function parseCopilot(content) {
   let shutdown = null
   for (const line of content.split('\n')) {
@@ -219,7 +238,10 @@ export function parseKimi(content) {
 export function parseGeminiReview(content) {
   const records = []
   for (const line of content.split('\n')) {
-    if (!line || !line.includes('"type":"gemini"')) { continue }
+    // Cheap prefilter on the key name only. Filtering on one exact serialisation
+    // ('"type":"gemini"') would silently drop valid rows whose producer writes
+    // whitespace ('"type": "gemini"'); the parsed type check below is the gate.
+    if (!line || !line.includes('gemini')) { continue }
     let row
     try { row = JSON.parse(line) } catch { continue }
     const occurredAtUtc = isoTimestamp(row?.timestamp)
@@ -312,13 +334,25 @@ function antigravityTranscript(content) {
     const timestamp = isoTimestamp(row?.created_at)
     if (timestamp && (!occurredAtUtc || timestamp > occurredAtUtc)) { occurredAtUtc = timestamp }
     const text = typeof row?.content === 'string' ? row.content : ''
+    // Only the settings-change sentence names the model actually selected. Any
+    // other row merely mentioning a model ("compare this with Gemini 2.5 Flash")
+    // must not re-label the whole conversation.
+    if (!/Model Selection/i.test(text)) { continue }
     const match = mappings.find(([pattern]) => pattern.test(text))
     if (match) { model = match[1] }
   }
   return { occurredAtUtc, model }
 }
 
-/** Parse one Antigravity SQLite conversation using its timestamp/model transcript. */
+/**
+ * Parse one Antigravity SQLite conversation using its timestamp/model transcript.
+ *
+ * ponytail: every usage row in the conversation is attributed wholly to the
+ * transcript's last day and last selected model — a conversation that crosses
+ * UTC midnight or switches model mid-flight is not split per day or per model.
+ * Splitting would need per-step timestamps and models, which the steps table
+ * does not carry alongside step_type 23 payloads.
+ */
 export async function parseAntigravityDatabase(path, transcriptContent, report = log) {
   const { occurredAtUtc, model } = antigravityTranscript(transcriptContent)
   if (!occurredAtUtc) { return [] }
@@ -573,7 +607,26 @@ export async function updateFileCache(files, cache, parse, read = path => readFi
     if (unchanged && Array.isArray(cached.records)) {
       next[file.path] = cached
     } else {
-      const parsed = await parse(await read(file.path), file)
+      let parsed
+      try {
+        parsed = await parse(await read(file.path), file)
+      } catch (error) {
+        // A file rotated or locked mid-scan (TOCTOU ENOENT, SQLITE_BUSY on a live
+        // Antigravity conversation) must not abort the whole sweep — and must not
+        // be silently skipped either, because a skipped file's keys drop out of
+        // the scan and are then tombstoned against server inventory. Reuse the
+        // cached records for this path so the key stays exactly as last observed.
+        if (cached && Array.isArray(cached.records)) {
+          log(`Read failed for ${file.path}; reusing cached records:`, error.message)
+          next[file.path] = cached
+          for (const record of cached.records) { records.push(record) }
+        } else {
+          // Never parsed before: nothing was ever posted from this file, so
+          // skipping it cannot tombstone server history.
+          log(`Read failed for ${file.path}; no cached records yet:`, error.message)
+        }
+        continue
+      }
       next[file.path] = {
         mtimeMs: file.mtimeMs,
         ...(file.cacheKey === undefined ? {} : { cacheKey: file.cacheKey }),
@@ -586,10 +639,15 @@ export async function updateFileCache(files, cache, parse, read = path => readFi
 }
 
 export function parseLocalSources(value) {
-  const selected = value === undefined
-    ? ALL_LOCAL_SOURCES
-    : value.split(',').map(x => x.trim().toLowerCase()).filter(Boolean)
-  return new Set(selected.filter(x => ALL_LOCAL_SOURCES.includes(x)))
+  if (value === undefined) { return new Set(ALL_LOCAL_SOURCES) }
+  const selected = value.split(',').map(x => x.trim().toLowerCase()).filter(Boolean)
+  // A typo'd name must abort, not silently shrink the enabled set: an empty or
+  // unintended subset changes which sources this run is responsible for.
+  const unknown = selected.filter(x => !ALL_LOCAL_SOURCES.includes(x))
+  if (unknown.length) {
+    throw new Error(`Unknown OBSERVATORY_LOCAL_SOURCES value(s): ${unknown.join(', ')}. Known: ${ALL_LOCAL_SOURCES.join(', ')}`)
+  }
+  return new Set(selected)
 }
 
 // --- IO / orchestration -----------------------------------------------------
@@ -627,25 +685,35 @@ async function postEvent(url, apiKey, body) {
 
 async function fetchSnapshotInventory(url, apiKey, enabled, machine) {
   const inventory = []
+  const failedSources = new Set()
   for (const tool of ALL_LOCAL_SOURCES) {
     // Only the current scan's sources: fetching every source's inventory would
     // plan zero tombstones for snapshots this run is not responsible for.
     if (!enabled.has(tool)) { continue }
     const sourceId = localSourceId(tool, machine)
-    const response = await observatoryFetch(
-      `${url}/api/events/local-snapshots?sourceId=${encodeURIComponent(sourceId)}`,
-      apiKey,
-    )
-    if (!response.ok) { throw new Error(`Inventory GET ${response.status} for ${sourceId}`) }
-    const snapshots = await response.json()
-    if (!Array.isArray(snapshots)
-      || snapshots.some(snapshot => !snapshot || typeof snapshot !== 'object'
-        || snapshot.sourceId !== sourceId || typeof snapshot.eventKey !== 'string')) {
-      throw new Error(`Invalid inventory response for ${sourceId}`)
+    try {
+      const response = await observatoryFetch(
+        `${url}/api/events/local-snapshots?sourceId=${encodeURIComponent(sourceId)}`,
+        apiKey,
+      )
+      if (!response.ok) { throw new Error(`Inventory GET ${response.status} for ${sourceId}`) }
+      const snapshots = await response.json()
+      if (!Array.isArray(snapshots)
+        || snapshots.some(snapshot => !snapshot || typeof snapshot !== 'object'
+          || snapshot.sourceId !== sourceId || typeof snapshot.eventKey !== 'string')) {
+        throw new Error(`Invalid inventory response for ${sourceId}`)
+      }
+      inventory.push(...snapshots)
+    } catch (error) {
+      // One source's inventory failure must not abort the other collectors.
+      // Continue with an empty inventory for it — but suppress that source's
+      // tombstones for the run, otherwise an unreadable inventory reads as
+      // "nothing on the server" and the reconciliation zeroes real history.
+      console.error(`Inventory unavailable for ${sourceId} (${error.message}); its tombstones are suppressed this run.`)
+      failedSources.add(sourceId)
     }
-    inventory.push(...snapshots)
   }
-  return inventory
+  return { inventory, failedSources }
 }
 
 async function listMatching(dir, matches, out = [], io = { readdir, stat }, topLevel = true) {
@@ -785,14 +853,39 @@ export async function main({ discover = listJsonl, now = () => new Date() } = {}
   delete state.emitted
   const enabled = parseLocalSources(process.env.OBSERVATORY_LOCAL_SOURCES)
   const machine = machineLabel(process.env.OBSERVATORY_MACHINE ?? hostname())
-  const inventory = await fetchSnapshotInventory(url, apiKey, enabled, machine)
+  // A dry run previews without touching the server: no inventory reads either,
+  // so the preview also works offline.
+  const { inventory, failedSources } = DRY_RUN
+    ? { inventory: [], failedSources: new Set() }
+    : await fetchSnapshotInventory(url, apiKey, enabled, machine)
   const snapshots = buildDailySnapshots(await scanRecords(cfg, state, enabled, discover), machine)
   const submissions = planSnapshotSubmissions(snapshots, inventory)
   await saveState(statePath, state)
 
+  // Unchanged snapshots need no re-post: inventory already carries the server's
+  // token counts for every enabled source, so diffing against it keeps a steady
+  // run at one request per genuinely changed key instead of re-posting the whole
+  // local history every interval.
+  const inventoryTokens = new Map(
+    inventory.map(snapshot => [`${snapshot.sourceId}\n${snapshot.eventKey}`, snapshot]),
+  )
+  const unchanged = (snapshot) => {
+    const prior = inventoryTokens.get(`${snapshot.sourceId}\n${snapshot.eventKey}`)
+    return prior !== undefined && SNAPSHOT_TOKEN_FIELDS.every(
+      field => Number.isFinite(prior[field]) && prior[field] === snapshot[field],
+    )
+  }
+
   let posted = 0
   const activeSucceeded = new Map()
   for (const submission of submissions.filter(item => item.active)) {
+    if (unchanged(submission.snapshot)) {
+      activeSucceeded.set(
+        submission.snapshot.sourceId,
+        activeSucceeded.get(submission.snapshot.sourceId) ?? true,
+      )
+      continue
+    }
     const succeeded = await postEvent(
       url,
       apiKey,
@@ -807,6 +900,9 @@ export async function main({ discover = listJsonl, now = () => new Date() } = {}
     }
   }
   for (const submission of submissions.filter(item => !item.active)) {
+    // A source whose inventory could not be read this run must not be
+    // tombstoned: its empty inventory is a fetch failure, not server truth.
+    if (failedSources.has(submission.snapshot.sourceId)) { continue }
     // Tombstones post only for a source whose active submissions all succeeded
     // this run. `undefined` (source not in the enabled subset, or no active
     // snapshots at all) and `false` (a replacement exhausted retries) both
