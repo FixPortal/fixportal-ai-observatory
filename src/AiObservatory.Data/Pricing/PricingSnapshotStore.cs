@@ -52,16 +52,59 @@ public sealed class PricingSnapshotStore(AiObservatoryDbContext db)
                 return PricingActivationResult.Unchanged;
             }
 
-            if (
-                await db.PricingSnapshots.AnyAsync(
+            // The hash check must distinguish "already active" from "seen before": the
+            // (SourceId, ContentHash) unique index means a historic row carrying the hash
+            // blocks a fresh insert, so a source that reverts to an earlier document
+            // (A -> B -> A) can only be represented by reactivating the existing row.
+            // AsNoTracking: the insert path deactivates rows via ExecuteUpdate, so a
+            // previously activated snapshot can still be tracked here with a stale
+            // IsActive. Identity resolution must not turn a reactivation into Unchanged.
+            var hashMatch = await db
+                .PricingSnapshots.AsNoTracking()
+                .SingleOrDefaultAsync(
                     snapshot =>
                         snapshot.SourceId == candidate.SourceId && snapshot.ContentHash == candidate.ContentHash,
                     cancellationToken
-                )
-            )
+                );
+            if (hashMatch is not null)
             {
+                if (hashMatch.IsActive)
+                {
+                    await transaction.CommitAsync(cancellationToken);
+                    return PricingActivationResult.Unchanged;
+                }
+
+                await db
+                    .PricingSnapshots.Where(snapshot => snapshot.SourceId == candidate.SourceId && snapshot.IsActive)
+                    .ExecuteUpdateAsync(
+                        setters => setters.SetProperty(snapshot => snapshot.IsActive, false),
+                        cancellationToken
+                    );
+                // ExecuteUpdate, not tracked mutation: RetrievedAt is init-only, and the
+                // re-stamp matters — date-based lookups order by RetrievedAt, so the
+                // reactivated row must sort as the latest retrieval.
+                await db
+                    .PricingSnapshots.Where(snapshot => snapshot.Id == hashMatch.Id)
+                    .ExecuteUpdateAsync(
+                        setters =>
+                            setters
+                                .SetProperty(snapshot => snapshot.IsActive, true)
+                                .SetProperty(snapshot => snapshot.RetrievedAt, candidate.RetrievedAt),
+                        cancellationToken
+                    );
+
+                if (beforeCommit is not null)
+                {
+                    var reactivated = await db.PricingSnapshots.SingleAsync(
+                        snapshot => snapshot.Id == hashMatch.Id,
+                        cancellationToken
+                    );
+                    await beforeCommit(reactivated, cancellationToken);
+                    await db.SaveChangesAsync(cancellationToken);
+                }
+
                 await transaction.CommitAsync(cancellationToken);
-                return PricingActivationResult.Unchanged;
+                return PricingActivationResult.Activated;
             }
 
             await db

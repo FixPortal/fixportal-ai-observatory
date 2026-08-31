@@ -128,6 +128,13 @@ public class AiObservatoryDbContext(DbContextOptions<AiObservatoryDbContext> opt
                 );
                 t.HasCheckConstraint("CK_DailyAggregate_CostUsd_NonNegative", "\"CostUsd\" >= 0");
                 t.HasCheckConstraint("CK_DailyAggregate_UnknownCostCount_NonNegative", "\"UnknownCostCount\" >= 0");
+                t.HasCheckConstraint(
+                    "CK_DailyAggregate_UnknownCacheSavingsCount_NonNegative",
+                    "\"UnknownCacheSavingsCount\" >= 0"
+                );
+                // No non-negative constraint on CacheSavingsUsd: negative savings are a
+                // genuine value (a cache write can cost more than it saves) and
+                // UsageRepository deliberately preserves them.
                 t.HasCheckConstraint("CK_DailyAggregate_RequestCount_NonNegative", "\"RequestCount\" >= 0");
             });
         });
@@ -380,6 +387,7 @@ public class AiObservatoryDbContext(DbContextOptions<AiObservatoryDbContext> opt
                 // verdict rather than failing the batch.
                 t.HasCheckConstraint("CK_SpendEntry_AmountGbp_SameSign", "\"Amount\" * \"AmountGbp\" > 0");
                 t.HasCheckConstraint("CK_SpendEntry_FxRate_Positive", "\"FxRate\" > 0");
+                t.HasCheckConstraint("CK_SpendEntry_Currency_Normalized", "\"Currency\" ~ '^[A-Z]{3}$'");
             });
         });
 
@@ -390,11 +398,13 @@ public class AiObservatoryDbContext(DbContextOptions<AiObservatoryDbContext> opt
                 .HasConversion<string>()
                 .HasDefaultValue(SubscriptionBillingInterval.Monthly);
             b.ToTable(t =>
+            {
                 t.HasCheckConstraint(
                     "CK_Subscription_BillingMonth_Valid",
                     "(\"BillingInterval\" = 'Monthly' AND \"BillingMonth\" IS NULL) OR (\"BillingInterval\" = 'Annual' AND \"BillingMonth\" IS NOT NULL AND \"BillingMonth\" BETWEEN 1 AND 12)"
-                )
-            );
+                );
+                t.HasCheckConstraint("CK_Subscription_BillingDay_Valid", "\"BillingDay\" BETWEEN 1 AND 31");
+            });
         });
 
         modelBuilder.Entity<Insight>(b =>
@@ -446,6 +456,14 @@ public class AiObservatoryDbContext(DbContextOptions<AiObservatoryDbContext> opt
         {
             b.Property(s => s.AlertEmailTo).HasMaxLength(320); // RFC 5321 max
             b.Property(s => s.SlackWebhookUrl).HasMaxLength(2048);
+            // Singleton declared in the schema, not just in code: every application read
+            // filters on SingletonId, so a stray row with any other id would be invisible.
+            b.ToTable(t =>
+                t.HasCheckConstraint(
+                    "CK_NotificationSettings_Singleton",
+                    $"\"Id\" = '{Entities.NotificationSettings.SingletonId}'"
+                )
+            );
         });
 
         modelBuilder.Entity<CavemanSession>(b =>

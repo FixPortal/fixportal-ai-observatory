@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using Microsoft.EntityFrameworkCore.Migrations;
 
 #nullable disable
@@ -85,11 +85,12 @@ namespace AiObservatory.Data.Migrations
         /// <inheritdoc />
         protected override void Down(MigrationBuilder migrationBuilder)
         {
-            // Same trap SeedSpendCatalog.Down hit: once any SpendEntry references one of
-            // these vendors, DeleteBehavior.Restrict blocks that DeleteData and the rollback
-            // fails partway through, leaving some rows deleted and some not. Fail up front
-            // rather than leaving that mess. Roll forward, or archive the vendor through the
-            // catalog panel — which is the soft delete these rows are actually meant to use.
+            // Same trap SeedSpendCatalog.Down would hit: once any SpendEntry references one
+            // of these vendors, DeleteBehavior.Restrict blocks that DeleteData and the
+            // rollback fails with a foreign-key violation (aborting the migration
+            // transaction cleanly). Fail up front with an actionable message instead. Roll
+            // forward, or archive the vendor through the catalog panel — which is the soft
+            // delete these rows are actually meant to use.
             throw new NotSupportedException(
                 "SeedRemainingSpendVendorsAndCloudCategory cannot be rolled back once spend entries "
                     + "reference the seeded rows. Roll forward, or archive the vendor/category instead."

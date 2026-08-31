@@ -1,4 +1,4 @@
-﻿using Microsoft.EntityFrameworkCore.Migrations;
+using Microsoft.EntityFrameworkCore.Migrations;
 using NodaTime;
 
 #nullable disable
@@ -215,6 +215,30 @@ namespace AiObservatory.Data.Migrations
                 columns: new[] { "SourceId", "EventKey" },
                 unique: true,
                 filter: "\"EventKey\" IS NOT NULL"
+            );
+
+            // The defaults above exist only so the NOT NULL columns could be added to
+            // populated tables. Now that the backfills have run, drop them: a later
+            // direct insert that omits provenance must fail, not silently acquire
+            // synthetic 'legacy-api' / 'Legacy' / epoch values that are
+            // indistinguishable from genuine legacy data.
+            migrationBuilder.Sql(
+                """
+                ALTER TABLE "UsageEvents" ALTER COLUMN "SourceId" DROP DEFAULT;
+                ALTER TABLE "UsageEvents" ALTER COLUMN "SourceKind" DROP DEFAULT;
+                ALTER TABLE "UsageEvents" ALTER COLUMN "UsageScope" DROP DEFAULT;
+                ALTER TABLE "UsageEvents" ALTER COLUMN "CostBasis" DROP DEFAULT;
+                ALTER TABLE "UsageEvents" ALTER COLUMN "ObservedAt" DROP DEFAULT;
+                ALTER TABLE "SpendEntries" ALTER COLUMN "SourceId" DROP DEFAULT;
+                ALTER TABLE "SpendEntries" ALTER COLUMN "SourceKind" DROP DEFAULT;
+                ALTER TABLE "SpendEntries" ALTER COLUMN "UsageScope" DROP DEFAULT;
+                ALTER TABLE "SpendEntries" ALTER COLUMN "CostBasis" DROP DEFAULT;
+                ALTER TABLE "SpendEntries" ALTER COLUMN "ObservedAt" DROP DEFAULT;
+                ALTER TABLE "DailyAggregates" ALTER COLUMN "SourceId" DROP DEFAULT;
+                ALTER TABLE "DailyAggregates" ALTER COLUMN "SourceKind" DROP DEFAULT;
+                ALTER TABLE "DailyAggregates" ALTER COLUMN "UsageScope" DROP DEFAULT;
+                ALTER TABLE "DailyAggregates" ALTER COLUMN "CostBasis" DROP DEFAULT;
+                """
             );
         }
 

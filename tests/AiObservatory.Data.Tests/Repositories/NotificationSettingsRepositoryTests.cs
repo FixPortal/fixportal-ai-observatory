@@ -76,4 +76,22 @@ public class NotificationSettingsRepositoryTests : IAsyncLifetime
         settings!.AlertEmailTo.Should().Be("alerts@example.com");
         settings.SlackWebhookUrl.Should().Be("https://hooks.slack.com/services/T0/B0/xyz");
     }
+
+    [Fact]
+    public async Task NotificationSettings_rejects_a_row_with_a_non_singleton_id()
+    {
+        var ct = TestContext.Current.CancellationToken;
+        _ctx.NotificationSettings.Add(
+            new NotificationSettings
+            {
+                Id = Guid.NewGuid(),
+                AlertEmailTo = "stray@example.com",
+                UpdatedAt = Instant.FromUtc(2026, 8, 31, 0, 0),
+            }
+        );
+
+        var save = () => _ctx.SaveChangesAsync(ct);
+
+        await save.Should().ThrowAsync<DbUpdateException>();
+    }
 }

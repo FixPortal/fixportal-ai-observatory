@@ -401,4 +401,170 @@ public class UsageMigrationTests : IAsyncLifetime
         restoredThreshold.Should().Be(123.45m);
         removedObjects.Should().BeEmpty();
     }
+
+    [Theory]
+    [InlineData(0)]
+    [InlineData(32)]
+    public async Task EnforceSchemaGuardConstraints_RejectsOutOfRangeBillingDay(int billingDay)
+    {
+        var ct = TestContext.Current.CancellationToken;
+        await using var db = new AiObservatoryDbContext(_options);
+        await db.Database.MigrateAsync(ct);
+        db.Subscriptions.Add(
+            new Subscription
+            {
+                Provider = Provider.Google,
+                Name = "Invalid billing day",
+                CostAmount = 1m,
+                Currency = "GBP",
+                BillingDay = billingDay,
+                ActiveFrom = new LocalDate(2026, 1, 1),
+            }
+        );
+
+        var save = () => db.SaveChangesAsync(ct);
+
+        await save.Should().ThrowAsync<DbUpdateException>();
+    }
+
+    [Theory]
+    [InlineData("usd")]
+    [InlineData("US")]
+    [InlineData(" USd")]
+    public async Task EnforceSchemaGuardConstraints_RejectsUnnormalizedSpendEntryCurrency(string currency)
+    {
+        var ct = TestContext.Current.CancellationToken;
+        await using var db = new AiObservatoryDbContext(_options);
+        await db.Database.MigrateAsync(ct);
+        var vendorId = await db
+            .SpendVendors.Where(vendor => vendor.Key == "github-actions")
+            .Select(vendor => vendor.Id)
+            .SingleAsync(ct);
+        var categoryId = await db
+            .SpendCategories.Where(category => category.Key == "ci")
+            .Select(category => category.Id)
+            .SingleAsync(ct);
+        db.SpendEntries.Add(
+            new SpendEntry
+            {
+                OccurredOn = new LocalDate(2026, 8, 1),
+                VendorId = vendorId,
+                CategoryId = categoryId,
+                Amount = 1m,
+                Currency = currency,
+                AmountGbp = 1m,
+                FxRate = 1m,
+                Source = SpendSource.Portal,
+                RecordedAt = Instant.FromUtc(2026, 8, 31, 0, 0),
+                SourceId = UsageSourceIds.LegacySpend,
+                SourceKind = SourceKind.Legacy,
+                UsageScope = UsageScope.Unknown,
+                CostBasis = CostBasis.Billed,
+                ObservedAt = Instant.FromUtc(2026, 8, 31, 0, 0),
+            }
+        );
+
+        var save = () => db.SaveChangesAsync(ct);
+
+        await save.Should().ThrowAsync<DbUpdateException>();
+    }
+
+    [Fact]
+    public async Task EnforceSchemaGuardConstraints_RejectsNegativeUnknownCacheSavingsCount()
+    {
+        var ct = TestContext.Current.CancellationToken;
+        await using var db = new AiObservatoryDbContext(_options);
+        await db.Database.MigrateAsync(ct);
+
+        // Negative CacheSavingsUsd is deliberately allowed (a cache write can cost more
+        // than it saves); only the count is floored.
+        var aggregate = new DailyAggregate
+        {
+            Date = new LocalDate(2026, 8, 31),
+            Provider = Provider.OpenAI,
+            Model = "gpt-5.4",
+            UnknownCacheSavingsCount = -1,
+        };
+        db.DailyAggregates.Add(aggregate);
+
+        var save = () => db.SaveChangesAsync(ct);
+
+        await save.Should().ThrowAsync<DbUpdateException>();
+    }
+
+    [Fact]
+    public async Task AddObservationProvenance_DropsProvenanceDefaultsAfterBackfill()
+    {
+        var ct = TestContext.Current.CancellationToken;
+        await using var db = new AiObservatoryDbContext(_options);
+        await db.Database.MigrateAsync(ct);
+
+        var lingeringDefaults = await db
+            .Database.SqlQueryRaw<string>(
+                """
+                SELECT table_name || '.' || column_name AS "Value"
+                FROM information_schema.columns
+                WHERE table_schema = 'public'
+                  AND column_default IS NOT NULL
+                  AND (
+                      (table_name = 'UsageEvents'
+                       AND column_name IN ('SourceId', 'SourceKind', 'UsageScope', 'CostBasis', 'ObservedAt'))
+                      OR (table_name = 'SpendEntries'
+                       AND column_name IN ('SourceId', 'SourceKind', 'UsageScope', 'CostBasis', 'ObservedAt'))
+                      OR (table_name = 'DailyAggregates'
+                       AND column_name IN ('SourceId', 'SourceKind', 'UsageScope', 'CostBasis'))
+                  )
+                ORDER BY 1
+                """
+            )
+            .ToListAsync(ct);
+
+        lingeringDefaults.Should().BeEmpty();
+    }
+
+    [Fact]
+    public async Task AddUsageEventTelemetryIdentity_RollbackRefusesWhileUnknownCostsExist()
+    {
+        var ct = TestContext.Current.CancellationToken;
+        const string rawPayload = "{}";
+        await using (var db = new AiObservatoryDbContext(_options))
+        {
+            var migrator = db.Database.GetService<IMigrator>();
+            await migrator.MigrateAsync("20260812022935_AddUsageEventTelemetryIdentity", ct);
+            await db.Database.ExecuteSqlInterpolatedAsync(
+                $"""
+                INSERT INTO "UsageEvents" ("Id", "Provider", "OccurredAt", "IngestedAt", "Model", "InputTokens", "OutputTokens", "CostUsd", "RawPayload", "EventKey")
+                VALUES ('50000000-0000-0000-0000-000000000001', 'OpenAI', '2026-08-12T00:30:00Z', '2026-08-12T00:30:00Z', NULL, 1, 1, NULL, CAST({rawPayload} AS jsonb), 'rollback-guard-null-cost')
+                """,
+                ct
+            );
+
+            var rollback = () => migrator.MigrateAsync("20260804192732_AddIdeEvents", ct);
+
+            await rollback.Should().ThrowAsync<PostgresException>().WithMessage("*rollback refused*");
+        }
+
+        // Once the unknown-cost row is resolved, the same rollback succeeds untouched.
+        await using (var db = new AiObservatoryDbContext(_options))
+        {
+            await db.Database.ExecuteSqlRawAsync(
+                """DELETE FROM "UsageEvents" WHERE "EventKey" = 'rollback-guard-null-cost'""",
+                ct
+            );
+            var migrator = db.Database.GetService<IMigrator>();
+            await migrator.MigrateAsync("20260804192732_AddIdeEvents", ct);
+            var telemetryColumns = await db
+                .Database.SqlQueryRaw<int>(
+                    """
+                    SELECT count(*)::int AS "Value"
+                    FROM information_schema.columns
+                    WHERE table_schema = 'public'
+                      AND table_name = 'UsageEvents'
+                      AND column_name IN ('AgentId', 'Runtime', 'SessionId', 'ThoughtTokens')
+                    """
+                )
+                .SingleAsync(ct);
+            telemetryColumns.Should().Be(0);
+        }
+    }
 }
