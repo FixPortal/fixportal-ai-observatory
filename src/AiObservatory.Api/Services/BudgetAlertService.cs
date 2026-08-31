@@ -247,8 +247,22 @@ public class BudgetAlertService(
             // At-least-once attempt semantics: retries reuse a stable Message-Id derived
             // from the durable claim. SMTP success followed by a lost acknowledgement can
             // still duplicate delivery; the protocol cannot make that outcome exactly once.
-            await notifier.NotifyAsync(payload, ct);
-            await repository.MarkBudgetAlertEmailSentAsync(email.ClaimId, leaseId, clock.GetCurrentInstant(), ct);
+            var result = await notifier.NotifyAsync(payload, ct);
+            if (result == AlertDeliveryResult.Sent)
+            {
+                await repository.MarkBudgetAlertEmailSentAsync(email.ClaimId, leaseId, clock.GetCurrentInstant(), ct);
+                return;
+            }
+
+            // No channel actually delivered (nothing configured, or every channel reported
+            // failure without throwing). Marking the claim sent here would drop it from the
+            // deliverable set forever, so release the lease and leave it pending for retry.
+            await repository.ReleaseBudgetAlertEmailLeaseAsync(email.ClaimId, leaseId, ct);
+            logger.LogWarning(
+                "Budget alert email for rule {RuleId} was not delivered on any channel ({Outcome}); its lease was released so the claim stays pending and retries",
+                email.RuleId,
+                result
+            );
         }
         catch (OperationCanceledException ex) when (ct.IsCancellationRequested)
         {

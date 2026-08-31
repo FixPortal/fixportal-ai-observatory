@@ -8,13 +8,13 @@ namespace AiObservatory.Api.Services;
 public sealed class EmailAlertNotifier(ISmtpClient smtpClient, IConfiguration config, IUsageRepository repository)
     : IAlertNotifier
 {
-    public async Task NotifyAsync(BudgetAlertPayload payload, CancellationToken ct = default)
+    public async Task<AlertDeliveryResult> NotifyAsync(BudgetAlertPayload payload, CancellationToken ct = default)
     {
         var settings = await repository.GetNotificationSettingsAsync(ct);
         var to = settings?.AlertEmailTo;
         if (string.IsNullOrEmpty(to))
         {
-            return;
+            return AlertDeliveryResult.NoRecipientConfigured;
         }
 
         var host = config["BUDGET_ALERT_SMTP_HOST"] ?? "smtp.office365.com";
@@ -53,5 +53,7 @@ public sealed class EmailAlertNotifier(ISmtpClient smtpClient, IConfiguration co
                 await smtpClient.DisconnectAsync(true, ct);
             }
         }
+
+        return AlertDeliveryResult.Sent;
     }
 }

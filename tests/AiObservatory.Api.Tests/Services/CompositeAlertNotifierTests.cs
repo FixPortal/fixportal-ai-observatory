@@ -48,6 +48,34 @@ public class CompositeAlertNotifierTests
         await email.Received(1).NotifyAsync(Arg.Any<BudgetAlertPayload>(), Arg.Any<CancellationToken>());
     }
 
+    [Theory]
+    [InlineData(AlertDeliveryResult.Sent, AlertDeliveryResult.Sent, AlertDeliveryResult.Sent)]
+    [InlineData(AlertDeliveryResult.Failed, AlertDeliveryResult.Sent, AlertDeliveryResult.Sent)]
+    [InlineData(AlertDeliveryResult.NoRecipientConfigured, AlertDeliveryResult.Sent, AlertDeliveryResult.Sent)]
+    [InlineData(AlertDeliveryResult.Sent, AlertDeliveryResult.NoRecipientConfigured, AlertDeliveryResult.Sent)]
+    [InlineData(AlertDeliveryResult.Failed, AlertDeliveryResult.NoRecipientConfigured, AlertDeliveryResult.Failed)]
+    [InlineData(
+        AlertDeliveryResult.NoRecipientConfigured,
+        AlertDeliveryResult.NoRecipientConfigured,
+        AlertDeliveryResult.NoRecipientConfigured
+    )]
+    public async Task NotifyAsync_reports_sent_only_when_a_channel_actually_delivered(
+        AlertDeliveryResult slackResult,
+        AlertDeliveryResult emailResult,
+        AlertDeliveryResult expected
+    )
+    {
+        var email = Substitute.For<IAlertNotifier>();
+        var slack = Substitute.For<IAlertNotifier>();
+        slack.NotifyAsync(Arg.Any<BudgetAlertPayload>(), Arg.Any<CancellationToken>()).Returns(slackResult);
+        email.NotifyAsync(Arg.Any<BudgetAlertPayload>(), Arg.Any<CancellationToken>()).Returns(emailResult);
+        var sut = new CompositeAlertNotifier(email, slack, NullLogger<CompositeAlertNotifier>.Instance);
+
+        var result = await sut.NotifyAsync(MakePayload(), TestContext.Current.CancellationToken);
+
+        result.Should().Be(expected);
+    }
+
     [Fact]
     public async Task NotifyAsync_propagates_when_email_throws_preserving_the_existing_retry_contract()
     {

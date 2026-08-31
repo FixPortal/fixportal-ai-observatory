@@ -19,18 +19,20 @@ public sealed class SlackAlertNotifier(
     ILogger<SlackAlertNotifier> logger
 ) : IAlertNotifier
 {
-    public async Task NotifyAsync(BudgetAlertPayload payload, CancellationToken ct = default)
+    public async Task<AlertDeliveryResult> NotifyAsync(BudgetAlertPayload payload, CancellationToken ct = default)
     {
         var settings = await repository.GetNotificationSettingsAsync(ct);
         var webhookUrl = settings?.SlackWebhookUrl;
         if (string.IsNullOrEmpty(webhookUrl))
         {
-            return;
+            return AlertDeliveryResult.NoRecipientConfigured;
         }
 
         if (await repository.GetBudgetAlertSlackSentAsync(payload.ClaimId, ct))
         {
-            return;
+            // Fenced by a previous pass: the alert already reached Slack, so this channel
+            // genuinely delivered even though this call itself posts nothing.
+            return AlertDeliveryResult.Sent;
         }
 
         var text =
@@ -46,9 +48,10 @@ public sealed class SlackAlertNotifier(
                 response.StatusCode,
                 payload.MessageId
             );
-            return;
+            return AlertDeliveryResult.Failed;
         }
 
         await repository.MarkBudgetAlertSlackSentAsync(payload.ClaimId, clock.GetCurrentInstant(), ct);
+        return AlertDeliveryResult.Sent;
     }
 }

@@ -63,8 +63,9 @@ public class SlackAlertNotifierTests
         var clock = new FakeClock(Instant.FromUtc(2026, 8, 30, 0, 0));
 
         var sut = new SlackAlertNotifier(http, repo, clock, NullLogger<SlackAlertNotifier>.Instance);
-        await sut.NotifyAsync(MakePayload(), TestContext.Current.CancellationToken);
+        var result = await sut.NotifyAsync(MakePayload(), TestContext.Current.CancellationToken);
 
+        result.Should().Be(AlertDeliveryResult.NoRecipientConfigured);
         handler.Requests.Should().BeEmpty();
     }
 
@@ -115,9 +116,11 @@ public class SlackAlertNotifierTests
         var clock = new FakeClock(Instant.FromUtc(2026, 8, 30, 0, 0));
 
         var sut = new SlackAlertNotifier(http, repo, clock, NullLogger<SlackAlertNotifier>.Instance);
-        var act = async () => await sut.NotifyAsync(MakePayload(), TestContext.Current.CancellationToken);
+        var result = await sut.NotifyAsync(MakePayload(), TestContext.Current.CancellationToken);
 
-        await act.Should().NotThrowAsync();
+        result.Should().Be(AlertDeliveryResult.Failed);
+        await repo.DidNotReceive()
+            .MarkBudgetAlertSlackSentAsync(Arg.Any<Guid>(), Arg.Any<Instant>(), Arg.Any<CancellationToken>());
     }
 
     [Fact]
@@ -138,8 +141,11 @@ public class SlackAlertNotifierTests
         var clock = new FakeClock(Instant.FromUtc(2026, 8, 30, 0, 0));
 
         var sut = new SlackAlertNotifier(http, repo, clock, NullLogger<SlackAlertNotifier>.Instance);
-        await sut.NotifyAsync(MakePayload(), TestContext.Current.CancellationToken);
+        var result = await sut.NotifyAsync(MakePayload(), TestContext.Current.CancellationToken);
 
+        // Fenced by an earlier pass: the alert already reached Slack, so this channel reports
+        // delivery even though this call posts nothing.
+        result.Should().Be(AlertDeliveryResult.Sent);
         handler.Requests.Should().BeEmpty();
     }
 
