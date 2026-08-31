@@ -37,31 +37,32 @@ export const localDate = (d: Date) => {
   return `${y}-${m}-${day}`
 }
 
-const aggregatesQueryFn = () => {
-  const { from, to } = dashboardDateRange()
-  return getAggregates(localDate(from), localDate(to))
-}
-
-export function useAggregates(from?: Date, to?: Date): { aggregates: DailyAggregate[]; isError: boolean; isLoading: boolean } {
+export function useAggregates(from?: Date, to?: Date, staleTime?: number): { aggregates: DailyAggregate[]; isError: boolean; isLoading: boolean } {
+  // No range means the shared dashboard window — resolve and key on it explicitly so
+  // every Overview consumer lands on the SAME ['aggregates', from, to] cache entry
+  // rather than a second, independently-refetching bare ['aggregates'] one.
   const hasRange = from != null && to != null
+  const range = hasRange ? { from: from!, to: to! } : dashboardDateRange()
   const { data = [], isError, isPending } = useQuery({
-    queryKey: hasRange ? ['aggregates', localDate(from!), localDate(to!)] : ['aggregates'],
-    queryFn: hasRange
-      ? () => getAggregates(localDate(from!), localDate(to!))
-      : aggregatesQueryFn,
+    queryKey: ['aggregates', localDate(range.from), localDate(range.to)],
+    queryFn: () => getAggregates(localDate(range.from), localDate(range.to)),
+    staleTime,
   })
   return { aggregates: data, isError, isLoading: isPending }
 }
 
-export function useActivityDaily(from?: Date, to?: Date): { daily: DailyActivity[]; isError: boolean; isLoading: boolean } {
+export function useActivityDaily(from?: Date, to?: Date, enabled = true): { daily: DailyActivity[]; isError: boolean; isLoading: boolean } {
   const hasRange = from != null && to != null
-  const { data = [], isError, isPending } = useQuery({
+  const { data = [], isError, isLoading } = useQuery({
     queryKey: hasRange ? ['activity-daily', localDate(from!), localDate(to!)] : ['activity-daily'],
     queryFn: hasRange
       ? () => getActivityDaily(localDate(from!), localDate(to!))
       : () => getActivityDaily(),
+    // Callers without a comparison range must pass enabled: false — no range means
+    // "fetch the default window", never "skip the request".
+    enabled,
   })
-  return { daily: data, isError, isLoading: isPending }
+  return { daily: data, isError, isLoading }
 }
 
 export function useActivityByProject(from?: Date, to?: Date): { projects: ProjectActivity[]; isError: boolean; isLoading: boolean } {
@@ -150,28 +151,29 @@ export function useNotificationSettings(): {
 }
 
 // Live only — the pickers (SpendFilterBar, SpendEntryModal). A retired category or
-// vendor must not be selectable again.
-export function useSpendCategories(): SpendCategory[] {
-  const { data = [] } = useQuery({ queryKey: ['spend-categories'], queryFn: () => getSpendCategories() })
-  return data
+// vendor must not be selectable again. Errors are surfaced, not swallowed into an
+// empty list: an empty picker reads as "no categories exist", which is a false claim.
+export function useSpendCategories(): { categories: SpendCategory[]; isError: boolean; isLoading: boolean } {
+  const { data = [], isError, isPending } = useQuery({ queryKey: ['spend-categories'], queryFn: () => getSpendCategories() })
+  return { categories: data, isError, isLoading: isPending }
 }
 
-export function useSpendVendors(): SpendVendor[] {
-  const { data = [] } = useQuery({ queryKey: ['spend-vendors'], queryFn: () => getSpendVendors() })
-  return data
+export function useSpendVendors(): { vendors: SpendVendor[]; isError: boolean; isLoading: boolean } {
+  const { data = [], isError, isPending } = useQuery({ queryKey: ['spend-vendors'], queryFn: () => getSpendVendors() })
+  return { vendors: data, isError, isLoading: isPending }
 }
 
 // Includes archived rows, so a historical ledger entry can still resolve the display
 // name of a category/vendor that has since been retired (spec §8) — used for the
 // ledger table's name maps and SpendPage's largestCategory, never for a picker.
-export function useAllSpendCategories(): SpendCategory[] {
-  const { data = [] } = useQuery({ queryKey: ['spend-categories', 'all'], queryFn: () => getSpendCategories(true) })
-  return data
+export function useAllSpendCategories(): { categories: SpendCategory[]; isError: boolean; isLoading: boolean } {
+  const { data = [], isError, isPending } = useQuery({ queryKey: ['spend-categories', 'all'], queryFn: () => getSpendCategories(true) })
+  return { categories: data, isError, isLoading: isPending }
 }
 
-export function useAllSpendVendors(): SpendVendor[] {
-  const { data = [] } = useQuery({ queryKey: ['spend-vendors', 'all'], queryFn: () => getSpendVendors(true) })
-  return data
+export function useAllSpendVendors(): { vendors: SpendVendor[]; isError: boolean; isLoading: boolean } {
+  const { data = [], isError, isPending } = useQuery({ queryKey: ['spend-vendors', 'all'], queryFn: () => getSpendVendors(true) })
+  return { vendors: data, isError, isLoading: isPending }
 }
 
 export function useSpendEntries(from: Date, to: Date, vendorId?: string, categoryId?: string): {
@@ -202,21 +204,22 @@ export function useBilledReporting(from: Date, to: Date, vendorId?: string, cate
   return { report: data, isLoading: isPending, isError }
 }
 
+// Page-level status for the Overview tab ONLY: the queries its own panels render from.
+// Billed-reporting and source-statuses are deliberately excluded — their failures are
+// scoped to the panels that own them (SpendPage/ReportingPage gates, SourceStatusPanel
+// renders nothing), so one optional endpoint failing must not light a global banner
+// (worst case: a 403 from /spend/reporting telling a healthy session to sign in again).
 export function useDashboardStatus(): { isError: boolean; isLoading: boolean; error: unknown } {
   const range = useMemo(() => dashboardDateRange(), [])
   const from = localDate(range.from)
   const to = localDate(range.to)
   const { isError: aIsError, isPending: aIsPending, error: aError } = useQuery({ queryKey: ['aggregates', from, to], queryFn: () => getAggregates(from, to) })
-  const { isError: pIsError, isPending: pIsPending, error: pError } = useQuery({ queryKey: ['billed-reporting', from, to], queryFn: () => getBilledReporting(from, to) })
   const { isError: iIsError, isPending: iIsPending, error: iError } = useQuery({ queryKey: ['insights'], queryFn: getInsights })
   const { isError: sIsError, isPending: sIsPending, error: sError } = useQuery({ queryKey: ['subscriptions'], queryFn: getSubscriptions })
-  const { isError: ssIsError, isPending: ssIsPending, error: ssError } = useQuery({ queryKey: ['source-statuses'], queryFn: getSourceStatuses })
   const states = [
     { isError: aIsError, isPending: aIsPending, error: aError },
-    { isError: pIsError, isPending: pIsPending, error: pError },
     { isError: iIsError, isPending: iIsPending, error: iError },
     { isError: sIsError, isPending: sIsPending, error: sError },
-    { isError: ssIsError, isPending: ssIsPending, error: ssError },
   ]
   return {
     isError: states.some(state => state.isError),

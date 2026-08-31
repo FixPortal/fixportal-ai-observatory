@@ -17,6 +17,8 @@ vi.mock('../lib/dateRange', () => ({
   }),
 }))
 
+const state = vi.hoisted(() => ({ loading: false }))
+
 vi.mock('../api/queries', () => ({
   localDate: (date: Date) => date.toISOString().slice(0, 10),
   useGitHubPrs: (from: Date) => ({
@@ -29,7 +31,7 @@ vi.mock('../api/queries', () => ({
       { repo: 'fix-portal/b', number: 2, title: 'Second PR', author: 'chris', state: 'open', createdAt: '2026-08-02T09:00:00Z', mergedAt: null, reviewCount: 0, turnaroundHours: null },
     ],
     isError: false,
-    isLoading: false,
+    isLoading: state.loading,
   }),
   useGitHubCommitSummary: (from: Date) => ({
     summary: from.getMonth() === 6 ? [
@@ -40,7 +42,7 @@ vi.mock('../api/queries', () => ({
       { repo: 'fix-portal/b', commitCount: 8, additions: 40, deletions: 15 },
     ],
     isError: false,
-    isLoading: false,
+    isLoading: state.loading,
   }),
   useGitHubCi: (from: Date) => ({
     ci: from.getMonth() === 6 ? [
@@ -51,7 +53,7 @@ vi.mock('../api/queries', () => ({
       { repo: 'fix-portal/b', workflowName: 'CI', totalRuns: 10, failedRuns: 2, successRate: 80 },
     ],
     isError: false,
-    isLoading: false,
+    isLoading: state.loading,
   }),
 }))
 
@@ -84,5 +86,19 @@ describe('GitHubPage', () => {
 
     expect(screen.getByRole('group', { name: 'Pull requests comparison' })).toHaveTextContent('1vs 2-1')
     expect(screen.getByRole('group', { name: 'CI success comparison' })).toHaveTextContent('100%vs 75%+25 pp')
+  })
+
+  it('holds the comparison summary until all six queries settle', () => {
+    // Otherwise it asserts zeros and fabricated deltas against a comparison period
+    // whose requests are still in flight.
+    state.loading = true
+    try {
+      render(<GitHubPage />)
+
+      expect(screen.queryByRole('group', { name: 'Pull requests comparison' })).not.toBeInTheDocument()
+      expect(screen.getByLabelText('Loading GitHub period comparison')).toBeInTheDocument()
+    } finally {
+      state.loading = false
+    }
   })
 })

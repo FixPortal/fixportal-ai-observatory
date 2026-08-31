@@ -1,7 +1,7 @@
 import { useMemo } from 'react'
 import { Card } from '../design/Card'
 import { useAggregates, useBilledReporting, useInsights, AGGREGATES_DAYS_RANGE, dashboardDateRange } from '../api/queries'
-import { useUsdToGbp, formatGbp, gbp } from '../lib/currency'
+import { useUsdToGbp, formatGbp } from '../lib/currency'
 import { formatInt } from '../lib/format'
 import { observedInputTokens, summarizeCosts } from '../lib/costSummary'
 import { InfoPopover } from './InfoPopover'
@@ -25,7 +25,7 @@ function tokensCardValue(loading: boolean, hasAggregates: boolean, totalTokens: 
 export default function SummaryCards() {
   const range = useMemo(() => dashboardDateRange(), [])
   const { aggregates, isLoading: aggregatesLoading } = useAggregates(range.from, range.to)
-  const { report: billedReporting } = useBilledReporting(range.from, range.to)
+  const { report: billedReporting, isLoading: billedLoading } = useBilledReporting(range.from, range.to)
   const { insights, isLoading: insightsLoading } = useInsights()
   const rate = useUsdToGbp()
   const summary = summarizeCosts(aggregates, [])
@@ -51,7 +51,7 @@ export default function SummaryCards() {
             <p>This uses the same rolling {AGGREGATES_DAYS_RANGE}-day window as every financial lane.</p>
           </InfoPopover>
         </div>
-        <div className="card-value card-value--lead">{billedGbp === null ? notReported : gbp(billedGbp)}</div>
+        <div className="card-value card-value--lead">{moneyCardValue(billedLoading, billedGbp, 1)}</div>
       </Card>
       <Card>
         <div className="card-label card-label--row">
@@ -63,6 +63,9 @@ export default function SummaryCards() {
         </div>
         <div className="card-value">{moneyCardValue(aggregatesLoading, summary.listPriceEstimateUsd, rate)}</div>
         <div className="card-sub">USD basis; shown in GBP when reported</div>
+        {!aggregatesLoading && summary.unknownListPriceObservations > 0 && (
+          <div className="card-sub">{summary.unknownListPriceObservations} observation{summary.unknownListPriceObservations === 1 ? '' : 's'} not reported</div>
+        )}
       </Card>
       <Card>
         <div className="card-label card-label--row">
@@ -74,6 +77,9 @@ export default function SummaryCards() {
         </div>
         <div className="card-value">{moneyCardValue(aggregatesLoading, summary.providerEstimateUsd, rate)}</div>
         <div className="card-sub">USD basis; shown in GBP when reported</div>
+        {!aggregatesLoading && summary.unknownProviderEstimateObservations > 0 && (
+          <div className="card-sub">{summary.unknownProviderEstimateObservations} observation{summary.unknownProviderEstimateObservations === 1 ? '' : 's'} not reported</div>
+        )}
       </Card>
       <Card>
         <div className="card-label card-label--row">
@@ -85,6 +91,9 @@ export default function SummaryCards() {
         </div>
         <div className="card-value">{moneyCardValue(aggregatesLoading, summary.notionalUsd, rate)}</div>
         <div className="card-sub">USD basis; shown in GBP when reported</div>
+        {!aggregatesLoading && summary.unknownNotionalObservations > 0 && (
+          <div className="card-sub">{summary.unknownNotionalObservations} observation{summary.unknownNotionalObservations === 1 ? '' : 's'} not reported</div>
+        )}
       </Card>
       <Card>
         <div className="card-label">Tokens</div>

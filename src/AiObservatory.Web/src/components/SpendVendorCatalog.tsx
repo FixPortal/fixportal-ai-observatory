@@ -4,7 +4,7 @@ import {
   createSpendVendor, patchSpendVendor,
   type SpendVendor, type SpendCategory, type NewSpendVendor,
 } from '../api/client'
-import { PROVIDERS } from '../config/providers'
+import { PROVIDERS, providerDisplayName } from '../config/providers'
 
 interface Props {
   /** All vendors, including archived -- this is a management view, so hiding
@@ -30,7 +30,10 @@ export default function SpendVendorCatalog({ vendors, categories }: Props) {
   const [categoryDraft, setCategoryDraft] = useState<{ vendorId: string; value: string } | null>(null)
 
   const liveCategories = useMemo(() => categories.filter(c => c.archivedAt === null), [categories])
-  const providerName = (key: string | null) => PROVIDERS.find(p => p.key === key)?.displayName ?? 'No provider'
+  // null means "No provider (not token-metered)" — a load-bearing distinction from a
+  // set-but-unknown slug (see SpendVendorPatch's tri-state contract), which renders
+  // readably via providerDisplayName instead of collapsing into the null label.
+  const providerName = (key: string | null) => key === null ? 'No provider' : providerDisplayName(key)
 
   // Live categories, plus this vendor's own default when that category has since been
   // archived. Without the second part the select has no option matching its value, so the
@@ -46,7 +49,11 @@ export default function SpendVendorCatalog({ vendors, categories }: Props) {
 
   // Prefix match invalidates both ['spend-vendors'] (live, used by pickers) and
   // ['spend-vendors', 'all'] (this panel, SpendLedgerTable's name map).
-  const invalidate = () => qc.invalidateQueries({ queryKey: ['spend-vendors'] })
+  // ['billed-reporting'] too — see SpendCategoryCatalog.invalidate for why.
+  const invalidate = () => Promise.all([
+    qc.invalidateQueries({ queryKey: ['spend-vendors'] }),
+    qc.invalidateQueries({ queryKey: ['billed-reporting'] }),
+  ])
 
   const create = useMutation({
     mutationFn: (body: NewSpendVendor) => createSpendVendor(body),

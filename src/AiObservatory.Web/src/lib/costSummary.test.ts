@@ -32,6 +32,9 @@ describe('summarizeCosts', () => {
       providerEstimateUsd: 3,
       notionalUsd: 4,
       unknownCostObservations: 1,
+      unknownListPriceObservations: 0,
+      unknownProviderEstimateObservations: 0,
+      unknownNotionalObservations: 0,
       cacheSavingsUsd: null,
       unknownCacheSavingsObservations: 1,
       // The "billed" row above (costUsd: 99) has an unrecognized basis for this
@@ -91,5 +94,20 @@ describe('summarizeCosts', () => {
       aggregate({ costBasis: 'listPriceEstimate', cacheReadTokens: 1, cacheSavingsUsd: 1.25, requestCount: 1 }),
       aggregate({ costBasis: 'listPriceEstimate', cacheReadTokens: 1, unknownCacheSavingsCount: 2, requestCount: 2 }),
     ], [])).toMatchObject({ cacheSavingsUsd: 1.25, unknownCacheSavingsObservations: 2 })
+  })
+
+  test('attributes unpriced observations to their own cost basis', () => {
+    // A partially priced bucket still contributes its known subtotal — the per-basis
+    // count is the card's only signal that the figure is incomplete.
+    const result = summarizeCosts([
+      aggregate({ costBasis: 'listPriceEstimate', costUsd: 2, requestCount: 100, unknownCostCount: 1 }),
+      aggregate({ costBasis: 'notional', costUsd: 4, requestCount: 5, unknownCostCount: 3 }),
+    ], [])
+    expect(result.listPriceEstimateUsd).toBe(2)
+    expect(result.notionalUsd).toBe(4)
+    expect(result.unknownListPriceObservations).toBe(1)
+    expect(result.unknownProviderEstimateObservations).toBe(0)
+    expect(result.unknownNotionalObservations).toBe(3)
+    expect(result.unknownCostObservations).toBe(4)
   })
 })

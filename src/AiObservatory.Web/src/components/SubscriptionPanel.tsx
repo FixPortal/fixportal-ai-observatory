@@ -10,6 +10,8 @@ import SubscriptionModal from './SubscriptionModal'
 import { isReadonly } from '../auth/msal'
 import { PROVIDER_ORDER, providerDisplayName } from '../config/providers'
 
+const SUBSCRIPTION_AGGREGATES_STALE_MS = 5 * 60_000
+
 function ordinal(n: number): string {
   const s = ['th', 'st', 'nd', 'rd']
   const v = n % 100
@@ -119,6 +121,10 @@ function ExtraUsageChip({ sub }: { sub: Subscription }) {
 }
 
 interface GroupedSubscription {
+  /** The full composite the grouping collapses on — provider + currency + interval +
+   * month + day. Also the React key: currency separates groups, so a key without it
+   * collides and can carry ExtraUsageChip editing state onto the wrong card. */
+  groupKey: string
   provider: string
   name: string
   costAmount: number
@@ -160,6 +166,7 @@ export default function SubscriptionPanel() {
       const key = `${sub.provider.toLowerCase()}|${sub.currency.toUpperCase()}|${sub.billingInterval}|${sub.billingMonth ?? ''}|${sub.billingDay}`
       if (!groups[key]) {
         groups[key] = {
+          groupKey: key,
           provider: sub.provider,
           name: sub.name,
           costAmount: 0,
@@ -190,15 +197,18 @@ export default function SubscriptionPanel() {
     return Object.values(groups)
   }, [active])
 
-  const aggregateRange = useMemo(() => {
+  // Reaches back to the earliest current billing-period start (~12 months for an
+  // annual plan), so the range can be long; the staleTime keeps that pull from
+  // refetching on every window focus (the default queryClient sets none).
+  const aggregateWindow = useMemo(() => {
     const from = collapsed.reduce<string | null>((earliest, sub) => {
       const start = currentBillingPeriodStart(sub.billingDay, today, sub.billingInterval, sub.billingMonth)
       const windowStart = sub.activeFrom > start ? sub.activeFrom : start
       return earliest === null || windowStart < earliest ? windowStart : earliest
     }, null)
-    return from === null ? [] : [new Date(`${from}T00:00:00`), new Date(`${today}T00:00:00`)]
+    return from === null ? null : { from: new Date(`${from}T00:00:00`), to: new Date(`${today}T00:00:00`) }
   }, [collapsed, today])
-  const { aggregates } = useAggregates(...aggregateRange)
+  const { aggregates } = useAggregates(aggregateWindow?.from, aggregateWindow?.to, SUBSCRIPTION_AGGREGATES_STALE_MS)
 
   return (
     <div className="sub-panel">
@@ -249,7 +259,7 @@ export default function SubscriptionPanel() {
               const accentColor = providerColor(providerKey)
 
               return (
-                <div key={`${providerKey}|${sub.billingInterval}|${sub.billingMonth ?? ''}|${sub.billingDay}`} className="sub-card" style={{ borderLeftColor: accentColor }}>
+                <div key={sub.groupKey} className="sub-card" style={{ borderLeftColor: accentColor }}>
                   <div className="sub-card__header">
                     <span className="sub-card__provider" style={{ color: accentColor }}>
                       {providerDisplayName(providerKey)}

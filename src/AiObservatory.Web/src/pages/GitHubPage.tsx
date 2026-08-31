@@ -21,6 +21,10 @@ export default function GitHubPage() {
   const rangeLabel = `${localDate(from)} to ${localDate(to)}`
   const comparisonLabel = comparisonMode === 'previous' ? 'Previous period' : 'Comparison period'
   const isError = [prsError, summaryError, ciError, previousPrs.isError, previousSummary.isError, previousCi.isError].some(Boolean)
+  // The summary asserts deltas against the comparison period, so it must wait for ALL
+  // six queries — otherwise it prints zeros with fabricated deltas while they load.
+  const comparisonLoading = [prsLoading, summaryLoading, ciLoading,
+    previousPrs.isLoading, previousSummary.isLoading, previousCi.isLoading].some(Boolean)
   const repos = [...new Set([
     ...prs, ...summary, ...ci, ...previousPrs.prs, ...previousSummary.summary, ...previousCi.ci,
   ].map(item => item.repo))].sort()
@@ -65,12 +69,16 @@ export default function GitHubPage() {
           Couldn’t load GitHub activity data. It may be unavailable or you may not be authorised — try refreshing.
         </div>
       )}
-      <div className="comparison-summary" aria-label="GitHub period comparison">
-        <ComparisonMetric label="Pull requests" selected={visiblePrs.length} comparison={comparisonPrs.length} />
-        <ComparisonMetric label="Commits" selected={commits} comparison={previousCommits} />
-        <ComparisonMetric label="CI success" selected={ciRate} comparison={previousCiRate} suffix="%" deltaSuffix=" pp" />
-        <span className="comparison-summary__basis">vs {comparisonLabel.toLowerCase()}</span>
-      </div>
+      {comparisonLoading ? (
+        <div className="chart-skeleton" aria-label="Loading GitHub period comparison" />
+      ) : (
+        <div className="comparison-summary" aria-label="GitHub period comparison">
+          <ComparisonMetric label="Pull requests" selected={visiblePrs.length} comparison={comparisonPrs.length} />
+          <ComparisonMetric label="Commits" selected={commits} comparison={previousCommits} />
+          <ComparisonMetric label="CI success" selected={ciRate} comparison={previousCiRate} suffix="%" deltaSuffix=" pp" />
+          <span className="comparison-summary__basis">vs {comparisonLabel.toLowerCase()}</span>
+        </div>
+      )}
       <div className="panel">
         <div className="panel-title">Pull requests</div>
         <GitHubPrTable prs={visiblePrs} isError={prsError} isLoading={prsLoading} />

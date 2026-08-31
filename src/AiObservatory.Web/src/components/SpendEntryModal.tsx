@@ -26,7 +26,15 @@ export default function SpendEntryModal({ categories, vendors, from, to, onClose
     return today < minDate ? minDate : today > maxDate ? maxDate : today
   })
   const [vendorId, setVendorId] = useState(vendors[0]?.id ?? '')
-  const [categoryId, setCategoryId] = useState(vendors[0]?.defaultCategoryId ?? categories[0]?.id ?? '')
+  // A vendor's default category applies only while it exists in the live list passed to
+  // the picker — an archived default has no matching <option>, so the select would
+  // display one category while state silently held another (the trap SpendVendorCatalog's
+  // categoryOptions guards against). Fall back to the first live category instead.
+  const liveDefaultCategoryId = (vendor: SpendVendor | undefined) => {
+    const preferred = vendor?.defaultCategoryId
+    return preferred && categories.some(c => c.id === preferred) ? preferred : categories[0]?.id ?? ''
+  }
+  const [categoryId, setCategoryId] = useState(() => liveDefaultCategoryId(vendors[0]))
   const [amount, setAmount] = useState('')
   // The sign lives here, not in the amount box. A refund is stored as a negative amount
   // (see SpendEntry.Amount), but typing a bare "-120" is far more likely to be a slip than
@@ -54,9 +62,10 @@ export default function SpendEntryModal({ categories, vendors, from, to, onClose
 
   function onVendorChange(id: string) {
     setVendorId(id)
-    // Follow the vendor's default category, but only as a starting point.
-    const preferred = vendors.find(v => v.id === id)?.defaultCategoryId
-    if (preferred) setCategoryId(preferred)
+    // Follow the vendor's default category, but only as a starting point — and only
+    // when it is still a live, selectable category (see liveDefaultCategoryId).
+    const vendor = vendors.find(v => v.id === id)
+    if (vendor?.defaultCategoryId) setCategoryId(liveDefaultCategoryId(vendor))
   }
 
   function handleSave() {

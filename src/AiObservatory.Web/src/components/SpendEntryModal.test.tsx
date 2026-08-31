@@ -126,6 +126,23 @@ describe('SpendEntryModal', () => {
     await waitFor(() => expect(post).toHaveBeenCalledTimes(1))
   })
 
+  it('ignores a vendor default category that is not in the live list (archived)', () => {
+    // The archived id has no matching <option>: without a membership check the select
+    // displays the first live category while state silently holds the archived one.
+    const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+    render(
+      <QueryClientProvider client={qc}>
+        <SpendEntryModal
+          categories={categories}
+          vendors={[{ ...vendors[0], defaultCategoryId: 'archived-cat' }]}
+          from={from} to={to} onClose={vi.fn()}
+        />
+      </QueryClientProvider>,
+    )
+
+    expect(screen.getByLabelText(/category/i)).toHaveValue('c1')
+  })
+
   it('surfaces a rejected verdict instead of closing', async () => {
     vi.spyOn(client, 'postSpendEntries')
       .mockResolvedValue([{ id: null, status: 'rejected', reason: 'Unknown VendorId' }])

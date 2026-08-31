@@ -27,7 +27,14 @@ export default function SpendCategoryCatalog({ categories }: Props) {
 
   // Prefix match invalidates both ['spend-categories'] (live, used by pickers) and
   // ['spend-categories', 'all'] (this panel, SpendLedgerTable's name map).
-  const invalidate = () => qc.invalidateQueries({ queryKey: ['spend-categories'] })
+  // ['billed-reporting'] too: its response embeds resolved category/vendor NAMES
+  // (series labels, topVendorName), which a rename/archival would otherwise leave
+  // stale in cache until that query happened to refetch. Ledger rows carry ids and
+  // resolve names through the catalog map, so ['spend-entries'] needs no refresh.
+  const invalidate = () => Promise.all([
+    qc.invalidateQueries({ queryKey: ['spend-categories'] }),
+    qc.invalidateQueries({ queryKey: ['billed-reporting'] }),
+  ])
 
   const create = useMutation({
     mutationFn: (body: NewSpendCategory) => createSpendCategory(body),
