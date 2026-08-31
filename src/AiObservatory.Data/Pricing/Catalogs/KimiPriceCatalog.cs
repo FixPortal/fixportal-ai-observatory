@@ -58,13 +58,17 @@ public sealed record KimiPriceCatalog(
 
     public KimiPriceEntry? Resolve(string model, bool highSpeed, LocalDate usageDate)
     {
-        return Entries
-            .Where(entry =>
-                entry.EffectiveFrom <= usageDate
-                && entry.HighSpeed == highSpeed
-                && entry
-                    .Aliases.Prepend(entry.ModelPrefix)
-                    .Any(alias => model.StartsWith(alias, StringComparison.OrdinalIgnoreCase))
+        return EffectiveWindow
+            .ApplicableAt(
+                Entries.Where(entry =>
+                    entry.HighSpeed == highSpeed
+                    && entry
+                        .Aliases.Prepend(entry.ModelPrefix)
+                        .Any(alias => model.StartsWith(alias, StringComparison.OrdinalIgnoreCase))
+                ),
+                usageDate,
+                entry => entry.EffectiveFrom,
+                entry => entry.EffectiveDateIsProviderDeclared
             )
             .OrderByDescending(entry =>
                 entry

@@ -26,4 +26,46 @@ public class InsightResponseParserTests
         results[1].InsightType.Should().Be(InsightType.Efficiency);
         results[1].Body.Should().Contain("400 tokens");
     }
+
+    [Fact]
+    public void Parse_throws_a_descriptive_error_for_malformed_json()
+    {
+        var sut = new InsightResponseParser();
+        var now = Instant.FromUtc(2026, 6, 2, 8, 0);
+
+        var act = () => sut.Parse("not json at all", new LocalDate(2026, 6, 1), new LocalDate(2026, 6, 1), now);
+
+        act.Should().Throw<InvalidOperationException>().WithMessage("*not valid JSON*");
+    }
+
+    [Fact]
+    public void Parse_throws_a_descriptive_error_when_the_response_is_not_an_array()
+    {
+        var sut = new InsightResponseParser();
+        var now = Instant.FromUtc(2026, 6, 2, 8, 0);
+
+        var act = () => sut.Parse("""{"insights": []}""", new LocalDate(2026, 6, 1), new LocalDate(2026, 6, 1), now);
+
+        act.Should().Throw<InvalidOperationException>().WithMessage("*not a JSON array*");
+    }
+
+    [Fact]
+    public void Parse_skips_items_with_missing_blank_or_non_string_titles()
+    {
+        var json = """
+            [
+              {"type":"summary","title":"Real insight","body":"Worth keeping.","data":{}},
+              {"type":"anomaly","body":"No title at all.","data":{}},
+              {"type":"anomaly","title":"  ","body":"Blank title.","data":{}},
+              {"type":"anomaly","title":42,"body":"Numeric title.","data":{}},
+              "not even an object"
+            ]
+            """;
+
+        var sut = new InsightResponseParser();
+        var now = Instant.FromUtc(2026, 6, 2, 8, 0);
+        var results = sut.Parse(json, new LocalDate(2026, 6, 1), new LocalDate(2026, 6, 1), now);
+
+        results.Should().ContainSingle().Which.Title.Should().Be("Real insight");
+    }
 }

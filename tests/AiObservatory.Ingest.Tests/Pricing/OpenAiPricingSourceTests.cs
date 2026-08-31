@@ -1,6 +1,4 @@
 using System.Net;
-using System.Security.Cryptography;
-using System.Text;
 using AiObservatory.Data.Entities;
 using AiObservatory.Data.Pricing;
 using AiObservatory.Data.Pricing.Catalogs;
@@ -133,7 +131,7 @@ public sealed class OpenAiPricingSourceTests
         first.SourceId.Should().Be(PricingSourceIds.OpenAi);
         first.SourceUrl.Should().Be("https://developers.openai.com/api/docs/pricing.md");
         first.RawEvidence.Should().Be(raw);
-        first.ContentHash.Should().Be(Hash(raw));
+        first.ContentHash.Should().Be(PricingSnapshotCandidate.ComputeContentHash(raw, first.NormalizedCatalog));
         var catalog = PricingCatalogJson.Deserialize<OpenAiPriceCatalog>(first.NormalizedCatalog);
         ((Action)catalog.Validate).Should().NotThrow();
     }
@@ -266,6 +264,4 @@ public sealed class OpenAiPricingSourceTests
 
     private static string Bundle(string name) =>
         File.ReadAllText(Path.Combine(AppContext.BaseDirectory, "Pricing", "Bundled", name));
-
-    private static string Hash(string raw) => Convert.ToHexStringLower(SHA256.HashData(Encoding.UTF8.GetBytes(raw)));
 }

@@ -67,7 +67,7 @@ public class IntelligenceWorkerExecutionTests
             .Returns(call =>
             {
                 generatedDates.Add(call.Arg<LocalDate>());
-                return 0;
+                return new InsightGenerationResult(0, 0);
             });
         var budgetCalled = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         var budget = Budget(repository, clock, () => budgetCalled.TrySetResult());

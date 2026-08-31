@@ -1,6 +1,4 @@
 using System.Data.Common;
-using System.Security.Cryptography;
-using System.Text;
 using System.Text.Json;
 using System.Text.Json.Nodes;
 using AiObservatory.Data.Entities;
@@ -97,14 +95,14 @@ public sealed class PricingSnapshotStoreTests : IAsyncLifetime
         await _store.ActivateAsync(first, ct);
         await _store.ActivateAsync(second, ct);
 
-        var reverted = first with { RetrievedAt = RetrievedAt.Plus(Duration.FromMinutes(2)) };
+        var reverted = first;
         (await _store.ActivateAsync(reverted, ct)).Should().Be(PricingActivationResult.Activated);
 
         var snapshots = await _db.PricingSnapshots.AsNoTracking().ToListAsync(ct);
         snapshots.Should().HaveCount(2);
         var active = snapshots.Single(x => x.IsActive);
         active.ContentHash.Should().Be(first.ContentHash);
-        active.RetrievedAt.Should().Be(reverted.RetrievedAt);
+        active.RetrievedAt.Should().Be(first.RetrievedAt);
         (await _store.GetActiveAsync(PricingSourceIds.OpenAi, ct))!.ContentHash.Should().Be(first.ContentHash);
 
         // Reactivating the already-active document is still a no-op.
@@ -254,13 +252,17 @@ public sealed class PricingSnapshotStoreTests : IAsyncLifetime
             ct
         );
 
-        (await _store.GetCatalogForDateAsync(Provider.OpenAI, new LocalDate(2026, 7, 31), ct)).Should().BeNull();
+        // Both entries carry assumed (non-provider-declared) effective dates, so the earliest
+        // window is treated as open-ended backwards: history predating the first fetch prices.
+        var july = await _store.GetCatalogForDateAsync(Provider.OpenAI, new LocalDate(2026, 7, 31), ct);
         var august = await _store.GetCatalogForDateAsync(Provider.OpenAI, new LocalDate(2026, 8, 31), ct);
         var september = await _store.GetCatalogForDateAsync(Provider.OpenAI, new LocalDate(2026, 9, 1), ct);
 
+        july.Should().NotBeNull();
         august.Should().NotBeNull();
         september.Should().NotBeNull();
         var catalog = JsonSerializer.Deserialize<OpenAiPriceCatalog>(september.NormalizedCatalog, JsonOptions)!;
+        catalog.Resolve("gpt-5.4", "standard", "short", "global", new LocalDate(2026, 7, 31))!.Input.Should().Be(1m);
         catalog.Resolve("gpt-5.4", "standard", "short", "global", new LocalDate(2026, 8, 31))!.Input.Should().Be(1m);
         catalog.Resolve("gpt-5.4", "standard", "short", "global", new LocalDate(2026, 9, 1))!.Input.Should().Be(2m);
         august.ContentHash.Should().Be(september.ContentHash);
@@ -434,16 +436,74 @@ public sealed class PricingSnapshotStoreTests : IAsyncLifetime
     }
 
     [Fact]
-    public void ResolveCannotSelectAFutureEntryForAnEarlierUsageDate()
+    public void ResolveCannotSelectAFutureDeclaredEntryForAnEarlierUsageDate()
+    {
+        // A provider-declared effective date always gates; only assumed dates are open-ended
+        // backwards (see EffectiveWindow).
+        var catalog = new OpenAiPriceCatalog(
+            "USD",
+            "https://example.com/pricing",
+            RetrievedAt,
+            [OpenAiEntry(new LocalDate(2026, 9, 1), 2m) with { EffectiveDateIsProviderDeclared = true }]
+        );
+
+        catalog.Resolve("gpt-5.4", "standard", "short", "global", new LocalDate(2026, 8, 31)).Should().BeNull();
+    }
+
+    [Fact]
+    public void ResolveTreatsTheEarliestAssumedWindowAsOpenEndedBackwards()
     {
         var catalog = new OpenAiPriceCatalog(
             "USD",
             "https://example.com/pricing",
             RetrievedAt,
-            [OpenAiEntry(new LocalDate(2026, 9, 1), 2m)]
+            [OpenAiEntry(new LocalDate(2026, 8, 24), 1m), OpenAiEntry(new LocalDate(2026, 9, 1), 2m)]
         );
 
-        catalog.Resolve("gpt-5.4", "standard", "short", "global", new LocalDate(2026, 8, 31)).Should().BeNull();
+        catalog.Resolve("gpt-5.4", "standard", "short", "global", new LocalDate(2026, 7, 31))!.Input.Should().Be(1m);
+        catalog.Resolve("gpt-5.4", "standard", "short", "global", new LocalDate(2026, 8, 31))!.Input.Should().Be(1m);
+        catalog.Resolve("gpt-5.4", "standard", "short", "global", new LocalDate(2026, 9, 1))!.Input.Should().Be(2m);
+    }
+
+    [Fact]
+    public async Task ActivateRejectsARetrievedAtThatDisagreesWithTheEmbeddedCatalog()
+    {
+        var ct = TestContext.Current.CancellationToken;
+        var mismatched = Candidate("mismatched clock", 1m) with
+        {
+            RetrievedAt = RetrievedAt.Plus(Duration.FromHours(3)),
+        };
+
+        var act = () => _store.ActivateAsync(mismatched, ct);
+
+        await act.Should().ThrowAsync<ArgumentException>().WithMessage("*normalized pricing catalog is invalid*");
+    }
+
+    [Fact]
+    public async Task ActivateTreatsACorrectedCatalogFromUnchangedEvidenceAsNewContent()
+    {
+        // The normaliser is code: a fix that changes the NormalizedCatalog produced from the
+        // same raw evidence must activate (and so reprice), not short-circuit as Unchanged.
+        var ct = TestContext.Current.CancellationToken;
+        var original = Candidate("same evidence", 1m);
+        (await _store.ActivateAsync(original, ct)).Should().Be(PricingActivationResult.Activated);
+
+        var corrected = CandidateFor(
+            Provider.OpenAI,
+            PricingSourceIds.OpenAi,
+            original.SourceUrl,
+            "same evidence",
+            ValidCatalogJson(1.5m),
+            original.RetrievedAt
+        );
+        corrected.RawEvidence.Should().Be(original.RawEvidence);
+        corrected.ContentHash.Should().NotBe(original.ContentHash);
+
+        (await _store.ActivateAsync(corrected, ct)).Should().Be(PricingActivationResult.Activated);
+
+        var snapshots = await _db.PricingSnapshots.AsNoTracking().ToListAsync(ct);
+        snapshots.Should().HaveCount(2);
+        snapshots.Single(x => x.IsActive).ContentHash.Should().Be(corrected.ContentHash);
     }
 
     [Fact]
@@ -676,9 +736,16 @@ public sealed class PricingSnapshotStoreTests : IAsyncLifetime
         string raw,
         string normalizedCatalog,
         Instant? retrievedAt = null
-    ) => new(provider, sourceId, retrievedAt ?? RetrievedAt, sourceUrl, Hash(raw), raw, normalizedCatalog);
-
-    private static string Hash(string raw) => Convert.ToHexStringLower(SHA256.HashData(Encoding.UTF8.GetBytes(raw)));
+    ) =>
+        new(
+            provider,
+            sourceId,
+            retrievedAt ?? RetrievedAt,
+            sourceUrl,
+            PricingSnapshotCandidate.ComputeContentHash(raw, normalizedCatalog),
+            raw,
+            normalizedCatalog
+        );
 
     private static PricingSnapshotCandidate CandidateMissingRequiredField(string fieldCase)
     {

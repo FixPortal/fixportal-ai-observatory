@@ -23,6 +23,20 @@ public sealed class KimiPriceCalculator : IProviderPriceCalculator
         {
             return null;
         }
+
+        // The model suffix and the payload flag both claim the speed lane. When they disagree the
+        // event is mispriced either way — a "…-highspeed" model reported with high_speed:false
+        // prefix-matches the standard entry and prices high-speed usage at the standard rate —
+        // so refuse and surface it instead of guessing.
+        if (
+            !isNotional
+            && hasHighSpeed
+            && model.EndsWith("-highspeed", StringComparison.OrdinalIgnoreCase) != highSpeed
+        )
+        {
+            return null;
+        }
+
         if (!hasHighSpeed)
         {
             highSpeed = model.EndsWith("-highspeed", StringComparison.OrdinalIgnoreCase);

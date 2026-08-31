@@ -86,8 +86,13 @@ public class IntelligenceWorkerService(
         {
             await using var scope = scopeFactory.CreateAsyncScope();
             var generator = scope.ServiceProvider.GetRequiredService<IInsightGenerator>();
-            var count = await generator.GenerateForDateAsync(analysisDate, ct);
-            logger.LogInformation("Intelligence worker wrote {Count} insights for {Period}", count, analysisDate);
+            var result = await generator.GenerateForDateAsync(analysisDate, ct);
+            logger.LogInformation(
+                "Intelligence worker wrote {Persisted} of {Generated} generated insights for {Period}",
+                result.Persisted,
+                result.Generated,
+                analysisDate
+            );
         }
         catch (OperationCanceledException) when (ct.IsCancellationRequested)
         {

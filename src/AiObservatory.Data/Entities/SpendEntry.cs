@@ -3,9 +3,13 @@ using NodaTime;
 namespace AiObservatory.Data.Entities;
 
 /// <summary>
-/// One billed charge. Deliberately carries NO account, card, counterparty, invoice number
-/// or bank transaction id — see spec §3, enforced by
-/// <c>ArchitectureTests.SpendEntry_must_not_carry_bank_linkage</c>.
+/// One billed charge. Carries NO account, card, counterparty, invoice number or bank
+/// transaction id as a typed property — see spec §3. Note the limits of the guard:
+/// <c>ArchitectureTests.SpendEntry_must_not_carry_bank_linkage</c> checks property <i>names</i>
+/// only, never content, and <see cref="RawPayload"/> stores the provider billing API response
+/// verbatim, so the no-bank-linkage boundary rests on what providers choose to include, not
+/// on the test. Treat any new provenance field — or any new writer of <see cref="RawPayload"/>
+/// — with the same suspicion.
 /// </summary>
 public sealed class SpendEntry
 {
@@ -57,6 +61,12 @@ public sealed class SpendEntry
     public string? EntryKey { get; set; }
 
     public Instant RecordedAt { get; set; }
+
+    /// <summary>
+    /// The provider billing API response body, persisted verbatim and unredacted (validated
+    /// only as parseable JSON). This is content the bank-linkage rule in the class doc does
+    /// NOT cover — do not surface it to share-link/read-only consumers without review.
+    /// </summary>
     public string RawPayload { get; set; } = "{}";
     public string SourceId { get; set; } = UsageSourceIds.LegacySpend;
     public SourceKind SourceKind { get; set; } = SourceKind.Legacy;

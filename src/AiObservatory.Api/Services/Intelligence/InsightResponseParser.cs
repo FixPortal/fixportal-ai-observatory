@@ -1,3 +1,4 @@
+using System.Text.Json;
 using System.Text.Json.Nodes;
 using AiObservatory.Data.Entities;
 using NodaTime;
@@ -10,23 +11,55 @@ public class InsightResponseParser
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(json);
 
-        var array =
-            JsonNode.Parse(json)?.AsArray()
-            ?? throw new InvalidOperationException("Intelligence response was not a JSON array.");
+        // Model-authored text is a trust boundary: malformed JSON must fail the run loudly
+        // (rather than surface as a JsonException mid-persistence), and an item without a
+        // usable string title is dropped rather than persisted as a blank card.
+        JsonNode? root;
+        try
+        {
+            root = JsonNode.Parse(json);
+        }
+        catch (JsonException exception)
+        {
+            throw new InvalidOperationException("Intelligence response was not valid JSON.", exception);
+        }
 
-        return array
-            .Select(node => new Insight
+        var array =
+            root as JsonArray ?? throw new InvalidOperationException("Intelligence response was not a JSON array.");
+
+        var insights = new List<Insight>();
+        foreach (var node in array)
+        {
+            if (node is not JsonObject item)
             {
-                GeneratedAt = generatedAt,
-                PeriodStart = periodStart,
-                PeriodEnd = periodEnd,
-                InsightType = ParseType(node?["type"]?.GetValue<string>() ?? "summary"),
-                Title = node?["title"]?.GetValue<string>() ?? "",
-                Body = node?["body"]?.GetValue<string>() ?? "",
-                Data = node?["data"]?.ToJsonString() ?? "{}",
-            })
-            .ToList();
+                continue;
+            }
+
+            var title = StringOrNull(item, "title");
+            if (string.IsNullOrWhiteSpace(title))
+            {
+                continue;
+            }
+
+            insights.Add(
+                new Insight
+                {
+                    GeneratedAt = generatedAt,
+                    PeriodStart = periodStart,
+                    PeriodEnd = periodEnd,
+                    InsightType = ParseType(StringOrNull(item, "type") ?? "summary"),
+                    Title = title,
+                    Body = StringOrNull(item, "body") ?? "",
+                    Data = item["data"]?.ToJsonString() ?? "{}",
+                }
+            );
+        }
+
+        return insights;
     }
+
+    private static string? StringOrNull(JsonObject item, string property) =>
+        item[property] is JsonValue value && value.TryGetValue<string>(out var text) ? text : null;
 
     private static InsightType ParseType(string type) =>
         type.ToLowerInvariant() switch

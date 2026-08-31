@@ -1,5 +1,3 @@
-using System.Security.Cryptography;
-using System.Text;
 using AiObservatory.Data;
 using AiObservatory.Data.Entities;
 using AiObservatory.Data.Pricing;
@@ -68,7 +66,14 @@ public sealed class BundledPricingCatalogLoaderTests(ProviderPollingDatabase dat
                 TestContext.Current.CancellationToken
             );
         snapshot.RawEvidence.Should().Be(raw);
-        snapshot.ContentHash.Should().Be(Convert.ToHexStringLower(SHA256.HashData(Encoding.UTF8.GetBytes(raw))));
+        snapshot
+            .ContentHash.Should()
+            .Be(
+                PricingSnapshotCandidate.ComputeContentHash(
+                    raw,
+                    PricingCatalogJson.Serialize(PricingCatalogJson.Deserialize<OpenAiPriceCatalog>(raw))
+                )
+            );
     }
 
     [Fact]
@@ -162,7 +167,14 @@ public sealed class BundledPricingCatalogLoaderTests(ProviderPollingDatabase dat
             PricingSourceIds.GeminiDeveloperApi,
             TestContext.Current.CancellationToken
         );
-        active!.ContentHash.Should().Be(Convert.ToHexStringLower(SHA256.HashData(Encoding.UTF8.GetBytes(raw))));
+        active!
+            .ContentHash.Should()
+            .Be(
+                PricingSnapshotCandidate.ComputeContentHash(
+                    raw,
+                    PricingCatalogJson.Serialize(PricingCatalogJson.Deserialize<GeminiDeveloperPriceCatalog>(raw))
+                )
+            );
     }
 
     [Fact]
@@ -327,7 +339,8 @@ public sealed class BundledPricingCatalogLoaderTests(ProviderPollingDatabase dat
                     new GooglePriceCalculator(),
                 ],
                 NullLogger<UsagePriceResolver>.Instance
-            )
+            ),
+            store
         );
 
     private sealed class LoaderHarness(

@@ -1,5 +1,3 @@
-using System.Security.Cryptography;
-using System.Text;
 using System.Text.Json;
 using AiObservatory.Data.Entities;
 using AiObservatory.Data.Pricing;
@@ -50,7 +48,7 @@ public sealed class PricingRepricingServiceTests : IAsyncLifetime
             [new OpenAiPriceCalculator()],
             NullLogger<UsagePriceResolver>.Instance
         );
-        _repricing = new PricingRepricingService(_db, _repository, resolver);
+        _repricing = new PricingRepricingService(_db, _repository, resolver, _store);
     }
 
     public async ValueTask DisposeAsync()
@@ -283,7 +281,12 @@ public sealed class PricingRepricingServiceTests : IAsyncLifetime
         var activationStore = new PricingSnapshotStore(activationDb);
         var activationResolver = Resolver(activationStore);
         var activationRepository = new UsageRepository(activationDb);
-        var activationRepricing = new PricingRepricingService(activationDb, activationRepository, activationResolver);
+        var activationRepricing = new PricingRepricingService(
+            activationDb,
+            activationRepository,
+            activationResolver,
+            activationStore
+        );
         var activation = activationStore.ActivateAsync(
             Candidate("new", 2m),
             ct,
@@ -435,14 +438,15 @@ public sealed class PricingRepricingServiceTests : IAsyncLifetime
             Instant.FromUtc(2026, 8, 25, 0, 0),
             entries.ToArray()
         );
+        var normalized = JsonSerializer.Serialize(catalog, JsonOptions);
         return new PricingSnapshotCandidate(
             Provider.OpenAI,
             PricingSourceIds.OpenAi,
             Instant.FromUtc(2026, 8, 25, 0, 0),
             catalog.SourceUrl,
-            Convert.ToHexStringLower(SHA256.HashData(Encoding.UTF8.GetBytes(evidence))),
+            PricingSnapshotCandidate.ComputeContentHash(evidence, normalized),
             evidence,
-            JsonSerializer.Serialize(catalog, JsonOptions)
+            normalized
         );
     }
 }

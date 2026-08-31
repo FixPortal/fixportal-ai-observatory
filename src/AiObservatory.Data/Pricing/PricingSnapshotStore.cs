@@ -1,3 +1,4 @@
+using System.Collections.Concurrent;
 using System.Diagnostics;
 using System.Security.Cryptography;
 using System.Text;
@@ -80,16 +81,14 @@ public sealed class PricingSnapshotStore(AiObservatoryDbContext db)
                         setters => setters.SetProperty(snapshot => snapshot.IsActive, false),
                         cancellationToken
                     );
-                // ExecuteUpdate, not tracked mutation: RetrievedAt is init-only, and the
-                // re-stamp matters — date-based lookups order by RetrievedAt, so the
-                // reactivated row must sort as the latest retrieval.
+                // ExecuteUpdate, not tracked mutation: the AsNoTracking hash match above can
+                // coexist with a stale tracked copy. RetrievedAt is not re-stamped: validation
+                // pins the candidate's retrieval timestamp to the embedded catalog's, which is
+                // the value this row already carries.
                 await db
                     .PricingSnapshots.Where(snapshot => snapshot.Id == hashMatch.Id)
                     .ExecuteUpdateAsync(
-                        setters =>
-                            setters
-                                .SetProperty(snapshot => snapshot.IsActive, true)
-                                .SetProperty(snapshot => snapshot.RetrievedAt, candidate.RetrievedAt),
+                        setters => setters.SetProperty(snapshot => snapshot.IsActive, true),
                         cancellationToken
                     );
 
@@ -174,15 +173,59 @@ public sealed class PricingSnapshotStore(AiObservatoryDbContext db)
         UsageEvent usage,
         Dictionary<string, List<PricingSnapshot>>? snapshotsBySourceId,
         CancellationToken cancellationToken
-    ) =>
-        usage.CostBasis == CostBasis.Notional
-            ? GetActiveForUsageAsync(usage, cancellationToken)
-            : GetCatalogForDateAsync(
-                GetSourceId(usage),
-                usage.OccurredAt.InUtc().Date,
-                snapshotsBySourceId,
-                cancellationToken
-            );
+    ) => FirstOrDefaultAsync(GetCoveringSnapshotsAsync(usage, snapshotsBySourceId, cancellationToken));
+
+    /// <summary>
+    /// Every snapshot covering <paramref name="usage"/>'s date, newest retrieval first. Callers
+    /// resolving a price must walk the list until one actually prices the event's model: the
+    /// newest snapshot wins on date alone, but a catalog refresh that retires a model must fall
+    /// through to an older retained snapshot that still carries it, not return nothing.
+    /// </summary>
+    internal async Task<IReadOnlyList<PricingSnapshot>> GetCoveringSnapshotsAsync(
+        UsageEvent usage,
+        Dictionary<string, List<PricingSnapshot>>? snapshotsBySourceId,
+        CancellationToken cancellationToken
+    )
+    {
+        if (usage.CostBasis == CostBasis.Notional)
+        {
+            var active = await GetActiveForUsageAsync(usage, cancellationToken);
+            return active is null ? [] : [active];
+        }
+
+        var sourceId = GetSourceId(usage);
+        if (sourceId is null)
+        {
+            return [];
+        }
+
+        var snapshots = await GetSnapshotsAsync(sourceId, snapshotsBySourceId, cancellationToken);
+        var usageDate = usage.OccurredAt.InUtc().Date;
+        return CoveringSnapshots(snapshots, usageDate);
+    }
+
+    // Strict date coverage first: the newest snapshot with a window genuinely spanning the
+    // usage date wins. Only when NO snapshot strictly covers the date — e.g. history predating
+    // the first bundled fetch — fall back to snapshots carrying assumed (non-provider-declared)
+    // effective dates, whose earliest window is treated as open-ended backwards (see
+    // EffectiveWindow). Keeping the fallback second preserves the retained-snapshot design: an
+    // older window in a superseded catalog still serves the dates it strictly covers.
+    private static List<PricingSnapshot> CoveringSnapshots(List<PricingSnapshot> snapshots, LocalDate usageDate)
+    {
+        var covering = snapshots.Where(snapshot => Covers(snapshot, usageDate)).ToList();
+        return covering.Count > 0
+            ? covering
+            : snapshots.Where(snapshot => CoverageOf(snapshot).HasAssumedEffectiveDate).ToList();
+    }
+
+    private static SnapshotCoverage CoverageOf(PricingSnapshot snapshot) =>
+        CoverageByCatalogHash.GetOrAdd(CatalogCacheKey(snapshot.NormalizedCatalog), _ => ParseCoverage(snapshot));
+
+    private static async Task<PricingSnapshot?> FirstOrDefaultAsync(Task<IReadOnlyList<PricingSnapshot>> covering)
+    {
+        var snapshots = await covering;
+        return snapshots.Count == 0 ? null : snapshots[0];
+    }
 
     private Task<PricingSnapshot?> GetActiveForUsageAsync(UsageEvent usage, CancellationToken cancellationToken)
     {
@@ -202,6 +245,17 @@ public sealed class PricingSnapshotStore(AiObservatoryDbContext db)
             return null;
         }
 
+        var snapshots = await GetSnapshotsAsync(sourceId, snapshotsBySourceId, cancellationToken);
+        var covering = CoveringSnapshots(snapshots, usageDate);
+        return covering.Count == 0 ? null : covering[0];
+    }
+
+    private async Task<List<PricingSnapshot>> GetSnapshotsAsync(
+        string sourceId,
+        Dictionary<string, List<PricingSnapshot>>? snapshotsBySourceId,
+        CancellationToken cancellationToken
+    )
+    {
         if (snapshotsBySourceId is null || !snapshotsBySourceId.TryGetValue(sourceId, out var snapshots))
         {
             snapshots = await db
@@ -213,7 +267,7 @@ public sealed class PricingSnapshotStore(AiObservatoryDbContext db)
             snapshotsBySourceId?.Add(sourceId, snapshots);
         }
 
-        return snapshots.FirstOrDefault(snapshot => Covers(snapshot, usageDate));
+        return snapshots;
     }
 
     internal Task AcquireSharedActivationLockAsync(Provider provider, CancellationToken cancellationToken = default) =>
@@ -240,25 +294,75 @@ public sealed class PricingSnapshotStore(AiObservatoryDbContext db)
         );
     }
 
+    /// <summary>
+    /// Takes the shared activation lock for every pricing source <paramref name="provider"/> can
+    /// resolve against — Google prices from both the Cloud catalog and the Gemini Developer API
+    /// source, so both must be locked. Requires an active transaction on this context; an
+    /// activation holds the matching exclusive lock, so this blocks until any in-flight
+    /// activation (and its repricing) has committed.
+    /// </summary>
+    internal async Task AcquireSharedActivationLocksAsync(
+        Provider provider,
+        CancellationToken cancellationToken = default
+    )
+    {
+        await AcquireSharedActivationLockAsync(GetSourceId(provider), cancellationToken);
+        if (provider == Provider.Google)
+        {
+            await AcquireSharedActivationLockAsync(PricingSourceIds.GeminiDeveloperApi, cancellationToken);
+        }
+    }
+
     private static bool Covers(PricingSnapshot snapshot, LocalDate usageDate) =>
+        CoverageOf(snapshot).AppliesTo(usageDate);
+
+    // Catalog JSON is parsed once per unique catalog content, not once per (event x snapshot):
+    // a repricing pass over N events would otherwise perform O(N x snapshots) deserialisations.
+    private static readonly ConcurrentDictionary<string, SnapshotCoverage> CoverageByCatalogHash = new(
+        StringComparer.Ordinal
+    );
+
+    private static string CatalogCacheKey(string normalizedCatalog) =>
+        Convert.ToHexStringLower(SHA256.HashData(Encoding.UTF8.GetBytes(normalizedCatalog)));
+
+    private sealed record SnapshotCoverage(LocalDate? EarliestEffectiveFrom, bool HasAssumedEffectiveDate)
+    {
+        public bool AppliesTo(LocalDate usageDate) => EarliestEffectiveFrom is { } earliest && earliest <= usageDate;
+    }
+
+    private static SnapshotCoverage ParseCoverage(PricingSnapshot snapshot)
+    {
+        var entries = Entries(snapshot);
+        return new SnapshotCoverage(
+            entries.Count == 0 ? null : entries.Min(entry => entry.EffectiveFrom),
+            entries.Any(entry => !entry.Declared)
+        );
+    }
+
+    private static List<(LocalDate EffectiveFrom, bool Declared)> Entries(PricingSnapshot snapshot) =>
         snapshot.Provider switch
         {
             Provider.OpenAI => PricingCatalogJson
                 .Deserialize<OpenAiPriceCatalog>(snapshot.NormalizedCatalog)
-                .Entries.Any(entry => entry.EffectiveFrom <= usageDate),
+                .Entries.Select(entry => (entry.EffectiveFrom, entry.EffectiveDateIsProviderDeclared))
+                .ToList(),
             Provider.Anthropic => PricingCatalogJson
                 .Deserialize<AnthropicPriceCatalog>(snapshot.NormalizedCatalog)
-                .Entries.Any(entry => entry.EffectiveFrom <= usageDate),
+                .Entries.Select(entry => (entry.EffectiveFrom, entry.EffectiveDateIsProviderDeclared))
+                .ToList(),
             Provider.Moonshot => PricingCatalogJson
                 .Deserialize<KimiPriceCatalog>(snapshot.NormalizedCatalog)
-                .Entries.Any(entry => entry.EffectiveFrom <= usageDate),
+                .Entries.Select(entry => (entry.EffectiveFrom, entry.EffectiveDateIsProviderDeclared))
+                .ToList(),
             Provider.Google when snapshot.SourceId == PricingSourceIds.GeminiDeveloperApi => PricingCatalogJson
                 .Deserialize<GeminiDeveloperPriceCatalog>(snapshot.NormalizedCatalog)
-                .Entries.Any(entry => entry.EffectiveFrom <= usageDate),
+                .Entries.Select(entry => (entry.EffectiveFrom, entry.EffectiveDateIsProviderDeclared))
+                .ToList(),
             Provider.Google => PricingCatalogJson
                 .Deserialize<GooglePriceCatalog>(snapshot.NormalizedCatalog)
-                .Entries.Any(entry => entry.EffectiveFrom <= usageDate),
-            _ => false,
+                .Entries.Select(entry => (entry.EffectiveFrom, entry.EffectiveDateIsProviderDeclared))
+                .ToList(),
+            _ => [],
         };
 
     private static string? GetSourceId(Provider provider) =>
@@ -324,32 +428,36 @@ public sealed class PricingSnapshotStore(AiObservatoryDbContext db)
             );
         }
 
-        var evidenceHash = Convert.ToHexStringLower(SHA256.HashData(Encoding.UTF8.GetBytes(candidate.RawEvidence)));
+        var evidenceHash = PricingSnapshotCandidate.ComputeContentHash(
+            candidate.RawEvidence,
+            candidate.NormalizedCatalog
+        );
         if (!string.Equals(candidate.ContentHash, evidenceHash, StringComparison.Ordinal))
         {
             throw new ArgumentException(
-                "The content hash must be the lowercase SHA-256 of the exact raw evidence.",
+                "The content hash must be the lowercase SHA-256 of the raw evidence and normalized catalog.",
                 nameof(candidate)
             );
         }
 
         try
         {
-            var catalogSourceUrl = candidate.Provider switch
+            var (catalogSourceUrl, catalogRetrievedAt) = candidate.Provider switch
             {
-                Provider.OpenAI => ValidateAndGetSource(
+                Provider.OpenAI => ValidateAndGetMetadata(
                     PricingCatalogJson.Deserialize<OpenAiPriceCatalog>(candidate.NormalizedCatalog)
                 ),
-                Provider.Anthropic => ValidateAndGetSource(
+                Provider.Anthropic => ValidateAndGetMetadata(
                     PricingCatalogJson.Deserialize<AnthropicPriceCatalog>(candidate.NormalizedCatalog)
                 ),
-                Provider.Moonshot => ValidateAndGetSource(
+                Provider.Moonshot => ValidateAndGetMetadata(
                     PricingCatalogJson.Deserialize<KimiPriceCatalog>(candidate.NormalizedCatalog)
                 ),
-                Provider.Google when candidate.SourceId == PricingSourceIds.GeminiDeveloperApi => ValidateAndGetSource(
-                    PricingCatalogJson.Deserialize<GeminiDeveloperPriceCatalog>(candidate.NormalizedCatalog)
-                ),
-                Provider.Google => ValidateAndGetSource(
+                Provider.Google when candidate.SourceId == PricingSourceIds.GeminiDeveloperApi =>
+                    ValidateAndGetMetadata(
+                        PricingCatalogJson.Deserialize<GeminiDeveloperPriceCatalog>(candidate.NormalizedCatalog)
+                    ),
+                Provider.Google => ValidateAndGetMetadata(
                     PricingCatalogJson.Deserialize<GooglePriceCatalog>(candidate.NormalizedCatalog)
                 ),
                 _ => throw new UnreachableException(),
@@ -358,6 +466,15 @@ public sealed class PricingSnapshotStore(AiObservatoryDbContext db)
             {
                 throw new InvalidDataException("The normalized catalog source URL does not match its evidence.");
             }
+            // Snapshot rows order by the candidate's RetrievedAt and notional pricing uses the
+            // embedded catalog's RetrievedAt as the pricing date — if the two disagree, ordering
+            // and pricing silently use different clocks.
+            if (catalogRetrievedAt != candidate.RetrievedAt)
+            {
+                throw new InvalidDataException(
+                    "The snapshot retrieval timestamp does not match the embedded catalog's."
+                );
+            }
         }
         catch (Exception exception) when (exception is JsonException or InvalidDataException)
         {
@@ -365,33 +482,33 @@ public sealed class PricingSnapshotStore(AiObservatoryDbContext db)
         }
     }
 
-    private static string ValidateAndGetSource(OpenAiPriceCatalog catalog)
+    private static (string SourceUrl, Instant RetrievedAt) ValidateAndGetMetadata(OpenAiPriceCatalog catalog)
     {
         catalog.Validate();
-        return catalog.SourceUrl;
+        return (catalog.SourceUrl, catalog.RetrievedAt);
     }
 
-    private static string ValidateAndGetSource(AnthropicPriceCatalog catalog)
+    private static (string SourceUrl, Instant RetrievedAt) ValidateAndGetMetadata(AnthropicPriceCatalog catalog)
     {
         catalog.Validate();
-        return catalog.SourceUrl;
+        return (catalog.SourceUrl, catalog.RetrievedAt);
     }
 
-    private static string ValidateAndGetSource(KimiPriceCatalog catalog)
+    private static (string SourceUrl, Instant RetrievedAt) ValidateAndGetMetadata(KimiPriceCatalog catalog)
     {
         catalog.Validate();
-        return catalog.SourceUrl;
+        return (catalog.SourceUrl, catalog.RetrievedAt);
     }
 
-    private static string ValidateAndGetSource(GooglePriceCatalog catalog)
+    private static (string SourceUrl, Instant RetrievedAt) ValidateAndGetMetadata(GooglePriceCatalog catalog)
     {
         catalog.Validate();
-        return catalog.SourceUrl;
+        return (catalog.SourceUrl, catalog.RetrievedAt);
     }
 
-    private static string ValidateAndGetSource(GeminiDeveloperPriceCatalog catalog)
+    private static (string SourceUrl, Instant RetrievedAt) ValidateAndGetMetadata(GeminiDeveloperPriceCatalog catalog)
     {
         catalog.Validate();
-        return catalog.SourceUrl;
+        return (catalog.SourceUrl, catalog.RetrievedAt);
     }
 }

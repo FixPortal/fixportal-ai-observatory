@@ -1,5 +1,3 @@
-using System.Security.Cryptography;
-using System.Text;
 using AiObservatory.Data.Entities;
 using AiObservatory.Data.Pricing;
 using AiObservatory.Data.Pricing.Catalogs;
@@ -27,14 +25,15 @@ internal static class PricingCandidate
     )
     {
         Validate(catalog);
+        var normalized = PricingCatalogJson.Serialize(catalog);
         return new PricingSnapshotCandidate(
             provider,
             sourceId,
             retrievedAt,
             sourceUrl,
-            Convert.ToHexStringLower(SHA256.HashData(Encoding.UTF8.GetBytes(rawEvidence))),
+            PricingSnapshotCandidate.ComputeContentHash(rawEvidence, normalized),
             rawEvidence,
-            PricingCatalogJson.Serialize(catalog)
+            normalized
         );
     }
 
