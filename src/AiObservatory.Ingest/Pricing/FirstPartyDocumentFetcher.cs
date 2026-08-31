@@ -3,7 +3,10 @@ using System.Text;
 
 namespace AiObservatory.Ingest.Pricing;
 
-public sealed class FirstPartyDocumentFetcher
+// IDisposable: the pricing sources are scoped and rebuilt once per refresh pass, so without
+// this the owned HttpClientHandler (and its connection pool) was abandoned to the finalizer
+// every pass. The DI scope disposes each source, and the sources dispose their fetchers.
+public sealed class FirstPartyDocumentFetcher : IDisposable
 {
     private const int MaximumRedirects = 3;
     private const int MaximumResponseBytes = 2 * 1024 * 1024;
@@ -45,6 +48,8 @@ public sealed class FirstPartyDocumentFetcher
             Timeout = Timeout.InfiniteTimeSpan,
         };
     }
+
+    public void Dispose() => _client.Dispose();
 
     public async Task<FirstPartyDocument> FetchAsync(CancellationToken cancellationToken)
     {

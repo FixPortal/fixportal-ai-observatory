@@ -61,6 +61,32 @@ public sealed class GitHubBillingSyncServiceTests : IDisposable
     }
 
     [Fact]
+    public async Task RecordsGrossAndDiscountAlongsideNetLikeTheGoogleArm()
+    {
+        // A10: gross was previously recorded as net with a zero credit, so gross-versus-credit
+        // views understated GitHub and lost the included-allowance data. The ledger invariant
+        // is Gross + Credit = Net, so the positive discount lands as a negative credit.
+        var writes = new List<CapturedWrite>();
+        var sut = Create(
+            ClientReturning(Item("actions", "linux", 12.0141527m, grossAmount: 15m, discountAmount: 2.9858473m)),
+            Writer(writes)
+        );
+
+        await sut.SyncAsync(TestContext.Current.CancellationToken);
+
+        var observation = writes.Should().ContainSingle().Which.Observation;
+        observation.GrossAmount.Should().Be(15m);
+        observation.CreditAmount.Should().Be(-2.9858473m);
+        observation.NetAmount.Should().Be(12.0141527m);
+        (observation.GrossAmount + observation.CreditAmount)
+            .Should()
+            .Be(observation.NetAmount, "the database enforces gross + credit = net");
+        using var raw = JsonDocument.Parse(observation.RawPayload);
+        raw.RootElement.GetProperty("grossAmount").GetDecimal().Should().Be(15m);
+        raw.RootElement.GetProperty("discountAmount").GetDecimal().Should().Be(2.9858473m);
+    }
+
+    [Fact]
     public async Task AggregatesRepositoriesButKeepsDifferentSkusApart()
     {
         var writes = new List<CapturedWrite>();
@@ -243,8 +269,10 @@ public sealed class GitHubBillingSyncServiceTests : IDisposable
         string sku,
         decimal netAmount,
         int month = 7,
-        int day = 1
-    ) => new(new DateOnly(2026, month, day), product, sku, netAmount);
+        int day = 1,
+        decimal? grossAmount = null,
+        decimal discountAmount = 0m
+    ) => new(new DateOnly(2026, month, day), product, sku, grossAmount ?? netAmount, discountAmount, netAmount);
 
     private sealed record CapturedWrite(BillingObservation Observation, string VendorKey, string CategoryKey);
 }

@@ -7,7 +7,7 @@ using NodaTime;
 
 namespace AiObservatory.Ingest.Pricing;
 
-public sealed class OpenAiPricingSource : IPricingSource
+public sealed class OpenAiPricingSource : IPricingSource, IDisposable
 {
 #pragma warning disable S1075 // The source URL is the fixed trust boundary required by the pricing design.
     private const string SourceUrl = "https://developers.openai.com/api/docs/pricing.md";
@@ -56,6 +56,8 @@ public sealed class OpenAiPricingSource : IPricingSource
     }
 
     public string SourceId => PricingSourceIds.OpenAi;
+
+    public void Dispose() => _fetcher.Dispose();
 
     public async Task<PricingSnapshotCandidate?> FetchAsync(CancellationToken cancellationToken)
     {

@@ -96,6 +96,8 @@ public class GitHubBillingSyncService(
                 group.Key.Month,
                 group.Key.Product,
                 group.Key.Sku,
+                group.Sum(item => item.GrossAmount),
+                group.Sum(item => item.DiscountAmount),
                 group.Sum(item => item.NetAmount)
             ))
             .OrderBy(line => line.Month)
@@ -116,8 +118,10 @@ public class GitHubBillingSyncService(
             Service = line.Product,
             Sku = line.Sku,
             Currency = Currency,
-            GrossAmount = line.NetAmount,
-            CreditAmount = 0m,
+            GrossAmount = line.GrossAmount,
+            // The ledger's invariant is Gross + Credit = Net (same as the Google arm), and
+            // GitHub's discountAmount is positive, so it lands as a negative credit.
+            CreditAmount = -line.DiscountAmount,
             NetAmount = line.NetAmount,
             RawPayload = JsonSerializer.Serialize(
                 new
@@ -125,6 +129,8 @@ public class GitHubBillingSyncService(
                     billingMonth = line.Month.ToString("yyyy-MM", CultureInfo.InvariantCulture),
                     product = line.Product,
                     sku = line.Sku,
+                    grossAmount = line.GrossAmount,
+                    discountAmount = line.DiscountAmount,
                     netAmount = line.NetAmount,
                 }
             ),
@@ -146,5 +152,12 @@ public class GitHubBillingSyncService(
 
     private static string Part(string value) => $"{value.Length.ToString(CultureInfo.InvariantCulture)}:{value}";
 
-    private sealed record BillingLine(LocalDate Month, string Product, string Sku, decimal NetAmount);
+    private sealed record BillingLine(
+        LocalDate Month,
+        string Product,
+        string Sku,
+        decimal GrossAmount,
+        decimal DiscountAmount,
+        decimal NetAmount
+    );
 }

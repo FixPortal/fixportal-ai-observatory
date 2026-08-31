@@ -5,6 +5,7 @@ using AiObservatory.Data.Pricing.Catalogs;
 using AiObservatory.Ingest.Pricing;
 using AiObservatory.Ingest.Sources;
 using AwesomeAssertions;
+using Microsoft.Extensions.DependencyInjection;
 using NodaTime;
 using NodaTime.Testing;
 
@@ -81,6 +82,40 @@ public sealed class ClaudePricingSourceTests
         var act = () => ClaudePricingSource.Parse(Mutate(Fixture(), mutation), RetrievedAt);
 
         act.Should().Throw<InvalidDataException>();
+    }
+
+    [Theory]
+    [InlineData(typeof(OpenAiPricingSource))]
+    [InlineData(typeof(ClaudePricingSource))]
+    [InlineData(typeof(KimiPricingSource))]
+    [InlineData(typeof(GooglePricingSource))]
+    public void PricingSourcesAreDisposableSoTheRefreshScopeReleasesTheirClients(Type sourceType)
+    {
+        // A2: every pricing source owns at least one HttpClient built outside
+        // IHttpClientFactory; a scoped, non-disposable registration abandoned one handler
+        // (several for Kimi) and its connection pool to the finalizer on every refresh pass.
+        sourceType.Should().Implement<IDisposable>();
+    }
+
+    [Fact]
+    public async Task DisposingTheRefreshScopeDisposesTheSourceClient()
+    {
+        // Mirrors Program.RegisterPricingSources: scoped sources, one fresh scope per pass.
+        await using var provider = new ServiceCollection()
+            .AddScoped(_ => new ClaudePricingSource(
+                new FakeClock(RetrievedAt),
+                new FirstPartyDocumentFetcherTests.RecordingHandler(
+                    (_, _) => new HttpResponseMessage(HttpStatusCode.OK) { Content = new StringContent(Fixture()) }
+                )
+            ))
+            .BuildServiceProvider();
+        var scope = provider.CreateAsyncScope();
+        var source = scope.ServiceProvider.GetRequiredService<ClaudePricingSource>();
+
+        await scope.DisposeAsync();
+
+        var act = () => source.FetchAsync(TestContext.Current.CancellationToken);
+        await act.Should().ThrowAsync<ObjectDisposedException>();
     }
 
     [Fact]
