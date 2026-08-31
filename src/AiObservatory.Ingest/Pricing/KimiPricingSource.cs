@@ -37,8 +37,19 @@ public sealed class KimiPricingSource : IPricingSource, IDisposable
     private readonly IReadOnlyList<(Uri Uri, FirstPartyDocumentFetcher Fetcher)> _pageFetchers;
     private PricingSnapshotCandidate? _lastCandidate;
 
-    public KimiPricingSource(IClock clock)
-        : this(clock, null) { }
+    public KimiPricingSource(IClock clock, IHttpClientFactory httpClientFactory)
+    {
+        _clock = clock;
+        _indexFetcher = Fetcher(httpClientFactory, new Uri(IndexUrl));
+        _pageFetchers =
+        [
+            (K3Uri, Fetcher(httpClientFactory, K3Uri)),
+            (K27Uri, Fetcher(httpClientFactory, K27Uri)),
+            (K26Uri, Fetcher(httpClientFactory, K26Uri)),
+            (K25Uri, Fetcher(httpClientFactory, K25Uri)),
+            (BatchUri, Fetcher(httpClientFactory, BatchUri)),
+        ];
+    }
 
     internal KimiPricingSource(IClock clock, HttpMessageHandler? handler)
     {
@@ -344,6 +355,9 @@ public sealed class KimiPricingSource : IPricingSource, IDisposable
 
     private static FirstPartyDocumentFetcher Fetcher(Uri uri, HttpMessageHandler? handler) =>
         new(uri, ["platform.kimi.ai"], handler);
+
+    private static FirstPartyDocumentFetcher Fetcher(IHttpClientFactory httpClientFactory, Uri uri) =>
+        new(httpClientFactory.CreateClient(FirstPartyDocumentFetcher.HttpClientName), uri, ["platform.kimi.ai"]);
 
     private static string[] Lines(string document) =>
         document.Replace("\r\n", "\n", StringComparison.Ordinal).Replace('\r', '\n').Split('\n');

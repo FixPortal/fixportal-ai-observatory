@@ -314,8 +314,19 @@ static void RegisterPricingSources(IServiceCollection services, IConfiguration c
     services.AddSingleton(
         new PricingSourceDefinition(PricingSourceIds.GoogleCloudCatalog, googleConfigured, refreshInterval)
     );
+
+    // The pricing sources are scoped and rebuilt once per refresh pass; their HTTP handlers
+    // come from the factory so connection pools survive across passes (P1).
+    services
+        .AddHttpClient(FirstPartyDocumentFetcher.HttpClientName)
+        .ConfigurePrimaryHttpMessageHandler(_ => new HttpClientHandler { AllowAutoRedirect = false })
+        .RemoveAllLoggers();
     if (googleConfigured)
     {
+        services
+            .AddHttpClient<GooglePricingSource>()
+            .ConfigurePrimaryHttpMessageHandler(_ => GooglePricingSource.CreateHttpMessageHandler())
+            .RemoveAllLoggers();
         services.TryAddEnumerable(ServiceDescriptor.Scoped<IPricingSource, GooglePricingSource>());
     }
 

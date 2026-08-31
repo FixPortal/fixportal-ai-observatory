@@ -386,6 +386,9 @@ public class BillingObservationWriter(AiObservatoryDbContext db, FxRateProvider 
         {
             throw new ArgumentException("GrossAmount plus CreditAmount must equal NetAmount.", nameof(observation));
         }
+        // Mirrors CK_BillingObservation_Credit_Sign: a credit reduces the gross amount, so
+        // a positive credit would balance the equation above while inflating net spend.
+        ArgumentOutOfRangeException.ThrowIfGreaterThan(observation.CreditAmount, 0m, nameof(observation));
         if (observation.BillingPeriod is { } period && string.IsNullOrWhiteSpace(period))
         {
             throw new ArgumentException("BillingPeriod cannot be blank.", nameof(observation));

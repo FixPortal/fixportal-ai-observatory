@@ -97,6 +97,13 @@ public class AiObservatoryDbContext(DbContextOptions<AiObservatoryDbContext> opt
                     "\"ThoughtTokens\" IS NULL OR \"ThoughtTokens\" >= 0"
                 );
                 t.HasCheckConstraint("CK_UsageEvent_CostUsd_NonNegative", "\"CostUsd\" IS NULL OR \"CostUsd\" >= 0");
+                // CostBasis.None declares that no price applies; a positive cost contradicts
+                // it. The repository rejects that shape before save; this is the same
+                // invariant for writes that bypass it.
+                t.HasCheckConstraint(
+                    "CK_UsageEvent_NoneCostBasis_NoCost",
+                    "\"CostBasis\" <> 'None' OR \"CostUsd\" IS NULL OR \"CostUsd\" = 0"
+                );
             });
         });
 
@@ -418,9 +425,9 @@ public class AiObservatoryDbContext(DbContextOptions<AiObservatoryDbContext> opt
         {
             b.Property(r => r.Provider).HasConversion<string>();
             b.Property(r => r.Period).HasConversion<string>();
-            b.Property(r => r.EvaluationStartsOn)
-                .HasDefaultValueSql("(CURRENT_TIMESTAMP AT TIME ZONE 'UTC')::date")
-                .ValueGeneratedOnAdd();
+            // No database default: the original migration backfilled existing rules to its
+            // deploy day, and every writer (endpoint, demo seed) sets the date explicitly.
+            // A lingering default would silently stamp "today" on inserts that omit it.
         });
 
         modelBuilder.Entity<BudgetAlertClaim>(b =>
@@ -636,6 +643,9 @@ public class AiObservatoryDbContext(DbContextOptions<AiObservatoryDbContext> opt
                     "CK_BillingObservation_Amounts_Balance",
                     "\"GrossAmount\" + \"CreditAmount\" = \"NetAmount\""
                 );
+                // A credit reduces the gross amount, so it is zero or negative; a positive
+                // credit balances the equation above while inflating net billed spend.
+                table.HasCheckConstraint("CK_BillingObservation_Credit_Sign", "\"CreditAmount\" <= 0");
             });
         });
 
