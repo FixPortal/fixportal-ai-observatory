@@ -1,3 +1,4 @@
+using System.Globalization;
 using AiObservatory.Data.Repositories;
 using MailKit.Net.Smtp;
 using MailKit.Security;
@@ -59,16 +60,19 @@ public sealed class EmailAlertNotifier(
             message.From.Add(fromAddress);
             message.To.Add(toAddress);
             message.MessageId = payload.MessageId;
-            message.Subject = FormattableString.Invariant(
+            message.Subject = string.Create(
+                CultureInfo.InvariantCulture,
                 $"Budget alert: {payload.Provider} {payload.Period} billed spend exceeded £{payload.ThresholdGbp:F2}"
             );
             message.Body = new TextPart("plain")
             {
                 Text =
-                    FormattableString.Invariant(
+                    string.Create(
+                        CultureInfo.InvariantCulture,
                         $"Total {payload.Period.ToLowerInvariant()} billed spend for {payload.Provider} reached £{payload.ActualSpendGbp:F2}, "
                     )
-                    + FormattableString.Invariant(
+                    + string.Create(
+                        CultureInfo.InvariantCulture,
                         $"exceeding your £{payload.ThresholdGbp:F2} threshold.\n\nTriggered at: {payload.TriggeredAt:u}"
                     ),
             };

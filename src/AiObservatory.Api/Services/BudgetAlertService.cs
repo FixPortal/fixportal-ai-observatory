@@ -1,3 +1,4 @@
+using System.Globalization;
 using AiObservatory.Data.Entities;
 using AiObservatory.Data.Repositories;
 using NodaTime;
@@ -206,10 +207,12 @@ public class BudgetAlertService(
             PeriodStart = from,
             PeriodEnd = to,
             InsightType = InsightType.BudgetAlert,
-            Title = FormattableString.Invariant(
+            Title = string.Create(
+                CultureInfo.InvariantCulture,
                 $"Budget alert: {rule.Period} billed spend exceeded £{rule.ThresholdGbp:F2}"
             ),
-            Body = FormattableString.Invariant(
+            Body = string.Create(
+                CultureInfo.InvariantCulture,
                 $"Total {rule.Period.ToString().ToLowerInvariant()} billed spend reached £{totalSpendGbp:F2}, exceeding your £{rule.ThresholdGbp:F2} threshold."
             ),
             Data = System.Text.Json.JsonSerializer.Serialize(
