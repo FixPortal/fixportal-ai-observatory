@@ -170,6 +170,31 @@ public class SpendEntryValidationTests
     /// <c>Enum.IsDefined</c> half is what stops an out-of-range source reaching the ledger —
     /// which would then render as a source nothing on the dashboard knows how to label.
     /// </summary>
+    /// <summary>
+    /// CK_SpendEntry_AmountGbp_SameSign rejects a zero AmountGbp, so a charge small enough to
+    /// round to zero at the stored 4-decimal scale must be refused up front with an actionable
+    /// message — the same one the billing writer produces — rather than the opaque
+    /// "Could not save this entry" the DbUpdateException catch would return.
+    /// </summary>
+    [Theory]
+    [InlineData(0.0000)]
+    public void RejectsAnEntryWhoseConvertedAmountRoundsToZeroGbp(double amountGbp)
+    {
+        SpendEntriesEndpoints
+            .RejectIfRoundsToZeroGbp((decimal)amountGbp)
+            .Should()
+            .Be("Amount converts to zero GBP at the stored 4-decimal scale — the entry is too small to record");
+    }
+
+    [Theory]
+    [InlineData(0.0001)]
+    [InlineData(-0.0001)]
+    [InlineData(492.80)]
+    public void AcceptsAnEntryWhoseConvertedAmountSurvivesRounding(double amountGbp)
+    {
+        SpendEntriesEndpoints.RejectIfRoundsToZeroGbp((decimal)amountGbp).Should().BeNull();
+    }
+
     [Theory]
     [InlineData("99")]
     [InlineData("-1")]
