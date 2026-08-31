@@ -46,8 +46,15 @@ public sealed class OpenAiPricingSource : IPricingSource, IDisposable
     private readonly FirstPartyDocumentFetcher _fetcher;
     private PricingSnapshotCandidate? _lastCandidate;
 
-    public OpenAiPricingSource(IClock clock)
-        : this(clock, null) { }
+    public OpenAiPricingSource(IClock clock, IHttpClientFactory httpClientFactory)
+    {
+        _clock = clock;
+        _fetcher = new FirstPartyDocumentFetcher(
+            httpClientFactory.CreateClient(FirstPartyDocumentFetcher.HttpClientName),
+            new Uri(SourceUrl),
+            ["developers.openai.com"]
+        );
+    }
 
     internal OpenAiPricingSource(IClock clock, HttpMessageHandler? handler)
     {

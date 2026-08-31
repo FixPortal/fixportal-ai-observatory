@@ -245,6 +245,28 @@ namespace AiObservatory.Data.Migrations
         /// <inheritdoc />
         protected override void Down(MigrationBuilder migrationBuilder)
         {
+            // Up split the DailyAggregates primary key across provenance lanes, so rows
+            // from two lanes can share (Date, Provider, Model). The legacy three-column
+            // key restored below would collide on those rows and abort the rollback with
+            // a unique violation. Refuse up front with an actionable message instead and
+            // let an operator consolidate the split rows first.
+            migrationBuilder.Sql(
+                """
+                DO $$
+                BEGIN
+                    IF EXISTS (
+                        SELECT 1 FROM "DailyAggregates"
+                        GROUP BY "Date", "Provider", "Model"
+                        HAVING count(*) > 1
+                        LIMIT 1
+                    ) THEN
+                        RAISE EXCEPTION 'AddObservationProvenance rollback refused: % DailyAggregates groups share (Date, Provider, Model) across provenance lanes. Consolidate them into the legacy key before rolling back.',
+                            (SELECT count(*) FROM (SELECT 1 FROM "DailyAggregates" GROUP BY "Date", "Provider", "Model" HAVING count(*) > 1) duplicates);
+                    END IF;
+                END $$;
+                """
+            );
+
             migrationBuilder.DropIndex(name: "IX_UsageEvents_SourceId_EventKey", table: "UsageEvents");
 
             migrationBuilder.DropPrimaryKey(name: "PK_DailyAggregates", table: "DailyAggregates");

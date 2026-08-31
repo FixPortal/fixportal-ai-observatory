@@ -3,22 +3,31 @@ using System.Text;
 
 namespace AiObservatory.Ingest.Pricing;
 
-// IDisposable: the pricing sources are scoped and rebuilt once per refresh pass, so without
-// this the owned HttpClientHandler (and its connection pool) was abandoned to the finalizer
-// every pass. The DI scope disposes each source, and the sources dispose their fetchers.
+// The production client comes from IHttpClientFactory (the named client registered in
+// Program), so its handler and connection pool are pooled across refresh passes instead of
+// each scoped pass abandoning one to the finalizer. Only a self-built client (the internal
+// handler ctor used by tests) is owned and disposed here.
 public sealed class FirstPartyDocumentFetcher : IDisposable
 {
+    public const string HttpClientName = "FirstPartyPricingDocuments";
+
     private const int MaximumRedirects = 3;
     private const int MaximumResponseBytes = 2 * 1024 * 1024;
     private static readonly TimeSpan ProductionRequestTimeout = TimeSpan.FromSeconds(20);
     private static readonly UTF8Encoding StrictUtf8 = new(false, true);
     private readonly HashSet<string> _allowedHosts;
     private readonly HttpClient _client;
+    private readonly bool _ownsClient;
     private readonly TimeSpan _requestTimeout;
     private readonly Uri _source;
 
-    public FirstPartyDocumentFetcher(Uri source, IEnumerable<string> allowedHosts)
-        : this(source, allowedHosts, null) { }
+    public FirstPartyDocumentFetcher(HttpClient client, Uri source, IEnumerable<string> allowedHosts)
+    {
+        ArgumentNullException.ThrowIfNull(client);
+        (_allowedHosts, _source, _requestTimeout) = Validate(source, allowedHosts, null);
+        _client = client;
+        _client.Timeout = Timeout.InfiniteTimeSpan;
+    }
 
     internal FirstPartyDocumentFetcher(
         Uri source,
@@ -27,29 +36,21 @@ public sealed class FirstPartyDocumentFetcher : IDisposable
         TimeSpan? requestTimeout = null
     )
     {
-        ArgumentNullException.ThrowIfNull(source);
-        ArgumentNullException.ThrowIfNull(allowedHosts);
-        _allowedHosts = new HashSet<string>(allowedHosts, StringComparer.OrdinalIgnoreCase);
-        if (_allowedHosts.Count == 0 || _allowedHosts.Any(host => Uri.CheckHostName(host) == UriHostNameType.Unknown))
-        {
-            throw new ArgumentException("At least one valid host is required.", nameof(allowedHosts));
-        }
-
-        ValidateDestination(source);
-        _source = source;
-        _requestTimeout = requestTimeout ?? ProductionRequestTimeout;
-        if (_requestTimeout <= TimeSpan.Zero)
-        {
-            throw new ArgumentOutOfRangeException(nameof(requestTimeout));
-        }
-
+        (_allowedHosts, _source, _requestTimeout) = Validate(source, allowedHosts, requestTimeout);
         _client = new HttpClient(handler ?? new HttpClientHandler { AllowAutoRedirect = false }, handler is null)
         {
             Timeout = Timeout.InfiniteTimeSpan,
         };
+        _ownsClient = true;
     }
 
-    public void Dispose() => _client.Dispose();
+    public void Dispose()
+    {
+        if (_ownsClient)
+        {
+            _client.Dispose();
+        }
+    }
 
     public async Task<FirstPartyDocument> FetchAsync(CancellationToken cancellationToken)
     {
@@ -151,6 +152,42 @@ public sealed class FirstPartyDocumentFetcher : IDisposable
         }
 
         return StrictUtf8.GetString(output.GetBuffer(), 0, checked((int)output.Length));
+    }
+
+    private static (HashSet<string> AllowedHosts, Uri Source, TimeSpan RequestTimeout) Validate(
+        Uri source,
+        IEnumerable<string> allowedHosts,
+        TimeSpan? requestTimeout
+    )
+    {
+        ArgumentNullException.ThrowIfNull(source);
+        ArgumentNullException.ThrowIfNull(allowedHosts);
+        var hosts = new HashSet<string>(allowedHosts, StringComparer.OrdinalIgnoreCase);
+        if (hosts.Count == 0 || hosts.Any(host => Uri.CheckHostName(host) == UriHostNameType.Unknown))
+        {
+            throw new ArgumentException("At least one valid host is required.", nameof(allowedHosts));
+        }
+
+        var timeout = requestTimeout ?? ProductionRequestTimeout;
+        if (timeout <= TimeSpan.Zero)
+        {
+            throw new ArgumentOutOfRangeException(nameof(requestTimeout));
+        }
+
+        if (
+            !source.IsAbsoluteUri
+            || source.Scheme != Uri.UriSchemeHttps
+            || !source.IsDefaultPort
+            || source.UserInfo.Length != 0
+            || source.Query.Length != 0
+            || source.Fragment.Length != 0
+            || !hosts.Contains(source.Host)
+        )
+        {
+            throw new ArgumentException("The first-party document URI is outside the HTTPS host allowlist.");
+        }
+
+        return (hosts, source, timeout);
     }
 
     private void ValidateDestination(Uri destination)

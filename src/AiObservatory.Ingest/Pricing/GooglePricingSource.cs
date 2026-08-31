@@ -20,13 +20,21 @@ public sealed class GooglePricingSource : IPricingSource, IDisposable
     private readonly IClock _clock;
     private readonly ILogger<GooglePricingSource> _logger;
     private readonly IReadOnlyDictionary<string, GoogleSkuMapping> _mappings;
+    private readonly bool _ownsClient;
     private readonly TimeSpan _requestTimeout;
     private readonly string _sourceUrl;
 
     internal static bool HasVerifiedMappings => VerifiedMappings.Count != 0;
 
-    public GooglePricingSource(IClock clock, ILogger<GooglePricingSource> logger, IOptions<IngestOptions> options)
-        : this(clock, logger, options, VerifiedMappings, null) { }
+    // Typed client: DI supplies an IHttpClientFactory-managed client (registered in Program),
+    // so the handler and its connection pool are pooled across refresh passes.
+    public GooglePricingSource(
+        HttpClient client,
+        IClock clock,
+        ILogger<GooglePricingSource> logger,
+        IOptions<IngestOptions> options
+    )
+        : this(clock, logger, options, VerifiedMappings, client, false, null) { }
 
     internal GooglePricingSource(
         IClock clock,
@@ -43,6 +51,25 @@ public sealed class GooglePricingSource : IPricingSource, IDisposable
         IReadOnlyList<GoogleSkuMapping> mappings,
         HttpMessageHandler? handler,
         TimeSpan? requestTimeout = null
+    )
+        : this(
+            clock,
+            logger,
+            options,
+            mappings,
+            new HttpClient(handler ?? CreateHttpMessageHandler(), handler is null),
+            true,
+            requestTimeout
+        ) { }
+
+    private GooglePricingSource(
+        IClock clock,
+        ILogger<GooglePricingSource> logger,
+        IOptions<IngestOptions> options,
+        IReadOnlyList<GoogleSkuMapping> mappings,
+        HttpClient client,
+        bool ownsClient,
+        TimeSpan? requestTimeout
     )
     {
         ArgumentNullException.ThrowIfNull(clock);
@@ -78,18 +105,23 @@ public sealed class GooglePricingSource : IPricingSource, IDisposable
         }
 
         _sourceUrl = $"https://cloudbilling.googleapis.com/v1/services/{serviceId}/skus";
-        _client = new HttpClient(handler ?? CreateHttpMessageHandler(), handler is null)
-        {
-            Timeout = Timeout.InfiniteTimeSpan,
-        };
+        _client = client;
+        _client.Timeout = Timeout.InfiniteTimeSpan;
         _client.DefaultRequestHeaders.Add("X-Goog-Api-Key", apiKey);
+        _ownsClient = ownsClient;
     }
 
     internal static HttpClientHandler CreateHttpMessageHandler() => new() { AllowAutoRedirect = false };
 
     public string SourceId => PricingSourceIds.GoogleCloudCatalog;
 
-    public void Dispose() => _client.Dispose();
+    public void Dispose()
+    {
+        if (_ownsClient)
+        {
+            _client.Dispose();
+        }
+    }
 
     public async Task<PricingSnapshotCandidate?> FetchAsync(CancellationToken cancellationToken)
     {

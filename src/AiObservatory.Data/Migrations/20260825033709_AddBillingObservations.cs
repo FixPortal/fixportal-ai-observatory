@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using Microsoft.EntityFrameworkCore.Migrations;
 using NodaTime;
 
@@ -107,10 +107,20 @@ namespace AiObservatory.Data.Migrations
         {
             migrationBuilder.DropTable(name: "BillingObservations");
 
-            migrationBuilder.DeleteData(
-                table: "SpendCategories",
-                keyColumn: "Id",
-                keyValue: new Guid("11111111-1111-1111-1111-111111111106")
+            // The api-usage category is what the billing-observation writer books spend
+            // against, and FK_SpendEntries_SpendCategories_CategoryId is Restrict, so once
+            // any SpendEntry references it the delete is blocked. Delete it only while it
+            // is unreferenced; a referenced category survives the rollback rather than
+            // aborting it with a foreign-key violation.
+            migrationBuilder.Sql(
+                """
+                DELETE FROM "SpendCategories"
+                WHERE "Id" = '11111111-1111-1111-1111-111111111106'
+                    AND NOT EXISTS (
+                        SELECT 1 FROM "SpendEntries"
+                        WHERE "CategoryId" = '11111111-1111-1111-1111-111111111106'
+                    )
+                """
             );
 
             migrationBuilder.AlterColumn<string>(

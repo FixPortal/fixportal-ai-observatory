@@ -36,8 +36,15 @@ public sealed class ClaudePricingSource : IPricingSource, IDisposable
     private readonly FirstPartyDocumentFetcher _fetcher;
     private PricingSnapshotCandidate? _lastCandidate;
 
-    public ClaudePricingSource(IClock clock)
-        : this(clock, null) { }
+    public ClaudePricingSource(IClock clock, IHttpClientFactory httpClientFactory)
+    {
+        _clock = clock;
+        _fetcher = new FirstPartyDocumentFetcher(
+            httpClientFactory.CreateClient(FirstPartyDocumentFetcher.HttpClientName),
+            new Uri(SourceUrl),
+            ["platform.claude.com"]
+        );
+    }
 
     internal ClaudePricingSource(IClock clock, HttpMessageHandler? handler)
     {

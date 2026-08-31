@@ -323,7 +323,7 @@ public class UsageMigrationTests : IAsyncLifetime
     }
 
     [Fact]
-    public async Task AddBudgetAlertsAndRenameThresholdToGbp_is_one_value_preserving_deployment_boundary()
+    public async Task BudgetThresholdRenameThenGbpConversion_is_a_two_step_deployment_boundary()
     {
         var ct = TestContext.Current.CancellationToken;
         var existingRuleId = Guid.Parse("30000000-0000-0000-0000-000000000001");
@@ -339,6 +339,17 @@ public class UsageMigrationTests : IAsyncLifetime
                 """,
                 ct
             );
+
+            // The rename itself is the value-preserving boundary: 123.45 USD becomes 123.45
+            // "GBP" here, which is exactly the drift the follow-up migration then corrects.
+            await migrator.MigrateAsync("20260826130157_AddBudgetAlertsAndRenameThresholdToGbp", ct);
+            var renamed = await beforeMigration
+                .Database.SqlQuery<decimal>(
+                    $"""SELECT "ThresholdGbp" AS "Value" FROM "BudgetRules" WHERE "Id" = {existingRuleId}"""
+                )
+                .SingleAsync(ct);
+            renamed.Should().Be(123.45m);
+
             await migrator.MigrateAsync(cancellationToken: ct);
         }
 
@@ -349,13 +360,26 @@ public class UsageMigrationTests : IAsyncLifetime
         var existingRule = await afterMigration
             .BudgetRules.AsNoTracking()
             .SingleAsync(rule => rule.Id == existingRuleId, ct);
-        existingRule.ThresholdGbp.Should().Be(123.45m);
+        // Pinned to the ledger's documented USD->GBP fallback rate (FxRateProvider, 0.79).
+        existingRule.ThresholdGbp.Should().Be(97.53m);
         existingRule.EvaluationStartsOn.Should().Be(databaseUtcDate);
+
+        // The EvaluationStartsOn default is gone, so an insert that omits it fails rather
+        // than silently acquiring "today"; writers set it explicitly.
+        var omitStart = () =>
+            afterMigration.Database.ExecuteSqlInterpolatedAsync(
+                $"""
+                INSERT INTO "BudgetRules" ("Id", "Period", "ThresholdGbp")
+                VALUES ({newRuleId}, 'Daily', 10)
+                """,
+                ct
+            );
+        await omitStart.Should().ThrowAsync<PostgresException>();
 
         await afterMigration.Database.ExecuteSqlInterpolatedAsync(
             $"""
-            INSERT INTO "BudgetRules" ("Id", "Period", "ThresholdGbp")
-            VALUES ({newRuleId}, 'Daily', 10)
+            INSERT INTO "BudgetRules" ("Id", "Period", "ThresholdGbp", "EvaluationStartsOn")
+            VALUES ({newRuleId}, 'Daily', 10, {databaseUtcDate})
             """,
             ct
         );
@@ -375,6 +399,8 @@ public class UsageMigrationTests : IAsyncLifetime
             .ToListAsync(ct);
         claimConstraints.Should().BeEquivalentTo("CK_BudgetAlertClaim_EmailLease", "CK_BudgetAlertClaim_Period");
 
+        // The GBP conversion is deliberately not reversed on rollback: re-dividing would
+        // compound the rounding, and the pre-conversion USD figure is unrecoverable anyway.
         var rollbackMigrator = afterMigration.Database.GetService<IMigrator>();
         await rollbackMigrator.MigrateAsync("20260825220510_TrackPendingSourceWindows", ct);
         var restoredThreshold = await afterMigration
@@ -398,7 +424,7 @@ public class UsageMigrationTests : IAsyncLifetime
             )
             .ToListAsync(ct);
 
-        restoredThreshold.Should().Be(123.45m);
+        restoredThreshold.Should().Be(97.53m);
         removedObjects.Should().BeEmpty();
     }
 
@@ -566,5 +592,173 @@ public class UsageMigrationTests : IAsyncLifetime
                 .SingleAsync(ct);
             telemetryColumns.Should().Be(0);
         }
+    }
+
+    [Fact]
+    public async Task BillingObservation_RejectsPositiveCreditAmount()
+    {
+        var ct = TestContext.Current.CancellationToken;
+        await using var db = new AiObservatoryDbContext(_options);
+        await db.Database.MigrateAsync(ct);
+        // Bypass the writer (which now throws up front) to prove the schema guard holds for
+        // direct writes: a positive credit balances Gross + Credit = Net while inflating
+        // net billed spend.
+        db.BillingObservations.Add(
+            new BillingObservation
+            {
+                ProviderKey = "openai",
+                SourceId = UsageSourceIds.OpenAiCostsApi,
+                SourceKind = SourceKind.ProviderApi,
+                UsageScope = UsageScope.Api,
+                CostBasis = CostBasis.Billed,
+                ObservationKey = "2026-08:positive-credit",
+                OccurredOn = new LocalDate(2026, 8, 1),
+                Currency = "USD",
+                GrossAmount = 8m,
+                CreditAmount = 2m,
+                NetAmount = 10m,
+                ObservedAt = Instant.FromUtc(2026, 8, 31, 0, 0),
+            }
+        );
+
+        var save = () => db.SaveChangesAsync(ct);
+
+        await save.Should().ThrowAsync<DbUpdateException>();
+    }
+
+    [Fact]
+    public async Task UsageEvent_RejectsPositiveCostUnderNoneCostBasis()
+    {
+        var ct = TestContext.Current.CancellationToken;
+        await using var db = new AiObservatoryDbContext(_options);
+        await db.Database.MigrateAsync(ct);
+        var observedAt = Instant.FromUtc(2026, 8, 31, 0, 0);
+        db.UsageEvents.Add(
+            new UsageEvent
+            {
+                Provider = Provider.OpenAI,
+                OccurredAt = observedAt,
+                IngestedAt = observedAt,
+                InputTokens = 1,
+                OutputTokens = 1,
+                CostUsd = 1m,
+                SourceId = UsageSourceIds.OpenAiUsageApi,
+                SourceKind = SourceKind.ProviderApi,
+                UsageScope = UsageScope.Api,
+                CostBasis = CostBasis.None,
+                ObservedAt = observedAt,
+            }
+        );
+
+        var save = () => db.SaveChangesAsync(ct);
+
+        await save.Should().ThrowAsync<DbUpdateException>();
+    }
+
+    [Fact]
+    public async Task AddObservationProvenance_RollbackRefusesWhileLegacyKeyGroupsAreSplitAcrossLanes()
+    {
+        var ct = TestContext.Current.CancellationToken;
+        await using var db = new AiObservatoryDbContext(_options);
+        var migrator = db.Database.GetService<IMigrator>();
+        await migrator.MigrateAsync("20260824172007_AddObservationProvenance", ct);
+        // Two provenance lanes sharing (Date, Provider, Model): restoring the legacy
+        // three-column key would collide on these rows.
+        await db.Database.ExecuteSqlRawAsync(
+            """
+            INSERT INTO "DailyAggregates" ("Date", "Provider", "Model", "InputTokens", "OutputTokens", "CacheReadTokens", "CacheWriteTokens", "CacheWrite1hTokens", "CostUsd", "RequestCount", "SourceId", "SourceKind", "UsageScope", "CostBasis")
+            VALUES
+                ('2026-08-24', 'OpenAI', 'gpt-5.4', 1, 1, 0, 0, 0, 1, 1, 'legacy-api', 'Legacy', 'Unknown', 'Unknown'),
+                ('2026-08-24', 'OpenAI', 'gpt-5.4', 1, 1, 0, 0, 0, 1, 1, 'openai-usage-api', 'ProviderApi', 'Api', 'Billed')
+            """,
+            ct
+        );
+
+        var rollback = () => migrator.MigrateAsync("20260812024132_AddUnknownCostCoverage", ct);
+
+        await rollback.Should().ThrowAsync<PostgresException>().WithMessage("*rollback refused*");
+
+        // Once an operator consolidates the split lanes, the same rollback succeeds.
+        await db.Database.ExecuteSqlRawAsync(
+            """DELETE FROM "DailyAggregates" WHERE "SourceId" = 'openai-usage-api'""",
+            ct
+        );
+        await migrator.MigrateAsync("20260812024132_AddUnknownCostCoverage", ct);
+        var provenanceColumns = await db
+            .Database.SqlQueryRaw<int>(
+                """
+                SELECT count(*)::int AS "Value"
+                FROM information_schema.columns
+                WHERE table_schema = 'public'
+                  AND table_name = 'DailyAggregates'
+                  AND column_name IN ('SourceId', 'SourceKind', 'UsageScope', 'CostBasis')
+                """
+            )
+            .SingleAsync(ct);
+        provenanceColumns.Should().Be(0);
+    }
+
+    [Fact]
+    public async Task AddBillingObservations_RollbackKeepsReferencedCategory()
+    {
+        var ct = TestContext.Current.CancellationToken;
+        var apiUsageCategoryId = Guid.Parse("11111111-1111-1111-1111-111111111106");
+        await using var db = new AiObservatoryDbContext(_options);
+        var migrator = db.Database.GetService<IMigrator>();
+        await migrator.MigrateAsync("20260825033709_AddBillingObservations", ct);
+        var vendorId = await db
+            .SpendVendors.Where(vendor => vendor.Key == "github-actions")
+            .Select(vendor => vendor.Id)
+            .SingleAsync(ct);
+        db.SpendEntries.Add(
+            new SpendEntry
+            {
+                OccurredOn = new LocalDate(2026, 8, 25),
+                VendorId = vendorId,
+                CategoryId = apiUsageCategoryId,
+                Amount = 1m,
+                Currency = "GBP",
+                AmountGbp = 1m,
+                FxRate = 1m,
+                Source = SpendSource.Api,
+                EntryKey = "rollback-guard-referenced-category",
+                RecordedAt = Instant.FromUtc(2026, 8, 25, 0, 0),
+                SourceId = UsageSourceIds.GitHubBillingApi,
+                SourceKind = SourceKind.ProviderApi,
+                UsageScope = UsageScope.Api,
+                CostBasis = CostBasis.Billed,
+                ObservedAt = Instant.FromUtc(2026, 8, 25, 0, 0),
+            }
+        );
+        await db.SaveChangesAsync(ct);
+
+        // The Restrict FK blocks deleting a referenced category; the rollback keeps it
+        // instead of aborting with a foreign-key violation.
+        await migrator.MigrateAsync("20260824215707_AddPricingSnapshots", ct);
+        var surviving = await db
+            .Database.SqlQuery<Guid>(
+                $"""SELECT "Id" AS "Value" FROM "SpendCategories" WHERE "Id" = {apiUsageCategoryId}"""
+            )
+            .ToListAsync(ct);
+        surviving.Should().ContainSingle();
+    }
+
+    [Fact]
+    public async Task AddBillingObservations_RollbackDeletesUnreferencedCategory()
+    {
+        var ct = TestContext.Current.CancellationToken;
+        var apiUsageCategoryId = Guid.Parse("11111111-1111-1111-1111-111111111106");
+        await using var db = new AiObservatoryDbContext(_options);
+        var migrator = db.Database.GetService<IMigrator>();
+        await migrator.MigrateAsync("20260825033709_AddBillingObservations", ct);
+        await migrator.MigrateAsync("20260824215707_AddPricingSnapshots", ct);
+
+        var surviving = await db
+            .Database.SqlQuery<Guid>(
+                $"""SELECT "Id" AS "Value" FROM "SpendCategories" WHERE "Id" = {apiUsageCategoryId}"""
+            )
+            .ToListAsync(ct);
+
+        surviving.Should().BeEmpty();
     }
 }
