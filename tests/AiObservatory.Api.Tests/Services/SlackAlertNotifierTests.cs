@@ -206,7 +206,8 @@ public class SlackAlertNotifierTests
     }
 
     [Fact]
-    public async Task NotifyAsync_marks_slack_sent_after_a_successful_post(){
+    public async Task NotifyAsync_marks_slack_sent_after_a_successful_post()
+    {
         var handler = new CapturingHandler(HttpStatusCode.OK);
         var http = new HttpClient(handler);
         var repo = Substitute.For<IUsageRepository>();

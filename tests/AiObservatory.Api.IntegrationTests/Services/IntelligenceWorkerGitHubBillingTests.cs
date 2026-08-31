@@ -67,12 +67,9 @@ public class IntelligenceWorkerGitHubBillingTests(AiObservatoryApiFactory factor
         var services = new ServiceCollection();
         services.AddSingleton(repository);
         services.AddSingleton(budget);
-        services.AddSingleton(new GitHubBillingSyncService(
-            client,
-            writer,
-            clock,
-            NullLogger<GitHubBillingSyncService>.Instance
-        ));
+        services.AddSingleton(
+            new GitHubBillingSyncService(client, writer, clock, NullLogger<GitHubBillingSyncService>.Instance)
+        );
         services.AddScoped(_ => new AiObservatoryDbContext(dbOptions));
         services.AddScoped<SourceSyncStateStore>();
         return services.BuildServiceProvider();
@@ -85,9 +82,11 @@ public class IntelligenceWorkerGitHubBillingTests(AiObservatoryApiFactory factor
         // GetConnectionString strips the password (Persist Security Info defaults off), so
         // rebuild from the harness's own env var and swap in the factory's throwaway
         // database name — the credentials the container actually requires stay intact.
-        var harness = Environment.GetEnvironmentVariable("TEST_DB_CONNECTION")
+        var harness =
+            Environment.GetEnvironmentVariable("TEST_DB_CONNECTION")
             ?? throw new InvalidOperationException("TEST_DB_CONNECTION is not set.");
-        var database = db.Database.GetConnectionString()
+        var database =
+            db.Database.GetConnectionString()
             ?? throw new InvalidOperationException("Factory database has no connection string.");
         return new NpgsqlConnectionStringBuilder(harness)
         {
@@ -126,9 +125,9 @@ public class IntelligenceWorkerGitHubBillingTests(AiObservatoryApiFactory factor
             : $"IsConfigured={state.IsConfigured} IsAvailable={state.IsAvailable} "
                 + $"LastAttemptAt={state.LastAttemptAt} LastSuccessAt={state.LastSuccessAt} "
                 + $"Failures={state.ConsecutiveFailureCount} LastError={state.LastError}";
-        predicate(state!).Should().BeTrue(
-            $"{because}. Row: {snapshot}. Worker log: {string.Join(" | ", log.Messages)}"
-        );
+        predicate(state!)
+            .Should()
+            .BeTrue($"{because}. Row: {snapshot}. Worker log: {string.Join(" | ", log.Messages)}");
         return state!;
     }
 
@@ -158,9 +157,9 @@ public class IntelligenceWorkerGitHubBillingTests(AiObservatoryApiFactory factor
             state.ConsecutiveFailureCount.Should().BeGreaterThan(0);
             state.LastError.Should().Contain("billing read scope");
             worker.ExecuteTask.Should().NotBeNull();
-            worker.ExecuteTask.IsCompleted.Should().BeFalse(
-                "the failure must be recorded without taking the worker's daily cycle down"
-            );
+            worker
+                .ExecuteTask.IsCompleted.Should()
+                .BeFalse("the failure must be recorded without taking the worker's daily cycle down");
         }
         finally
         {
@@ -206,11 +205,12 @@ public class IntelligenceWorkerGitHubBillingTests(AiObservatoryApiFactory factor
         public override Task<IReadOnlyList<GitHubBillingUsageItem>> GetUsageAsync(
             int year,
             CancellationToken ct = default
-        ) => Task.FromException<IReadOnlyList<GitHubBillingUsageItem>>(
-            new GitHubBillingUnavailableException(
-                "GitHub billing usage unavailable for org 'test-org' (403) — the token likely lacks billing read scope"
-            )
-        );
+        ) =>
+            Task.FromException<IReadOnlyList<GitHubBillingUsageItem>>(
+                new GitHubBillingUnavailableException(
+                    "GitHub billing usage unavailable for org 'test-org' (403) — the token likely lacks billing read scope"
+                )
+            );
     }
 
     /// <summary>The zero-spend case: the API answers fine, there is simply nothing billed.</summary>

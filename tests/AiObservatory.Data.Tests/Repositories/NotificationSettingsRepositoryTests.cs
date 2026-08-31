@@ -74,7 +74,7 @@ public class NotificationSettingsRepositoryTests : IAsyncLifetime
         var settings = await _repo.GetNotificationSettingsAsync(ct);
 
         settings.Should().NotBeNull();
-        settings!.AlertEmailTo.Should().Be("alerts@example.com");
+        settings.AlertEmailTo.Should().Be("alerts@example.com");
         settings.SlackWebhookUrl.Should().Be("https://hooks.slack.com/services/T0/B0/xyz");
     }
 
