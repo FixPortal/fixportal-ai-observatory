@@ -41,7 +41,7 @@ jobs:
           dotnet-version: '10.x'
       - name: Publish
         run: dotnet publish src/AiObservatory.Api -c Release -o ./publish/api
-      - uses: azure/login@f5d393ae46f8fde4be8b75f32e3fc50e654ad0ca # v3
+      - uses: azure/login@7ddb5af1ef8758cf1353cf3b42f940aee27ba21c # v3
         with:
           creds: ${{ secrets.AZURE_CREDENTIALS }}
       - name: Verify the IDE Key Vault reference is resolved
@@ -129,7 +129,7 @@ jobs:
           dotnet-version: '10.x'
       - name: Publish
         run: dotnet publish src/AiObservatory.Ingest -c Release -o ./publish/ingest
-      - uses: azure/login@f5d393ae46f8fde4be8b75f32e3fc50e654ad0ca # v3
+      - uses: azure/login@7ddb5af1ef8758cf1353cf3b42f940aee27ba21c # v3
         with:
           creds: ${{ secrets.AZURE_CREDENTIALS }}
       - uses: azure/webapps-deploy@02a81bead70021f5284939794bcec79c271ab383 # v3
@@ -146,7 +146,7 @@ jobs:
     permissions:
       contents: read
     steps:
-      - uses: azure/login@f5d393ae46f8fde4be8b75f32e3fc50e654ad0ca # v3
+      - uses: azure/login@7ddb5af1ef8758cf1353cf3b42f940aee27ba21c # v3
         with:
           creds: ${{ secrets.AZURE_CREDENTIALS }}
       - name: Start ingest after deployment
