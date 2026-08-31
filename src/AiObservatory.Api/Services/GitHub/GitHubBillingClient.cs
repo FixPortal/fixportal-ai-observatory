@@ -33,13 +33,18 @@ public class GitHubBillingClient(HttpClient http, string org, ILogger<GitHubBill
 
     /// <summary>
     /// Usage for one calendar year, or an empty list when the year predates the org's
-    /// billing history or the token cannot see it.
+    /// billing history.
     /// </summary>
     /// <remarks>
-    /// Returns empty rather than throwing on 403/404 so a token missing the billing scope
-    /// degrades to "no GitHub spend recorded" — a visible gap — instead of failing the
-    /// worker's whole daily cycle and taking the other background steps down with it.
+    /// Throws <see cref="GitHubBillingUnavailableException"/> on 403/404 — a token missing
+    /// the billing scope must surface as a source failure, not as an empty (and therefore
+    /// "successful") sync: the two are indistinguishable downstream and the status surface
+    /// would report the source healthy while the entire org bill went missing. The worker
+    /// isolates this arm already, so throwing does not take the rest of the daily cycle down.
     /// </remarks>
+    /// <exception cref="GitHubBillingUnavailableException">
+    /// The token cannot see the org's billing (403/404 — most often a missing billing scope).
+    /// </exception>
     public virtual async Task<IReadOnlyList<GitHubBillingUsageItem>> GetUsageAsync(
         int year,
         CancellationToken ct = default
@@ -55,13 +60,18 @@ public class GitHubBillingClient(HttpClient http, string org, ILogger<GitHubBill
         {
             // 403 = token lacks the billing scope; 404 = org invisible to this token, which
             // GitHub also returns for "exists but you may not know that". Same remedy either
-            // way, and neither is retryable, so log once per cycle and move on.
+            // way, and neither is retryable — so throw (like the 401 path already does via
+            // EnsureSuccessStatusCode) and let the caller record a source failure rather
+            // than mistaking it for a genuinely empty year.
             logger.LogWarning(
                 "GitHub billing usage unavailable for {Org} ({Status}) — token likely lacks billing read scope",
                 org,
                 (int)response.StatusCode
             );
-            return [];
+            throw new GitHubBillingUnavailableException(
+                $"GitHub billing usage unavailable for org '{org}' ({(int)response.StatusCode}) — "
+                    + "the token likely lacks billing read scope"
+            );
         }
 
         response.EnsureSuccessStatusCode();
@@ -92,3 +102,10 @@ public sealed record GitHubBillingUsageItem(
     string Sku,
     decimal NetAmount
 );
+
+/// <summary>
+/// The GitHub token cannot see the organisation's billing (403/404 from the usage
+/// endpoint). Distinct from "no usage this year": this must be recorded as a source
+/// failure so the status surface does not report an unscoped token as a healthy sync.
+/// </summary>
+public sealed class GitHubBillingUnavailableException(string message) : Exception(message);

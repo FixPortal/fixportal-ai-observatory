@@ -74,21 +74,27 @@ public class GitHubBillingClientTests
         items[0].Date.Should().Be(new DateOnly(2026, 7, 1));
     }
 
+    /// <summary>
+    /// 403/404 means the token cannot see the org's billing at all. Returning empty there
+    /// made an unscoped token indistinguishable from a zero-spend month, and the worker
+    /// recorded it as a healthy sync — the source-status surface said fine while the entire
+    /// org bill was missing. It must throw, like the 401 path already does.
+    /// </summary>
     [Theory]
     [InlineData(HttpStatusCode.Forbidden)]
     [InlineData(HttpStatusCode.NotFound)]
-    public async Task ReturnsEmptyWhenTheTokenCannotSeeBilling(HttpStatusCode status)
+    public async Task ThrowsUnavailableWhenTheTokenCannotSeeBilling(HttpStatusCode status)
     {
         var handler = new StubHttpMessageHandler(status, """{"message":"Forbidden"}""");
         using var http = ClientFor(handler);
+        var client = Create(http);
 
-        var items = await Create(http).GetUsageAsync(2026, TestContext.Current.CancellationToken);
+        var act = () => client.GetUsageAsync(2026, TestContext.Current.CancellationToken);
 
-        items
+        await act
             .Should()
-            .BeEmpty(
-                "a token missing the billing scope must degrade to a visible gap, not take the "
-                    + "worker's whole daily cycle down with it"
+            .ThrowAsync<GitHubBillingUnavailableException>(
+                "an auth/scope failure is not 'no data' — it has to fail the sync, not silently empty it"
             );
     }
 
