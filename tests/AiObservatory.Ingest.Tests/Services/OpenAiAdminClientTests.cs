@@ -264,6 +264,131 @@ public sealed class OpenAiAdminClientTests : IDisposable
         await act.Should().ThrowAsync<OperationCanceledException>();
     }
 
+    [Fact]
+    public async Task GetUsageAsync_AcceptsTheDocumentedShapeWithOnlyTheCachedLaneAndDerivesUncached()
+    {
+        // The documented usage result carries input_tokens and input_cached_tokens but neither
+        // input_uncached_tokens nor input_cache_write_tokens; uncached is derived from the total.
+        var start = From.AtStartOfDayInZone(DateTimeZone.Utc).ToInstant().ToUnixTimeSeconds();
+        var json = $$"""
+            {
+              "object": "page",
+              "data": [
+                {
+                  "object": "bucket",
+                  "start_time": {{start}},
+                  "end_time": {{start + 86_400}},
+                  "results": [
+                    {
+                      "object": "organization.usage.completions.result",
+                      "input_tokens": 900,
+                      "input_cached_tokens": 400,
+                      "output_tokens": 500,
+                      "num_model_requests": 5,
+                      "model": "gpt-5.4",
+                      "batch": false,
+                      "service_tier": "default"
+                    }
+                  ]
+                }
+              ],
+              "has_more": false,
+              "next_page": null
+            }
+            """;
+        var sut = CreateSut(new QueueHandler(_ => Ok(json)));
+
+        var records = await sut.GetUsageAsync(From, Through, TestContext.Current.CancellationToken);
+
+        records
+            .Should()
+            .ContainSingle()
+            .Which.Should()
+            .BeEquivalentTo(
+                new
+                {
+                    InputUncachedTokens = 500L,
+                    InputCachedTokens = 400L,
+                    InputCacheWriteTokens = 0L,
+                    OutputTokens = 500L,
+                    ModelRequests = 5L,
+                }
+            );
+    }
+
+    [Fact]
+    public async Task GetUsageAsync_RejectsDerivingANegativeUncachedLane()
+    {
+        var start = From.AtStartOfDayInZone(DateTimeZone.Utc).ToInstant().ToUnixTimeSeconds();
+        var json = $$"""
+            {
+              "object": "page",
+              "data": [
+                {
+                  "object": "bucket",
+                  "start_time": {{start}},
+                  "end_time": {{start + 86_400}},
+                  "results": [
+                    {
+                      "object": "organization.usage.completions.result",
+                      "input_tokens": 100,
+                      "input_cached_tokens": 400,
+                      "output_tokens": 500,
+                      "num_model_requests": 5,
+                      "model": "gpt-5.4"
+                    }
+                  ]
+                }
+              ],
+              "has_more": false,
+              "next_page": null
+            }
+            """;
+        var sut = CreateSut(new QueueHandler(_ => Ok(json)));
+
+        var act = () => sut.GetUsageAsync(From, Through, TestContext.Current.CancellationToken);
+
+        await act.Should().ThrowAsync<InvalidDataException>();
+    }
+
+    [Fact]
+    public async Task GetUsageAsync_StillRejectsAPresentLaneSplitThatDoesNotSumToTheTotal()
+    {
+        // All three lanes present but inconsistent with input_tokens — the invariant still bites.
+        var start = From.AtStartOfDayInZone(DateTimeZone.Utc).ToInstant().ToUnixTimeSeconds();
+        var json = $$"""
+            {
+              "object": "page",
+              "data": [
+                {
+                  "object": "bucket",
+                  "start_time": {{start}},
+                  "end_time": {{start + 86_400}},
+                  "results": [
+                    {
+                      "object": "organization.usage.completions.result",
+                      "input_tokens": 1000,
+                      "input_uncached_tokens": 501,
+                      "input_cached_tokens": 400,
+                      "input_cache_write_tokens": 100,
+                      "output_tokens": 500,
+                      "num_model_requests": 5,
+                      "model": "gpt-5.4"
+                    }
+                  ]
+                }
+              ],
+              "has_more": false,
+              "next_page": null
+            }
+            """;
+        var sut = CreateSut(new QueueHandler(_ => Ok(json)));
+
+        var act = () => sut.GetUsageAsync(From, Through, TestContext.Current.CancellationToken);
+
+        await act.Should().ThrowAsync<InvalidDataException>();
+    }
+
     private OpenAiAdminClient CreateSut(HttpMessageHandler handler)
     {
         var client = new HttpClient(handler) { BaseAddress = new Uri("https://api.openai.com") };

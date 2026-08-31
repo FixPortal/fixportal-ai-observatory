@@ -128,24 +128,9 @@ public sealed class OpenAiAdminClient(HttpClient http) : IOpenAiAdminClient
                 var batch = OptionalBoolean(result, "batch");
                 var serviceTier = OptionalNonBlankString(result, "service_tier");
                 var totalInput = RequireNonNegativeInt64(result, "input_tokens");
-                var uncached = RequireNonNegativeInt64(result, "input_uncached_tokens");
-                var cached = RequireNonNegativeInt64(result, "input_cached_tokens");
-                var cacheWrite = RequireNonNegativeInt64(result, "input_cache_write_tokens");
+                var (uncached, cached, cacheWrite) = InputLanes(result, totalInput);
                 var output = RequireNonNegativeInt64(result, "output_tokens");
                 var requests = RequireNonNegativeInt64(result, "num_model_requests");
-                long splitInput;
-                try
-                {
-                    splitInput = checked(uncached + cached + cacheWrite);
-                }
-                catch (OverflowException exception)
-                {
-                    throw new InvalidDataException("OpenAI input token lanes overflow.", exception);
-                }
-                if (splitInput != totalInput)
-                {
-                    throw new InvalidDataException("OpenAI input token lanes do not equal input_tokens.");
-                }
 
                 var processing = Processing(batch, serviceTier);
                 records.Add(
@@ -167,6 +152,53 @@ public sealed class OpenAiAdminClient(HttpClient http) : IOpenAiAdminClient
             }
         }
         return records;
+    }
+
+    // The split lanes are documented as optional: older buckets and non-cache-capable
+    // models may omit them. Missing lanes default to zero and the uncached lane is
+    // derived from the total; the sum invariant applies only when all three are present.
+    private static (long Uncached, long Cached, long CacheWrite) InputLanes(JsonElement result, long totalInput)
+    {
+        var uncachedLane = OptionalNonNegativeInt64(result, "input_uncached_tokens");
+        var cachedLane = OptionalNonNegativeInt64(result, "input_cached_tokens");
+        var cacheWriteLane = OptionalNonNegativeInt64(result, "input_cache_write_tokens");
+        var cached = cachedLane ?? 0;
+        var cacheWrite = cacheWriteLane ?? 0;
+        if (uncachedLane is { } declaredUncached)
+        {
+            if (cachedLane.HasValue && cacheWriteLane.HasValue)
+            {
+                long splitInput;
+                try
+                {
+                    splitInput = checked(declaredUncached + cached + cacheWrite);
+                }
+                catch (OverflowException exception)
+                {
+                    throw new InvalidDataException("OpenAI input token lanes overflow.", exception);
+                }
+                if (splitInput != totalInput)
+                {
+                    throw new InvalidDataException("OpenAI input token lanes do not equal input_tokens.");
+                }
+            }
+            return (declaredUncached, cached, cacheWrite);
+        }
+
+        long uncached;
+        try
+        {
+            uncached = checked(totalInput - cached - cacheWrite);
+        }
+        catch (OverflowException exception)
+        {
+            throw new InvalidDataException("OpenAI input token lanes overflow.", exception);
+        }
+        if (uncached < 0)
+        {
+            throw new InvalidDataException("OpenAI input token lanes exceed input_tokens.");
+        }
+        return (uncached, cached, cacheWrite);
     }
 
     private static IReadOnlyList<OpenAiCostRecord> ParseCostPage(JsonElement root, long from, long throughExclusive)
@@ -401,6 +433,19 @@ public sealed class OpenAiAdminClient(HttpClient http) : IOpenAiAdminClient
             throw new InvalidDataException($"OpenAI {propertyName} must be a non-empty string or null.");
         }
         return value.GetString();
+    }
+
+    private static long? OptionalNonNegativeInt64(JsonElement element, string propertyName)
+    {
+        if (!element.TryGetProperty(propertyName, out var value) || value.ValueKind == JsonValueKind.Null)
+        {
+            return null;
+        }
+        if (!value.TryGetInt64(out var parsed) || parsed < 0)
+        {
+            throw new InvalidDataException($"OpenAI {propertyName} must be a non-negative integer or null.");
+        }
+        return parsed;
     }
 
     private static long RequireNonNegativeInt64(JsonElement element, string propertyName)

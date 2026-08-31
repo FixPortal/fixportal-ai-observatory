@@ -240,7 +240,7 @@ public class GitHubIngestionServiceTests
     }
 
     [Fact]
-    public async Task IngestAsync_WhenOneRepoThrows403_ContinuesButRejectsTheSourceAttempt()
+    public async Task IngestAsync_WhenOneRepoThrows403_SkipsItAndAdvancesTheHealthyReposWatermark()
     {
         var client = Substitute.For<IGitHubActivityClient>();
         var repo = Substitute.For<IGitHubActivityRepository>();
@@ -248,7 +248,20 @@ public class GitHubIngestionServiceTests
         client
             .GetPullRequestsAsync("fix-portal/broken", Arg.Any<LocalDate>(), Arg.Any<CancellationToken>())
             .Returns(Task.FromException<IReadOnlyList<GitHubPullRequestRecord>>(new HttpRequestException("403")));
-        client.GetPullRequestsAsync("fix-portal/ok", Arg.Any<LocalDate>(), Arg.Any<CancellationToken>()).Returns([]);
+        var pr = new GitHubPullRequestRecord(
+            "fix-portal/ok",
+            1,
+            "t",
+            "chris",
+            "open",
+            Instant.FromUtc(2026, 7, 1, 9, 0),
+            Instant.FromUtc(2026, 7, 1, 10, 0),
+            null,
+            null,
+            null,
+            0
+        );
+        client.GetPullRequestsAsync("fix-portal/ok", Arg.Any<LocalDate>(), Arg.Any<CancellationToken>()).Returns([pr]);
         client.GetCommitsAsync(Arg.Any<string>(), Arg.Any<LocalDate>(), Arg.Any<CancellationToken>()).Returns([]);
         client.GetWorkflowRunsAsync(Arg.Any<string>(), Arg.Any<LocalDate>(), Arg.Any<CancellationToken>()).Returns([]);
 
@@ -261,18 +274,18 @@ public class GitHubIngestionServiceTests
         );
 
         var pollDate = new LocalDate(2026, 7, 1);
-        var act = () => sut.IngestAsync(pollDate, pollDate, TestContext.Current.CancellationToken);
+        var result = await sut.IngestAsync(pollDate, pollDate, TestContext.Current.CancellationToken);
 
-        await act.Should()
-            .ThrowAsync<InvalidOperationException>()
-            .WithMessage("1 of 2 configured GitHub repos failed*");
+        // A single flaky repo must not reject the cycle: the healthy repo still ingests
+        // and its observation watermark is returned so LastSuccessAt keeps advancing.
+        result.LatestObservationAt.Should().Be(Instant.FromUtc(2026, 7, 1, 10, 0));
         await client
             .Received(1)
             .GetPullRequestsAsync("fix-portal/ok", Arg.Any<LocalDate>(), Arg.Any<CancellationToken>());
     }
 
     [Fact]
-    public async Task IngestAsync_WhenOneRepoTimesOut_ContinuesButRejectsTheSourceAttempt()
+    public async Task IngestAsync_WhenOneRepoTimesOut_SkipsItAndCompletesTheCycle()
     {
         var client = Substitute.For<IGitHubActivityClient>();
         var repo = Substitute.For<IGitHubActivityRepository>();
@@ -295,11 +308,9 @@ public class GitHubIngestionServiceTests
         );
 
         var pollDate = new LocalDate(2026, 7, 1);
-        var act = () => sut.IngestAsync(pollDate, pollDate, TestContext.Current.CancellationToken);
+        var result = await sut.IngestAsync(pollDate, pollDate, TestContext.Current.CancellationToken);
 
-        await act.Should()
-            .ThrowAsync<InvalidOperationException>()
-            .WithMessage("1 of 2 configured GitHub repos failed*");
+        result.LatestObservationAt.Should().BeNull();
         await client
             .Received(1)
             .GetPullRequestsAsync("fix-portal/ok", Arg.Any<LocalDate>(), Arg.Any<CancellationToken>());

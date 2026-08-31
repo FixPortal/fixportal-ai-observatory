@@ -119,6 +119,24 @@ public sealed class ClaudePricingSourceTests
             .Be(2m);
     }
 
+    [Fact]
+    public void ParserAcceptsTheDocumentWithoutTheExpiredNoIncreaseSentence()
+    {
+        // The "will not occur" sentence is time-limited marketing prose: once its date passes,
+        // Anthropic can delete it while the Sonnet 5 rate table is unchanged, and the parse
+        // must still succeed — the rate itself is read from the table, not the prose.
+        var document = Fixture()
+            .Replace(
+                " The previously scheduled increase to $3/$15 per million input/output tokens on September 1, 2026 will not occur.",
+                "",
+                StringComparison.Ordinal
+            );
+
+        var act = () => ClaudePricingSource.Parse(document, RetrievedAt);
+
+        act.Should().NotThrow();
+    }
+
     private static string Mutate(string document, string mutation)
     {
         const string opusRow = "| Claude Opus 5 | $5 / MTok | $6.25 / MTok | $10 / MTok | $0.50 / MTok | $25 / MTok |";
