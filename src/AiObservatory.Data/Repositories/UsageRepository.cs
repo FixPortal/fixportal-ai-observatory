@@ -11,11 +11,16 @@ namespace AiObservatory.Data.Repositories;
 public class UsageRepository(
     AiObservatoryDbContext ctx,
     PricingSnapshotStore? pricingStore = null,
-    UsagePriceResolver? priceResolver = null
+    UsagePriceResolver? priceResolver = null,
+    IClock? clock = null
 ) : IUsageRepository
 {
     private const int BudgetAlertEmailBatchSize = 50;
     private static readonly JsonDocumentOptions RawPayloadJsonOptions = new() { AllowDuplicateProperties = false };
+
+    // Optional so tests and tooling can construct the repository without a clock; DI always
+    // supplies the registered singleton. Only PatchEventCostAsync reads it (CorrectedAt stamp).
+    private readonly IClock _clock = clock ?? SystemClock.Instance;
 
     public async Task<RecordEventResult> RecordEventAsync(UsageEvent evt, CancellationToken ct = default)
     {
@@ -123,6 +128,17 @@ public class UsageRepository(
             evt.ObservedAt = evt.IngestedAt;
         }
 
+        // CostBasis.None means "usage is reported but no price applies" (docs/truth-and-pricing.md),
+        // so a positive cost under it is a contradiction — reject rather than store a row whose
+        // basis denies the figure it carries.
+        if (evt.CostBasis == CostBasis.None && evt.CostUsd is > 0m)
+        {
+            throw new ArgumentException(
+                "CostBasis.None declares that no price applies; a positive CostUsd contradicts it.",
+                nameof(evt)
+            );
+        }
+
         var canonicalEventKey = ToStoredEventKey(evt.Provider, evt.SourceId, evt.EventKey);
         return canonicalEventKey == evt.EventKey ? evt : CopyWithEventKey(evt, canonicalEventKey);
     }
@@ -203,8 +219,29 @@ public class UsageRepository(
             return new RecordEventResult(existing.Id, RecordEventDisposition.Unchanged);
         }
 
+        // A manual cost correction (the CorrectedAt marker) outranks a replay that carries no
+        // cost of its own: the local sweepers re-post every snapshot with costUsd null on every
+        // run, always with a fresh ObservedAt, so the ordering guard above cannot defend the
+        // corrected figure. Preserve it (and the basis that keeps the row out of the repricing
+        // scan); a post carrying an explicit cost re-asserts source authority and clears the
+        // marker instead.
+        var preserveCorrectedCost = existing.CorrectedAt is not null && evt.CostUsd is null;
+        var correctedCostUsd = existing.CostUsd;
+        var correctedCacheSavingsUsd = existing.CacheSavingsUsd;
+        var correctedCostBasis = existing.CostBasis;
         await ApplyAggregateDeltaAsync(existing, -1, ct);
         CopyCanonicalValues(existing, evt);
+        if (preserveCorrectedCost)
+        {
+            existing.CostUsd = correctedCostUsd;
+            existing.CacheSavingsUsd = correctedCacheSavingsUsd;
+            existing.CostBasis = correctedCostBasis;
+        }
+        else
+        {
+            existing.CorrectedAt = null;
+        }
+
         await ApplyAggregateDeltaAsync(existing, +1, ct);
         return new RecordEventResult(existing.Id, RecordEventDisposition.Corrected);
     }
@@ -223,9 +260,11 @@ public class UsageRepository(
         var cacheWriteDelta = checked((evt.CacheWriteTokens ?? 0L) * sign);
         var cacheWrite1hDelta = checked((evt.CacheWrite1hTokens ?? 0L) * sign);
         var costDelta = (evt.CostUsd ?? 0m) * sign;
-        var unknownCostDelta = (evt.CostUsd is null ? 1 : 0) * sign;
+        // CostBasis.None means "no price applies" (docs/truth-and-pricing.md), i.e. a known zero,
+        // not missing pricing data; only genuinely undescribed nulls count as unknown.
+        var unknownCostDelta = (evt.CostUsd is null && evt.CostBasis != CostBasis.None ? 1 : 0) * sign;
         var cacheSavingsDelta = (evt.CacheSavingsUsd ?? 0m) * sign;
-        var unknownCacheSavingsDelta = (evt.CacheSavingsUsd is null ? 1 : 0) * sign;
+        var unknownCacheSavingsDelta = (evt.CacheSavingsUsd is null && evt.CostBasis != CostBasis.None ? 1 : 0) * sign;
         var requestDelta = sign;
         var insertInput = Math.Max(0, inputDelta);
         var insertOutput = Math.Max(0, outputDelta);
@@ -361,6 +400,13 @@ public class UsageRepository(
             return eventKey;
         }
 
+        // Idempotent: a caller that learned the stored form (e.g. from the GetEventsByProviderAsync
+        // projection feeding back into PatchEventCostAsync) must not be double-prefixed.
+        if (eventKey.StartsWith($"{provider}:", StringComparison.Ordinal))
+        {
+            return eventKey;
+        }
+
         return $"{provider}:{eventKey}";
     }
 
@@ -389,6 +435,7 @@ public class UsageRepository(
             UsageScope = source.UsageScope,
             CostBasis = source.CostBasis,
             ObservedAt = source.ObservedAt,
+            CorrectedAt = source.CorrectedAt,
             EventKey = eventKey,
         };
 
@@ -814,6 +861,10 @@ public class UsageRepository(
                 return new PatchEventCostResult(existing.Id, oldCostUsd, newCostUsd);
             }
 
+            // The marker is set on the tracked row directly: CopyCanonicalValues never copies
+            // CorrectedAt from a replay, so the stamp survives until a source post carrying an
+            // explicit cost re-asserts authority (see ApplyLockedSnapshotAsync).
+            existing.CorrectedAt = _clock.GetCurrentInstant();
             await ctx.SaveChangesAsync(ct);
             await tx.CommitAsync(ct);
             return new PatchEventCostResult(existing.Id, oldCostUsd, newCostUsd);
@@ -826,6 +877,11 @@ public class UsageRepository(
         }
     }
 
+    // A manual correction replaces an estimated/notional figure with an operator-entered one read
+    // from the provider, so it is rebased to ProviderEstimated: that removes the row from the
+    // repricer's scan (which only touches ListPriceEstimate/Notional) and keeps the aggregate
+    // buckets honest. None ("no price applies") is likewise rebased now that a price exists.
+    // The flip happens only when the figure actually changes, so a no-op patch stays a no-op.
     private static UsageEvent CopyWithCost(UsageEvent source, decimal costUsd) =>
         new()
         {
@@ -848,7 +904,11 @@ public class UsageRepository(
             SourceId = source.SourceId,
             SourceKind = source.SourceKind,
             UsageScope = source.UsageScope,
-            CostBasis = source.CostBasis,
+            CostBasis =
+                costUsd != source.CostUsd
+                && source.CostBasis is CostBasis.ListPriceEstimate or CostBasis.Notional or CostBasis.None
+                    ? CostBasis.ProviderEstimated
+                    : source.CostBasis,
             ObservedAt = source.ObservedAt,
             EventKey = source.EventKey,
         };
@@ -881,6 +941,7 @@ public class UsageRepository(
             .Take(limit)
             .Select(e => new EventCostRecord(
                 e.Id,
+                e.SourceId,
                 e.EventKey,
                 e.Runtime,
                 e.SessionId,

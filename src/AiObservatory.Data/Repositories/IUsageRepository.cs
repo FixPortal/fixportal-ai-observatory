@@ -36,9 +36,13 @@ public sealed record PatchEventCostResult(Guid EventId, decimal OldCostUsd, deci
 
 /// <summary>
 /// Minimal projection of a <see cref="AiObservatory.Data.Entities.UsageEvent"/> for cost-correction use.
+/// <see cref="EventKey"/> is projected in its stored form (legacy-api rows carry the
+/// <c>"{Provider}:"</c> prefix); feeding it back to <see cref="IUsageRepository.PatchEventCostAsync"/>
+/// together with <see cref="SourceId"/> addresses the same row.
 /// </summary>
 public sealed record EventCostRecord(
     Guid Id,
+    string SourceId,
     string? EventKey,
     string? Runtime,
     string? SessionId,
@@ -187,6 +191,11 @@ public interface IUsageRepository
     /// Updates <c>CostUsd</c> on the event identified by <paramref name="provider"/> +
     /// <paramref name="sourceId"/> + <paramref name="eventKey"/> and adjusts its
     /// DailyAggregate atomically. Returns null when no event with that identity exists.
+    /// <paramref name="eventKey"/> may be given in either the unprefixed or the stored
+    /// (<c>"{Provider}:"</c>-prefixed, legacy-api only) form. A correction moves an
+    /// estimated (<see cref="CostBasis.ListPriceEstimate"/>/<see cref="CostBasis.Notional"/>)
+    /// event to <see cref="CostBasis.ProviderEstimated"/> and stamps <c>CorrectedAt</c>, so
+    /// neither the repricing pass nor a cost-less snapshot replay can silently revert it.
     /// </summary>
     Task<PatchEventCostResult?> PatchEventCostAsync(
         Provider provider,
