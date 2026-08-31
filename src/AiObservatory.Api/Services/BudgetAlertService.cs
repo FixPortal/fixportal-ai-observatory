@@ -61,9 +61,25 @@ public class BudgetAlertService(
         }
     }
 
+    // Days at or before the last trigger already have their claim (or were under threshold
+    // when scanned), so the daily rescan lower-bounds at a grace window behind that watermark
+    // instead of re-reading the rule's whole lifetime on every run. The grace still catches
+    // late-arriving usage landing just behind the watermark.
+    private const int DailyRescanGraceDays = 7;
+
     private async Task CheckDailyRuleSafelyAsync(BudgetRule rule, LocalDate through, Instant now, CancellationToken ct)
     {
-        if (rule.EvaluationStartsOn > through)
+        var from = rule.EvaluationStartsOn;
+        if (rule.LastTriggeredAt is { } lastTriggeredAt)
+        {
+            var watermark = lastTriggeredAt.InUtc().Date.PlusDays(-DailyRescanGraceDays);
+            if (watermark > from)
+            {
+                from = watermark;
+            }
+        }
+
+        if (from > through)
         {
             return;
         }
@@ -71,14 +87,9 @@ public class BudgetAlertService(
         IReadOnlyList<DailyBilledSpend> dailySpend;
         try
         {
-            // One grouped SQL query covers every completed day since the persisted rule
-            // boundary. Missing/zero days cannot exceed the positive rule threshold.
-            dailySpend = await repository.GetDailyBilledSpendGbpAsync(
-                rule.EvaluationStartsOn,
-                through,
-                rule.Provider,
-                ct
-            );
+            // One grouped SQL query covers every completed day since the lower bound.
+            // Missing/zero days cannot exceed the positive rule threshold.
+            dailySpend = await repository.GetDailyBilledSpendGbpAsync(from, through, rule.Provider, ct);
         }
         catch (OperationCanceledException) when (ct.IsCancellationRequested)
         {

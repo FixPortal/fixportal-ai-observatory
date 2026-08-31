@@ -133,6 +133,31 @@ public class BudgetAlertServiceTests
     }
 
     [Fact]
+    public async Task CheckAndAlert_rescans_a_daily_rule_only_from_the_grace_window_behind_its_last_trigger()
+    {
+        var rule = Rule(
+            BillingPeriod.Daily,
+            lastTriggeredAt: Instant.FromUtc(2026, 5, 20, 8, 0),
+            evaluationStartsOn: new LocalDate(2026, 4, 1)
+        );
+        StubRules(rule);
+        StubBilledSpend(rule, 0m);
+
+        await Sut().CheckAndAlertAsync(TestContext.Current.CancellationToken);
+
+        // Days at or before the last trigger already have their claim; the rescan lower-bounds
+        // at a 7-day grace window behind that watermark instead of the rule's whole lifetime.
+        await _repo
+            .Received(1)
+            .GetDailyBilledSpendGbpAsync(
+                new LocalDate(2026, 5, 13),
+                new LocalDate(2026, 6, 1),
+                null,
+                Arg.Any<CancellationToken>()
+            );
+    }
+
+    [Fact]
     public async Task CheckAndAlert_does_not_replay_daily_history_before_deployment_boundary()
     {
         var rule = Rule(

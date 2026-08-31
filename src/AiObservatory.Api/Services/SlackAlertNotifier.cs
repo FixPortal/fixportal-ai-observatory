@@ -43,10 +43,16 @@ public sealed class SlackAlertNotifier(
         using var response = await http.PostAsJsonAsync(webhookUrl, new { text }, ct);
         if (!response.IsSuccessStatusCode)
         {
+            // Slack returns the actionable reason (invalid_payload, channel_not_found,
+            // no_service, ...) as a plain-text body; the status code alone cannot separate
+            // a rotated webhook from a malformed payload. The body carries no secret -- the
+            // webhook URL is the credential and must stay out of the log.
+            var responseBody = await response.Content.ReadAsStringAsync(ct);
             logger.LogError(
-                "Slack webhook delivery failed with status {StatusCode} for budget alert {MessageId}",
+                "Slack webhook delivery failed with status {StatusCode} for budget alert {MessageId}: {ResponseBody}",
                 response.StatusCode,
-                payload.MessageId
+                payload.MessageId,
+                responseBody
             );
             return AlertDeliveryResult.Failed;
         }
