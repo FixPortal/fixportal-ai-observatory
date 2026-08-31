@@ -55,6 +55,13 @@ public static class EventsEndpoints
         {
             return Results.BadRequest("Explicit Billed events must use the spend/billing path.");
         }
+        // A None basis asserts the event carries no cost at all, so a positive CostUsd on the
+        // same write is a contradiction; storing it would price a row the producer declared
+        // cost-free.
+        if (costBasis == CostBasis.None && req.CostUsd is > 0)
+        {
+            return Results.BadRequest("CostBasis None events must not carry a positive CostUsd.");
+        }
 
         var requestError = ValidateUsageRequest(req, out var rawPayload, out var eventKey);
         if (requestError is not null)
@@ -191,12 +198,14 @@ public static class EventsEndpoints
         CancellationToken ct
     )
     {
+        // NormalizeSourceId would map a blank value to the legacy source; this endpoint
+        // requires an explicit one, so reject blank before normalizing.
         if (string.IsNullOrWhiteSpace(sourceId))
         {
             return Results.BadRequest("SourceId is required");
         }
 
-        var normalizedSourceId = sourceId.Trim().ToLowerInvariant();
+        var normalizedSourceId = NormalizeSourceId(sourceId);
         if (normalizedSourceId.Length > 100)
         {
             return Results.BadRequest("SourceId must be 100 characters or fewer");

@@ -18,9 +18,9 @@ public static class BudgetRulesEndpoints
 
         app.MapGet(
                 "/budget-rules/{id:guid}",
-                async (Guid id, AiObservatoryDbContext db) =>
+                async (Guid id, AiObservatoryDbContext db, CancellationToken ct) =>
                 {
-                    var rule = await db.BudgetRules.FindAsync(id);
+                    var rule = await db.BudgetRules.FindAsync([id], ct);
                     return rule is not null ? Results.Ok(rule) : Results.NotFound();
                 }
             )
@@ -52,10 +52,12 @@ public static class BudgetRulesEndpoints
 
         app.MapDelete(
             "/budget-rules/{id:guid}",
-            async (Guid id, AiObservatoryDbContext db) =>
+            async (Guid id, AiObservatoryDbContext db, CancellationToken ct) =>
             {
-                await db.BudgetRules.Where(r => r.Id == id).ExecuteDeleteAsync();
-                return Results.NoContent();
+                // Report the row count: a 204 for an id that never existed would let a client
+                // believe it deleted something it didn't (mirrors DeleteEntryAsync).
+                var deleted = await db.BudgetRules.Where(r => r.Id == id).ExecuteDeleteAsync(ct);
+                return deleted == 0 ? Results.NotFound() : Results.NoContent();
             }
         );
 
@@ -75,8 +77,8 @@ public static class BudgetRulesEndpoints
         }
 
         var today = clock.GetCurrentInstant().InUtc().Date;
-        var windowStarts = rules.ToDictionary(rule => rule.Id, rule => CurrentWindowStart(rule, today));
-        var earliest = windowStarts.Values.Min();
+        var windows = rules.ToDictionary(rule => rule.Id, rule => CurrentWindow(rule, today));
+        var earliest = windows.Values.Min(window => window.Start);
         var spend = await db
             .SpendEntries.AsNoTracking()
             .Where(entry => entry.OccurredOn >= earliest && entry.OccurredOn <= today)
@@ -104,10 +106,12 @@ public static class BudgetRulesEndpoints
         return Results.Ok(
             rules.Select(rule =>
             {
-                var windowStart = windowStarts[rule.Id];
+                var (windowStart, windowEnd) = windows[rule.Id];
                 var currentSpend = spend
                     .Where(row =>
-                        row.OccurredOn >= windowStart && (rule.Provider is null || row.Provider == rule.Provider)
+                        row.OccurredOn >= windowStart
+                        && row.OccurredOn <= windowEnd
+                        && (rule.Provider is null || row.Provider == rule.Provider)
                     )
                     .Sum(row => row.AmountGbp);
                 return new BudgetRuleResponse(
@@ -119,22 +123,25 @@ public static class BudgetRulesEndpoints
                     rule.LastTriggeredAt,
                     currentSpend,
                     windowStart,
-                    today
+                    windowEnd
                 );
             })
         );
     }
 
-    private static LocalDate CurrentWindowStart(BudgetRule rule, LocalDate today)
+    private static (LocalDate Start, LocalDate End) CurrentWindow(BudgetRule rule, LocalDate today)
     {
-        var nominalStart = rule.Period switch
+        // Daily must match BudgetAlertService.GetWindow, which evaluates the last COMPLETED
+        // day (yesterday): scoping the panel to today's partial spend would show "Over limit"
+        // for a day the alert engine won't look at until the next midnight run.
+        (LocalDate Start, LocalDate End) nominal = rule.Period switch
         {
-            BillingPeriod.Daily => today,
-            BillingPeriod.Weekly => today.PlusDays(-6),
-            BillingPeriod.Monthly => new LocalDate(today.Year, today.Month, 1),
-            _ => today,
+            BillingPeriod.Daily => (today.PlusDays(-1), today.PlusDays(-1)),
+            BillingPeriod.Weekly => (today.PlusDays(-6), today),
+            BillingPeriod.Monthly => (new LocalDate(today.Year, today.Month, 1), today),
+            _ => (today, today),
         };
-        return nominalStart > rule.EvaluationStartsOn ? nominalStart : rule.EvaluationStartsOn;
+        return (nominal.Start > rule.EvaluationStartsOn ? nominal.Start : rule.EvaluationStartsOn, nominal.End);
     }
 }
 

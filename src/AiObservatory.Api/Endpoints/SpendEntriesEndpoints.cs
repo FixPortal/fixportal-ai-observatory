@@ -88,6 +88,7 @@ public static class SpendEntriesEndpoints
                 continue;
             }
 
+            var (sourceId, sourceKind) = ProvenanceFor(source);
             var entry = new SpendEntry
             {
                 OccurredOn = req.OccurredOn,
@@ -102,8 +103,8 @@ public static class SpendEntriesEndpoints
                 Source = source,
                 EntryKey = string.IsNullOrWhiteSpace(req.EntryKey) ? null : req.EntryKey.Trim(),
                 RecordedAt = now,
-                SourceId = UsageSourceIds.ManualLedger,
-                SourceKind = SourceKind.Manual,
+                SourceId = sourceId,
+                SourceKind = sourceKind,
                 UsageScope = UsageScope.Unknown,
                 CostBasis = CostBasis.Billed,
                 ObservedAt = now,
@@ -247,6 +248,25 @@ public static class SpendEntriesEndpoints
 
         return null;
     }
+
+    /// <summary>
+    /// Maps the parsed ledger <see cref="SpendSource"/> to the provenance columns written on the
+    /// same row, so SourceId/SourceKind never disagree with <c>Source</c> — hardcoding the manual
+    /// values would mark every CSV import, portal feed and vendor-API row as hand-keyed.
+    /// <para>
+    /// Internal so the unit lane can exercise it directly — same reasoning as
+    /// <see cref="Validate"/>.
+    /// </para>
+    /// </summary>
+    internal static (string SourceId, SourceKind SourceKind) ProvenanceFor(SpendSource source) =>
+        source switch
+        {
+            // Vendor-authoritative figures (e.g. GitHub org billing) keyed in via the API arm.
+            SpendSource.Api => ("vendor-api-entry", SourceKind.ProviderApi),
+            SpendSource.Csv => ("csv-import", SourceKind.Manual),
+            SpendSource.Portal => ("portal-feed", SourceKind.Manual),
+            _ => (UsageSourceIds.ManualLedger, SourceKind.Manual),
+        };
 
     private static async Task<IResult> GetEntriesAsync(
         AiObservatoryDbContext db,

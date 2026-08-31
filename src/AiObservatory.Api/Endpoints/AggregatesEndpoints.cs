@@ -1,4 +1,3 @@
-using System.Globalization;
 using AiObservatory.Data;
 using AiObservatory.Data.Entities;
 using AiObservatory.Data.Repositories;
@@ -33,56 +32,11 @@ public static class AggregatesEndpoints
     )
     {
         var today = clock.GetCurrentInstant().InUtc().Date;
-        LocalDate start,
-            end;
-
-        if (from is not null)
+        // Shared with the /activity endpoints so every date-ranged dashboard query defaults
+        // to the same thirty-calendar-day window and rejects malformed dates identically.
+        if (!ActivityEndpoints.TryParseDateRange(from, to, today, out var start, out var end, out var error))
         {
-            if (
-                !DateOnly.TryParseExact(
-                    from,
-                    "yyyy-MM-dd",
-                    CultureInfo.InvariantCulture,
-                    DateTimeStyles.None,
-                    out var fromDate
-                )
-            )
-            {
-                return Results.BadRequest("from must be yyyy-MM-dd");
-            }
-
-            start = LocalDate.FromDateOnly(fromDate);
-        }
-        else
-        {
-            start = today.PlusDays(-29);
-        }
-
-        if (to is not null)
-        {
-            if (
-                !DateOnly.TryParseExact(
-                    to,
-                    "yyyy-MM-dd",
-                    CultureInfo.InvariantCulture,
-                    DateTimeStyles.None,
-                    out var toDate
-                )
-            )
-            {
-                return Results.BadRequest("to must be yyyy-MM-dd");
-            }
-
-            end = LocalDate.FromDateOnly(toDate);
-        }
-        else
-        {
-            end = today;
-        }
-
-        if (start > end)
-        {
-            return Results.BadRequest("from must be on or before to");
+            return error!;
         }
 
         var data = await db

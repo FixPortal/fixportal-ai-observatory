@@ -154,7 +154,9 @@ public static class NotificationSettingsEndpoints
             slackMasked = NotificationMasking.MaskWebhookUrl(slackWebhookUrl),
         };
 
-    private static bool IsValidEmail(string email)
+    // Internal so the Program.cs startup seed can apply the same validation the PUT endpoint
+    // uses (S4: an invalid BUDGET_ALERT_EMAIL_TO must not reach the database unvalidated).
+    internal static bool IsValidEmail(string email)
     {
         // MimeKit's default parsing is lenient: MailboxAddress.Parse("not-an-email") does NOT
         // throw -- it happily accepts a bare word as a local-part-only mailbox with no domain.
