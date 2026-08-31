@@ -117,7 +117,7 @@ export default function SourceStatusPanel() {
                     {isLoading ? '—' : `${row.consecutiveFailureCount.toLocaleString()} ${row.consecutiveFailureCount === 1 ? 'failure' : 'failures'}`}
                   </span>
                   {!isLoading && row.status === 'notConfigured' && row.setupHref && (
-                    <a className="source-status__setup" href={row.setupHref} aria-label={`Setup: ${row.displayName}`}>Setup</a>
+                    <a className="source-status__setup" href={row.setupHref} target="_blank" rel="noopener noreferrer" aria-label={`Setup: ${row.displayName}`}>Setup</a>
                   )}
                   {row.lastError && (
                     <details className="source-status__error">

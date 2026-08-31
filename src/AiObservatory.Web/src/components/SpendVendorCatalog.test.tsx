@@ -43,6 +43,24 @@ describe('SpendVendorCatalog', () => {
     expect(within(row).getByText(/no provider/i)).toBeInTheDocument()
   })
 
+  it('renders a set-but-unknown provider slug readably instead of collapsing it into "No provider"', () => {
+    // null vs set is load-bearing (SpendVendorPatch tri-state): an unrecognized slug
+    // still means the vendor IS provider-mapped.
+    const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+    render(
+      <QueryClientProvider client={qc}>
+        <SpendVendorCatalog
+          vendors={[{ id: 'v9', key: 'acme', displayName: 'Acme', provider: 'azure', defaultCategoryId: null, archivedAt: null }]}
+          categories={categories}
+        />
+      </QueryClientProvider>,
+    )
+
+    const row = screen.getByText('Acme').closest('li')!
+    expect(within(row).queryByText(/no provider/i)).not.toBeInTheDocument()
+    expect(within(row).getByText(/azure/i)).toBeInTheDocument()
+  })
+
   it('groups vendor details separately from the fixed action column', () => {
     renderPanel()
     const row = screen.getByText('anthropic').closest('li')!

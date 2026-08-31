@@ -68,8 +68,10 @@ export default function ActivityTrendChart({
   selectedLabel = 'Selected period', comparisonLabel = 'Previous period',
 }: Props) {
   const primary = useActivityDaily(from, to)
-  const comparisonQuery = useActivityDaily(comparisonFrom, comparisonTo)
   const hasComparison = from && to && comparisonFrom && comparisonTo
+  // Disabled when no comparison range was given: useActivityDaily with no range fetches
+  // the default window — a request nobody asked for whose failure must not fail the chart.
+  const comparisonQuery = useActivityDaily(comparisonFrom, comparisonTo, Boolean(hasComparison))
 
   const byDate = useMemo(
     () => hasComparison
@@ -78,7 +80,7 @@ export default function ActivityTrendChart({
     [comparisonFrom, comparisonQuery.daily, comparisonTo, from, hasComparison, primary.daily, to],
   )
 
-  if (primary.isError || comparisonQuery.isError) return <p className="panel-empty">Couldn’t load activity — try refreshing.</p>
+  if (primary.isError || (hasComparison && comparisonQuery.isError)) return <p className="panel-empty">Couldn’t load activity — try refreshing.</p>
   if (primary.isLoading || (hasComparison && comparisonQuery.isLoading)) return <div className="chart-skeleton" />
   if (primary.daily.length === 0 && (!hasComparison || comparisonQuery.daily.length === 0)) return <p className="panel-empty">No activity data for either period.</p>
 

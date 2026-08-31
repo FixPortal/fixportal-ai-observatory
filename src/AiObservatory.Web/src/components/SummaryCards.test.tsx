@@ -8,14 +8,15 @@ const data = vi.hoisted(() => ({
   aggregatesLoading: false,
   insights: [] as Insight[],
   insightsLoading: false,
-  billedReporting: undefined as BilledReporting | undefined,
+  billedReporting: null as BilledReporting | null,
+  billedLoading: false,
 }))
 
 vi.mock('../api/queries', () => ({
   AGGREGATES_DAYS_RANGE: 31,
   useAggregates: () => ({ aggregates: data.aggregates, isError: false, isLoading: data.aggregatesLoading }),
   useInsights: () => ({ insights: data.insights, isError: false, isLoading: data.insightsLoading }),
-  useBilledReporting: () => ({ report: data.billedReporting, isLoading: false, isError: false }),
+  useBilledReporting: () => ({ report: data.billedReporting ?? undefined, isLoading: data.billedLoading, isError: false }),
   dashboardDateRange: () => ({ from: new Date('2026-08-01T12:00:00'), to: new Date('2026-08-31T12:00:00') }),
 }))
 
@@ -49,6 +50,7 @@ beforeEach(() => {
   data.insights = []
   data.aggregatesLoading = false
   data.insightsLoading = false
+  data.billedLoading = false
 })
 
 describe('SummaryCards loading state', () => {
@@ -62,6 +64,16 @@ describe('SummaryCards loading state', () => {
     expect(screen.queryByText('Not reported')).not.toBeInTheDocument()
     expect(screen.getByText('Tokens').closest('.fpds-card')).toHaveTextContent('…')
     expect(screen.getByText('New insights').closest('.fpds-card')).toHaveTextContent('…')
+  })
+
+  test('does not assert "Not reported" on the Billed spend card while reporting is loading', () => {
+    data.billedReporting = null
+    data.billedLoading = true
+    render(<SummaryCards />)
+
+    const card = screen.getByText('Billed spend · 31 days').closest('.fpds-card')
+    expect(card).toHaveTextContent('…')
+    expect(card).not.toHaveTextContent('Not reported')
   })
 })
 
@@ -137,6 +149,15 @@ describe('SummaryCards', () => {
   test('shows no unclassified-cost note when every row has a recognized basis', () => {
     render(<SummaryCards />)
     expect(screen.queryByText(/reported under a cost basis/)).not.toBeInTheDocument()
+  })
+
+  test('qualifies a partially priced estimate with its unpriced observation count', () => {
+    // A bucket where only some requests are priced still contributes its partial
+    // subtotal — the card must say something was left out.
+    data.aggregates = [...data.aggregates, aggregate({ costBasis: 'listPriceEstimate', costUsd: 2, requestCount: 100, unknownCostCount: 3 })]
+    render(<SummaryCards />)
+
+    expect(screen.getByText('List-price estimate').closest('.fpds-card')).toHaveTextContent('3 observations not reported')
   })
 
   test('opens every financial popover within the summary structure', () => {

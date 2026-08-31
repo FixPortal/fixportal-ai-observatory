@@ -18,9 +18,7 @@ export default function ReportingPage() {
   const rangeLabel = `${localDate(from)} to ${localDate(to)}`
   const comparisonLabel = comparisonMode === 'previous' ? 'previous period' : 'comparison period'
 
-  if (isError || comparison.isError) {
-    return <div className="error-banner" role="alert">Couldn’t load billed reporting. Check the API service and try refreshing.</div>
-  }
+  const loadError = isError || comparison.isError
 
   let charts
   if (isLoading || comparison.isLoading) {
@@ -64,8 +62,17 @@ export default function ReportingPage() {
         onPreset={setPreset} onCustom={setCustom} onComparison={setComparison}
         onPreviousComparison={compareWithPrevious}
       />
-      <ReportingCards report={report} comparisonReport={comparison.report} comparisonLabel={comparisonLabel} />
-      {charts}
+      {/* Inline banner, not an early return: the range controls stay mounted so a range
+          the API rejects can be edited, and BudgetRulesPanel does not depend on billed
+          reporting at all. */}
+      {loadError ? (
+        <div className="error-banner" role="alert">Couldn’t load billed reporting. Check the API service and try refreshing.</div>
+      ) : (
+        <>
+          <ReportingCards report={report} comparisonReport={comparison.report} comparisonLabel={comparisonLabel} />
+          {charts}
+        </>
+      )}
       <BudgetRulesPanel />
     </div>
   )
