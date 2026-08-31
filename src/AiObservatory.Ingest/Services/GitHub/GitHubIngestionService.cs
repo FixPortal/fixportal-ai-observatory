@@ -30,7 +30,9 @@ public class GitHubIngestionService(
         {
             throw new SourceUnavailableException("GitHub API rate limit exhausted");
         }
-        if (result.FailedRepoCount > 0)
+        // Only a total wipe-out rejects the cycle: a single flaky repo among several healthy ones
+        // must not trip escalation, and the healthy repos' watermark still advances on partial failure.
+        if (result.FailedRepoCount > 0 && result.FailedRepoCount == options.Value.GitHubRepoAllowlist.Length)
         {
             throw new InvalidOperationException(
                 $"{result.FailedRepoCount} of {options.Value.GitHubRepoAllowlist.Length} configured GitHub repos failed to ingest this cycle"

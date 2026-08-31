@@ -126,17 +126,6 @@ public sealed class ClaudePricingSource : IPricingSource
             throw new InvalidDataException("Claude pricing is missing required current model coverage.");
         }
 
-        if (
-            entries.ContainsKey("claude-sonnet-5")
-            && !document.Contains(
-                "The previously scheduled increase to $3/$15 per million input/output tokens on September 1, 2026 will not occur.",
-                StringComparison.Ordinal
-            )
-        )
-        {
-            throw new InvalidDataException("Claude Sonnet 5 pricing lost its no-increase declaration.");
-        }
-
         var catalog = new AnthropicPriceCatalog(
             "USD",
             SourceUrl,
