@@ -159,6 +159,10 @@ public static class EventsEndpoints
             return Results.BadRequest("CostUsd must be non-negative");
         }
 
+        // An omitted sourceId targets only legacy-sourced rows: NormalizeSourceId defaults to
+        // UsageSourceIds.LegacyApi and the repository lookup is source-scoped. A cost correction
+        // for a non-legacy event with a matching eventKey therefore returns 404 — it never
+        // patches a row stored under a different source identity.
         var normalizedSourceId = NormalizeSourceId(sourceId);
         if (normalizedSourceId.Length > 100)
         {
