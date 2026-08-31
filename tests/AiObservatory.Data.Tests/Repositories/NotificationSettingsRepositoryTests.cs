@@ -1,5 +1,6 @@
 using AiObservatory.Data.Entities;
 using AiObservatory.Data.Repositories;
+using AiObservatory.Data.Security;
 using AwesomeAssertions;
 using Microsoft.EntityFrameworkCore;
 using NodaTime;
@@ -75,6 +76,40 @@ public class NotificationSettingsRepositoryTests : IAsyncLifetime
         settings.Should().NotBeNull();
         settings!.AlertEmailTo.Should().Be("alerts@example.com");
         settings.SlackWebhookUrl.Should().Be("https://hooks.slack.com/services/T0/B0/xyz");
+    }
+
+    [Fact]
+    public async Task SlackWebhookUrl_is_encrypted_at_rest_when_a_protection_key_is_set()
+    {
+        var ct = TestContext.Current.CancellationToken;
+        Environment.SetEnvironmentVariable(SlackWebhookProtector.KeyEnvironmentVariable, "integration-test-key");
+        try
+        {
+            const string webhookUrl = "https://hooks.slack.com/services/T0/B0/secret";
+            _ctx.NotificationSettings.Add(
+                new NotificationSettings
+                {
+                    SlackWebhookUrl = webhookUrl,
+                    UpdatedAt = Instant.FromUtc(2026, 8, 31, 0, 0),
+                }
+            );
+            await _ctx.SaveChangesAsync(ct);
+
+            await using var conn = new NpgsqlConnection(_connStr);
+            await conn.OpenAsync(ct);
+            await using var cmd = new NpgsqlCommand("SELECT \"SlackWebhookUrl\" FROM \"NotificationSettings\"", conn);
+            var stored = (string?)await cmd.ExecuteScalarAsync(ct);
+
+            stored.Should().StartWith(SlackWebhookProtector.EncryptedPrefix);
+            stored.Should().NotContain("hooks.slack.com");
+
+            _ctx.ChangeTracker.Clear();
+            (await _repo.GetNotificationSettingsAsync(ct))!.SlackWebhookUrl.Should().Be(webhookUrl);
+        }
+        finally
+        {
+            Environment.SetEnvironmentVariable(SlackWebhookProtector.KeyEnvironmentVariable, null);
+        }
     }
 
     [Fact]
