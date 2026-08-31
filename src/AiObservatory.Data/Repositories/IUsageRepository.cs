@@ -17,7 +17,7 @@ public enum RecordEventDisposition
     Corrected,
 }
 
-public sealed record RecordEventResult(Guid EventId, RecordEventDisposition Disposition)
+public sealed record RecordEventResult(Guid EventId, RecordEventDisposition Disposition, bool WatermarkAdvanced = false)
 {
     public bool IsDuplicate => Disposition == RecordEventDisposition.Unchanged;
 }
@@ -30,9 +30,11 @@ public sealed record PurgeResult(int DeletedEvents, int DeletedAggregates);
 
 /// <summary>
 /// Outcome of <see cref="IUsageRepository.PatchEventCostAsync"/>: the old and new cost
-/// for the updated event. Null when no event with the given key exists.
+/// for the updated event. <see cref="OldCostUsd"/> is null when the event was previously
+/// unpriced (unknown), which is distinct from a known zero. Null result when no event
+/// with the given key exists.
 /// </summary>
-public sealed record PatchEventCostResult(Guid EventId, decimal OldCostUsd, decimal NewCostUsd);
+public sealed record PatchEventCostResult(Guid EventId, decimal? OldCostUsd, decimal NewCostUsd);
 
 /// <summary>
 /// Minimal projection of a <see cref="AiObservatory.Data.Entities.UsageEvent"/> for cost-correction use.
@@ -57,13 +59,15 @@ public sealed record EventCostRecord(
 
 /// <summary>
 /// Canonical fields needed by a local collector to reconcile its source-scoped snapshots.
-/// Raw evidence is deliberately excluded.
+/// Raw evidence is deliberately excluded, and so is the cost figure itself: only whether a
+/// cost is known (<see cref="HasCost"/>) is exposed, expressed in the type rather than as a
+/// magic zero.
 /// </summary>
 public sealed record LocalSnapshotRecord(
     Provider Provider,
     Instant OccurredAtUtc,
     string? Model,
-    decimal? CostUsd,
+    bool HasCost,
     string? Runtime,
     string SourceId,
     SourceKind SourceKind,

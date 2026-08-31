@@ -303,6 +303,9 @@ public static class EventsEndpoints
             return "RawPayload must be valid JSON";
         }
 
+        // 200 is coupled to the 256-char EventKey column (AiObservatoryDbContext): the repository
+        // prepends "{Provider}:" for legacy-api rows, so the cap must leave headroom for the
+        // longest provider name plus separator. Keep the three numbers in step.
         if (eventKey is { Length: > 200 })
         {
             return "EventKey must be 200 characters or fewer";

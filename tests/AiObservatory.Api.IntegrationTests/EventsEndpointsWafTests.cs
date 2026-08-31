@@ -1172,7 +1172,7 @@ public class EventsEndpointsWafTests(AiObservatoryApiFactory factory)
         item.GetProperty("sourceId").GetString().Should().Be(UsageSourceIds.CodexLocal);
         item.GetProperty("sourceKind").GetString().Should().Be("localTelemetry");
         item.GetProperty("occurredAtUtc").GetDateTimeOffset().Should().Be(occurredAt);
-        item.GetProperty("costUsd").ValueKind.Should().Be(JsonValueKind.Null);
+        item.GetProperty("hasCost").GetBoolean().Should().BeFalse();
         item.TryGetProperty("inputTokens", out _).Should().BeFalse();
         item.TryGetProperty("rawPayload", out _).Should().BeFalse();
         inventory

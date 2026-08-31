@@ -77,7 +77,7 @@ public class UsageRepository(
                     ? null
                     : await FindEventForUpdateAsync(evt.SourceId, evt.EventKey, ct);
                 var result = await ApplyLockedSnapshotAsync(existing, evt, ct);
-                if (result.Disposition != RecordEventDisposition.Unchanged)
+                if (result.Disposition != RecordEventDisposition.Unchanged || result.WatermarkAdvanced)
                 {
                     await ctx.SaveChangesAsync(ct);
                 }
@@ -93,8 +93,10 @@ public class UsageRepository(
                         ct
                     );
                 }
-                else if (result.Disposition == RecordEventDisposition.Unchanged)
+                else if (result is { Disposition: RecordEventDisposition.Unchanged, WatermarkAdvanced: false })
                 {
+                    // Nothing was persisted; roll the no-op transaction back. A watermark-advanced
+                    // duplicate DID write (above) and must commit.
                     await tx.RollbackAsync(ct);
                     return result;
                 }
@@ -219,6 +221,16 @@ public class UsageRepository(
 
         if (CanonicalEquals(existing, evt))
         {
+            // CanonicalEquals excludes ObservedAt, so an identical replay would otherwise leave the
+            // stored watermark behind and a delayed stale snapshot with an ObservedAt between the
+            // two would then pass the ordering guard above. Advance the watermark (never backwards)
+            // without touching values or aggregates.
+            if (evt.ObservedAt > existing.ObservedAt)
+            {
+                existing.ObservedAt = evt.ObservedAt;
+                return new RecordEventResult(existing.Id, RecordEventDisposition.Unchanged, WatermarkAdvanced: true);
+            }
+
             return new RecordEventResult(existing.Id, RecordEventDisposition.Unchanged);
         }
 
@@ -855,7 +867,7 @@ public class UsageRepository(
                 return null;
             }
 
-            var oldCostUsd = existing.CostUsd ?? 0m;
+            var oldCostUsd = existing.CostUsd;
             var replacement = CopyWithCost(existing, newCostUsd);
             await ApplyLockedSnapshotAsync(existing, replacement, ct);
 
@@ -974,7 +986,7 @@ public class UsageRepository(
                 e.Provider,
                 e.OccurredAt,
                 e.Model,
-                e.CostUsd == null ? null : 0m,
+                e.CostUsd != null,
                 e.Runtime,
                 e.SourceId,
                 e.SourceKind,

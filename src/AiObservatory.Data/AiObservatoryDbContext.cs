@@ -64,6 +64,9 @@ public class AiObservatoryDbContext(DbContextOptions<AiObservatoryDbContext> opt
             b.Property(e => e.UsageScope).HasConversion<string>();
             b.Property(e => e.CostBasis).HasConversion<string>();
             b.HasIndex(e => new { e.Provider, e.Model }).HasFilter("\"Model\" IS NOT NULL");
+            // 256 must stay ahead of the endpoint's 200-char eventKey cap plus the longest
+            // "{Provider}:" prefix UsageRepository.ToStoredEventKey prepends for legacy-api rows;
+            // EventsEndpoints.ValidateUsageRequest carries the matching note.
             b.Property(e => e.EventKey).HasMaxLength(256);
             b.Property(e => e.Runtime).HasMaxLength(100);
             b.Property(e => e.SessionId).HasMaxLength(200);
