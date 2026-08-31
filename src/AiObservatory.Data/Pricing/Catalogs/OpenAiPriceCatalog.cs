@@ -67,15 +67,19 @@ public sealed record OpenAiPriceCatalog(
         LocalDate usageDate
     )
     {
-        return Entries
-            .Where(entry =>
-                entry.EffectiveFrom <= usageDate
-                && string.Equals(entry.Processing, processing, StringComparison.OrdinalIgnoreCase)
-                && string.Equals(entry.Context, context, StringComparison.OrdinalIgnoreCase)
-                && string.Equals(entry.Region, region, StringComparison.OrdinalIgnoreCase)
-                && entry
-                    .Aliases.Prepend(entry.ModelPrefix)
-                    .Any(alias => model.StartsWith(alias, StringComparison.OrdinalIgnoreCase))
+        return EffectiveWindow
+            .ApplicableAt(
+                Entries.Where(entry =>
+                    string.Equals(entry.Processing, processing, StringComparison.OrdinalIgnoreCase)
+                    && string.Equals(entry.Context, context, StringComparison.OrdinalIgnoreCase)
+                    && string.Equals(entry.Region, region, StringComparison.OrdinalIgnoreCase)
+                    && entry
+                        .Aliases.Prepend(entry.ModelPrefix)
+                        .Any(alias => model.StartsWith(alias, StringComparison.OrdinalIgnoreCase))
+                ),
+                usageDate,
+                entry => entry.EffectiveFrom,
+                entry => entry.EffectiveDateIsProviderDeclared
             )
             .OrderByDescending(entry =>
                 entry

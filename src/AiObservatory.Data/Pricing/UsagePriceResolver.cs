@@ -12,6 +12,7 @@ public sealed class UsagePriceResolver
     private const int MaximumLoggedModelLength = 160;
     private static readonly object WarningGate = new();
     private static readonly HashSet<(Provider Provider, string ModelFingerprint, string Missing)> Warnings = [];
+    private static bool WarningCapLogged;
     private readonly PricingSnapshotStore _store;
     private readonly IReadOnlyDictionary<Provider, IProviderPriceCalculator> _calculators;
     private readonly ILogger<UsagePriceResolver> _logger;
@@ -53,32 +54,44 @@ public sealed class UsagePriceResolver
             return null;
         }
 
-        var snapshot = await _store.GetCatalogForDateAsync(usage, snapshotsBySourceId, cancellationToken);
-        if (snapshot is null)
+        var snapshots = await _store.GetCoveringSnapshotsAsync(usage, snapshotsBySourceId, cancellationToken);
+        if (snapshots.Count == 0)
         {
             WarnOnce(usage, "catalog");
             return null;
         }
 
-        var quote = calculator.Calculate(usage, snapshot.NormalizedCatalog);
-        if (quote is null)
+        // Newest covering snapshot first, but a refresh that retires this model must not make the
+        // event unpriceable: fall through to older retained snapshots until one produces a quote.
+        foreach (var snapshot in snapshots)
         {
-            WarnOnce(usage, MissingDimensions(usage));
+            var quote = calculator.Calculate(usage, snapshot.NormalizedCatalog);
+            if (quote is not null)
+            {
+                return quote;
+            }
         }
 
-        return quote;
+        WarnOnce(usage, MissingDimensions(usage));
+        return null;
     }
 
     private void WarnOnce(UsageEvent usage, string missing)
     {
         var model = usage.Model ?? "<missing>";
         var fingerprint = Convert.ToHexStringLower(SHA256.HashData(Encoding.UTF8.GetBytes(model)));
-        lock (WarningGate)
+        if (TryMarkCapReached())
         {
-            if (Warnings.Count >= MaximumWarningKeys || !Warnings.Add((usage.Provider, fingerprint, missing)))
-            {
-                return;
-            }
+            _logger.LogWarning(
+                "Usage price warning cap of {MaximumWarningKeys} distinct keys reached; further unpriced-model warnings are suppressed.",
+                MaximumWarningKeys
+            );
+            return;
+        }
+
+        if (!TryMarkReported(usage.Provider, fingerprint, missing))
+        {
+            return;
         }
 
         var sanitizedModel = model.Replace('\r', ' ').Replace('\n', ' ');
@@ -93,6 +106,30 @@ public sealed class UsagePriceResolver
             sanitizedModel,
             missing
         );
+    }
+
+    private static bool TryMarkReported(Provider provider, string modelFingerprint, string missing)
+    {
+        lock (WarningGate)
+        {
+            return Warnings.Count < MaximumWarningKeys && Warnings.Add((provider, modelFingerprint, missing));
+        }
+    }
+
+    private static bool TryMarkCapReached()
+    {
+        lock (WarningGate)
+        {
+            // At the cap new unpriceable models would stop being reported entirely; say so once
+            // rather than going silently dark.
+            if (Warnings.Count < MaximumWarningKeys || WarningCapLogged)
+            {
+                return false;
+            }
+
+            WarningCapLogged = true;
+            return true;
+        }
     }
 
     private static bool IsExactZeroUsage(UsageEvent usage) =>

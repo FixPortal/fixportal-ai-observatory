@@ -15,18 +15,24 @@ public sealed class OpenAiPriceCalculator : IProviderPriceCalculator
         }
 
         using var evidence = ProviderPricingJson.Evidence(usage.RawPayload);
-        if (
-            !ProviderPricingJson.TryString(evidence.RootElement, "processing", out var processing)
-            || !ProviderPricingJson.TryString(evidence.RootElement, "context", out var context)
-            || !ProviderPricingJson.TryString(evidence.RootElement, "region", out var region)
-        )
+        var hasProcessing = ProviderPricingJson.TryString(evidence.RootElement, "processing", out var processing);
+        var hasContext = ProviderPricingJson.TryString(evidence.RootElement, "context", out var context);
+        var hasRegion = ProviderPricingJson.TryString(evidence.RootElement, "region", out var region);
+        var isNotional = usage.CostBasis == CostBasis.Notional;
+        if (!isNotional && !(hasProcessing && hasContext && hasRegion))
         {
             return null;
         }
 
+        // Notional (subscription-covered) telemetry often carries no pricing dimensions —
+        // e.g. a zero-usage local snapshot posts "{}" — so, matching the sibling calculators,
+        // default to the documented standard public tier rather than dropping the price.
+        processing = hasProcessing ? processing : "standard";
+        context = hasContext ? context : "short";
+        region = hasRegion ? region : "global";
+
         var catalog = PricingCatalogJson.Deserialize<OpenAiPriceCatalog>(normalizedCatalog);
-        var pricingDate =
-            usage.CostBasis == CostBasis.Notional ? catalog.RetrievedAt.InUtc().Date : usage.OccurredAt.InUtc().Date;
+        var pricingDate = isNotional ? catalog.RetrievedAt.InUtc().Date : usage.OccurredAt.InUtc().Date;
         var entry = catalog.Resolve(usage.Model, processing, context, region, pricingDate);
         var cacheRead = usage.CacheReadTokens ?? 0;
         var cacheWrite = usage.CacheWriteTokens ?? 0;

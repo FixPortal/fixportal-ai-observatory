@@ -61,12 +61,16 @@ public sealed record AnthropicPriceCatalog(
 
     public AnthropicPriceEntry? Resolve(string model, LocalDate usageDate)
     {
-        return Entries
-            .Where(entry =>
-                entry.EffectiveFrom <= usageDate
-                && entry
-                    .Aliases.Prepend(entry.ModelPrefix)
-                    .Any(alias => model.StartsWith(alias, StringComparison.OrdinalIgnoreCase))
+        return EffectiveWindow
+            .ApplicableAt(
+                Entries.Where(entry =>
+                    entry
+                        .Aliases.Prepend(entry.ModelPrefix)
+                        .Any(alias => model.StartsWith(alias, StringComparison.OrdinalIgnoreCase))
+                ),
+                usageDate,
+                entry => entry.EffectiveFrom,
+                entry => entry.EffectiveDateIsProviderDeclared
             )
             .OrderByDescending(entry =>
                 entry

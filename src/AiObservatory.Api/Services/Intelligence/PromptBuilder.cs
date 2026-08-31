@@ -115,6 +115,11 @@ public class PromptBuilder
                 + "language, and do not sum figures with different cost bases into one \"total spend\" without "
                 + "saying which basis it is."
         );
+        sb.AppendLine(
+            "In each insight's data object, include \"costBasis\" with the basis of the monetary figures the "
+                + "insight discusses — one of \"billed\", \"provider-estimated\", \"list-price-estimate\", "
+                + "\"notional\" — whenever it cites one. Omit it for insights with no monetary figure."
+        );
         sb.AppendLine("Note: Include analysis of cache hit rates where relevant to Anthropic usage.");
         sb.AppendLine(
             "Produce 3-5 insights covering: summary, efficiency opportunities, anomalies, and recommendations."

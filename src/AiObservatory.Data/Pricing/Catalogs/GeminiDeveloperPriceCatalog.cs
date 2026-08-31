@@ -62,14 +62,18 @@ public sealed record GeminiDeveloperPriceCatalog(
     }
 
     public GeminiDeveloperPriceEntry? Resolve(string model, string tier, string context, LocalDate usageDate) =>
-        Entries
-            .Where(entry =>
-                entry.EffectiveFrom <= usageDate
-                && string.Equals(entry.Tier, tier, StringComparison.OrdinalIgnoreCase)
-                && string.Equals(entry.Context, context, StringComparison.OrdinalIgnoreCase)
-                && entry
-                    .Aliases.Prepend(entry.ModelPrefix)
-                    .Any(alias => model.StartsWith(alias, StringComparison.OrdinalIgnoreCase))
+        EffectiveWindow
+            .ApplicableAt(
+                Entries.Where(entry =>
+                    string.Equals(entry.Tier, tier, StringComparison.OrdinalIgnoreCase)
+                    && string.Equals(entry.Context, context, StringComparison.OrdinalIgnoreCase)
+                    && entry
+                        .Aliases.Prepend(entry.ModelPrefix)
+                        .Any(alias => model.StartsWith(alias, StringComparison.OrdinalIgnoreCase))
+                ),
+                usageDate,
+                entry => entry.EffectiveFrom,
+                entry => entry.EffectiveDateIsProviderDeclared
             )
             .OrderByDescending(entry =>
                 entry

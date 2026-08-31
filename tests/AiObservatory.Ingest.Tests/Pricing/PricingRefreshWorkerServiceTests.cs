@@ -277,7 +277,7 @@ public sealed class PricingRefreshWorkerServiceTests(ProviderPollingDatabase dat
             PricingSourceIds.OpenAi => PricingCandidate.Create(
                 Provider.OpenAI,
                 sourceId,
-                Now,
+                PricingCatalogJson.Deserialize<OpenAiPriceCatalog>(raw).RetrievedAt,
                 PricingCatalogJson.Deserialize<OpenAiPriceCatalog>(raw).SourceUrl,
                 evidence,
                 PricingCatalogJson.Deserialize<OpenAiPriceCatalog>(raw)
@@ -285,7 +285,7 @@ public sealed class PricingRefreshWorkerServiceTests(ProviderPollingDatabase dat
             PricingSourceIds.Claude => PricingCandidate.Create(
                 Provider.Anthropic,
                 sourceId,
-                Now,
+                PricingCatalogJson.Deserialize<AnthropicPriceCatalog>(raw).RetrievedAt,
                 PricingCatalogJson.Deserialize<AnthropicPriceCatalog>(raw).SourceUrl,
                 evidence,
                 PricingCatalogJson.Deserialize<AnthropicPriceCatalog>(raw)

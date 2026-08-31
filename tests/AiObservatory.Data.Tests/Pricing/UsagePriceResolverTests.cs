@@ -1,5 +1,3 @@
-using System.Security.Cryptography;
-using System.Text;
 using System.Text.Json;
 using AiObservatory.Data.Entities;
 using AiObservatory.Data.Pricing;
@@ -368,7 +366,7 @@ public sealed class UsagePriceResolverTests : IAsyncLifetime
                 PricingSourceIds.GeminiDeveloperApi,
                 RetrievedAt,
                 catalog.SourceUrl,
-                Convert.ToHexStringLower(SHA256.HashData(Encoding.UTF8.GetBytes(evidence))),
+                PricingSnapshotCandidate.ComputeContentHash(evidence, Json(catalog)),
                 evidence,
                 Json(catalog)
             ),
@@ -417,7 +415,7 @@ public sealed class UsagePriceResolverTests : IAsyncLifetime
                 PricingSourceIds.GeminiDeveloperApi,
                 RetrievedAt,
                 catalog.SourceUrl,
-                Convert.ToHexStringLower(SHA256.HashData(Encoding.UTF8.GetBytes(evidence))),
+                PricingSnapshotCandidate.ComputeContentHash(evidence, Json(catalog)),
                 evidence,
                 Json(catalog)
             ),
@@ -430,8 +428,11 @@ public sealed class UsagePriceResolverTests : IAsyncLifetime
     }
 
     [Fact]
-    public async Task ResolverUsesTheUsageLocalDateAndReturnsNullBeforeTheEffectiveWindow()
+    public async Task ResolverPricesHistoryBeforeTheEarliestAssumedEffectiveWindow()
     {
+        // Bundled catalogs stamp effectiveFrom with the fetch date (assumed, not
+        // provider-declared), so usage predating the first fetch resolves against the
+        // earliest known window instead of becoming unpriceable.
         var ct = TestContext.Current.CancellationToken;
         await _store.ActivateAsync(Candidate(OpenAiCatalog()), ct);
         var resolver = Resolver();
@@ -446,8 +447,67 @@ public sealed class UsagePriceResolverTests : IAsyncLifetime
             ct
         );
 
-        before.Should().BeNull();
+        before!.CostUsd.Should().Be(12m);
         effective!.CostUsd.Should().Be(12m);
+    }
+
+    [Fact]
+    public async Task ResolverFallsThroughToAnOlderSnapshotWhenTheNewestCannotPriceTheModel()
+    {
+        // A catalog refresh that retires a model must not make its history unpriceable: the
+        // retained snapshot that still carries the model is consulted next.
+        var ct = TestContext.Current.CancellationToken;
+        await _store.ActivateAsync(Candidate(OpenAiCatalog()), ct);
+        var refreshed = new OpenAiPriceCatalog(
+            "USD",
+            "https://developers.openai.com/api/docs/pricing.md",
+            RetrievedAt.Plus(Duration.FromDays(1)),
+            [
+                new OpenAiPriceEntry(
+                    "gpt-6",
+                    ["gpt-6"],
+                    EffectiveFrom,
+                    false,
+                    "standard",
+                    "short",
+                    "global",
+                    4m,
+                    1m,
+                    20m,
+                    6m
+                ),
+            ]
+        );
+        await _store.ActivateAsync(Candidate(refreshed), ct);
+        var usage = Event(
+            Provider.OpenAI,
+            "gpt-5.4",
+            """{"processing":"standard","context":"short","region":"global"}"""
+        );
+
+        var quote = await Resolver().ResolveAsync(usage, ct);
+
+        quote!.CostUsd.Should().Be(12m);
+    }
+
+    [Fact]
+    public void OpenAiCalculatorDefaultsToTheStandardPublicTierForSparseNotionalTelemetry()
+    {
+        var usage = Event(Provider.OpenAI, "gpt-5.4", "{}", costBasis: CostBasis.Notional);
+
+        var quote = new OpenAiPriceCalculator().Calculate(usage, Json(OpenAiCatalog()));
+
+        quote.Should().Be(new UsagePriceQuote(12m, 0m));
+    }
+
+    [Fact]
+    public void KimiCalculatorReturnsNullWhenTheModelSuffixAndHighSpeedFlagConflict()
+    {
+        // "…-highspeed" in the model id but high_speed:false in the payload: either reading
+        // prices the wrong lane, so the event is surfaced as unpriceable instead.
+        var usage = Event(Provider.Moonshot, "kimi-k2.7-code-highspeed", """{"high_speed":false,"batch":false}""");
+
+        new KimiPriceCalculator().Calculate(usage, Json(KimiCatalog())).Should().BeNull();
     }
 
     [Fact]
@@ -676,9 +736,9 @@ public sealed class UsagePriceResolverTests : IAsyncLifetime
         return new PricingSnapshotCandidate(
             Provider.OpenAI,
             PricingSourceIds.OpenAi,
-            RetrievedAt,
+            catalog.RetrievedAt,
             catalog.SourceUrl,
-            Convert.ToHexStringLower(SHA256.HashData(Encoding.UTF8.GetBytes(raw))),
+            PricingSnapshotCandidate.ComputeContentHash(raw, Json(catalog)),
             raw,
             Json(catalog)
         );

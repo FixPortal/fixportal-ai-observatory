@@ -76,8 +76,8 @@ public static class InsightsEndpoints
             async (IInsightGenerator generator, IClock clock, CancellationToken ct) =>
             {
                 var date = clock.GetCurrentInstant().InUtc().Date;
-                var generated = await generator.GenerateForDateAsync(date, ct);
-                return Results.Ok(new { generated });
+                var result = await generator.GenerateForDateAsync(date, ct);
+                return Results.Ok(new { generated = result.Persisted });
             }
         );
 
