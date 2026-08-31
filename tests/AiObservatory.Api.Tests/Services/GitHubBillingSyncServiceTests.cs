@@ -22,7 +22,7 @@ public sealed class GitHubBillingSyncServiceTests : IDisposable
 
     [Theory]
     [InlineData("actions", "github-actions", "ci")]
-    [InlineData("packages", "github-actions", "ci")]
+    [InlineData("packages", "github", "cloud")]
     [InlineData("code_quality", "github", "code-review")]
     [InlineData("ghas", "github", "subscription")]
     [InlineData("some_new_product", "github", "subscription")]
@@ -217,6 +217,34 @@ public sealed class GitHubBillingSyncServiceTests : IDisposable
         var keys = writes.Select(write => write.Observation.ObservationKey).ToList();
         keys.Should().OnlyContain(key => key.Length <= 200);
         keys.Should().OnlyHaveUniqueItems();
+    }
+
+    [Fact]
+    public async Task MissingProductOrSkuStaysInsideThePerLineGuard()
+    {
+        // A3: System.Text.Json binds an omitted `product`/`sku` to null despite the
+        // non-nullable record members, and a null ProductMap key used to throw
+        // ArgumentNullException outside the try — one malformed line aborted the whole sync.
+        var writes = new List<CapturedWrite>();
+        var sut = Create(ClientReturning(Item(null!, null!, 10m), Item("actions", "linux", 20m)), Writer(writes));
+
+        var written = await sut.SyncAsync(TestContext.Current.CancellationToken);
+
+        written.Should().Be(2);
+        writes.Select(write => (write.Observation.Service, write.Observation.Sku)).Should().Contain(("", ""));
+    }
+
+    [Fact]
+    public async Task ColonBearingSegmentsCannotCollideObservationKeys()
+    {
+        // A9: a bare ':' delimiter let product="a:b"/sku="c" and product="a"/sku="b:c" share
+        // one key and overwrite each other. The segments are length-prefixed instead.
+        var writes = new List<CapturedWrite>();
+        var sut = Create(ClientReturning(Item("a:b", "c", 10m), Item("a", "b:c", 20m)), Writer(writes));
+
+        await sut.SyncAsync(TestContext.Current.CancellationToken);
+
+        writes.Select(write => write.Observation.ObservationKey).Should().OnlyHaveUniqueItems();
     }
 
     private static GitHubBillingSyncService Create(GitHubBillingClient client, BillingObservationWriter writer) =>

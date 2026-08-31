@@ -23,7 +23,9 @@ public class GitHubBillingSyncService(
     )
     {
         ["actions"] = ("github-actions", "ci"),
-        ["packages"] = ("github-actions", "ci"),
+        // Packages is storage/bandwidth, not Actions compute — booking it against the
+        // github-actions vendor would misattribute it in every per-vendor breakdown.
+        ["packages"] = ("github", "cloud"),
         ["code_quality"] = ("github", "code-review"),
         ["ghas"] = ("github", "subscription"),
     };
@@ -89,8 +91,15 @@ public class GitHubBillingSyncService(
 
     private static IEnumerable<BillingLine> Aggregate(IEnumerable<GitHubBillingUsageItem> items) =>
         items
+            // Coalesce here, not at the lookup: System.Text.Json binds a missing `product`/`sku`
+            // to null despite the non-nullable record members, and a null key into ProductMap's
+            // GetValueOrDefault throws ArgumentNullException outside the per-line failure guard.
             .GroupBy(item =>
-                (Month: LocalDate.FromDateOnly(item.Date).With(DateAdjusters.StartOfMonth), item.Product, item.Sku)
+                (
+                    Month: LocalDate.FromDateOnly(item.Date).With(DateAdjusters.StartOfMonth),
+                    Product: item.Product ?? "",
+                    Sku: item.Sku ?? ""
+                )
             )
             .Select(group => new BillingLine(
                 group.Key.Month,
@@ -140,13 +149,15 @@ public class GitHubBillingSyncService(
     private static string ObservationKeyFor(BillingLine line)
     {
         var month = line.Month.ToString("yyyy-MM", CultureInfo.InvariantCulture);
-        var readable = $"github:{month}:{line.Product}:{line.Sku}";
+        // Length-prefix both segments: a bare ':' delimiter lets product="a:b"/sku="c" and
+        // product="a"/sku="b:c" collide on the same key, overwriting each other's spend.
+        var material = $"{Part(line.Product)}{Part(line.Sku)}";
+        var readable = $"github:{month}:{material}";
         if (readable.Length <= 200)
         {
             return readable;
         }
 
-        var material = $"{Part(month)}{Part(line.Product)}{Part(line.Sku)}";
         return $"github:{month}:{Convert.ToHexStringLower(SHA256.HashData(Encoding.UTF8.GetBytes(material)))}";
     }
 

@@ -151,10 +151,10 @@ public class DevSeedEndpointTests
             .Should()
             .Contain(a =>
                 a.Provider == Provider.Google
-                && a.SourceId == UsageSourceIds.LegacyApi
-                && a.SourceKind == SourceKind.Legacy
-                && a.UsageScope == UsageScope.Unknown
-                && a.CostBasis == CostBasis.Unknown
+                && a.SourceId == UsageSourceIds.DemoSeed
+                && a.SourceKind == SourceKind.Synthetic
+                && a.UsageScope == UsageScope.Api
+                && a.CostBasis == CostBasis.ListPriceEstimate
                 && a.CostUsd > 0
             );
     }

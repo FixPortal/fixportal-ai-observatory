@@ -85,6 +85,12 @@ builder.Services.AddHostedService<IntelligenceWorkerService>();
 // ApiKeyEndpointFilter, so the header is unvalidated at this point — keying on it let an
 // anonymous caller mint a fresh 120/min bucket per request just by rotating a random header,
 // bypassing the limit entirely.
+// Validate the permit limit at boot: FixedWindowRateLimiterOptions is only validated when a
+// partition's limiter is first constructed, so a zero or negative value would otherwise turn
+// every /api request into a 500 instead of refusing to start. The factory below keeps its own
+// read so a config reload still applies to newly-seen client partitions.
+Program.ValidateRateLimitPermitLimit(builder);
+
 builder.Services.AddRateLimiter(o =>
 {
     o.RejectionStatusCode = StatusCodes.Status429TooManyRequests;
@@ -145,25 +151,7 @@ using (var scope = app.Services.CreateScope())
     // once a row exists (created here or via the UI) this is a permanent no-op.
     if (!await db.NotificationSettings.AnyAsync(s => s.Id == NotificationSettings.SingletonId))
     {
-        var legacyEmail = builder.Configuration["BUDGET_ALERT_EMAIL_TO"];
-        if (!string.IsNullOrWhiteSpace(legacyEmail))
-        {
-            var clock = scope.ServiceProvider.GetRequiredService<IClock>();
-            db.NotificationSettings.Add(
-                new NotificationSettings { AlertEmailTo = legacyEmail, UpdatedAt = clock.GetCurrentInstant() }
-            );
-            try
-            {
-                await db.SaveChangesAsync();
-            }
-            catch (DbUpdateException ex)
-                when (ex.InnerException is PostgresException { SqlState: PostgresErrorCodes.UniqueViolation })
-            {
-                // Lost the insert race to another instance starting concurrently (overlapping
-                // old/new containers during a deploy). Best-effort, one-time backfill -- someone
-                // else already won, which is the outcome this backfill wants anyway.
-            }
-        }
+        await Program.SeedLegacyAlertEmailAsync(db, scope.ServiceProvider, builder.Configuration);
     }
 }
 
@@ -256,6 +244,10 @@ if (app.Environment.IsDevelopment())
                         Date = date,
                         Provider = Provider.Google,
                         Model = "gemini-1.5-pro",
+                        SourceId = UsageSourceIds.DemoSeed,
+                        SourceKind = SourceKind.Synthetic,
+                        UsageScope = UsageScope.Api,
+                        CostBasis = CostBasis.ListPriceEstimate,
                         InputTokens = 80000 + i * 500,
                         OutputTokens = 40000 + i * 200,
                         CacheReadTokens = 15000 + i * 100,
@@ -271,6 +263,10 @@ if (app.Environment.IsDevelopment())
                         Date = date,
                         Provider = Provider.Google,
                         Model = "gemini-1.5-flash",
+                        SourceId = UsageSourceIds.DemoSeed,
+                        SourceKind = SourceKind.Synthetic,
+                        UsageScope = UsageScope.Api,
+                        CostBasis = CostBasis.ListPriceEstimate,
                         InputTokens = 500000 + i * 5000,
                         OutputTokens = 250000 + i * 2000,
                         CacheReadTokens = 120000 + i * 1000,
@@ -436,6 +432,8 @@ public partial class Program
         ValidateApiKey(readOnlyKey, "OBSERVATORY_READONLY_API_KEY");
         ValidateIdeApiKey(ideKey);
 
+        // The null-forgiving operators below are safe only because the validators throw on a
+        // bad value rather than returning it — keep that throw-or-continue contract.
         if (ApiKeyComparer.FixedTimeEquals(adminKey!, readOnlyKey!))
         {
             throw new InvalidOperationException(
@@ -447,6 +445,15 @@ public partial class Program
             throw new InvalidOperationException(
                 "OBSERVATORY_IDE_API_KEY must be different from the existing API keys."
             );
+        }
+    }
+
+    internal static void ValidateRateLimitPermitLimit(WebApplicationBuilder builder)
+    {
+        var permitLimit = builder.Configuration.GetValue("RateLimiting:ApiPermitLimit", 120);
+        if (permitLimit <= 0)
+        {
+            throw new InvalidOperationException("RateLimiting:ApiPermitLimit must be a positive integer.");
         }
     }
 
@@ -484,6 +491,57 @@ public partial class Program
         if (!string.IsNullOrEmpty(builder.Configuration["APPLICATIONINSIGHTS_CONNECTION_STRING"]))
         {
             builder.Services.AddApplicationInsightsTelemetry();
+        }
+    }
+
+    /// <summary>
+    /// True when the legacy BUDGET_ALERT_EMAIL_TO value is safe to seed into
+    /// NotificationSettings. Routed through the same IsValidEmail gate the settings endpoint
+    /// applies: an invalid value stored here would throw in EmailAlertNotifier at send time and
+    /// wedge the alert claim into an endless retry loop (S4). The Key Vault prefix check is the
+    /// same gate every other configuration value in this composition root carries — an
+    /// unresolved reference arrives as the literal "@Microsoft.KeyVault(...)" string.
+    /// </summary>
+    internal static bool IsSeedableLegacyAlertEmail(string? value) =>
+        !string.IsNullOrWhiteSpace(value)
+        && !value.StartsWith("@Microsoft.KeyVault(", StringComparison.OrdinalIgnoreCase)
+        && NotificationSettingsEndpoints.IsValidEmail(value);
+
+    internal static async Task SeedLegacyAlertEmailAsync(
+        AiObservatoryDbContext db,
+        IServiceProvider services,
+        IConfiguration configuration
+    )
+    {
+        var legacyEmail = configuration["BUDGET_ALERT_EMAIL_TO"];
+        if (!IsSeedableLegacyAlertEmail(legacyEmail))
+        {
+            if (!string.IsNullOrWhiteSpace(legacyEmail))
+            {
+                services
+                    .GetRequiredService<ILoggerFactory>()
+                    .CreateLogger("AiObservatory.Api.Startup")
+                    .LogWarning(
+                        "BUDGET_ALERT_EMAIL_TO is not a valid email address; skipping the legacy alert-email seed."
+                    );
+            }
+            return;
+        }
+
+        var clock = services.GetRequiredService<IClock>();
+        db.NotificationSettings.Add(
+            new NotificationSettings { AlertEmailTo = legacyEmail, UpdatedAt = clock.GetCurrentInstant() }
+        );
+        try
+        {
+            await db.SaveChangesAsync();
+        }
+        catch (DbUpdateException ex)
+            when (ex.InnerException is PostgresException { SqlState: PostgresErrorCodes.UniqueViolation })
+        {
+            // Lost the insert race to another instance starting concurrently (overlapping
+            // old/new containers during a deploy). Best-effort, one-time backfill -- someone
+            // else already won, which is the outcome this backfill wants anyway.
         }
     }
 

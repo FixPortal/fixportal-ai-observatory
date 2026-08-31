@@ -55,5 +55,6 @@ public static class GitHubBillingRegistration
     /// off. Mirrors the same gate in AiObservatory.Ingest's composition root.
     /// </summary>
     private static bool IsConfigured(string? value) =>
-        !string.IsNullOrEmpty(value) && !value.StartsWith("@Microsoft.KeyVault(", StringComparison.OrdinalIgnoreCase);
+        !string.IsNullOrWhiteSpace(value)
+        && !value.StartsWith("@Microsoft.KeyVault(", StringComparison.OrdinalIgnoreCase);
 }
