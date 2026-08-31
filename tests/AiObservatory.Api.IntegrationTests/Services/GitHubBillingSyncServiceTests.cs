@@ -33,6 +33,8 @@ public class GitHubBillingSyncServiceTests(AiObservatoryApiFactory factory) : IC
             DateOnly.ParseExact(date, "yyyy-MM-dd", System.Globalization.CultureInfo.InvariantCulture),
             product,
             sku,
+            net,
+            0m,
             net
         );
 

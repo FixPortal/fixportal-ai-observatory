@@ -10,7 +10,7 @@ using NodaTime.Text;
 
 namespace AiObservatory.Ingest.Pricing;
 
-public sealed class GooglePricingSource : IPricingSource
+public sealed class GooglePricingSource : IPricingSource, IDisposable
 {
     private const int MaximumResponseBytes = 2 * 1024 * 1024;
     private static readonly TimeSpan RequestTimeout = TimeSpan.FromSeconds(20);
@@ -88,6 +88,8 @@ public sealed class GooglePricingSource : IPricingSource
     internal static HttpClientHandler CreateHttpMessageHandler() => new() { AllowAutoRedirect = false };
 
     public string SourceId => PricingSourceIds.GoogleCloudCatalog;
+
+    public void Dispose() => _client.Dispose();
 
     public async Task<PricingSnapshotCandidate?> FetchAsync(CancellationToken cancellationToken)
     {

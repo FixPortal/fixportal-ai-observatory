@@ -91,15 +91,22 @@ public class GitHubBillingClient(HttpClient http, string org, ILogger<GitHubBill
 /// </param>
 /// <param name="Product">Coarse billing product, e.g. <c>actions</c>, <c>ghas</c>, <c>code_quality</c>.</param>
 /// <param name="Sku">Human-readable line, e.g. <c>Code Quality AI Credits</c>.</param>
+/// <param name="GrossAmount">USD before the discount — the full metered price of the line.</param>
+/// <param name="DiscountAmount">
+/// USD GitHub took off, e.g. the included-minutes allowance given back on the same invoice.
+/// Positive, as GitHub sends it.
+/// </param>
 /// <param name="NetAmount">
-/// USD actually billed, after <c>discountAmount</c> is taken off <c>grossAmount</c>. This is
-/// the only one of the three that belongs in the ledger — gross would double-count the
-/// included-minutes allowance that GitHub gives back on the same invoice.
+/// USD actually billed: <c>grossAmount</c> minus <c>discountAmount</c>. All three are kept so
+/// gross-versus-credit views match the Google arm instead of showing GitHub gross as zero-credit
+/// net.
 /// </param>
 public sealed record GitHubBillingUsageItem(
     [property: JsonConverter(typeof(GitHubBillingDateConverter))] DateOnly Date,
     string Product,
     string Sku,
+    decimal GrossAmount,
+    decimal DiscountAmount,
     decimal NetAmount
 );
 

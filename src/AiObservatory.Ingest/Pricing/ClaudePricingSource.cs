@@ -7,7 +7,7 @@ using NodaTime;
 
 namespace AiObservatory.Ingest.Pricing;
 
-public sealed class ClaudePricingSource : IPricingSource
+public sealed class ClaudePricingSource : IPricingSource, IDisposable
 {
 #pragma warning disable S1075 // The source URL is the fixed trust boundary required by the pricing design.
     private const string SourceUrl = "https://platform.claude.com/docs/en/about-claude/pricing.md";
@@ -46,6 +46,8 @@ public sealed class ClaudePricingSource : IPricingSource
     }
 
     public string SourceId => PricingSourceIds.Claude;
+
+    public void Dispose() => _fetcher.Dispose();
 
     public async Task<PricingSnapshotCandidate?> FetchAsync(CancellationToken cancellationToken)
     {

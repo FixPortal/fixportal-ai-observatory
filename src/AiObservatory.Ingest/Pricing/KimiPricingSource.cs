@@ -8,7 +8,7 @@ using NodaTime;
 
 namespace AiObservatory.Ingest.Pricing;
 
-public sealed class KimiPricingSource : IPricingSource
+public sealed class KimiPricingSource : IPricingSource, IDisposable
 {
 #pragma warning disable S1075 // These URLs are the fixed trust boundary required by the pricing design.
     private const string IndexUrl = "https://platform.kimi.ai/docs/llms.txt";
@@ -55,6 +55,15 @@ public sealed class KimiPricingSource : IPricingSource
     }
 
     public string SourceId => PricingSourceIds.Kimi;
+
+    public void Dispose()
+    {
+        _indexFetcher.Dispose();
+        foreach (var (_, fetcher) in _pageFetchers)
+        {
+            fetcher.Dispose();
+        }
+    }
 
     public async Task<PricingSnapshotCandidate?> FetchAsync(CancellationToken cancellationToken)
     {

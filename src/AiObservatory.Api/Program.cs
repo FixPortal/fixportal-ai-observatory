@@ -46,11 +46,12 @@ builder.Services.AddSingleton(
 
 builder.Services.AddTransient<MailKit.Net.Smtp.ISmtpClient, MailKit.Net.Smtp.SmtpClient>();
 builder.Services.AddKeyedTransient<IAlertNotifier, EmailAlertNotifier>("email");
+
 // The webhook URL is the credential (its path is the whole auth), so this client's
 // HttpClientFactory logging handlers are removed -- otherwise every budget alert writes the
 // full URL to the logs and App Insights. Matches the Ingest secret-carrying registrations.
-builder.Services
-    .AddHttpClient<SlackAlertNotifier>()
+builder
+    .Services.AddHttpClient<SlackAlertNotifier>()
     .ConfigureHttpClient(c => c.Timeout = TimeSpan.FromSeconds(10))
     .RemoveAllLoggers();
 builder.Services.AddKeyedTransient<IAlertNotifier>("slack", (sp, _) => sp.GetRequiredService<SlackAlertNotifier>());
@@ -462,13 +463,19 @@ public partial class Program
 
     private static void ValidateApiKey(string? value, string name)
     {
+        // The length floor is what makes this an anti-guessability check rather than a
+        // presence check: "x" passed every gate below yet would stand as a bearer credential.
+        const int minimumLength = 16;
         if (
             string.IsNullOrWhiteSpace(value)
+            || value.Length < minimumLength
             || value == "change-me"
             || value.StartsWith("@Microsoft.KeyVault(", StringComparison.OrdinalIgnoreCase)
         )
         {
-            throw new InvalidOperationException($"{name} must be set to a non-default value outside Development.");
+            throw new InvalidOperationException(
+                $"{name} must be set to a non-default value of at least {minimumLength} characters outside Development."
+            );
         }
     }
 

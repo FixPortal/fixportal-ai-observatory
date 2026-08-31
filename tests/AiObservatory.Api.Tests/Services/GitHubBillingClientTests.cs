@@ -36,6 +36,8 @@ public class GitHubBillingClientTests
         items.Should().ContainSingle();
         items[0].Product.Should().Be("code_quality");
         items[0].Sku.Should().Be("Code Quality AI Credits");
+        items[0].GrossAmount.Should().Be(15.0m, "gross is the full metered price before the discount");
+        items[0].DiscountAmount.Should().Be(2.9858473m, "the included-allowance credit GitHub took off");
         items[0]
             .NetAmount.Should()
             .Be(12.0141527m, "net is gross minus the discount — gross would double-count the included allowance");
@@ -91,8 +93,7 @@ public class GitHubBillingClientTests
 
         var act = () => client.GetUsageAsync(2026, TestContext.Current.CancellationToken);
 
-        await act
-            .Should()
+        await act.Should()
             .ThrowAsync<GitHubBillingUnavailableException>(
                 "an auth/scope failure is not 'no data' — it has to fail the sync, not silently empty it"
             );

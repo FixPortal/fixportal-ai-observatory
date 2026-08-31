@@ -210,6 +210,23 @@ public sealed class FirstPartyDocumentFetcherTests
         result.Content.Should().BeNull();
     }
 
+    [Fact]
+    public async Task DisposeReleasesTheOwnedClientSoTheRefreshScopeDoesNotLeakIt()
+    {
+        // The pricing sources are scoped and rebuilt on every refresh pass; without
+        // IDisposable the owned handler's connection pool was abandoned to the finalizer.
+        var fetcher = new FirstPartyDocumentFetcher(
+            Source,
+            ["docs.example.test"],
+            new RecordingHandler((_, _) => Response(HttpStatusCode.OK, "unused"))
+        );
+
+        fetcher.Dispose();
+
+        var act = () => fetcher.FetchAsync(TestContext.Current.CancellationToken);
+        await act.Should().ThrowAsync<ObjectDisposedException>();
+    }
+
     private static HttpResponseMessage Redirect(string location) =>
         new(HttpStatusCode.Found) { Headers = { Location = new Uri(location, UriKind.RelativeOrAbsolute) } };
 
