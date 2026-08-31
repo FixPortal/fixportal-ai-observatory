@@ -857,16 +857,14 @@ public class UsageRepository(
 
             var oldCostUsd = existing.CostUsd ?? 0m;
             var replacement = CopyWithCost(existing, newCostUsd);
-            var result = await ApplyLockedSnapshotAsync(existing, replacement, ct);
-            if (result.Disposition == RecordEventDisposition.Unchanged)
-            {
-                await tx.RollbackAsync(ct);
-                return new PatchEventCostResult(existing.Id, oldCostUsd, newCostUsd);
-            }
+            await ApplyLockedSnapshotAsync(existing, replacement, ct);
 
             // The marker is set on the tracked row directly: CopyCanonicalValues never copies
             // CorrectedAt from a replay, so the stamp survives until a source post carrying an
-            // explicit cost re-asserts authority (see ApplyLockedSnapshotAsync).
+            // explicit cost re-asserts authority (see ApplyLockedSnapshotAsync). It is stamped on
+            // the no-op (Unchanged) path too: a re-applied or equal-to-estimate patch is still an
+            // operator correction, and without the persisted marker a later cost-less replay would
+            // silently undo it.
             existing.CorrectedAt = _clock.GetCurrentInstant();
             await ctx.SaveChangesAsync(ct);
             await tx.CommitAsync(ct);

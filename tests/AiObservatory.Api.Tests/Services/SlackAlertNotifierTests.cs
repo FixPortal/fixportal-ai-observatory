@@ -184,7 +184,7 @@ public class SlackAlertNotifierTests
         // Slack puts the actionable reason (invalid_payload, channel_not_found, ...) in a
         // plain-text body; the status code alone cannot tell a rotated webhook from a bad payload.
         var handler = new CapturingHandler(HttpStatusCode.BadRequest, "invalid_payload");
-        var http = new HttpClient(handler);
+        using var http = new HttpClient(handler);
         var repo = Substitute.For<IUsageRepository>();
         repo.GetNotificationSettingsAsync(Arg.Any<CancellationToken>())
             .Returns(

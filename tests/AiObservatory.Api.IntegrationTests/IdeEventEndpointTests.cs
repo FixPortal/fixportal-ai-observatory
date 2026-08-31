@@ -16,7 +16,9 @@ public sealed class IdeEventEndpointTests(AiObservatoryApiFactory factory)
     public async Task RecordsAnIdenticalDeliveryOnceAndRejectsConflictingReuse()
     {
         var bytes = await File.ReadAllBytesAsync(
-            Path.Combine(AppContext.BaseDirectory, "Fixtures", "routing.decided.v1.json"),
+            // GetFullPath(relative, base) keeps the base authoritative even if a segment
+            // were rooted; Path.Combine would silently drop the earlier arguments.
+            Path.GetFullPath(Path.Combine("Fixtures", "routing.decided.v1.json"), AppContext.BaseDirectory),
             TestContext.Current.CancellationToken
         );
         using var client = factory.CreateIdeClient();
@@ -49,7 +51,9 @@ public sealed class IdeEventEndpointTests(AiObservatoryApiFactory factory)
     public async Task MissingIdentityMemberIsRejectedCleanlyInsteadOfCrashing(string missingMember)
     {
         var json = await File.ReadAllTextAsync(
-            Path.Combine(AppContext.BaseDirectory, "Fixtures", "routing.decided.v1.json"),
+            // GetFullPath(relative, base) keeps the base authoritative even if a segment
+            // were rooted; Path.Combine would silently drop the earlier arguments.
+            Path.GetFullPath(Path.Combine("Fixtures", "routing.decided.v1.json"), AppContext.BaseDirectory),
             TestContext.Current.CancellationToken
         );
         var bytes = Encoding.UTF8.GetBytes(json.Replace(missingMember, "", StringComparison.Ordinal));

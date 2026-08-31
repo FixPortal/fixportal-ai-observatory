@@ -54,13 +54,11 @@ public class IntelligenceWorkerGitHubBillingTests(AiObservatoryApiFactory factor
 
         // The sync throws (auth failure) or returns empty before the writer is ever used,
         // but the constructor still needs one.
+        using var fxClient = new HttpClient();
+        using var fxCache = new MemoryCache(new MemoryCacheOptions());
         var writer = new BillingObservationWriter(
             new AiObservatoryDbContext(dbOptions),
-            new FxRateProvider(
-                new HttpClient(),
-                new MemoryCache(new MemoryCacheOptions()),
-                NullLogger<FxRateProvider>.Instance
-            ),
+            new FxRateProvider(fxClient, fxCache, NullLogger<FxRateProvider>.Instance),
             clock
         );
 
