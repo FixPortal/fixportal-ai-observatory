@@ -33,7 +33,7 @@ public class GitHubIngestionServiceTests
         client.GetCommitsAsync("fix-portal/example", Arg.Any<LocalDate>(), Arg.Any<CancellationToken>()).Returns([]);
         client
             .GetWorkflowRunsAsync("fix-portal/example", Arg.Any<LocalDate>(), Arg.Any<CancellationToken>())
-            .Returns([]);
+            .Returns(new GitHubWorkflowRunResult([], false));
 
         var sut = new GitHubIngestionService(
             client,
@@ -66,6 +66,52 @@ public class GitHubIngestionServiceTests
     }
 
     [Fact]
+    public async Task IngestAsync_WhenWorkflowRunsHitThePaginationCap_DoesNotMarkBackfillComplete()
+    {
+        // A capped listing is silently incomplete; marking it complete would permanently
+        // skip every run beyond the cap, so the lane must stay open for the next cycle.
+        var client = Substitute.For<IGitHubActivityClient>();
+        var repo = Substitute.For<IGitHubActivityRepository>();
+        repo.GetBackfillStatusAsync("fix-portal/example", Arg.Any<CancellationToken>()).Returns(NoPriorData);
+        client
+            .GetPullRequestsAsync("fix-portal/example", Arg.Any<LocalDate>(), Arg.Any<CancellationToken>())
+            .Returns([]);
+        client.GetCommitsAsync("fix-portal/example", Arg.Any<LocalDate>(), Arg.Any<CancellationToken>()).Returns([]);
+        client
+            .GetWorkflowRunsAsync("fix-portal/example", Arg.Any<LocalDate>(), Arg.Any<CancellationToken>())
+            .Returns(new GitHubWorkflowRunResult([], Truncated: true));
+
+        var sut = new GitHubIngestionService(
+            client,
+            repo,
+            Options("fix-portal/example"),
+            NullLogger<GitHubIngestionService>.Instance,
+            Clock
+        );
+
+        await sut.IngestAsync(
+            new LocalDate(2026, 7, 1),
+            new LocalDate(2026, 7, 1),
+            TestContext.Current.CancellationToken
+        );
+
+        await repo.Received(1)
+            .MarkBackfillCompletedAsync(
+                "fix-portal/example",
+                GitHubActivityKind.PullRequests,
+                Arg.Any<CancellationToken>()
+            );
+        await repo.Received(1)
+            .MarkBackfillCompletedAsync("fix-portal/example", GitHubActivityKind.Commits, Arg.Any<CancellationToken>());
+        await repo.DidNotReceive()
+            .MarkBackfillCompletedAsync(
+                "fix-portal/example",
+                GitHubActivityKind.WorkflowRuns,
+                Arg.Any<CancellationToken>()
+            );
+    }
+
+    [Fact]
     public async Task IngestAsync_WhenRepoAlreadyHasData_UsesGivenDateNotBackfill()
     {
         var client = Substitute.For<IGitHubActivityClient>();
@@ -77,7 +123,7 @@ public class GitHubIngestionServiceTests
         client.GetCommitsAsync("fix-portal/example", Arg.Any<LocalDate>(), Arg.Any<CancellationToken>()).Returns([]);
         client
             .GetWorkflowRunsAsync("fix-portal/example", Arg.Any<LocalDate>(), Arg.Any<CancellationToken>())
-            .Returns([]);
+            .Returns(new GitHubWorkflowRunResult([], false));
 
         var sut = new GitHubIngestionService(
             client,
@@ -110,7 +156,7 @@ public class GitHubIngestionServiceTests
         client.GetCommitsAsync("fix-portal/example", Arg.Any<LocalDate>(), Arg.Any<CancellationToken>()).Returns([]);
         client
             .GetWorkflowRunsAsync("fix-portal/example", Arg.Any<LocalDate>(), Arg.Any<CancellationToken>())
-            .Returns([]);
+            .Returns(new GitHubWorkflowRunResult([], false));
 
         var sut = new GitHubIngestionService(
             client,
@@ -220,7 +266,9 @@ public class GitHubIngestionServiceTests
             .GetPullRequestsAsync(Arg.Any<string>(), Arg.Any<LocalDate>(), Arg.Any<CancellationToken>())
             .Returns([pr]);
         client.GetCommitsAsync(Arg.Any<string>(), Arg.Any<LocalDate>(), Arg.Any<CancellationToken>()).Returns([]);
-        client.GetWorkflowRunsAsync(Arg.Any<string>(), Arg.Any<LocalDate>(), Arg.Any<CancellationToken>()).Returns([]);
+        client
+            .GetWorkflowRunsAsync(Arg.Any<string>(), Arg.Any<LocalDate>(), Arg.Any<CancellationToken>())
+            .Returns(new GitHubWorkflowRunResult([], false));
 
         var sut = new GitHubIngestionService(
             client,
@@ -263,7 +311,9 @@ public class GitHubIngestionServiceTests
         );
         client.GetPullRequestsAsync("fix-portal/ok", Arg.Any<LocalDate>(), Arg.Any<CancellationToken>()).Returns([pr]);
         client.GetCommitsAsync(Arg.Any<string>(), Arg.Any<LocalDate>(), Arg.Any<CancellationToken>()).Returns([]);
-        client.GetWorkflowRunsAsync(Arg.Any<string>(), Arg.Any<LocalDate>(), Arg.Any<CancellationToken>()).Returns([]);
+        client
+            .GetWorkflowRunsAsync(Arg.Any<string>(), Arg.Any<LocalDate>(), Arg.Any<CancellationToken>())
+            .Returns(new GitHubWorkflowRunResult([], false));
 
         var sut = new GitHubIngestionService(
             client,
@@ -297,7 +347,9 @@ public class GitHubIngestionServiceTests
             );
         client.GetPullRequestsAsync("fix-portal/ok", Arg.Any<LocalDate>(), Arg.Any<CancellationToken>()).Returns([]);
         client.GetCommitsAsync(Arg.Any<string>(), Arg.Any<LocalDate>(), Arg.Any<CancellationToken>()).Returns([]);
-        client.GetWorkflowRunsAsync(Arg.Any<string>(), Arg.Any<LocalDate>(), Arg.Any<CancellationToken>()).Returns([]);
+        client
+            .GetWorkflowRunsAsync(Arg.Any<string>(), Arg.Any<LocalDate>(), Arg.Any<CancellationToken>())
+            .Returns(new GitHubWorkflowRunResult([], false));
 
         var sut = new GitHubIngestionService(
             client,
@@ -353,7 +405,9 @@ public class GitHubIngestionServiceTests
                 Task.FromException<IReadOnlyList<GitHubPullRequestRecord>>(new GitHubRateLimitExceededException(10))
             );
         client.GetCommitsAsync(Arg.Any<string>(), Arg.Any<LocalDate>(), Arg.Any<CancellationToken>()).Returns([]);
-        client.GetWorkflowRunsAsync(Arg.Any<string>(), Arg.Any<LocalDate>(), Arg.Any<CancellationToken>()).Returns([]);
+        client
+            .GetWorkflowRunsAsync(Arg.Any<string>(), Arg.Any<LocalDate>(), Arg.Any<CancellationToken>())
+            .Returns(new GitHubWorkflowRunResult([], false));
 
         var sut = new GitHubIngestionService(
             client,
@@ -388,7 +442,9 @@ public class GitHubIngestionServiceTests
                 Task.FromException<IReadOnlyList<GitHubPullRequestRecord>>(new GitHubRateLimitExceededException(10))
             );
         client.GetCommitsAsync(Arg.Any<string>(), Arg.Any<LocalDate>(), Arg.Any<CancellationToken>()).Returns([]);
-        client.GetWorkflowRunsAsync(Arg.Any<string>(), Arg.Any<LocalDate>(), Arg.Any<CancellationToken>()).Returns([]);
+        client
+            .GetWorkflowRunsAsync(Arg.Any<string>(), Arg.Any<LocalDate>(), Arg.Any<CancellationToken>())
+            .Returns(new GitHubWorkflowRunResult([], false));
 
         var sut = new GitHubIngestionService(
             client,

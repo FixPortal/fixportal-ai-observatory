@@ -23,6 +23,10 @@ public sealed class GoogleBillingExportClient(Lazy<BigQueryClient> client, strin
             IFNULL((SELECT SUM(CAST(credit.amount * 1000000 AS INT64)) FROM UNNEST(source.credits) AS credit), 0) AS credit_micros,
             source.export_time
           FROM `%TABLE%` AS source
+          -- Coarse predicate so BigQuery can prune partitions on the source scan: neither the
+          -- five-column IS NOT DISTINCT FROM join nor the OR'd export_time filter in
+          -- affected_keys lets it. Slack covers late-exported rows for recent corrections.
+          WHERE source.usage_start_time >= @changes_since - INTERVAL 31 DAY
           INNER JOIN affected_keys AS affected ON DATE(source.usage_start_time) IS NOT DISTINCT FROM affected.usage_date
             AND source.invoice.month IS NOT DISTINCT FROM affected.billing_period AND source.service.id IS NOT DISTINCT FROM affected.service_id
             AND source.sku.id IS NOT DISTINCT FROM affected.sku_id AND source.currency IS NOT DISTINCT FROM affected.currency

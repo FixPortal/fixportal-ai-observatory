@@ -228,6 +228,30 @@ public sealed class CopilotReportClientTests : IDisposable
         records.Should().ContainSingle().Which.Day.Should().Be(new LocalDate(2026, 8, 21));
     }
 
+    [Fact]
+    public async Task GetLatestOrganizationReportAsync_AcceptsOneUtf8BomPerDownloadShard()
+    {
+        // Each shard is an independent stream read, so a BOM on the second file must strip
+        // exactly like one on the first — previously only the first shard allowed it.
+        var bom = WithPreamble(
+            new UTF8Encoding(encoderShouldEmitUTF8Identifier: true),
+            Wrapper(new(2026, 8, 21), null)
+        );
+        var sut = CreateSut(
+            new QueueHandler(_ =>
+                Json(Descriptor(["https://reports.example/first.ndjson", "https://reports.example/second.ndjson"]))
+            ),
+            new QueueHandler(
+                request => HeaderIsolatedNdjson(request, Wrapper(new LocalDate(2026, 8, 20), null)),
+                _ => Bytes(bom)
+            )
+        );
+
+        var act = () => sut.GetLatestOrganizationReportAsync(TestContext.Current.CancellationToken);
+
+        await act.Should().NotThrowAsync();
+    }
+
     [Theory]
     [InlineData("utf-16")]
     [InlineData("utf-32")]

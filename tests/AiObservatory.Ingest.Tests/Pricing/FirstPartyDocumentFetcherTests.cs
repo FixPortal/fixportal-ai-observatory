@@ -52,7 +52,6 @@ public sealed class FirstPartyDocumentFetcherTests
 
         var result = await fetcher.FetchAsync(TestContext.Current.CancellationToken);
 
-        result.NotModified.Should().BeFalse();
         result.Content.Should().Be("£ per million");
         handler
             .Requests.Select(uri => uri.AbsoluteUri)
@@ -196,18 +195,19 @@ public sealed class FirstPartyDocumentFetcherTests
     }
 
     [Fact]
-    public async Task FetchRepresentsNotModifiedWithoutReadingABody()
+    public async Task FetchRejectsAnUnsolicitedNotModified()
     {
+        // The fetcher never sends conditional headers, so a 304 can only come from a
+        // non-conforming intermediary — treat it as a failed fetch, not a silent skip.
         var fetcher = new FirstPartyDocumentFetcher(
             Source,
             ["docs.example.test"],
             new RecordingHandler((_, _) => new HttpResponseMessage(HttpStatusCode.NotModified))
         );
 
-        var result = await fetcher.FetchAsync(TestContext.Current.CancellationToken);
+        var act = () => fetcher.FetchAsync(TestContext.Current.CancellationToken);
 
-        result.NotModified.Should().BeTrue();
-        result.Content.Should().BeNull();
+        await act.Should().ThrowAsync<InvalidDataException>();
     }
 
     [Fact]

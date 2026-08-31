@@ -85,12 +85,14 @@ public class GitHubIngestionService(
                     SinceDate(status.HasWorkflowRuns),
                     cancellationToken
                 );
-                foreach (var run in runs)
+                foreach (var run in runs.Runs)
                 {
                     await repository.UpsertWorkflowRunAsync(run, now, cancellationToken);
                     latest = Latest(latest, run.CreatedAt);
                 }
-                if (!status.HasWorkflowRuns)
+                // A capped listing is incomplete by definition — marking it complete would
+                // permanently skip the runs beyond the cap, so leave the backfill open.
+                if (!status.HasWorkflowRuns && !runs.Truncated)
                 {
                     await repository.MarkBackfillCompletedAsync(
                         repo,
@@ -103,7 +105,7 @@ public class GitHubIngestionService(
                     "GitHub: ingested {PrCount} PRs, {CommitCount} commits, {RunCount} workflow runs for {Repo}",
                     prs.Count,
                     commits.Count,
-                    runs.Count,
+                    runs.Runs.Count,
                     repo
                 );
             }

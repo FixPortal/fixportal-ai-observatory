@@ -44,6 +44,9 @@ public sealed class OpenAiAdminClientTests : IDisposable
             );
         records[1].Batch.Should().BeTrue();
         records[0].RawJson.Should().Contain("input_uncached_tokens").And.Contain("start_time");
+        // Same O(N^2) guard as the Anthropic client: the bucket's "results" array must not
+        // be embedded per record.
+        records[0].RawJson.Should().NotContain("\"results\"");
         handler.Requests.Should().HaveCount(2);
         handler
             .Requests[0]

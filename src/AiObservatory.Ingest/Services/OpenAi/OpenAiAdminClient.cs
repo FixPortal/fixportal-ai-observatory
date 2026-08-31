@@ -1,5 +1,6 @@
 using System.Buffers;
 using System.Globalization;
+using System.Text;
 using System.Text.Json;
 using NodaTime;
 
@@ -274,15 +275,41 @@ public sealed class OpenAiAdminClient(HttpClient http) : IOpenAiAdminClient
         }
     }
 
-    private static string RawEvidence(JsonElement bucket, JsonElement result, string? processing) =>
-        JsonSerializer.Serialize(
-            new
+    private static string RawEvidence(JsonElement bucket, JsonElement result, string? processing)
+    {
+        // The bucket's "results" array holds every sibling result; embedding it per record
+        // made payloads O(N^2). Keep the bucket's own fields and this result only.
+        using var output = new MemoryStream();
+        using (var writer = new Utf8JsonWriter(output))
+        {
+            writer.WriteStartObject();
+            writer.WritePropertyName("processing");
+            if (processing is null)
             {
-                processing,
-                bucket,
-                result,
+                writer.WriteNullValue();
             }
-        );
+            else
+            {
+                writer.WriteStringValue(processing);
+            }
+            writer.WritePropertyName("bucket");
+            writer.WriteStartObject();
+#pragma warning disable S3267 // Element-ordered writer side effects don't read as a LINQ Where.
+            foreach (var property in bucket.EnumerateObject())
+            {
+                if (!property.NameEquals("results"))
+                {
+                    property.WriteTo(writer);
+                }
+            }
+#pragma warning restore S3267
+            writer.WriteEndObject();
+            writer.WritePropertyName("result");
+            result.WriteTo(writer);
+            writer.WriteEndObject();
+        }
+        return Encoding.UTF8.GetString(output.GetBuffer(), 0, checked((int)output.Length));
+    }
 
     private static string? Processing(bool? batch, string? serviceTier)
     {

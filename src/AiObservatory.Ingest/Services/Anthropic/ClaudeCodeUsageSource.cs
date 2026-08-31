@@ -74,7 +74,9 @@ public sealed class ClaudeCodeUsageSource(
                             actor = new { type = group.Key.ActorType, identifier = group.Key.ActorIdentifier },
                             organization_id = group.Key.OrganizationId,
                             customer_type = group.Key.CustomerType,
-                            subscription_type = rows.Select(row => row.SubscriptionType).Distinct().SingleOrDefault(),
+                            // A mid-day resubscription can put two distinct values in one group.
+                            // Keep the first rather than failing the whole day's ingest.
+                            subscription_type = rows.Select(row => row.SubscriptionType).Distinct().FirstOrDefault(),
                             is_remote = group.Key.IsRemote,
                             terminal_type = group.Key.TerminalType,
                             estimated_cost_minor = estimatedMinor,

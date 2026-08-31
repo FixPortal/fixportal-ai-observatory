@@ -49,6 +49,9 @@ public sealed class AnthropicAdminClientTests : IDisposable
             );
         records[1].Model.Should().BeNull();
         records[0].RawJson.Should().Contain("ephemeral_1h_input_tokens").And.Contain("starting_at");
+        // The per-record evidence keeps the bucket's window bounds but not its "results"
+        // array — embedding it made payloads grow O(N^2) with the bucket's row count.
+        records[0].RawJson.Should().NotContain("\"results\"");
         handler.Requests.Should().HaveCount(2);
         handler
             .Requests[0]

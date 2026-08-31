@@ -17,7 +17,25 @@ public sealed class PricingRefreshWorkerService(
     {
         while (!stoppingToken.IsCancellationRequested)
         {
-            await RunOnceAsync(stoppingToken);
+            // One transient fault (a catalog read, a DI resolution, a state read between the
+            // guarded paths) must not take the host down — BackgroundServiceExceptionBehavior
+            // defaults to StopHost. A failed pass retries on the next daily tick.
+            try
+            {
+                await RunOnceAsync(stoppingToken);
+            }
+            catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)
+            {
+                throw;
+            }
+            catch (Exception exception)
+            {
+                logger.LogError(
+                    exception,
+                    "Daily pricing refresh pass failed: {Error}",
+                    ProviderPollingWorkerService.SanitizeError(exception.Message)
+                );
+            }
             await Task.Delay(TimeSpan.FromDays(1), stoppingToken);
         }
     }
@@ -129,6 +147,9 @@ public sealed class PricingRefreshWorkerService(
     )
     {
         var error = ProviderPollingWorkerService.SanitizeError(exception.Message);
+        // Log before persisting: if the state write itself throws, the fallback catch must
+        // not be the only record — it would lose the upstream cause during a compound outage.
+        logger.LogError("{SourceId} pricing refresh failed: {Error}", sourceId, error);
         try
         {
             await states.MarkFailureAsync(
@@ -139,7 +160,6 @@ public sealed class PricingRefreshWorkerService(
                 cancellationToken,
                 onlyIfLatestAttempt: true
             );
-            logger.LogError("{SourceId} pricing refresh failed: {Error}", sourceId, error);
         }
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
         {

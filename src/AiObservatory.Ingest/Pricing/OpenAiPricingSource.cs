@@ -62,13 +62,9 @@ public sealed class OpenAiPricingSource : IPricingSource, IDisposable
     public async Task<PricingSnapshotCandidate?> FetchAsync(CancellationToken cancellationToken)
     {
         var document = await _fetcher.FetchAsync(cancellationToken);
-        if (document.NotModified)
-        {
-            return _lastCandidate;
-        }
 
         var retrievedAt = _clock.GetCurrentInstant();
-        var raw = document.Content!;
+        var raw = document.Content;
         var candidate = PricingCandidate.Create(
             Provider.OpenAI,
             SourceId,

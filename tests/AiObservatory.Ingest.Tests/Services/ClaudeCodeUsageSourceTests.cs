@@ -135,6 +135,38 @@ public sealed class ClaudeCodeUsageSourceTests(ProviderPollingDatabase database)
         await repository.DidNotReceive().RecordEventAsync(Arg.Any<UsageEvent>(), Arg.Any<CancellationToken>());
     }
 
+    [Fact]
+    public async Task IngestAsync_WhenSubscriptionTypeDiffersWithinAGroup_KeepsTheFirst()
+    {
+        // A mid-day resubscription can put two distinct values in one group; previously
+        // Distinct().SingleOrDefault() threw out of the payload build and failed the day.
+        var client = Substitute.For<IAnthropicAdminClient>();
+        client
+            .GetClaudeCodeUsageAsync(Day, Day, Arg.Any<CancellationToken>())
+            .Returns([
+                Usage("dev@example.com", "subscription", false, "vscode", "claude-sonnet-5", null, "team"),
+                Usage("dev@example.com", "subscription", false, "vscode", "claude-sonnet-5", null, "pro"),
+            ]);
+        UsageEvent? captured = null;
+        var repository = Substitute.For<IUsageRepository>();
+        repository
+            .RecordEventAsync(Arg.Do<UsageEvent>(value => captured = value), Arg.Any<CancellationToken>())
+            .Returns(new RecordEventResult(Guid.NewGuid(), RecordEventDisposition.Created));
+        var sut = new ClaudeCodeUsageSource(
+            client,
+            repository,
+            new FakeClock(Instant.FromUtc(2026, 8, 3, 9, 0)),
+            NullLogger<ClaudeCodeUsageSource>.Instance
+        );
+
+        var act = () => sut.IngestAsync(Day, Day, TestContext.Current.CancellationToken);
+
+        await act.Should().NotThrowAsync();
+        captured.Should().NotBeNull();
+        using var payload = JsonDocument.Parse(captured.RawPayload);
+        payload.RootElement.GetProperty("subscription_type").GetString().Should().Be("team");
+    }
+
     private AiObservatoryDbContext CreateDb() =>
         new(
             new DbContextOptionsBuilder<AiObservatoryDbContext>()

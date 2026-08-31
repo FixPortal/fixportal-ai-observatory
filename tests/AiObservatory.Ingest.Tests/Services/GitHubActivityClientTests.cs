@@ -494,7 +494,8 @@ public sealed class GitHubActivityClientTests : IDisposable
             TestContext.Current.CancellationToken
         );
 
-        var run = result.Single();
+        var run = result.Runs.Single();
+        result.Truncated.Should().BeFalse();
         run.RunId.Should().Be(123);
         run.WorkflowName.Should().Be("CI");
         run.Status.Should().Be("success");
@@ -518,7 +519,7 @@ public sealed class GitHubActivityClientTests : IDisposable
             TestContext.Current.CancellationToken
         );
 
-        result.Single().Status.Should().Be("in_progress");
+        result.Runs.Single().Status.Should().Be("in_progress");
     }
 
     [Fact]
@@ -539,7 +540,7 @@ public sealed class GitHubActivityClientTests : IDisposable
             TestContext.Current.CancellationToken
         );
 
-        result.Single().WorkflowName.Should().Be("(unnamed)");
+        result.Runs.Single().WorkflowName.Should().Be("(unnamed)");
     }
 
     [Fact]
@@ -561,7 +562,7 @@ public sealed class GitHubActivityClientTests : IDisposable
             TestContext.Current.CancellationToken
         );
 
-        result.Single().WorkflowName.Should().HaveLength(200);
+        result.Runs.Single().WorkflowName.Should().HaveLength(200);
     }
 
     [Fact]
@@ -588,7 +589,8 @@ public sealed class GitHubActivityClientTests : IDisposable
             TestContext.Current.CancellationToken
         );
 
-        result.Should().HaveCount(1000); // 10 pages * 100, then the cap stops it
+        result.Runs.Should().HaveCount(1000); // 10 pages * 100, then the cap stops it
+        result.Truncated.Should().BeTrue();
         // Since every stub response is a full page, a client that refetched page 1 forever
         // would also return 1000 rows - so pin that pagination actually advanced 1..10 and
         // stopped at the cap rather than requesting an 11th page.
