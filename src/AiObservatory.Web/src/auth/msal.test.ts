@@ -6,6 +6,7 @@ describe('readViewerKey / URL strip', () => {
   beforeEach(() => {
     vi.resetModules()
     window.sessionStorage.clear()
+    delete (window as Window & { chrome?: unknown }).chrome
   })
 
   test('captures ?key= from the URL, persists to sessionStorage, and strips it from the visible URL', async () => {
@@ -57,6 +58,7 @@ describe('readViewerKey / URL strip', () => {
   })
 
   test('embedded mode ignores URL and stored viewer keys', async () => {
+    stubWebViewHost()
     window.sessionStorage.setItem(VIEWER_KEY_STORAGE, 'from-storage')
     window.history.pushState({}, '', '/?embed=fixportal-ide&key=secret123')
     const setItem = vi.spyOn(Storage.prototype, 'setItem')
@@ -68,7 +70,22 @@ describe('readViewerKey / URL strip', () => {
     expect(mod.isReadonly).toBe(false)
     expect(setItem).not.toHaveBeenCalled()
   })
+
+  test('?embed=fixportal-ide without a WebView2 host does not enter embedded mode and keeps the viewer key', async () => {
+    window.history.pushState({}, '', '/?embed=fixportal-ide&key=secret123')
+
+    const mod = await import('./msal')
+
+    expect(mod.isEmbedded).toBe(false)
+    expect(mod.urlApiKey).toBe('secret123')
+    expect(mod.isReadonly).toBe(true)
+  })
 })
+
+function stubWebViewHost() {
+  const host = window as Window & { chrome?: { webview?: object } }
+  host.chrome = { webview: {} }
+}
 
 describe('getAccessToken', () => {
   beforeEach(() => {
