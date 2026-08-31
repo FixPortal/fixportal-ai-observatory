@@ -8,8 +8,10 @@ namespace AiObservatory.Api.Services;
 /// <see cref="SlackAlertNotifier"/>): a failure is logged and never retried in isolation, and
 /// never blocks email from being attempted or from correctly reporting its own outcome upward.
 /// Because Slack runs first inside this same <see cref="NotifyAsync"/> call, it is attempted on
-/// every email lease-retry pass, but the fence makes every attempt after the first a no-op --
-/// Slack fires at most once per claim, independent of how many times email itself is retried.
+/// every email lease-retry pass, but the fence makes every successful delivery after the first a
+/// no-op -- Slack delivers at most once per claim, independent of how many times email itself is
+/// retried. The fence is check-then-act (see <see cref="SlackAlertNotifier"/>), so a crash
+/// between the Slack POST and the fence write can post one duplicate; that is accepted.
 /// </summary>
 public sealed class CompositeAlertNotifier(
     [FromKeyedServices("email")] IAlertNotifier email,

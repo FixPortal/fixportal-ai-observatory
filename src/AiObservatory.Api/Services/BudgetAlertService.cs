@@ -206,9 +206,12 @@ public class BudgetAlertService(
             PeriodStart = from,
             PeriodEnd = to,
             InsightType = InsightType.BudgetAlert,
-            Title = $"Budget alert: {rule.Period} billed spend exceeded £{rule.ThresholdGbp:F2}",
-            Body =
-                $"Total {rule.Period.ToString().ToLower()} billed spend reached £{totalSpendGbp:F2}, exceeding your £{rule.ThresholdGbp:F2} threshold.",
+            Title = FormattableString.Invariant(
+                $"Budget alert: {rule.Period} billed spend exceeded £{rule.ThresholdGbp:F2}"
+            ),
+            Body = FormattableString.Invariant(
+                $"Total {rule.Period.ToString().ToLowerInvariant()} billed spend reached £{totalSpendGbp:F2}, exceeding your £{rule.ThresholdGbp:F2} threshold."
+            ),
             Data = System.Text.Json.JsonSerializer.Serialize(
                 new { thresholdGbp = rule.ThresholdGbp, actualSpendGbp = totalSpendGbp }
             ),
