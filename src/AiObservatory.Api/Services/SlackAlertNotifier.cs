@@ -5,12 +5,16 @@ using NodaTime;
 namespace AiObservatory.Api.Services;
 
 /// <summary>
-/// Posts a Slack incoming-webhook message. Best-effort: no retry -- a failure is logged and
-/// swallowed by the caller (<see cref="CompositeAlertNotifier"/>), never surfaced as a delivery
-/// failure that would cause <c>BudgetAlertService</c> to re-attempt the whole payload (which
-/// would re-send email too). Fenced by <see cref="BudgetAlertClaim.SlackSentAt"/> so a claim
-/// still being retried by the email lease (see <c>BudgetAlertService.DeliverEmailAsync</c>)
-/// only ever gets one Slack attempt, not one per email retry cycle.
+/// Posts a Slack incoming-webhook message. Best-effort: a failure is logged and swallowed by
+/// the caller (<see cref="CompositeAlertNotifier"/>), never surfaced as a delivery failure
+/// that would cause <c>BudgetAlertService</c> to re-attempt the whole payload (which would
+/// re-send email too). Fenced by <see cref="BudgetAlertClaim.SlackSentAt"/> so a claim gets
+/// one successful Slack delivery, not one per email retry cycle; a failed attempt is
+/// re-attempted on a later pass, which is deliberate (Slack 4xx/5xx are often transient).
+/// The fence is check-then-act and deliberately not claimed before the POST: a process death
+/// or DB failure between the POST and the fence write can re-post one duplicate message,
+/// but Slack webhooks carry no idempotency key, so marking first would only swap that rare
+/// duplicate for a rare silent loss -- the worse trade for an alerting channel.
 /// </summary>
 public sealed class SlackAlertNotifier(
     HttpClient http,
@@ -36,9 +40,13 @@ public sealed class SlackAlertNotifier(
         }
 
         var text =
-            $"*Budget alert: {payload.Provider} {payload.Period} billed spend exceeded £{payload.ThresholdGbp:F2}*\n"
-            + $"Total {payload.Period.ToLowerInvariant()} billed spend for {payload.Provider} reached £{payload.ActualSpendGbp:F2}, "
-            + $"exceeding your £{payload.ThresholdGbp:F2} threshold.";
+            FormattableString.Invariant(
+                $"*Budget alert: {payload.Provider} {payload.Period} billed spend exceeded £{payload.ThresholdGbp:F2}*\n"
+            )
+            + FormattableString.Invariant(
+                $"Total {payload.Period.ToLowerInvariant()} billed spend for {payload.Provider} reached £{payload.ActualSpendGbp:F2}, "
+            )
+            + FormattableString.Invariant($"exceeding your £{payload.ThresholdGbp:F2} threshold.");
 
         using var response = await http.PostAsJsonAsync(webhookUrl, new { text }, ct);
         if (!response.IsSuccessStatusCode)
