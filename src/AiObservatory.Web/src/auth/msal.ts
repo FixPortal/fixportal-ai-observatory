@@ -4,6 +4,7 @@
 // the (key-free) local API directly. In production the build bakes the client id,
 // tenant, and API scope, and every request carries a bearer token.
 import { PublicClientApplication, InteractionRequiredAuthError, type Configuration, type RedirectRequest } from '@azure/msal-browser'
+import { windowWebViewPort } from '../ide/partnerBridge'
 
 const clientId = import.meta.env.VITE_AAD_CLIENT_ID ?? ''
 const tenantId = import.meta.env.VITE_AAD_TENANT_ID ?? ''
@@ -94,7 +95,13 @@ export const apiKey = import.meta.env.VITE_API_KEY ?? ''
 // this module against the already-stripped URL — still finds the key, instead of dropping
 // the viewer to the Entra sign-in screen they can't pass. Scoped to the tab, cleared on close.
 const VIEWER_KEY_STORAGE = 'observatory:viewer-key'
-export const isEmbedded = new URLSearchParams(window.location.search).get('embed') === 'fixportal-ide'
+// Embedded mode is only honoured when a real WebView2 host channel is present —
+// the bare ?embed=fixportal-ide parameter must not be able to discard a viewer key
+// on its own, or a tampered share link would strand the recipient at the Entra
+// sign-in screen with the key already stripped from the URL.
+export const isEmbedded =
+  new URLSearchParams(window.location.search).get('embed') === 'fixportal-ide' &&
+  windowWebViewPort() !== null
 
 function readViewerKey(): string {
   if (isEmbedded) return ''
