@@ -156,7 +156,8 @@ public class ActivityEndpointsTests
 
         result.Should().BeTrue();
         error.Should().BeNull();
-        start.Should().Be(Today.PlusDays(-30));
+        // Thirty calendar days inclusive of today — the same default /aggregates uses.
+        start.Should().Be(Today.PlusDays(-29));
         end.Should().Be(Today);
     }
 

@@ -413,7 +413,8 @@ public static class ActivityEndpoints
     )
     {
         error = null;
-        start = today.PlusDays(-30);
+        // Thirty calendar days inclusive of today — the same default /aggregates uses.
+        start = today.PlusDays(-29);
         end = today;
 
         if (from is not null)

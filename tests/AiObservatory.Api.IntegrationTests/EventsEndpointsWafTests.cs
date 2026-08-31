@@ -1184,4 +1184,58 @@ public class EventsEndpointsWafTests(AiObservatoryApiFactory factory)
         inventory.EnumerateArray().Should().Contain(x => x.GetProperty("eventKey").GetString() == zeroKey);
         inventory.EnumerateArray().Should().Contain(x => x.GetProperty("eventKey").GetString() == thoughtOnlyKey);
     }
+
+    // A None basis asserts the event carries no cost; a positive CostUsd on the same write is a
+    // contradiction and must be rejected rather than stored (CostBasis.None check).
+    [Fact]
+    public async Task PostEvent_WhenNoneBasisCarriesPositiveCost_ReturnsBadRequest()
+    {
+        using var client = factory.CreateAdminClient();
+        var response = await client.PostAsJsonAsync(
+            "/api/events",
+            new
+            {
+                Provider = "openai",
+                Model = "gpt-5.4",
+                InputTokens = 1,
+                OutputTokens = 1,
+                CostUsd = 0.01m,
+                RawPayload = "{}",
+                EventKey = $"waf-none-basis-cost-{Guid.NewGuid():N}",
+                SourceId = UsageSourceIds.CodexLocal,
+                SourceKind = "localTelemetry",
+                UsageScope = "subscription",
+                CostBasis = "none",
+            },
+            TestContext.Current.CancellationToken
+        );
+
+        response.StatusCode.Should().Be(HttpStatusCode.BadRequest);
+    }
+
+    [Fact]
+    public async Task PostEvent_WhenNoneBasisCarriesNoCost_IsAccepted()
+    {
+        using var client = factory.CreateAdminClient();
+        var response = await client.PostAsJsonAsync(
+            "/api/events",
+            new
+            {
+                Provider = "openai",
+                Model = "gpt-5.4",
+                InputTokens = 1,
+                OutputTokens = 1,
+                CostUsd = (decimal?)null,
+                RawPayload = "{}",
+                EventKey = $"waf-none-basis-free-{Guid.NewGuid():N}",
+                SourceId = UsageSourceIds.CodexLocal,
+                SourceKind = "localTelemetry",
+                UsageScope = "subscription",
+                CostBasis = "none",
+            },
+            TestContext.Current.CancellationToken
+        );
+
+        response.StatusCode.Should().Be(HttpStatusCode.Created);
+    }
 }

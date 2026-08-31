@@ -119,6 +119,97 @@ public class BudgetRulesEndpointsWafTests(AiObservatoryApiFactory factory)
         rule.GetProperty("windowEnd").GetString().Should().Be(today.ToString("yyyy-MM-dd", null));
     }
 
+    // NS-4: a Daily rule must show the window the alert worker actually evaluates — the last
+    // COMPLETED day — not today's partial spend, which the worker won't look at until midnight.
+    [Fact]
+    public async Task GetBudgetRules_DailyRuleScopesToYesterdayLikeTheAlertWorker()
+    {
+        var ct = TestContext.Current.CancellationToken;
+        using var client = factory.CreateAdminClient();
+        var createdResponse = await client.PostAsJsonAsync(
+            "/api/budget-rules",
+            new
+            {
+                Provider = (string?)null,
+                Period = "daily",
+                ThresholdGbp = 25m,
+            },
+            ct
+        );
+        var created = await createdResponse.Content.ReadFromJsonAsync<JsonElement>(ct);
+        var ruleId = created.GetProperty("id").GetGuid();
+        var today = factory.Services.GetRequiredService<IClock>().GetCurrentInstant().InUtc().Date;
+        var yesterday = today.PlusDays(-1);
+
+        // The rule was created before yesterday, so EvaluationStartsOn does not clamp the window.
+        await using (var scope = factory.Services.CreateAsyncScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<AiObservatoryDbContext>();
+            // The rule pretends to have existed since yesterday, so EvaluationStartsOn does not
+            // clamp the daily window back to today (init-only property, hence ExecuteUpdate).
+            await db
+                .BudgetRules.Where(r => r.Id == ruleId)
+                .ExecuteUpdateAsync(u => u.SetProperty(r => r.EvaluationStartsOn, yesterday), ct);
+            var categoryId = await db.SpendCategories.Select(category => category.Id).FirstAsync(ct);
+            // Anthropic, not the first vendor by accident: the monthly-window test above pins an
+            // OpenAI-provider rule, and this test's rows must not leak into its total.
+            var vendorId = await db
+                .SpendVendors.Where(v => v.Provider == Provider.Anthropic)
+                .Select(v => v.Id)
+                .SingleAsync(ct);
+            var recordedAt = factory.Services.GetRequiredService<IClock>().GetCurrentInstant();
+            db.SpendEntries.AddRange(
+                Spend(vendorId, categoryId, yesterday, 12.34m, recordedAt),
+                Spend(vendorId, categoryId, today, 99m, recordedAt)
+            );
+            await db.SaveChangesAsync(ct);
+        }
+
+        var response = await client.GetFromJsonAsync<JsonElement>("/api/budget-rules", ct);
+        var ruleJson = response.EnumerateArray().Single(item => item.GetProperty("id").GetGuid() == ruleId);
+
+        ruleJson.GetProperty("windowStart").GetString().Should().Be(yesterday.ToString("yyyy-MM-dd", null));
+        ruleJson.GetProperty("windowEnd").GetString().Should().Be(yesterday.ToString("yyyy-MM-dd", null));
+        // Today's 99 is outside the evaluated window; only yesterday's completed-day spend counts.
+        ruleJson.GetProperty("currentSpendGbp").GetDecimal().Should().Be(12.34m);
+    }
+
+    [Fact]
+    public async Task DeleteBudgetRule_WhenIdDoesNotExist_ReturnsNotFound()
+    {
+        using var client = factory.CreateAdminClient();
+
+        var response = await client.DeleteAsync(
+            $"/api/budget-rules/{Guid.NewGuid()}",
+            TestContext.Current.CancellationToken
+        );
+
+        response.StatusCode.Should().Be(HttpStatusCode.NotFound);
+    }
+
+    [Fact]
+    public async Task DeleteBudgetRule_WhenIdExists_ReturnsNoContent()
+    {
+        var ct = TestContext.Current.CancellationToken;
+        using var client = factory.CreateAdminClient();
+        var createdResponse = await client.PostAsJsonAsync(
+            "/api/budget-rules",
+            new
+            {
+                Provider = (string?)null,
+                Period = "weekly",
+                ThresholdGbp = 25m,
+            },
+            ct
+        );
+        var ruleId = (await createdResponse.Content.ReadFromJsonAsync<JsonElement>(ct)).GetProperty("id").GetGuid();
+
+        var response = await client.DeleteAsync($"/api/budget-rules/{ruleId}", ct);
+
+        response.StatusCode.Should().Be(HttpStatusCode.NoContent);
+        (await client.GetAsync($"/api/budget-rules/{ruleId}", ct)).StatusCode.Should().Be(HttpStatusCode.NotFound);
+    }
+
     private static SpendEntry Spend(
         Guid vendorId,
         Guid categoryId,

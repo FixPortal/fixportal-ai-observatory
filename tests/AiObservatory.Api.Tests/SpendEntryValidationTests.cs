@@ -204,4 +204,15 @@ public class SpendEntryValidationTests
     {
         Validate(Request(source: input), out _, out _).Should().Be($"Unknown source: {input}");
     }
+
+    // AR-6: the provenance columns must follow the parsed Source, not hardcode the manual values.
+    [Theory]
+    [InlineData(SpendSource.Manual, UsageSourceIds.ManualLedger, SourceKind.Manual)]
+    [InlineData(SpendSource.Csv, "csv-import", SourceKind.Manual)]
+    [InlineData(SpendSource.Portal, "portal-feed", SourceKind.Manual)]
+    [InlineData(SpendSource.Api, "vendor-api-entry", SourceKind.ProviderApi)]
+    public void ProvenanceFollowsTheParsedSource(SpendSource source, string sourceId, SourceKind sourceKind)
+    {
+        SpendEntriesEndpoints.ProvenanceFor(source).Should().Be((sourceId, sourceKind));
+    }
 }

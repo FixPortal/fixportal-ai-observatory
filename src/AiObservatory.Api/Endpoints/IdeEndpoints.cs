@@ -64,7 +64,9 @@ public static class IdeEndpoints
         if (
             envelope.PartnerId.Value != ObservatoryPartnerId
             || envelope.Classification != 0
-            || envelope.OccurredAt > now
+            // Same 5-minute clock-skew allowance as /api/events: a producer whose clock
+            // runs slightly fast must not have a legitimate event rejected.
+            || envelope.OccurredAt > now + Duration.FromMinutes(5)
             || string.IsNullOrWhiteSpace(envelope.IdempotencyKey)
             || envelope.IdempotencyKey.Length > 256
             || envelope.EventType is not ("run.completed" or "operator.intervened" or "routing.decided")
@@ -246,6 +248,10 @@ public static class IdeEndpoints
             // Identity wrappers are reference-type records: without this, a missing JSON member
             // deserializes as null and ParseEvent/HasCompleteIdentity throw NullReferenceException.
             RespectRequiredConstructorParameters = true,
+            // /api/events rejects duplicate JSON properties (JsonDocumentOptions); the envelope
+            // must match, or a shadowed duplicate idempotencyKey/occurredAt hashes differently
+            // from how it parses.
+            AllowDuplicateProperties = false,
         };
         options.ConfigureForNodaTime(DateTimeZoneProviders.Tzdb);
         return options;
