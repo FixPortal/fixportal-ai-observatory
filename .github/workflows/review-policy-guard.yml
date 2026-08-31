@@ -104,7 +104,8 @@ jobs:
           # argument only ever covered DELETION -- a deleted workflow never reports, so the
           # context stays pending and blocks -- and said nothing about neutering.
           for required in .claude/review-policy.json .coderabbit.yaml \
-            .github/workflows/review-policy-guard.yml .github/scripts/assert_workflow_hygiene.py; do
+            .github/workflows/review-policy-guard.yml .github/scripts/assert_workflow_hygiene.py \
+            .github/scripts/assert_gate_coverage.py; do
             if ! jq -e --arg r "$required" '.high | index($r)' "$policy" >/dev/null; then
               echo "::error file=$policy::'$required' is missing from the high list. An edit to it would get the lighter review."
               exit 1

@@ -40,7 +40,9 @@ resource app 'Microsoft.Web/sites@2023-01-01' = {
         // exports, so this is the only route by which GitHub spend reaches the ledger.
         // Shares the github-token secret with the ingest worker, but needs billing read
         // ("Plan" read on a fine-grained PAT) on top of that token's activity scopes.
-        // Either secret absent => empty => the sync stays disabled.
+        // Either secret absent => the reference stays unresolved (the literal
+        // '@Microsoft.KeyVault(...)' string), which GitHubBillingRegistration's
+        // IsConfigured guard rejects => the sync stays disabled.
         { name: 'GITHUB_TOKEN', value: '@Microsoft.KeyVault(VaultName=${kvName};SecretName=github-token)' }
         { name: 'GITHUB_BILLING_ORG', value: '@Microsoft.KeyVault(VaultName=${kvName};SecretName=github-billing-org)' }
 

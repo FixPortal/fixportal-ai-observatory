@@ -46,6 +46,7 @@
   "high": [
     ".github/workflows/review-policy-guard.yml",
     ".github/scripts/assert_workflow_hygiene.py",
+    ".github/scripts/assert_gate_coverage.py",
     ".claude/review-policy.json",
     ".coderabbit.yaml",
     "**/Migrations/**",

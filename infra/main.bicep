@@ -10,8 +10,12 @@ param prefix string = 'fpaiobs'
 // one-time Entra setup script (infra/scripts/setup-entra.ps1) creates the app.
 param aadTenantId string = 'c5eac41f-0525-4692-8705-7822be64d5ae'
 param aadClientId string = 'f3a9736e-1ba6-43b6-89f7-e799a9f93e9a'
-param anthropicBillingSecretName string = ''
-param copilotOrgSecretName string = ''
+// These default to the existing Key Vault secret names so a bare `az deployment
+// group create` (which is all infra.yml runs) never silently REMOVES the two
+// app settings — siteConfig.appSettings is a full replace. Pass '' explicitly
+// to disable the corresponding ingestion lane.
+param anthropicBillingSecretName string = 'anthropic-billing-key'
+param copilotOrgSecretName string = 'copilot-org'
 
 module kv 'modules/keyvault.bicep' = {
   name: 'keyvault'

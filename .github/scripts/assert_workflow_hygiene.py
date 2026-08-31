@@ -224,14 +224,19 @@ def main():
                 )
                 failed = True
 
-            api_steps = jobs["deploy-api"].get("steps", [])
+            api_job = jobs["deploy-api"]
+            # dict.get(k, default) returns None, not the default, when the key exists
+            # with a null value -- `run:`/`steps:` present-but-null must fail as a
+            # missing step below, not crash the checker with TypeError/AttributeError.
+            api_steps = api_job.get("steps", []) if isinstance(api_job, dict) else []
+            api_steps = api_steps if isinstance(api_steps, list) else []
             stop_step = next(
                 (
                     index
                     for index, step in enumerate(api_steps)
                     if isinstance(step, dict)
-                    and "az webapp stop" in step.get("run", "")
-                    and "fpaiobs-ingest" in step.get("run", "")
+                    and "az webapp stop" in str(step.get("run") or "")
+                    and "fpaiobs-ingest" in str(step.get("run") or "")
                 ),
                 None,
             )
@@ -239,7 +244,7 @@ def main():
                 (
                     index
                     for index, step in enumerate(api_steps)
-                    if isinstance(step, dict) and step.get("uses", "").startswith("azure/webapps-deploy@")
+                    if isinstance(step, dict) and str(step.get("uses") or "").startswith("azure/webapps-deploy@")
                 ),
                 None,
             )
@@ -251,7 +256,7 @@ def main():
                 failed = True
 
             recovery = jobs.get("ensure-ingest-running", {})
-            recovery_if = recovery.get("if", "") if isinstance(recovery, dict) else ""
+            recovery_if = str(recovery.get("if") or "") if isinstance(recovery, dict) else ""
             if not {"deploy-api", "deploy-ingest"}.issubset(dependencies.get("ensure-ingest-running", [])) or (
                 "always()" not in recovery_if
             ):

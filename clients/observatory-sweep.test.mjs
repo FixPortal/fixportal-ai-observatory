@@ -778,6 +778,57 @@ test('parseLocalSources defaults to every collector and honors an explicit allow
   assert.deepEqual([...parseLocalSources('codex,kimi')].sort(), ['codex', 'kimi'])
 })
 
+test('parseLocalSources aborts on unknown names instead of silently shrinking the set', () => {
+  assert.throws(() => parseLocalSources('codxe'), /Unknown OBSERVATORY_LOCAL_SOURCES.*codxe/)
+  assert.throws(() => parseLocalSources('codex,nope'), /nope/)
+})
+
+test('parseGeminiReview tolerates whitespace-formatted JSON rows', () => {
+  const spaced = '{ "type": "gemini", "timestamp": "2026-08-24T12:00:00Z", "model": "gemini-3.1-pro-preview", "tokens": { "input": 100, "output": 20, "cached": 10, "thoughts": 5 } }'
+
+  const [record] = sweep.parseGeminiReview(spaced)
+
+  assert.equal(record.tool, 'gemini-review')
+  assert.equal(record.inputTokens, 90)
+})
+
+test('Antigravity model detection ignores prose that merely mentions a model', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'observatory-antigravity-prose-'))
+  const dbPath = join(root, 'session-id.db')
+  const db = new DatabaseSync(dbPath)
+  db.exec('CREATE TABLE steps (idx INTEGER PRIMARY KEY, step_type INTEGER, step_payload BLOB)')
+  db.prepare('INSERT INTO steps VALUES (?, ?, ?)').run(1, 23, antigravityPayload(100, 20, 5))
+  db.close()
+  const transcript = [
+    JSON.stringify({ created_at: '2026-08-24T12:00:00Z', content: 'The user changed setting `Model Selection` from None to Gemini 3.1 Pro (High).' }),
+    JSON.stringify({ created_at: '2026-08-24T12:05:00Z', content: 'Now compare this answer with Gemini 2.5 Flash.' }),
+  ].join('\n')
+
+  try {
+    const [record] = await sweep.parseAntigravityDatabase(dbPath, transcript)
+
+    assert.equal(record.model, 'gemini-3.1-pro-high')
+  } finally {
+    await rm(root, { recursive: true, force: true })
+  }
+})
+
+test('updateFileCache reuses cached records when a read fails mid-scan', async () => {
+  const cache = {
+    flaky: { mtimeMs: 1, records: [{ id: 'cached' }] },
+  }
+
+  const result = await updateFileCache(
+    [{ path: 'flaky', mtimeMs: 2 }],
+    cache,
+    content => [{ id: content }],
+    async () => { throw new Error('rotated away') },
+  )
+
+  assert.deepEqual(result.records, [{ id: 'cached' }])
+  assert.deepEqual(result.cache.flaky.records, [{ id: 'cached' }])
+})
+
 test('machineLabel slugifies host names for source-id namespacing', () => {
   assert.equal(machineLabel('DESKTOP-ABC123'), 'desktop-abc123')
   assert.equal(machineLabel('Chris’s MacBook Pro'), 'chris-s-macbook-pro')
@@ -1109,6 +1160,146 @@ test('main aborts nested discovery failures without replacing cache or posting p
       if (priorEnv[key] === undefined) { delete process.env[key] } else { process.env[key] = priorEnv[key] }
     }
     await new Promise(resolve => server.close(resolve))
+    await rm(root, { recursive: true, force: true })
+  }
+})
+
+test('main skips re-posting snapshots whose token counts already match server inventory', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'observatory-sweep-unchanged-'))
+  const sessions = join(root, 'codex', 'sessions')
+  const statePath = join(root, 'state', 'sweep.json')
+  await mkdir(sessions, { recursive: true })
+  await writeFile(join(sessions, 'rollout.jsonl'), [
+    JSON.stringify({ type: 'turn_context', payload: { model: 'gpt-5.5' } }),
+    JSON.stringify({ timestamp: '2026-08-24T12:00:00Z', type: 'event_msg', payload: { type: 'token_count', info: { total_token_usage: { input_tokens: 10, cached_input_tokens: 0, output_tokens: 5 } } } }),
+  ].join('\n'))
+  const current = {
+    provider: 'openai', occurredAtUtc: '2026-08-24T12:00:00Z', model: 'gpt-5.5',
+    inputTokens: 10, outputTokens: 5, cacheReadTokens: 0, cacheWriteTokens: 0,
+    cacheWrite1hTokens: 0, thoughtTokens: 0, costUsd: null,
+    runtime: 'codex', sourceId: 'codex-local@test-machine', sourceKind: 'localTelemetry',
+    usageScope: 'subscription', costBasis: 'notional', eventKey: 'codex:2026-08-24:gpt-5.5',
+  }
+  const posts = []
+  const server = createServer(async (request, response) => {
+    const url = new URL(request.url, 'http://127.0.0.1')
+    if (request.method === 'GET' && url.pathname === '/api/events/local-snapshots') {
+      response.writeHead(200, { 'Content-Type': 'application/json' }).end(JSON.stringify([current]))
+      return
+    }
+    if (request.method === 'POST' && url.pathname === '/api/events') {
+      posts.push(url.pathname)
+      response.writeHead(200, { 'Content-Type': 'application/json' }).end('{}')
+      return
+    }
+    response.writeHead(404).end()
+  })
+  await new Promise(resolve => server.listen(0, '127.0.0.1', resolve))
+  const address = server.address()
+  const run = promisify(execFile)
+  const env = {
+    ...process.env,
+    OBSERVATORY_URL: `http://127.0.0.1:${address.port}`,
+    OBSERVATORY_API_KEY: 'test-key',
+    OBSERVATORY_STATE: statePath,
+    OBSERVATORY_LOCAL_SOURCES: 'codex',
+    OBSERVATORY_MACHINE: 'test-machine',
+    CODEX_HOME: join(root, 'codex'),
+    COPILOT_HOME: join(root, 'copilot'),
+    CLAUDE_HOME: join(root, 'claude'),
+    KIMI_HOME: join(root, 'kimi'),
+  }
+
+  try {
+    await run(process.execPath, [fileURLToPath(new URL('./observatory-sweep.mjs', import.meta.url))], { env })
+
+    assert.deepEqual(posts, [])
+  } finally {
+    await new Promise(resolve => server.close(resolve))
+    await rm(root, { recursive: true, force: true })
+  }
+})
+
+test('main tolerates one source inventory failing and still sweeps the rest', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'observatory-sweep-inventory-failure-'))
+  const kimiSessions = join(root, 'kimi', 'sessions')
+  const statePath = join(root, 'state', 'sweep.json')
+  await mkdir(kimiSessions, { recursive: true })
+  await writeFile(join(kimiSessions, 'wire.jsonl'), JSON.stringify({
+    type: 'usage.record', time: 1787572800000, model: 'kimi-code/kimi-for-coding',
+    usage: { inputOther: 10, output: 2, inputCacheRead: 20, inputCacheCreation: 3 },
+  }))
+  const posts = []
+  const server = createServer(async (request, response) => {
+    const url = new URL(request.url, 'http://127.0.0.1')
+    if (request.method === 'GET' && url.pathname === '/api/events/local-snapshots') {
+      const sourceId = url.searchParams.get('sourceId')
+      if (sourceId === 'codex-local@test-machine') {
+        response.writeHead(500, { 'Retry-After': '0' }).end()
+        return
+      }
+      response.writeHead(200, { 'Content-Type': 'application/json' }).end('[]')
+      return
+    }
+    if (request.method === 'POST' && url.pathname === '/api/events') {
+      let body = ''
+      for await (const chunk of request) { body += chunk }
+      posts.push(JSON.parse(body).eventKey)
+      response.writeHead(200, { 'Content-Type': 'application/json' }).end('{}')
+      return
+    }
+    response.writeHead(404).end()
+  })
+  await new Promise(resolve => server.listen(0, '127.0.0.1', resolve))
+  const address = server.address()
+  const run = promisify(execFile)
+  const env = {
+    ...process.env,
+    OBSERVATORY_URL: `http://127.0.0.1:${address.port}`,
+    OBSERVATORY_API_KEY: 'test-key',
+    OBSERVATORY_STATE: statePath,
+    OBSERVATORY_LOCAL_SOURCES: 'codex,kimi',
+    OBSERVATORY_MACHINE: 'test-machine',
+    CODEX_HOME: join(root, 'codex'),
+    COPILOT_HOME: join(root, 'copilot'),
+    CLAUDE_HOME: join(root, 'claude'),
+    KIMI_HOME: join(root, 'kimi'),
+  }
+
+  try {
+    // The codex inventory GET 500s through every retry; the run must still
+    // complete and post the kimi snapshot rather than aborting the sweep.
+    const { stderr } = await run(process.execPath, [fileURLToPath(new URL('./observatory-sweep.mjs', import.meta.url))], { env })
+
+    assert.deepEqual(posts, ['kimi:2026-08-24:kimi-code/kimi-for-coding'])
+    assert.match(stderr, /Inventory unavailable for codex-local@test-machine/)
+  } finally {
+    await new Promise(resolve => server.close(resolve))
+    await rm(root, { recursive: true, force: true })
+  }
+})
+
+test('dry run previews offline without touching the server', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'observatory-sweep-dry-run-'))
+  const statePath = join(root, 'state', 'sweep.json')
+  const run = promisify(execFile)
+  const env = {
+    ...process.env,
+    // Nothing listens here: any network attempt fails the run.
+    OBSERVATORY_URL: 'http://127.0.0.1:1',
+    OBSERVATORY_API_KEY: 'test-key',
+    OBSERVATORY_STATE: statePath,
+    OBSERVATORY_LOCAL_SOURCES: 'codex',
+    OBSERVATORY_MACHINE: 'test-machine',
+    CODEX_HOME: join(root, 'codex'),
+    COPILOT_HOME: join(root, 'copilot'),
+    CLAUDE_HOME: join(root, 'claude'),
+    KIMI_HOME: join(root, 'kimi'),
+  }
+
+  try {
+    await run(process.execPath, [fileURLToPath(new URL('./observatory-sweep.mjs', import.meta.url)), '--dry-run'], { env })
+  } finally {
     await rm(root, { recursive: true, force: true })
   }
 })
