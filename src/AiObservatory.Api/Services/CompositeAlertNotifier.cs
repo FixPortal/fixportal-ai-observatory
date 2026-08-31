@@ -17,11 +17,12 @@ public sealed class CompositeAlertNotifier(
     ILogger<CompositeAlertNotifier> logger
 ) : IAlertNotifier
 {
-    public async Task NotifyAsync(BudgetAlertPayload payload, CancellationToken ct = default)
+    public async Task<AlertDeliveryResult> NotifyAsync(BudgetAlertPayload payload, CancellationToken ct = default)
     {
+        var slackResult = AlertDeliveryResult.Failed;
         try
         {
-            await slack.NotifyAsync(payload, ct);
+            slackResult = await slack.NotifyAsync(payload, ct);
         }
         catch (OperationCanceledException) when (ct.IsCancellationRequested)
         {
@@ -32,6 +33,14 @@ public sealed class CompositeAlertNotifier(
             logger.LogError(ex, "Slack alert delivery failed for budget alert {MessageId}", payload.MessageId);
         }
 
-        await email.NotifyAsync(payload, ct);
+        var emailResult = await email.NotifyAsync(payload, ct);
+        if (slackResult == AlertDeliveryResult.Sent || emailResult == AlertDeliveryResult.Sent)
+        {
+            return AlertDeliveryResult.Sent;
+        }
+
+        return slackResult == AlertDeliveryResult.Failed || emailResult == AlertDeliveryResult.Failed
+            ? AlertDeliveryResult.Failed
+            : AlertDeliveryResult.NoRecipientConfigured;
     }
 }

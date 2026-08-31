@@ -34,8 +34,9 @@ public class EmailAlertNotifierTests
         repo.GetNotificationSettingsAsync(Arg.Any<CancellationToken>()).Returns((NotificationSettings?)null);
 
         var sut = new EmailAlertNotifier(smtp, config, repo);
-        await sut.NotifyAsync(MakePayload(), TestContext.Current.CancellationToken);
+        var result = await sut.NotifyAsync(MakePayload(), TestContext.Current.CancellationToken);
 
+        result.Should().Be(AlertDeliveryResult.NoRecipientConfigured);
         await smtp.DidNotReceive()
             .ConnectAsync(
                 Arg.Any<string>(),
@@ -55,8 +56,9 @@ public class EmailAlertNotifierTests
             .Returns(new NotificationSettings { AlertEmailTo = null, UpdatedAt = Instant.FromUtc(2026, 8, 30, 0, 0) });
 
         var sut = new EmailAlertNotifier(smtp, config, repo);
-        await sut.NotifyAsync(MakePayload(), TestContext.Current.CancellationToken);
+        var result = await sut.NotifyAsync(MakePayload(), TestContext.Current.CancellationToken);
 
+        result.Should().Be(AlertDeliveryResult.NoRecipientConfigured);
         await smtp.DidNotReceive()
             .ConnectAsync(
                 Arg.Any<string>(),
@@ -97,8 +99,9 @@ public class EmailAlertNotifierTests
             );
 
         var sut = new EmailAlertNotifier(smtp, config, repo);
-        await sut.NotifyAsync(MakePayload(), TestContext.Current.CancellationToken);
+        var result = await sut.NotifyAsync(MakePayload(), TestContext.Current.CancellationToken);
 
+        result.Should().Be(AlertDeliveryResult.Sent);
         await smtp.Received(1)
             .ConnectAsync("smtp.example.com", 587, SecureSocketOptions.StartTls, Arg.Any<CancellationToken>());
         await smtp.Received(1).AuthenticateAsync("obs@example.com", "secret", Arg.Any<CancellationToken>());

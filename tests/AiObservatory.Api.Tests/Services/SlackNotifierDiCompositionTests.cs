@@ -13,18 +13,17 @@ namespace AiObservatory.Api.Tests.Services;
 /// SlackAlertNotifier via constructor injection against the default-named HttpClient (100s
 /// default). AddKeyedTransient&lt;IAlertNotifier, SlackAlertNotifier&gt; would silently bypass
 /// ConfigureHttpClient's timeout -- this test would fail if that registration regressed.
+/// Also pins RemoveAllLoggers: the webhook URL is the credential (its path is the whole auth),
+/// and the default HttpClientFactory logging handlers would write it to the logs at
+/// Information level on every alert. Mirrors
+/// IngestHostTests.CopilotSignedDownloadClientHasNoLoggingHandlers.
 /// </summary>
 public class SlackNotifierDiCompositionTests
 {
     [Fact]
     public void KeyedSlackNotifier_ResolvesThroughTypedClient_WithConfiguredTimeout()
     {
-        var services = new ServiceCollection();
-        services.AddLogging();
-        services.AddSingleton(Substitute.For<IUsageRepository>());
-        services.AddSingleton<IClock>(SystemClock.Instance);
-        services.AddHttpClient<SlackAlertNotifier>().ConfigureHttpClient(c => c.Timeout = TimeSpan.FromSeconds(10));
-        services.AddKeyedTransient<IAlertNotifier>("slack", (sp, _) => sp.GetRequiredService<SlackAlertNotifier>());
+        var services = SlackServices();
 
         using var provider = services.BuildServiceProvider();
 
@@ -41,5 +40,41 @@ public class SlackNotifierDiCompositionTests
         // other construction path.
         var resolved = provider.GetRequiredKeyedService<IAlertNotifier>("slack");
         resolved.Should().BeOfType<SlackAlertNotifier>();
+    }
+
+    [Fact]
+    public void SlackAlertNotifierClient_HasNoLoggingHandlers()
+    {
+        using var provider = SlackServices().BuildServiceProvider();
+
+        var handlers = HandlerChain(
+                provider.GetRequiredService<IHttpMessageHandlerFactory>().CreateHandler(nameof(SlackAlertNotifier))
+            )
+            .Select(handler => handler.GetType().FullName ?? handler.GetType().Name)
+            .ToList();
+
+        handlers.Should().NotContain(name => name.Contains("Logging", StringComparison.OrdinalIgnoreCase));
+    }
+
+    private static ServiceCollection SlackServices()
+    {
+        var services = new ServiceCollection();
+        services.AddLogging();
+        services.AddSingleton(Substitute.For<IUsageRepository>());
+        services.AddSingleton<IClock>(SystemClock.Instance);
+        services
+            .AddHttpClient<SlackAlertNotifier>()
+            .ConfigureHttpClient(c => c.Timeout = TimeSpan.FromSeconds(10))
+            .RemoveAllLoggers();
+        services.AddKeyedTransient<IAlertNotifier>("slack", (sp, _) => sp.GetRequiredService<SlackAlertNotifier>());
+        return services;
+    }
+
+    private static IEnumerable<HttpMessageHandler> HandlerChain(HttpMessageHandler handler)
+    {
+        for (var current = handler; current is not null; current = (current as DelegatingHandler)?.InnerHandler)
+        {
+            yield return current;
+        }
     }
 }
