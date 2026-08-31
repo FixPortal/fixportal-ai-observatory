@@ -704,6 +704,143 @@ public class UsageRepositoryTests : IAsyncLifetime
         aggregate.RequestCount.Should().Be(1);
     }
 
+    [Fact]
+    public async Task GetEventsByProvider_round_trips_into_PatchEventCost_for_every_source()
+    {
+        var ct = TestContext.Current.CancellationToken;
+        // legacy-api rows are stored provider-prefixed; codex-local rows are stored as-is. The
+        // projection must carry enough identity (SourceId + stored EventKey) for both to be
+        // patchable without the caller knowing the storage convention.
+        await _repo.RecordEventAsync(NewEvent(sourceId: UsageSourceIds.LegacyApi, eventKey: "round-trip-legacy"), ct);
+        await _repo.RecordEventAsync(NewEvent(sourceId: UsageSourceIds.CodexLocal, eventKey: "round-trip-codex"), ct);
+
+        var events = await _repo.GetEventsByProviderAsync(Provider.OpenAI, ct: ct);
+
+        events.Should().HaveCount(2);
+        foreach (var record in events)
+        {
+            var patch = await _repo.PatchEventCostAsync(Provider.OpenAI, record.SourceId, record.EventKey!, 5m, ct);
+            patch.Should().NotBeNull($"the projected identity of {record.SourceId}/{record.EventKey} must patch");
+            patch.NewCostUsd.Should().Be(5m);
+        }
+
+        var saved = await _ctx.UsageEvents.AsNoTracking().ToListAsync(ct);
+        saved.Should().OnlyContain(e => e.CostUsd == 5m);
+    }
+
+    [Fact]
+    public async Task PatchEventCost_accepts_an_already_prefixed_legacy_key_without_double_prefixing()
+    {
+        var ct = TestContext.Current.CancellationToken;
+        await _repo.RecordEventAsync(NewEvent(sourceId: UsageSourceIds.LegacyApi, eventKey: "stored-form-key"), ct);
+
+        var viaStoredForm = await _repo.PatchEventCostAsync(
+            Provider.OpenAI,
+            UsageSourceIds.LegacyApi,
+            "OpenAI:stored-form-key",
+            2m,
+            ct
+        );
+
+        viaStoredForm.Should().NotBeNull("the stored key form must not be double-prefixed into a 404");
+        (await _ctx.UsageEvents.AsNoTracking().SingleAsync(e => e.EventKey == "OpenAI:stored-form-key", ct))
+            .CostUsd.Should()
+            .Be(2m);
+    }
+
+    [Fact]
+    public async Task PatchEventCost_rebases_an_estimated_event_and_survives_costless_replay()
+    {
+        var ct = TestContext.Current.CancellationToken;
+        var original = NewEvent(cost: 1m);
+        original.CostBasis = CostBasis.ListPriceEstimate;
+        await _repo.RecordEventAsync(original, ct);
+
+        var patch = await _repo.PatchEventCostAsync(
+            Provider.OpenAI,
+            UsageSourceIds.OpenAiUsageApi,
+            "day:model",
+            3m,
+            ct
+        );
+        patch.Should().NotBeNull();
+
+        var corrected = await _ctx.UsageEvents.AsNoTracking().SingleAsync(ct);
+        corrected.CostUsd.Should().Be(3m);
+        corrected
+            .CostBasis.Should()
+            .Be(CostBasis.ProviderEstimated, "a corrected estimate leaves the repricer's scan set");
+        corrected.CorrectedAt.Should().NotBeNull();
+        (corrected.CorrectedAt > corrected.ObservedAt).Should().BeTrue();
+
+        // The local sweepers' steady state: every snapshot re-posted with costUsd null and a
+        // fresh ObservedAt. Before the marker this rolled the correction back to unknown.
+        var replay = NewEvent(
+            cost: null,
+            cacheSavings: null,
+            input: 175,
+            observedAt: Instant.FromUtc(2026, 8, 24, 12, 5)
+        );
+        replay.CostBasis = CostBasis.Notional;
+        replay.SourceKind = SourceKind.LocalTelemetry;
+        (await _repo.RecordEventAsync(replay, ct)).Disposition.Should().Be(RecordEventDisposition.Corrected);
+
+        var saved = await _ctx.UsageEvents.AsNoTracking().SingleAsync(ct);
+        saved.InputTokens.Should().Be(175, "the replay still updates the usage figures");
+        saved.CostUsd.Should().Be(3m, "the replay carries no cost and must not erase the correction");
+        saved.CostBasis.Should().Be(CostBasis.ProviderEstimated);
+        saved.CorrectedAt.Should().Be(corrected.CorrectedAt);
+
+        var aggregates = await _ctx.DailyAggregates.AsNoTracking().ToListAsync(ct);
+        var row = aggregates.Should().ContainSingle().Which;
+        row.CostBasis.Should().Be(CostBasis.ProviderEstimated);
+        row.CostUsd.Should().Be(3m);
+        row.InputTokens.Should().Be(175);
+        row.UnknownCostCount.Should().Be(0);
+    }
+
+    [Fact]
+    public async Task Replay_with_an_explicit_cost_reasserts_source_authority_over_a_correction()
+    {
+        var ct = TestContext.Current.CancellationToken;
+        await _repo.RecordEventAsync(NewEvent(cost: 1m), ct);
+        await _repo.PatchEventCostAsync(Provider.OpenAI, UsageSourceIds.OpenAiUsageApi, "day:model", 3m, ct);
+
+        var reasserted = NewEvent(cost: 2m, observedAt: Instant.FromUtc(2026, 8, 24, 12, 5));
+        (await _repo.RecordEventAsync(reasserted, ct)).Disposition.Should().Be(RecordEventDisposition.Corrected);
+
+        var saved = await _ctx.UsageEvents.AsNoTracking().SingleAsync(ct);
+        saved.CostUsd.Should().Be(2m);
+        saved.CorrectedAt.Should().BeNull("a source post with its own cost supersedes the manual figure");
+        (await _ctx.DailyAggregates.AsNoTracking().SingleAsync(ct)).CostUsd.Should().Be(2m);
+    }
+
+    [Fact]
+    public async Task RecordEvent_with_CostBasis_None_counts_as_a_known_zero_not_missing_pricing()
+    {
+        var ct = TestContext.Current.CancellationToken;
+        var evt = NewEvent(cost: null, cacheSavings: null);
+        evt.CostBasis = CostBasis.None;
+
+        await _repo.RecordEventAsync(evt, ct);
+
+        var aggregate = await _ctx.DailyAggregates.AsNoTracking().SingleAsync(ct);
+        aggregate.UnknownCostCount.Should().Be(0, "None declares that no price applies");
+        aggregate.UnknownCacheSavingsCount.Should().Be(0);
+        aggregate.RequestCount.Should().Be(1);
+    }
+
+    [Fact]
+    public async Task RecordEvent_rejects_a_positive_cost_under_CostBasis_None()
+    {
+        var evt = NewEvent(cost: 1m);
+        evt.CostBasis = CostBasis.None;
+
+        var act = () => _repo.RecordEventAsync(evt, TestContext.Current.CancellationToken);
+
+        await act.Should().ThrowAsync<ArgumentException>();
+    }
+
     [Theory]
     [InlineData(nameof(DailyAggregate.InputTokens))]
     [InlineData(nameof(DailyAggregate.OutputTokens))]

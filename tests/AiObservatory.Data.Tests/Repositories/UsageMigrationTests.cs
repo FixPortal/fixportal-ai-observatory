@@ -215,13 +215,15 @@ public class UsageMigrationTests : IAsyncLifetime
         }
 
         await using var afterProvenance = new AiObservatoryDbContext(_options);
-        var events = await afterProvenance.UsageEvents.AsNoTracking().OrderBy(e => e.Provider).ToListAsync(ct);
+        // Raw SQL, not the EF model: the database sits at AddObservationProvenance while the
+        // current entity has later columns (e.g. CorrectedAt), which the model would select and
+        // fail on. The rollback leg below already reads this way for the same reason.
+        var keys = await afterProvenance
+            .Database.SqlQueryRaw<string>("SELECT \"EventKey\" AS \"Value\" FROM \"UsageEvents\" ORDER BY \"Provider\"")
+            .ToListAsync(ct);
 
-        events.Should().HaveCount(4);
-        events
-            .Select(e => e.EventKey)
-            .Should()
-            .BeEquivalentTo("OpenAI:x", "OpenAI:OpenAI:x", "Google:x", "Google:OpenAI:x");
+        keys.Should().HaveCount(4);
+        keys.Should().BeEquivalentTo("OpenAI:x", "OpenAI:OpenAI:x", "Google:x", "Google:OpenAI:x");
 
         var rollbackMigrator = afterProvenance.Database.GetService<IMigrator>();
         await rollbackMigrator.MigrateAsync("20260812024132_AddUnknownCostCoverage", ct);

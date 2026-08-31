@@ -37,6 +37,15 @@ public sealed class UsageEvent
     public Instant ObservedAt { get; set; }
 
     /// <summary>
+    /// Set when an operator manually corrected <see cref="CostUsd"/> via
+    /// <c>PatchEventCostAsync</c>. While set, a replay that carries no cost of its own
+    /// (the local sweepers re-post every snapshot with <c>costUsd: null</c>) updates the
+    /// usage fields but must not roll the corrected figure back to unknown, and a source
+    /// post carrying an explicit cost re-asserts authority by clearing the marker.
+    /// </summary>
+    public Instant? CorrectedAt { get; set; }
+
+    /// <summary>
     /// Optional source-scoped snapshot key. Repeated identical submissions are no-ops;
     /// changed submissions replace the stored event and repair its aggregate atomically.
     /// </summary>

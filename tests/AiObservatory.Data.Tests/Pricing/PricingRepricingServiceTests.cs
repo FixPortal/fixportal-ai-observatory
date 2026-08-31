@@ -88,8 +88,9 @@ public sealed class PricingRepricingServiceTests : IAsyncLifetime
         saved["known"].CostUsd.Should().Be(2m);
         saved["known"].CacheSavingsUsd.Should().Be(0m);
         saved["notional"].CostUsd.Should().Be(2m);
-        saved["missing"].CostUsd.Should().BeNull();
-        saved["missing"].CacheSavingsUsd.Should().BeNull();
+        // Unpriceable (unknown model): the last known figures are kept, never blanked.
+        saved["missing"].CostUsd.Should().Be(7m);
+        saved["missing"].CacheSavingsUsd.Should().Be(1m);
         saved["billed"].CostUsd.Should().Be(6m);
         saved["provider"].CostUsd.Should().Be(5m);
         saved["legacy"].CostUsd.Should().Be(4m);
@@ -97,10 +98,40 @@ public sealed class PricingRepricingServiceTests : IAsyncLifetime
         var aggregate = await _db
             .DailyAggregates.AsNoTracking()
             .SingleAsync(row => row.Model == "unknown-model" && row.CostBasis == CostBasis.ListPriceEstimate, ct);
-        aggregate.CostUsd.Should().Be(0m);
-        aggregate.UnknownCostCount.Should().Be(1);
-        aggregate.CacheSavingsUsd.Should().Be(0m);
-        aggregate.UnknownCacheSavingsCount.Should().Be(1);
+        aggregate.CostUsd.Should().Be(7m);
+        aggregate.UnknownCostCount.Should().Be(0);
+        aggregate.CacheSavingsUsd.Should().Be(1m);
+        aggregate.UnknownCacheSavingsCount.Should().Be(0);
+    }
+
+    [Fact]
+    public async Task RepricingKeepsTheLastKnownCostWhenNoSnapshotCoversTheEvent()
+    {
+        var ct = TestContext.Current.CancellationToken;
+        await _store.ActivateAsync(Candidate("old", 1m), ct);
+        // Occurs before the earliest catalog EffectiveFrom (2026-08-01), as does all history
+        // older than the bundled catalogs' 2026-08-24 stamps: Covers finds nothing, the
+        // resolver returns null, and the pass must leave the known price untouched.
+        var historic = Event(
+            "historic",
+            CostBasis.ListPriceEstimate,
+            5m,
+            1m,
+            occurredAt: Instant.FromUtc(2026, 7, 1, 0, 0)
+        );
+        await _repository.RecordEventAsync(historic, ct);
+
+        await _store.ActivateAsync(Candidate("new", 2m), ct);
+        await _repricing.RepriceProviderAsync(Provider.OpenAI, ct);
+
+        var saved = await _db.UsageEvents.AsNoTracking().SingleAsync(ct);
+        saved.CostUsd.Should().Be(5m);
+        saved.CacheSavingsUsd.Should().Be(1m);
+        saved.CostBasis.Should().Be(CostBasis.ListPriceEstimate);
+        var aggregate = await _db.DailyAggregates.AsNoTracking().SingleAsync(ct);
+        aggregate.CostUsd.Should().Be(5m);
+        aggregate.UnknownCostCount.Should().Be(0);
+        aggregate.CacheSavingsUsd.Should().Be(1m);
     }
 
     [Fact]

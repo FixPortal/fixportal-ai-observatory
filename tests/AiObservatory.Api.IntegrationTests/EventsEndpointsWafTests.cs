@@ -192,16 +192,16 @@ public class EventsEndpointsWafTests(AiObservatoryApiFactory factory)
     }
 
     [Fact]
-    public async Task Legacy_post_and_patch_preserve_prefixed_keys_per_provider()
+    public async Task Legacy_post_and_patch_treat_an_already_prefixed_key_as_the_stored_form()
     {
         using var client = factory.CreateAdminClient();
         var rawKey = $"waf-legacy-prefixed-{Guid.NewGuid():N}";
-        var eventKeys = new[] { rawKey, $"OpenAI:{rawKey}" };
         var occurredAtUtc = new DateTimeOffset(2026, 8, 1, 12, 0, 0, TimeSpan.Zero);
         var rows = new Dictionary<(string Provider, string EventKey), Guid>();
 
-        async Task<HttpResponseMessage> Post(string provider, string eventKey) =>
-            await client.PostAsJsonAsync(
+        async Task<Guid> Post(string provider, string eventKey)
+        {
+            var response = await client.PostAsJsonAsync(
                 "/api/events",
                 new
                 {
@@ -220,36 +220,50 @@ public class EventsEndpointsWafTests(AiObservatoryApiFactory factory)
                 },
                 TestContext.Current.CancellationToken
             );
+            response.StatusCode.Should().Be(HttpStatusCode.Created);
+            return (await response.Content.ReadFromJsonAsync<JsonElement>(TestContext.Current.CancellationToken))
+                .GetProperty("id")
+                .GetGuid();
+        }
 
-        foreach (var eventKey in eventKeys)
-        {
-            foreach (var provider in new[] { "openai", "google" })
+        // The unprefixed key is stored provider-prefixed on each provider.
+        rows[("openai", rawKey)] = await Post("openai", rawKey);
+        rows[("google", rawKey)] = await Post("google", rawKey);
+
+        // Re-posting the stored (already-prefixed) form addresses the same row — the stored-form
+        // prefix is idempotent, so no "OpenAI:OpenAI:..." twin is created.
+        var repost = await client.PostAsJsonAsync(
+            "/api/events",
+            new
             {
-                var created = await Post(provider, eventKey);
-                created.StatusCode.Should().Be(HttpStatusCode.Created);
-                rows[(provider, eventKey)] = (
-                    await created.Content.ReadFromJsonAsync<JsonElement>(TestContext.Current.CancellationToken)
-                )
-                    .GetProperty("id")
-                    .GetGuid();
-            }
-        }
+                Provider = "openai",
+                Model = "shared-model",
+                InputTokens = 1,
+                OutputTokens = 1,
+                CostUsd = 1m,
+                RawPayload = "{}",
+                EventKey = $"OpenAI:{rawKey}",
+                OccurredAtUtc = occurredAtUtc,
+                SourceId = UsageSourceIds.LegacyApi,
+                SourceKind = "legacy",
+                UsageScope = "unknown",
+                CostBasis = "unknown",
+            },
+            TestContext.Current.CancellationToken
+        );
+        repost.StatusCode.Should().Be(HttpStatusCode.OK);
+        var repostJson = await repost.Content.ReadFromJsonAsync<JsonElement>(TestContext.Current.CancellationToken);
+        repostJson.GetProperty("duplicate").GetBoolean().Should().BeTrue();
+        repostJson.GetProperty("id").GetGuid().Should().Be(rows[("openai", rawKey)]);
 
-        foreach (var eventKey in eventKeys)
-        {
-            var openAiRepeat = await Post("openai", eventKey);
+        // Another provider's prefix is not its own, so it still stores a distinct row.
+        rows[("google", $"OpenAI:{rawKey}")] = await Post("google", $"OpenAI:{rawKey}");
 
-            openAiRepeat.StatusCode.Should().Be(HttpStatusCode.OK);
-            (await openAiRepeat.Content.ReadFromJsonAsync<JsonElement>(TestContext.Current.CancellationToken))
-                .GetProperty("duplicate")
-                .GetBoolean()
-                .Should()
-                .BeTrue();
-        }
-
+        // PATCH accepts either the raw or the stored form for the same legacy row.
         var patches = new[]
         {
             (Provider: "openai", EventKey: rawKey, CostUsd: 2m),
+            (Provider: "openai", EventKey: $"OpenAI:{rawKey}", CostUsd: 4m),
             (Provider: "google", EventKey: $"OpenAI:{rawKey}", CostUsd: 3m),
         };
         foreach (var patch in patches)
@@ -272,9 +286,9 @@ public class EventsEndpointsWafTests(AiObservatoryApiFactory factory)
             .Where(e => rows.Values.Contains(e.Id))
             .ToDictionaryAsync(e => e.Id, e => e.CostUsd, TestContext.Current.CancellationToken);
 
-        storedCosts[rows[("openai", rawKey)]].Should().Be(2m);
+        storedCosts.Should().HaveCount(3);
+        storedCosts[rows[("openai", rawKey)]].Should().Be(4m);
         storedCosts[rows[("google", rawKey)]].Should().Be(1m);
-        storedCosts[rows[("openai", $"OpenAI:{rawKey}")]].Should().Be(1m);
         storedCosts[rows[("google", $"OpenAI:{rawKey}")]].Should().Be(3m);
     }
 

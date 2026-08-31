@@ -28,6 +28,10 @@ API wire values are camel-cased strings; provider and source IDs are open string
 
 Events are source-scoped: `SourceId + EventKey` identifies one correctable snapshot. A duplicate canonical snapshot is a no-op; a changed one replaces its previous aggregate contribution. Local cumulative day/model snapshots can therefore be corrected safely, while null-key manual observations remain append-only.
 
+`UnknownCostCount` counts only genuinely undescribed costs; a `CostBasis.None` event is a known zero ("no price applies") and is never counted as missing pricing data, and a positive cost under `None` is rejected as contradictory.
+
+A manual cost correction (`PATCH /api/events/{eventKey}/cost`) rebases an estimated, notional or `None` event to `ProviderEstimated` — the figure is now provider-reported via the operator — and stamps `CorrectedAt`. The basis change removes the row from the repricing pass, and while the marker stands a replay carrying no cost of its own (the local sweepers re-post every snapshot with `costUsd: null` on every run) still updates usage figures but cannot roll the corrected cost back to unknown. A source post carrying an explicit cost re-asserts authority and clears the marker. A reprice that cannot resolve a quote never blanks an already-known cost: the event keeps its last known price and basis.
+
 ## Time, freshness, and currency
 
 Occurrence/usage time says when consumption happened. `ObservedAt` says when Observatory obtained it. A provider or export update time may be later still. Source status separately records last attempt, last success, and latest source observation; none means the source has not supplied that fact.
