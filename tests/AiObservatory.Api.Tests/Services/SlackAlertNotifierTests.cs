@@ -4,6 +4,7 @@ using AiObservatory.Api.Services;
 using AiObservatory.Data.Entities;
 using AiObservatory.Data.Repositories;
 using AwesomeAssertions;
+using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
 using NodaTime;
 using NodaTime.Testing;
@@ -17,7 +18,7 @@ public class SlackAlertNotifierTests
     // takes a fixed (status, body) pair and only records request URIs, not bodies or
     // per-call responses -- doesn't fit needing both a captured JSON body and dynamic status
     // per test, so this is a small local double instead of extending the shared one.
-    private sealed class CapturingHandler(HttpStatusCode status) : HttpMessageHandler
+    private sealed class CapturingHandler(HttpStatusCode status, string? responseBody = null) : HttpMessageHandler
     {
         public List<HttpRequestMessage> Requests { get; } = [];
 
@@ -36,7 +37,35 @@ public class SlackAlertNotifierTests
             }
 
             Requests.Add(request);
-            return new HttpResponseMessage(status);
+            return new HttpResponseMessage(status)
+            {
+                Content = responseBody is null ? null : new StringContent(responseBody),
+            };
+        }
+    }
+
+    private sealed class CapturingLogger : ILogger<SlackAlertNotifier>
+    {
+        public List<string> Messages { get; } = [];
+
+        public IDisposable BeginScope<TState>(TState state)
+            where TState : notnull => NullScope.Instance;
+
+        public bool IsEnabled(LogLevel logLevel) => true;
+
+        public void Log<TState>(
+            LogLevel logLevel,
+            EventId eventId,
+            TState state,
+            Exception? exception,
+            Func<TState, Exception?, string> formatter
+        ) => Messages.Add(formatter(state, exception));
+
+        private sealed class NullScope : IDisposable
+        {
+            public static readonly NullScope Instance = new();
+
+            public void Dispose() { }
         }
     }
 
@@ -150,8 +179,34 @@ public class SlackAlertNotifierTests
     }
 
     [Fact]
-    public async Task NotifyAsync_marks_slack_sent_after_a_successful_post()
+    public async Task NotifyAsync_logs_the_response_body_when_the_webhook_call_fails()
     {
+        // Slack puts the actionable reason (invalid_payload, channel_not_found, ...) in a
+        // plain-text body; the status code alone cannot tell a rotated webhook from a bad payload.
+        var handler = new CapturingHandler(HttpStatusCode.BadRequest, "invalid_payload");
+        var http = new HttpClient(handler);
+        var repo = Substitute.For<IUsageRepository>();
+        repo.GetNotificationSettingsAsync(Arg.Any<CancellationToken>())
+            .Returns(
+                new NotificationSettings
+                {
+                    SlackWebhookUrl = "https://hooks.slack.com/services/T0/B0/xyz",
+                    UpdatedAt = Instant.FromUtc(2026, 8, 30, 0, 0),
+                }
+            );
+        repo.GetBudgetAlertSlackSentAsync(ClaimId, Arg.Any<CancellationToken>()).Returns(false);
+        var clock = new FakeClock(Instant.FromUtc(2026, 8, 30, 0, 0));
+        var logger = new CapturingLogger();
+
+        var sut = new SlackAlertNotifier(http, repo, clock, logger);
+        var result = await sut.NotifyAsync(MakePayload(), TestContext.Current.CancellationToken);
+
+        result.Should().Be(AlertDeliveryResult.Failed);
+        logger.Messages.Should().ContainSingle(m => m.Contains("invalid_payload") && m.Contains("BadRequest"));
+    }
+
+    [Fact]
+    public async Task NotifyAsync_marks_slack_sent_after_a_successful_post(){
         var handler = new CapturingHandler(HttpStatusCode.OK);
         var http = new HttpClient(handler);
         var repo = Substitute.For<IUsageRepository>();
