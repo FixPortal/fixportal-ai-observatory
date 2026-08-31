@@ -59,6 +59,17 @@ public sealed class IdeEventValidationTests
                     StringComparison.Ordinal
                 ),
                 valid.Replace("2026-08-04T12:00:00Z", "2026-08-04T12:02:00Z", StringComparison.Ordinal),
+                // Missing identity members must reject as InvalidDataException, not crash on null dereference.
+                valid.Replace(
+                    "\"partnerId\":{\"value\":\"753cb584-cd0b-4e16-9f08-6c0ce130a84a\"},",
+                    "",
+                    StringComparison.Ordinal
+                ),
+                valid.Replace(
+                    "\"missionId\":{\"value\":\"11111111-1111-1111-1111-111111111111\"},",
+                    "",
+                    StringComparison.Ordinal
+                ),
             ];
         }
     }

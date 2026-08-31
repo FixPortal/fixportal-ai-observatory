@@ -243,6 +243,9 @@ public static class IdeEndpoints
         var options = new JsonSerializerOptions(JsonSerializerDefaults.Web)
         {
             UnmappedMemberHandling = JsonUnmappedMemberHandling.Disallow,
+            // Identity wrappers are reference-type records: without this, a missing JSON member
+            // deserializes as null and ParseEvent/HasCompleteIdentity throw NullReferenceException.
+            RespectRequiredConstructorParameters = true,
         };
         options.ConfigureForNodaTime(DateTimeZoneProviders.Tzdb);
         return options;

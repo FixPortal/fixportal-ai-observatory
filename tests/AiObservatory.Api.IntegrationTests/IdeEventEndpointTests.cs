@@ -42,6 +42,24 @@ public sealed class IdeEventEndpointTests(AiObservatoryApiFactory factory)
         rows[0].EventType.Should().Be("routing.decided");
     }
 
+    [Trait("Category", "Integration")]
+    [Theory]
+    [InlineData("\"partnerId\":{\"value\":\"753cb584-cd0b-4e16-9f08-6c0ce130a84a\"},")]
+    [InlineData("\"missionId\":{\"value\":\"11111111-1111-1111-1111-111111111111\"},")]
+    public async Task MissingIdentityMemberIsRejectedCleanlyInsteadOfCrashing(string missingMember)
+    {
+        var json = await File.ReadAllTextAsync(
+            Path.Combine(AppContext.BaseDirectory, "Fixtures", "routing.decided.v1.json"),
+            TestContext.Current.CancellationToken
+        );
+        var bytes = Encoding.UTF8.GetBytes(json.Replace(missingMember, "", StringComparison.Ordinal));
+        using var client = factory.CreateIdeClient();
+
+        var response = await client.PostAsync("/api/ide/v1/events", Json(bytes), TestContext.Current.CancellationToken);
+
+        response.StatusCode.Should().Be(HttpStatusCode.BadRequest);
+    }
+
     private static ByteArrayContent Json(byte[] bytes)
     {
         var content = new ByteArrayContent(bytes);
