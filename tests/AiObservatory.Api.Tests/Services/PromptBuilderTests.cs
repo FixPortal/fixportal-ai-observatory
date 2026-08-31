@@ -193,4 +193,102 @@ public class PromptBuilderTests
         prompt.Should().Contain("OpenAI: £900.15 [NOTIONAL]");
         prompt.Should().Contain("OpenAI: £12.50 [BILLED]");
     }
+
+    [Fact]
+    public void Build_emits_the_topline_total_per_cost_basis_never_as_an_untagged_mixed_sum()
+    {
+        // Regression (M3): the headline total summed Billed and Notional rows into one bare
+        // figure two paragraphs before the prompt told the model never to sum across bases —
+        // so the model quoted subscription-covered notional usage as actual expenditure.
+        var aggregates = new List<DailyAggregate>
+        {
+            new()
+            {
+                Date = new LocalDate(2026, 8, 1),
+                Provider = Provider.OpenAI,
+                Model = "gpt-5.6-sol",
+                CostBasis = CostBasis.Notional,
+                CostUsd = 900.15m,
+                RequestCount = 1,
+            },
+            new()
+            {
+                Date = new LocalDate(2026, 8, 2),
+                Provider = Provider.OpenAI,
+                Model = "gpt-5.6-terra",
+                CostBasis = CostBasis.Billed,
+                CostUsd = 12.50m,
+                RequestCount = 3,
+            },
+        };
+
+        var prompt = new PromptBuilder().Build(
+            aggregates,
+            [],
+            new LocalDate(2026, 8, 1),
+            new LocalDate(2026, 8, 2),
+            1m
+        );
+
+        prompt.Should().Contain("Total reported usage value by cost basis:");
+        prompt.Should().Contain("£12.50 [BILLED]");
+        prompt.Should().Contain("£900.15 [NOTIONAL]");
+        prompt
+            .Should()
+            .NotContain(
+                "Total reported usage value: £912.65",
+                "a cross-basis sum must never appear as one untagged figure"
+            );
+    }
+
+    [Fact]
+    public void Build_tags_the_yesterday_comparison_and_suppresses_it_for_a_mixed_basis_period()
+    {
+        // The yesterday-vs-average line sums across the whole window, so it is only emitted
+        // when the window is basis-pure — and then carries the same tag as every other figure.
+        static List<DailyAggregate> Aggregates(CostBasis firstBasis, CostBasis secondBasis) =>
+            [
+                new()
+                {
+                    Date = new LocalDate(2026, 8, 1),
+                    Provider = Provider.Anthropic,
+                    Model = "claude-opus-4-8",
+                    CostBasis = firstBasis,
+                    CostUsd = 10m,
+                    RequestCount = 5,
+                },
+                new()
+                {
+                    Date = new LocalDate(2026, 8, 2),
+                    Provider = Provider.Anthropic,
+                    Model = "claude-opus-4-8",
+                    CostBasis = secondBasis,
+                    CostUsd = 20m,
+                    RequestCount = 5,
+                },
+            ];
+
+        var pure = new PromptBuilder().Build(
+            Aggregates(CostBasis.Billed, CostBasis.Billed),
+            [],
+            new LocalDate(2026, 8, 1),
+            new LocalDate(2026, 8, 2),
+            1m
+        );
+        var mixed = new PromptBuilder().Build(
+            Aggregates(CostBasis.Billed, CostBasis.Notional),
+            [],
+            new LocalDate(2026, 8, 1),
+            new LocalDate(2026, 8, 2),
+            1m
+        );
+
+        pure.Should().Contain("Yesterday reported usage value: £20.00 [BILLED] vs 30-day average: £10.00/day [BILLED]");
+        mixed
+            .Should()
+            .NotContain(
+                "Yesterday reported usage value",
+                "summing yesterday across mixed bases would reproduce the untagged-total problem"
+            );
+    }
 }

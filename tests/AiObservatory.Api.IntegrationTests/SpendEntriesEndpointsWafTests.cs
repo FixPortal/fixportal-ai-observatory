@@ -805,10 +805,10 @@ public class SpendEntriesEndpointsWafTests(AiObservatoryApiFactory factory) : IC
 
     /// <summary>
     /// The one way CK_SpendEntry_AmountGbp_SameSign is genuinely reachable: an amount small
-    /// enough that the conversion rounds to zero at 4dp. The row is refused rather than
-    /// stored as a zero-GBP entry — it could not contribute to a total anyway — and, because
-    /// SaveRowAsync translates the DbUpdateException, it comes back as a per-row verdict
-    /// rather than a 500 or a failed batch.
+    /// enough that the conversion rounds to zero at 4dp. The row is refused up front — before
+    /// any DB work, with the same actionable message the billing writer produces — rather than
+    /// stored as a zero-GBP entry or caught by the constraint and translated by SaveRowAsync
+    /// into the opaque "Could not save this entry", and it must not take the batch with it.
     /// </summary>
     [Fact]
     public async Task PostEntry_WhoseConversionRoundsToZero_IsRejectedWithoutFailingTheBatch()
@@ -831,6 +831,14 @@ public class SpendEntriesEndpointsWafTests(AiObservatoryApiFactory factory) : IC
         response.StatusCode.Should().Be(HttpStatusCode.OK);
         var results = (await response.Content.ReadFromJsonAsync<JsonElement>(ct)).EnumerateArray().ToArray();
         results[0].GetProperty("status").GetString().Should().Be("rejected");
+        results[0]
+            .GetProperty("reason")
+            .GetString()
+            .Should()
+            .Be(
+                "Amount converts to zero GBP at the stored 4-decimal scale — the entry is too small to record",
+                "the caller gets the actionable rounds-to-zero message, not an opaque DB-constraint rejection"
+            );
         results[1]
             .GetProperty("status")
             .GetString()

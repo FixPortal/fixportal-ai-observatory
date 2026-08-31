@@ -81,6 +81,13 @@ public static class SpendEntriesEndpoints
                 continue;
             }
 
+            var amountGbp = decimal.Round(req.Amount * rate, 4, MidpointRounding.ToEven);
+            if (RejectIfRoundsToZeroGbp(amountGbp) is { } roundingRejection)
+            {
+                results.Add(new SpendEntryResult(null, "rejected", roundingRejection));
+                continue;
+            }
+
             var entry = new SpendEntry
             {
                 OccurredOn = req.OccurredOn,
@@ -89,7 +96,7 @@ public static class SpendEntriesEndpoints
                 Amount = req.Amount,
                 Currency = currency,
                 // Frozen here, deliberately. See SpendEntry.AmountGbp.
-                AmountGbp = decimal.Round(req.Amount * rate, 4, MidpointRounding.ToEven),
+                AmountGbp = amountGbp,
                 FxRate = rate,
                 Description = string.IsNullOrWhiteSpace(req.Description) ? null : req.Description.Trim(),
                 Source = source,
@@ -507,6 +514,24 @@ public static class SpendEntriesEndpoints
         return Results.Ok(entry);
     }
 
+    /// <summary>
+    /// Returns a rejection reason when the converted amount rounds to zero at the stored
+    /// 4-decimal scale, or null when the entry is recordable. CK_SpendEntry_AmountGbp_SameSign
+    /// requires Amount * AmountGbp strictly positive, so without this check a legitimate
+    /// sub-rounding entry (a tiny charge in a weak currency) reached SaveChangesAsync and came
+    /// back as the opaque "Could not save this entry" — naming neither the cause nor the
+    /// remedy. Mirrors the explicit guard the billing path already has
+    /// (BillingObservationWriter throws "The billed amount rounds to zero GBP.").
+    /// <para>
+    /// Internal so the unit lane can exercise it directly — same reasoning as
+    /// <see cref="Validate"/> above.
+    /// </para>
+    /// </summary>
+    internal static string? RejectIfRoundsToZeroGbp(decimal amountGbp) =>
+        amountGbp == 0m
+            ? "Amount converts to zero GBP at the stored 4-decimal scale — the entry is too small to record"
+            : null;
+
     /// <summary>Applies every field the request set, after validation has passed.</summary>
     private static void ApplyScalarFields(SpendEntry entry, SpendEntryPatchRequest req)
     {
@@ -581,7 +606,9 @@ public static class SpendEntriesEndpoints
         }
 
         entry.AmountGbp = decimal.Round(entry.Amount * entry.FxRate, 4, MidpointRounding.ToEven);
-        return null;
+        // Same sub-rounding guard as the POST path: without it the constraint violation
+        // surfaces here as an unhandled DbUpdateException (a 500) instead of a 400.
+        return RejectIfRoundsToZeroGbp(entry.AmountGbp);
     }
 
     private static async Task<IResult> DeleteEntryAsync(Guid id, AiObservatoryDbContext db, CancellationToken ct)

@@ -25,10 +25,32 @@ public class PromptBuilder
         sb.AppendLine($"Analyse this AI usage data for {periodStart} to {periodEnd} and produce insights.");
         sb.AppendLine();
 
-        var totalSpend = aggregates.Sum(a => a.CostUsd);
-        var totalRequests = aggregates.Sum(a => a.RequestCount);
         var totalUnknownCosts = aggregates.Sum(a => a.UnknownCostCount);
-        sb.AppendLine($"Total reported usage value: {FormatSpend(totalSpend, totalRequests, totalUnknownCosts)}");
+
+        // The top-line total is emitted per cost basis, never as one untagged sum: Billed,
+        // ProviderEstimated, ListPriceEstimate and Notional rows mean different things (real
+        // invoice vs subscription-covered usage that never billed), and a single merged figure
+        // would contradict the instruction below not to sum across bases. The provider/model
+        // breakdowns already group by (entity, CostBasis); this applies the same rule to the
+        // headline figure.
+        var totalsByBasis = aggregates
+            .GroupBy(a => a.CostBasis)
+            .OrderBy(g => g.Key.ToString(), StringComparer.Ordinal)
+            .ToList();
+        if (totalsByBasis.Count == 0)
+        {
+            sb.AppendLine("Total reported usage value: Not reported (0 requests)");
+        }
+        else
+        {
+            sb.AppendLine("Total reported usage value by cost basis:");
+            foreach (var g in totalsByBasis)
+            {
+                sb.AppendLine(
+                    $"  {FormatSpend(g.Sum(a => a.CostUsd), g.Sum(a => a.RequestCount), g.Sum(a => a.UnknownCostCount), g.Key)}"
+                );
+            }
+        }
 
         // Grouped by (entity, CostBasis) rather than just the entity, and every figure below
         // carries its own basis tag -- a provider or model can be a mix of real billed spend
@@ -58,12 +80,21 @@ public class PromptBuilder
             );
         }
 
-        if (aggregates.Count >= 2 && totalUnknownCosts == 0)
+        // The yesterday-vs-average comparison sums every row in the window, so it is only
+        // shown when the period is basis-pure (CostBasis.None is neutral: known-zero rows add
+        // nothing to the sum). A mixed-basis window would repeat the untagged-total mistake
+        // the per-basis breakdown above exists to avoid. When shown, the figures carry the
+        // same tag as every other figure in the prompt.
+        var distinctBases = aggregates.Select(a => a.CostBasis).Where(b => b != CostBasis.None).Distinct().ToList();
+        if (aggregates.Count >= 2 && totalUnknownCosts == 0 && distinctBases.Count <= 1)
         {
             var yesterday = aggregates.Where(a => a.Date == periodEnd).Sum(a => a.CostUsd);
             var priorPeriod = aggregates.Where(a => a.Date < periodEnd).Sum(a => a.CostUsd);
             var avgPerDay = priorPeriod / Math.Max(1, Period.Between(periodStart, periodEnd, PeriodUnits.Days).Days);
-            sb.AppendLine($"Yesterday reported usage value: {Gbp(yesterday)} vs 30-day average: {Gbp(avgPerDay)}/day");
+            var tag = distinctBases.Count == 1 ? $" {CostBasisTag(distinctBases[0])}" : "";
+            sb.AppendLine(
+                $"Yesterday reported usage value: {Gbp(yesterday)}{tag} vs 30-day average: {Gbp(avgPerDay)}/day{tag}"
+            );
         }
 
         sb.AppendLine();
