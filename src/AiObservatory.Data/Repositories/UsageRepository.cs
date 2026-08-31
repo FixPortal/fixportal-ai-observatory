@@ -60,7 +60,10 @@ public class UsageRepository(
         CancellationToken ct
     )
     {
-        for (var attempt = 0; attempt < 2; attempt++)
+        // Every path through the body returns or throws, so there is no exit condition or
+        // trailing throw: the filtered catch only retries attempt 0 (falling through to the
+        // increment), and a repeat unique violation rethrows from the generic catch.
+        for (var attempt = 0; ; )
         {
             await using var tx = await ctx.Database.BeginTransactionAsync(ct);
             try
@@ -114,9 +117,9 @@ public class UsageRepository(
                 ctx.ChangeTracker.Clear();
                 throw;
             }
-        }
 
-        throw new InvalidOperationException("Concurrent usage-event insert retry did not resolve the source key.");
+            attempt++;
+        }
     }
 
     private static UsageEvent PrepareEvent(UsageEvent evt)

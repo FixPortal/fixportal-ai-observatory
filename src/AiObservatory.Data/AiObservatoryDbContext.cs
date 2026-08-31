@@ -1,4 +1,5 @@
 using AiObservatory.Data.Entities;
+using AiObservatory.Data.Security;
 using Microsoft.EntityFrameworkCore;
 
 namespace AiObservatory.Data;
@@ -455,7 +456,16 @@ public class AiObservatoryDbContext(DbContextOptions<AiObservatoryDbContext> opt
         modelBuilder.Entity<NotificationSettings>(b =>
         {
             b.Property(s => s.AlertEmailTo).HasMaxLength(320); // RFC 5321 max
-            b.Property(s => s.SlackWebhookUrl).HasMaxLength(2048);
+            // The webhook URL is a bearer credential, so it is encrypted at rest when
+            // SLACK_WEBHOOK_PROTECTION_KEY is set (see Security/SlackWebhookProtector).
+            // 4096 covers the 2048-char endpoint cap after encryption overhead (nonce + tag
+            // + base64 + prefix) with room to spare.
+            b.Property(s => s.SlackWebhookUrl)
+                .HasMaxLength(4096)
+                .HasConversion(
+                    v => SlackWebhookProtector.ProtectValue(v),
+                    v => SlackWebhookProtector.UnprotectValue(v)
+                );
             // Singleton declared in the schema, not just in code: every application read
             // filters on SingletonId, so a stray row with any other id would be invisible.
             b.ToTable(t =>

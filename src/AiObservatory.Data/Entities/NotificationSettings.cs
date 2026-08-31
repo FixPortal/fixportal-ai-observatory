@@ -17,6 +17,11 @@ public sealed class NotificationSettings
 
     public Guid Id { get; init; } = SingletonId;
     public string? AlertEmailTo { get; set; }
+
+    // Bearer credential: possession alone permits posting to the alerts channel. Encrypted at
+    // rest by the EF value converter in AiObservatoryDbContext when the
+    // SLACK_WEBHOOK_PROTECTION_KEY env var is set (Security/SlackWebhookProtector); without the
+    // key it passes through as plaintext so pre-existing deployments keep working.
     public string? SlackWebhookUrl { get; set; }
     public Instant UpdatedAt { get; set; }
 }
