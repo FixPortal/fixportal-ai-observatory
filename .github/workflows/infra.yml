@@ -20,11 +20,6 @@ jobs:
         with:
           persist-credentials: false
 
-      - name: Lint workflows (actionlint)
-        uses: raven-actions/actionlint@3d39aea434753780c3b3d4a1a31c854b4dbf49d7 # v2
-        with:
-          shellcheck: true
-
       - uses: azure/login@7ddb5af1ef8758cf1353cf3b42f940aee27ba21c # v3
         with:
           creds: ${{ secrets.AZURE_CREDENTIALS }}

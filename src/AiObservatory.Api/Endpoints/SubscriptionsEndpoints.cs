@@ -154,6 +154,12 @@ public static class SubscriptionsEndpoints
             return Results.BadRequest("CostAmount must be non-negative");
         }
 
+        if (string.IsNullOrWhiteSpace(req.Currency))
+        {
+            currency = "";
+            return Results.BadRequest("Currency must be GBP or USD");
+        }
+
         currency = req.Currency.ToUpperInvariant();
         return currency is not ("GBP" or "USD") ? Results.BadRequest("Currency must be GBP or USD") : null;
     }

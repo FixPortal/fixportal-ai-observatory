@@ -15,7 +15,7 @@ public class SubscriptionsEndpointsWafTests(AiObservatoryApiFactory factory)
 {
     private static object ValidBody(
         string provider = "anthropic",
-        string currency = "USD",
+        string? currency = "USD",
         int billingDay = 1,
         decimal costAmount = 10m
     ) =>
@@ -33,7 +33,8 @@ public class SubscriptionsEndpointsWafTests(AiObservatoryApiFactory factory)
     [InlineData("EUR")]
     [InlineData("")]
     [InlineData("not-a-currency")]
-    public async Task PostSubscription_WhenCurrencyNotAllowed_ReturnsBadRequest(string currency)
+    [InlineData(null)]
+    public async Task PostSubscription_WhenCurrencyNotAllowed_ReturnsBadRequest(string? currency)
     {
         using var client = factory.CreateAdminClient();
 

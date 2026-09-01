@@ -152,6 +152,15 @@ public class AdversarialReviewServiceTests
         await _repo.DidNotReceive().RecordRunAsync(Arg.Any<AdversarialReviewRun>(), Arg.Any<CancellationToken>());
     }
 
+    [Fact]
+    public async Task RecordRun_unknown_reviewer_returns_bad_request()
+    {
+        var result = await CreateSut().RecordRunAsync(ValidRequest(reviewer: "moonsh0t"), CancellationToken.None);
+
+        result.Should().BeAssignableTo<IStatusCodeHttpResult>().Which.StatusCode.Should().Be(400);
+        await _repo.DidNotReceive().RecordRunAsync(Arg.Any<AdversarialReviewRun>(), Arg.Any<CancellationToken>());
+    }
+
     [Theory]
     [InlineData("")]
     [InlineData(" ")]

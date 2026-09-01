@@ -62,6 +62,8 @@ public class AdversarialReviewService(IAdversarialReviewRepository repo, IClock 
             return Results.BadRequest("Reviewer is required");
         }
 
+        var reviewer = req.Reviewer.Trim().ToLowerInvariant();
+
         if (string.IsNullOrWhiteSpace(req.Model))
         {
             return Results.BadRequest("Model is required");
@@ -75,9 +77,14 @@ public class AdversarialReviewService(IAdversarialReviewRepository repo, IClock 
         // Length-guard the caller-supplied, column-capped string fields so an over-long
         // value returns 400 rather than surfacing as a Postgres 22001 / 500 on insert.
         // (Summary is truncated by NormalizeSummary; Role is enum-validated below.)
-        if (req.Reviewer.Trim().Length > 100)
+        if (reviewer.Length > 100)
         {
             return Results.BadRequest("Reviewer must be 100 characters or fewer");
+        }
+
+        if (reviewer is not ("anthropic" or "google" or "openai" or "moonshot"))
+        {
+            return Results.BadRequest("Reviewer must be anthropic, google, openai, or moonshot");
         }
 
         if (req.Model.Trim().Length > 200)
@@ -127,7 +134,6 @@ public class AdversarialReviewService(IAdversarialReviewRepository repo, IClock 
 
         decimal? costPerAcceptedFinding = req.IssuesAccepted > 0 ? req.CostUsd / req.IssuesAccepted : null;
 
-        var reviewer = req.Reviewer.Trim().ToLowerInvariant();
         var run = new AdversarialReviewRun
         {
             Reviewer = reviewer,
