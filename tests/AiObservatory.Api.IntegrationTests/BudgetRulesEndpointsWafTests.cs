@@ -105,7 +105,13 @@ public class BudgetRulesEndpointsWafTests(AiObservatoryApiFactory factory)
             db.SpendEntries.AddRange(
                 Spend(openAi.Id, categoryId, today, 12.34m, recordedAt),
                 Spend(anthropic.Id, categoryId, today, 99m, recordedAt),
-                Spend(openAi.Id, categoryId, new LocalDate(today.Year, today.Month, 1).PlusDays(-1), 1000m, recordedAt)
+                Spend(
+                    openAi.Id,
+                    categoryId,
+                    new LocalDate(today.Year, today.Month, 1).PlusMonths(-1),
+                    1000m,
+                    recordedAt
+                )
             );
             await db.SaveChangesAsync(ct);
         }
