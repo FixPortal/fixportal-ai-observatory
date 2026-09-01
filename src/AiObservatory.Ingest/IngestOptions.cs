@@ -68,6 +68,6 @@ public class IngestOptions
     private static bool IsOwnerRepo(string value)
     {
         var parts = value.Split('/');
-        return parts is [{ Length: > 0 }, { Length: > 0 }];
+        return parts is [{ Length: > 0 }, { Length: > 0 }] && parts.All(part => !part.Any(char.IsWhiteSpace));
     }
 }

@@ -57,6 +57,8 @@ public class IngestOptionsTests
     [InlineData("too/many/segments")]
     [InlineData("/leading-slash")]
     [InlineData("trailing-slash/")]
+    [InlineData("FixPortal /one")]
+    [InlineData("FixPortal/ one")]
     [InlineData("")]
     [InlineData("   ")]
     public void ResolveGitHubRepoAllowlist_WhenValueIsNotOwnerRepo_ReturnsEmpty(string value)

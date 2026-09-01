@@ -50,6 +50,15 @@ test('complete needs 4 reviewer vendors and a judge', () => {
   expect(groupRuns([...base, run({ runId: 'R1', reviewer: 'anthropic', role: 'judge' })])[0].isComplete).toBe(true)
 })
 
+test('unknown reviewer cannot replace a required vendor', () => {
+  const reviewers = ['anthropic', 'google', 'openai', 'moonsh0t']
+    .map(v => run({ runId: 'R1', reviewer: v, role: 'reviewer' }))
+  const group = groupRuns([...reviewers, run({ runId: 'R1', reviewer: 'anthropic', role: 'judge' })])[0]
+
+  expect(group.isComplete).toBe(false)
+  expect(group.statusReason).toContain('3 of 4')
+})
+
 test('orders participants reviewers-then-judge, newest run first', () => {
   const groups = groupRuns([
     run({ runId: 'OLD', recordedAt: '2026-06-20T00:00:00Z' }),
