@@ -28,8 +28,19 @@ public sealed class PricingRefreshWorkerServiceTests(ProviderPollingDatabase dat
         // RunOnceAsync's unguarded awaits (catalog load, DI resolution, state reads) must not
         // fault the BackgroundService — the default StopHost behavior would kill the host.
         var scopeFactory = Substitute.For<IServiceScopeFactory>();
+        // The real completion signal, rather than a sleep: the worker reaching its throwing
+        // dependency is the event this test was waiting for, so make it observable.
+        var refreshPassEntered = new TaskCompletionSource(
+            TaskCreationOptions.RunContinuationsAsynchronously
+        );
         // CreateAsyncScope is an extension over CreateScope, so the interface method throws.
-        scopeFactory.CreateScope().Returns(_ => throw new InvalidOperationException("database unreachable"));
+        scopeFactory
+            .CreateScope()
+            .Returns(_ =>
+            {
+                refreshPassEntered.TrySetResult();
+                throw new InvalidOperationException("database unreachable");
+            });
         var worker = new PricingRefreshWorkerService(
             scopeFactory,
             new FakeClock(Now),
@@ -37,11 +48,20 @@ public sealed class PricingRefreshWorkerServiceTests(ProviderPollingDatabase dat
         );
 
         await worker.StartAsync(TestContext.Current.CancellationToken);
-        await Task.Delay(200, TestContext.Current.CancellationToken);
+        await refreshPassEntered.Task.WaitAsync(
+            TimeSpan.FromSeconds(30),
+            TestContext.Current.CancellationToken
+        );
+
+        // STOP BEFORE ASSERTING, which the sleeping version could not do. Reaching the throw
+        // is not the same as the exception having been handled, so a check taken the instant
+        // the signal fires would pass even against an implementation that lets the exception
+        // escape -- the fault has not propagated yet. StopAsync awaits ExecuteTask, so once it
+        // returns the task has reached its terminal state and IsFaulted is decided.
+        await worker.StopAsync(CancellationToken.None);
 
         worker.ExecuteTask.Should().NotBeNull();
         worker.ExecuteTask.IsFaulted.Should().BeFalse();
-        await worker.StopAsync(CancellationToken.None);
     }
 
     [Fact]
