@@ -1,13 +1,13 @@
-![Build](https://github.com/FixPortal/fixportal-ai-observatory/actions/workflows/ci.yml/badge.svg)
-![License](https://img.shields.io/github/license/FixPortal/fixportal-ai-observatory)
+![Build](https://github.com/FixPortal/fixportal-observatory/actions/workflows/ci.yml/badge.svg)
+![License](https://img.shields.io/github/license/FixPortal/fixportal-observatory)
 
-# AI Observatory
+# Observatory
 
-![AI Observatory — one clear view of AI usage, spend, subscriptions, and budget signals](docs/images/ai-observatory-hero-oss.png)
+![Observatory — one clear view of AI usage, spend, subscriptions, and budget signals](docs/images/observatory-hero-oss.png)
 
 > OSS observability for AI usage and cost evidence, as of 2026-08-25. It keeps billed spend, public-list estimates, subscription notional values, and missing data distinct.
 
-AI Observatory is a .NET 10 and React 19 dashboard with a PostgreSQL store. Provider sources, local CLI telemetry, and manual entries retain provenance so unlike evidence is never silently merged.
+Observatory is a .NET 10 and React 19 dashboard with a PostgreSQL store. Provider sources, local CLI telemetry, and manual entries retain provenance so unlike evidence is never silently merged.
 
 ## Read these first
 
@@ -15,7 +15,7 @@ AI Observatory is a .NET 10 and React 19 dashboard with a PostgreSQL store. Prov
 - [Truth and pricing](docs/truth-and-pricing.md) — source/scope/basis meanings and safe catalog refresh.
 - [Adding a provider](docs/adding-a-provider.md) — the compile-time adapter seam.
 - [Local producers](clients/README.md) — Codex, Copilot, Claude, Kimi, Gemini review, and Antigravity sweeper setup.
-- [Postman collection](docs/ai-observatory.postman_collection.json) — representative authenticated API requests.
+- [Postman collection](docs/observatory.postman_collection.json) — representative authenticated API requests.
 
 ## Local development
 
@@ -99,7 +99,7 @@ Requests use `X-Observatory-Key` when API keys are configured. The most useful e
 | `GET` | `/api/subscriptions` | Subscription ledger records |
 | `GET` | `/api/insights` | Generated insights |
 
-Import the [Postman collection](docs/ai-observatory.postman_collection.json), set `base_url` and `api_key`, and use its source-aware event examples. It is a representative collection, not an exhaustive API specification.
+Import the [Postman collection](docs/observatory.postman_collection.json), set `base_url` and `api_key`, and use its source-aware event examples. It is a representative collection, not an exhaustive API specification.
 
 ## Contributing
 

@@ -1,10 +1,10 @@
-# AI Observatory visual system
+# Observatory visual system
 
 Canonical base: `@fixportal/design` 0.8.1 at tag `v0.8.1` / commit `6b3e3e0`, vendored from the FixPortal assets repository so public installs require no private package token.
 
 ## Product signature
 
-AI Observatory is evidence-first: values carry source, scope, basis, freshness, and observation time. Billed GBP, estimates, and subscription notional value never share a total or visual claim.
+Observatory is evidence-first: values carry source, scope, basis, freshness, and observation time. Billed GBP, estimates, and subscription notional value never share a total or visual claim.
 
 ## Overview hierarchy
 

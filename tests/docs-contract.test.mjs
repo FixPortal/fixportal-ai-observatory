@@ -47,7 +47,7 @@ test('documentation describes the source-aware setup contract', async () => {
     read('src/AiObservatory.Data/Pricing/PricingSnapshotCandidate.cs'),
     read('src/AiObservatory.Data/Entities/ObservationProvenance.cs'),
     read('src/AiObservatory.Ingest/appsettings.json'),
-    read('docs/ai-observatory.postman_collection.json'),
+    read('docs/observatory.postman_collection.json'),
     read('docs/provider-setup.md'),
     read('docs/adding-a-provider.md'),
     read('clients/README.md'),

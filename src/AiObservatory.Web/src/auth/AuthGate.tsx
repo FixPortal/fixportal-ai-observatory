@@ -32,7 +32,7 @@ function EntraGate({ children }: { children: ReactNode }) {
   return (
     <main className="auth-gate">
       <BrandWordmark height={48} className="auth-gate__wordmark" />
-      <span className="auth-gate__descriptor">AI Observatory</span>
+      <span className="auth-gate__descriptor">Observatory</span>
       <button
         type="button"
         className="auth-gate__button"
