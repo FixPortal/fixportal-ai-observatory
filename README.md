@@ -79,6 +79,10 @@ Use neutral placeholders such as `<observatory-api-key>` outside your secret sto
 
 ## Dashboard truth
 
+![Observatory Overview showing billed spend, list-price estimate, provider estimate, and subscription notional as separate cards](docs/dashboard.png)
+
+The Overview above runs on the Compose demo seed, which carries no billed evidence: billed spend and provider estimate therefore read `Not reported` rather than zero. The same rules apply to every card:
+
 - Billed spend contains provider-reported financial or ledger evidence only.
 - Estimated cost is API usage rated from an observed public catalog.
 - Subscription notional value is a separate comparison, not spend.
