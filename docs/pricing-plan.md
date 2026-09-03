@@ -1,6 +1,6 @@
 # Anthropic cost correction — plan (rev 2, post-audit)
 
-Repo: `D:\fix-portal\fixportal-ai-observatory` (public, org FixPortal).
+Repo: [FixPortal/fixportal-observatory](https://github.com/FixPortal/fixportal-observatory) (public).
 
 **Rev 2 supersedes rev 1**, which was audited by a five-reviewer / four-vendor
 adversarial panel on 2026-07-25 (run `20260725T084848Z`; report in the Obsidian
