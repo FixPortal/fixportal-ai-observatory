@@ -1,7 +1,7 @@
+# Observatory
+
 ![Build](https://github.com/FixPortal/fixportal-observatory/actions/workflows/ci.yml/badge.svg)
 ![License](https://img.shields.io/github/license/FixPortal/fixportal-observatory)
-
-# Observatory
 
 ![Observatory — one clear view of AI usage, spend, subscriptions, and budget signals](docs/images/observatory-hero-oss.png)
 
