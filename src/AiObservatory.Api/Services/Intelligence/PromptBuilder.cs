@@ -33,24 +33,7 @@ public class PromptBuilder
         // would contradict the instruction below not to sum across bases. The provider/model
         // breakdowns already group by (entity, CostBasis); this applies the same rule to the
         // headline figure.
-        var totalsByBasis = aggregates
-            .GroupBy(a => a.CostBasis)
-            .OrderBy(g => g.Key.ToString(), StringComparer.Ordinal)
-            .ToList();
-        if (totalsByBasis.Count == 0)
-        {
-            sb.AppendLine("Total reported usage value: Not reported (0 requests)");
-        }
-        else
-        {
-            sb.AppendLine("Total reported usage value by cost basis:");
-            foreach (var g in totalsByBasis)
-            {
-                sb.AppendLine(
-                    $"  {FormatSpend(g.Sum(a => a.CostUsd), g.Sum(a => a.RequestCount), g.Sum(a => a.UnknownCostCount), g.Key)}"
-                );
-            }
-        }
+        AppendTotalsByBasis(sb, aggregates, FormatSpend);
 
         // Grouped by (entity, CostBasis) rather than just the entity, and every figure below
         // carries its own basis tag -- a provider or model can be a mix of real billed spend
@@ -60,42 +43,14 @@ public class PromptBuilder
         AppendProviderBreakdown(sb, aggregates, FormatSpend);
         AppendModelBreakdown(sb, aggregates, FormatSpend);
 
-        if (subscriptions.Any())
-        {
-            sb.AppendLine("Flat-rate subscriptions:");
-            decimal monthlySubscriptionTotalInGbp = 0;
-            foreach (var s in subscriptions)
-            {
-                var costInGbp = s.Currency.Equals("USD", StringComparison.OrdinalIgnoreCase)
-                    ? s.CostAmount * usdToGbp
-                    : s.CostAmount;
-                var isAnnual = s.BillingInterval == SubscriptionBillingInterval.Annual;
-                monthlySubscriptionTotalInGbp += costInGbp / (isAnnual ? 12 : 1);
-                sb.AppendLine(
-                    $"  {s.Name}: GBP {costInGbp.ToString("F2", CultureInfo.InvariantCulture)}/{(isAnnual ? "year" : "month")} (~GBP {(costInGbp / (isAnnual ? 365 : 30)).ToString("F2", CultureInfo.InvariantCulture)}/day)"
-                );
-            }
-            sb.AppendLine(
-                $"Equivalent flat-rate subscription total (annual plans divided by 12): GBP {monthlySubscriptionTotalInGbp.ToString("F2", CultureInfo.InvariantCulture)}/month. Use this pre-calculated value for any monthly subscription total; do not add raw annual prices to monthly costs."
-            );
-        }
+        AppendSubscriptions(sb, subscriptions, usdToGbp);
 
         // The yesterday-vs-average comparison sums every row in the window, so it is only
         // shown when the period is basis-pure (CostBasis.None is neutral: known-zero rows add
         // nothing to the sum). A mixed-basis window would repeat the untagged-total mistake
         // the per-basis breakdown above exists to avoid. When shown, the figures carry the
         // same tag as every other figure in the prompt.
-        var distinctBases = aggregates.Select(a => a.CostBasis).Where(b => b != CostBasis.None).Distinct().ToList();
-        if (aggregates.Count >= 2 && totalUnknownCosts == 0 && distinctBases.Count <= 1)
-        {
-            var yesterday = aggregates.Where(a => a.Date == periodEnd).Sum(a => a.CostUsd);
-            var priorPeriod = aggregates.Where(a => a.Date < periodEnd).Sum(a => a.CostUsd);
-            var avgPerDay = priorPeriod / Math.Max(1, Period.Between(periodStart, periodEnd, PeriodUnits.Days).Days);
-            var tag = distinctBases.Count == 1 ? $" {CostBasisTag(distinctBases[0])}" : "";
-            sb.AppendLine(
-                $"Yesterday reported usage value: {Gbp(yesterday)}{tag} vs 30-day average: {Gbp(avgPerDay)}/day{tag}"
-            );
-        }
+        AppendYesterdayComparison(sb, aggregates, periodStart, periodEnd, totalUnknownCosts, Gbp);
 
         sb.AppendLine();
         sb.AppendLine(
@@ -141,6 +96,84 @@ public class PromptBuilder
                 ? $"{Gbp(spend)}{tag}"
                 : $"{Gbp(spend)}{tag} reported ({unknownCosts} of {requests} requests not reported)";
         }
+    }
+
+    private static void AppendTotalsByBasis(
+        StringBuilder sb,
+        IReadOnlyList<DailyAggregate> aggregates,
+        Func<decimal, int, int, CostBasis?, string> formatSpend
+    )
+    {
+        var totalsByBasis = aggregates
+            .GroupBy(a => a.CostBasis)
+            .OrderBy(g => g.Key.ToString(), StringComparer.Ordinal)
+            .ToList();
+        if (totalsByBasis.Count == 0)
+        {
+            sb.AppendLine("Total reported usage value: Not reported (0 requests)");
+            return;
+        }
+
+        sb.AppendLine("Total reported usage value by cost basis:");
+        foreach (var g in totalsByBasis)
+        {
+            sb.AppendLine(
+                $"  {formatSpend(g.Sum(a => a.CostUsd), g.Sum(a => a.RequestCount), g.Sum(a => a.UnknownCostCount), g.Key)}"
+            );
+        }
+    }
+
+    private static void AppendSubscriptions(
+        StringBuilder sb,
+        IReadOnlyList<Subscription> subscriptions,
+        decimal usdToGbp
+    )
+    {
+        if (!subscriptions.Any())
+        {
+            return;
+        }
+
+        sb.AppendLine("Flat-rate subscriptions:");
+        decimal monthlySubscriptionTotalInGbp = 0;
+        foreach (var s in subscriptions)
+        {
+            var costInGbp = s.Currency.Equals("USD", StringComparison.OrdinalIgnoreCase)
+                ? s.CostAmount * usdToGbp
+                : s.CostAmount;
+            var isAnnual = s.BillingInterval == SubscriptionBillingInterval.Annual;
+            monthlySubscriptionTotalInGbp += costInGbp / (isAnnual ? 12 : 1);
+            sb.AppendLine(
+                $"  {s.Name}: GBP {costInGbp.ToString("F2", CultureInfo.InvariantCulture)}/{(isAnnual ? "year" : "month")} (~GBP {(costInGbp / (isAnnual ? 365 : 30)).ToString("F2", CultureInfo.InvariantCulture)}/day)"
+            );
+        }
+        sb.AppendLine(
+            $"Equivalent flat-rate subscription total (annual plans divided by 12): GBP {monthlySubscriptionTotalInGbp.ToString("F2", CultureInfo.InvariantCulture)}/month. Use this pre-calculated value for any monthly subscription total; do not add raw annual prices to monthly costs."
+        );
+    }
+
+    private static void AppendYesterdayComparison(
+        StringBuilder sb,
+        IReadOnlyList<DailyAggregate> aggregates,
+        LocalDate periodStart,
+        LocalDate periodEnd,
+        int totalUnknownCosts,
+        Func<decimal, string> gbp
+    )
+    {
+        var distinctBases = aggregates.Select(a => a.CostBasis).Where(b => b != CostBasis.None).Distinct().ToList();
+        if (aggregates.Count < 2 || totalUnknownCosts != 0 || distinctBases.Count > 1)
+        {
+            return;
+        }
+
+        var yesterday = aggregates.Where(a => a.Date == periodEnd).Sum(a => a.CostUsd);
+        var priorPeriod = aggregates.Where(a => a.Date < periodEnd).Sum(a => a.CostUsd);
+        var avgPerDay = priorPeriod / Math.Max(1, Period.Between(periodStart, periodEnd, PeriodUnits.Days).Days);
+        var tag = distinctBases.Count == 1 ? $" {CostBasisTag(distinctBases[0])}" : "";
+        sb.AppendLine(
+            $"Yesterday reported usage value: {gbp(yesterday)}{tag} vs 30-day average: {gbp(avgPerDay)}/day{tag}"
+        );
     }
 
     private static void AppendProviderBreakdown(
