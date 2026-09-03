@@ -36,96 +36,118 @@ public static class NotificationSettingsEndpoints
             "/notification-settings",
             async (JsonElement body, AiObservatoryDbContext db, IClock clock, CancellationToken ct) =>
             {
-                // TryGetProperty throws InvalidOperationException on anything but a JSON
-                // object (an array, string, number, or null body) -- reject those up front
-                // so malformed input returns 400 like every other guard below, not a 500.
-                if (body.ValueKind != JsonValueKind.Object)
+                var validationError = ValidatePutBody(body);
+                if (validationError is not null)
                 {
-                    return Results.BadRequest("body must be a JSON object");
+                    return Results.BadRequest(validationError);
                 }
 
-                if (
-                    body.TryGetProperty("alertEmailTo", out var emailKindProp)
-                    && emailKindProp.ValueKind != JsonValueKind.String
-                    && emailKindProp.ValueKind != JsonValueKind.Null
-                )
-                {
-                    return Results.BadRequest("alertEmailTo must be a string or null");
-                }
-
-                if (
-                    body.TryGetProperty("slackWebhookUrl", out var slackKindProp)
-                    && slackKindProp.ValueKind != JsonValueKind.String
-                    && slackKindProp.ValueKind != JsonValueKind.Null
-                )
-                {
-                    return Results.BadRequest("slackWebhookUrl must be a string or null");
-                }
-
-                if (
-                    body.TryGetProperty("alertEmailTo", out var emailProp)
-                    && emailProp.ValueKind == JsonValueKind.String
-                    && !string.IsNullOrWhiteSpace(emailProp.GetString())
-                    && (emailProp.GetString()!.Length > 320 || !IsValidEmail(emailProp.GetString()!))
-                )
-                {
-                    return Results.BadRequest("alertEmailTo is not a valid email address");
-                }
-
-                if (
-                    body.TryGetProperty("slackWebhookUrl", out var slackProp)
-                    && slackProp.ValueKind == JsonValueKind.String
-                    && !string.IsNullOrWhiteSpace(slackProp.GetString())
-                    && (slackProp.GetString()!.Length > 2048 || !IsValidSlackWebhookUrl(slackProp.GetString()!))
-                )
-                {
-                    return Results.BadRequest("slackWebhookUrl must start with https://hooks.slack.com/");
-                }
-
-                var settings = await db.NotificationSettings.FirstOrDefaultAsync(
-                    s => s.Id == Data.Entities.NotificationSettings.SingletonId,
-                    ct
-                );
-                var inserting = settings is null;
-                if (settings is null)
-                {
-                    settings = new Data.Entities.NotificationSettings();
-                    db.NotificationSettings.Add(settings);
-                }
-
-                ApplyFields(settings, body, clock);
-
-                if (inserting)
-                {
-                    try
-                    {
-                        await db.SaveChangesAsync(ct);
-                    }
-                    catch (DbUpdateException ex)
-                        when (ex.InnerException is PostgresException { SqlState: PostgresErrorCodes.UniqueViolation })
-                    {
-                        // Lost the insert race to a concurrent first-time PUT. Reload the
-                        // winner's row and reapply THIS request's edits on top of it -- a
-                        // bounded, single reload-and-reapply, not a general retry loop.
-                        db.Entry(settings).State = EntityState.Detached;
-                        settings = await db.NotificationSettings.SingleAsync(
-                            s => s.Id == Data.Entities.NotificationSettings.SingletonId,
-                            ct
-                        );
-                        ApplyFields(settings, body, clock);
-                        await db.SaveChangesAsync(ct);
-                    }
-                }
-                else
-                {
-                    await db.SaveChangesAsync(ct);
-                }
+                var settings = await UpsertSettingsAsync(db, body, clock, ct);
 
                 return Results.Ok(ToResponse(settings.AlertEmailTo, settings.SlackWebhookUrl));
             }
         );
 
         return app;
+    }
+
+    // TryGetProperty throws InvalidOperationException on anything but a JSON object (an array,
+    // string, number, or null body) -- reject that up front so malformed input returns 400 like
+    // every other guard below, not a 500.
+    private static string? ValidatePutBody(JsonElement body)
+    {
+        if (body.ValueKind != JsonValueKind.Object)
+        {
+            return "body must be a JSON object";
+        }
+
+        if (
+            body.TryGetProperty("alertEmailTo", out var emailKindProp)
+            && emailKindProp.ValueKind != JsonValueKind.String
+            && emailKindProp.ValueKind != JsonValueKind.Null
+        )
+        {
+            return "alertEmailTo must be a string or null";
+        }
+
+        if (
+            body.TryGetProperty("slackWebhookUrl", out var slackKindProp)
+            && slackKindProp.ValueKind != JsonValueKind.String
+            && slackKindProp.ValueKind != JsonValueKind.Null
+        )
+        {
+            return "slackWebhookUrl must be a string or null";
+        }
+
+        if (
+            body.TryGetProperty("alertEmailTo", out var emailProp)
+            && emailProp.ValueKind == JsonValueKind.String
+            && !string.IsNullOrWhiteSpace(emailProp.GetString())
+            && (emailProp.GetString()!.Length > 320 || !IsValidEmail(emailProp.GetString()!))
+        )
+        {
+            return "alertEmailTo is not a valid email address";
+        }
+
+        if (
+            body.TryGetProperty("slackWebhookUrl", out var slackProp)
+            && slackProp.ValueKind == JsonValueKind.String
+            && !string.IsNullOrWhiteSpace(slackProp.GetString())
+            && (slackProp.GetString()!.Length > 2048 || !IsValidSlackWebhookUrl(slackProp.GetString()!))
+        )
+        {
+            return "slackWebhookUrl must start with https://hooks.slack.com/";
+        }
+
+        return null;
+    }
+
+    private static async Task<Data.Entities.NotificationSettings> UpsertSettingsAsync(
+        AiObservatoryDbContext db,
+        JsonElement body,
+        IClock clock,
+        CancellationToken ct
+    )
+    {
+        var settings = await db.NotificationSettings.FirstOrDefaultAsync(
+            s => s.Id == Data.Entities.NotificationSettings.SingletonId,
+            ct
+        );
+        var inserting = settings is null;
+        if (settings is null)
+        {
+            settings = new Data.Entities.NotificationSettings();
+            db.NotificationSettings.Add(settings);
+        }
+
+        ApplyFields(settings, body, clock);
+
+        if (!inserting)
+        {
+            await db.SaveChangesAsync(ct);
+            return settings;
+        }
+
+        try
+        {
+            await db.SaveChangesAsync(ct);
+        }
+        catch (DbUpdateException ex)
+            when (ex.InnerException is PostgresException { SqlState: PostgresErrorCodes.UniqueViolation })
+        {
+            // Lost the insert race to a concurrent first-time PUT. Reload the winner's row and
+            // reapply THIS request's edits on top of it -- a bounded, single reload-and-reapply,
+            // not a general retry loop.
+            db.Entry(settings).State = EntityState.Detached;
+            settings = await db.NotificationSettings.SingleAsync(
+                s => s.Id == Data.Entities.NotificationSettings.SingletonId,
+                ct
+            );
+            ApplyFields(settings, body, clock);
+            await db.SaveChangesAsync(ct);
+        }
+
+        return settings;
     }
 
     private static void ApplyFields(Data.Entities.NotificationSettings settings, JsonElement body, IClock clock)
