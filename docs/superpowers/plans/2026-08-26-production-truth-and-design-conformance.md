@@ -12,7 +12,7 @@
 
 ## Global Constraints
 
-- Work only in `D:\fix-portal\fixportal-ai-observatory\.claude\worktrees\reviewer-passes` on `reviewer-findings-batch10`.
+- Work only in `.claude/worktrees/reviewer-passes` on `reviewer-findings-batch10`.
 - Keep the design record, implementation, migration, infrastructure change, and tests in one PR.
 - Make `SpendEntry.AmountGbp` the only money input to Reporting and budget alerts.
 - Preserve usage aggregates for activity, estimates, and notional comparisons; never sum them into billed spend.
@@ -512,7 +512,7 @@ git commit -m "Clarify notional value and bound insights"
 - Create: `src/AiObservatory.Web/src/system.md`
 
 **Interfaces:**
-- Consumes: canonical `D:\fix-portal\fixportal-assets\packages\design` version 0.8.1 at tag `v0.8.1` / commit `6b3e3e0`.
+- Consumes: canonical `fixportal-assets/packages/design` version 0.8.1 at tag `v0.8.1` / commit `6b3e3e0`.
 - Produces: stable existing Observatory import paths with canonical primitive behaviour.
 - Preserves: `BrandWordmark.tsx` and `SearchIcon.tsx`, which do not need synchronization.
 
@@ -531,12 +531,12 @@ tests: they pin private implementation text while missing rendered regressions.
 Copy byte-for-byte from these source paths:
 
 ```text
-D:\fix-portal\fixportal-assets\packages\design\tokens.css
-D:\fix-portal\fixportal-assets\packages\design\components.css
-D:\fix-portal\fixportal-assets\packages\design\primitives\Button.tsx
-D:\fix-portal\fixportal-assets\packages\design\primitives\Card.tsx
-D:\fix-portal\fixportal-assets\packages\design\primitives\StatusBadge.tsx
-D:\fix-portal\fixportal-assets\packages\design\primitives\ThemeToggle.tsx
+fixportal-assets/packages/design/tokens.css
+fixportal-assets/packages/design/components.css
+fixportal-assets/packages/design/primitives/Button.tsx
+fixportal-assets/packages/design/primitives/Card.tsx
+fixportal-assets/packages/design/primitives/StatusBadge.tsx
+fixportal-assets/packages/design/primitives/ThemeToggle.tsx
 ```
 
 Do not copy unused primitives, build configuration, tests, or package metadata. Keep the local filenames/import paths listed above.
@@ -713,7 +713,7 @@ Mobile dark:    390 × 844
 For each state verify no horizontal page overflow, clipped controls, unreadable muted text, provider colour used as status/progress, inconsistent panel radius, stray shadow, or inaccessible focus ring. Record one screenshot per tab/theme/width under the external audit directory, not in Git:
 
 ```text
-D:\fix-portal\web-audit-output\fixportal-ai-observatory\screenshots\batch10\
+web-audit-output/fixportal-observatory/screenshots/batch10/
 ```
 
 - [ ] **Step 7: Run frontend checks and commit**
@@ -991,7 +991,7 @@ Confirm CI Gate succeeds, Gitar has an actual verdict, CodeRabbit's comment has 
 
 - [ ] **Step 1: Refresh the primary checkout after rebase merge**
 
-From `D:\fix-portal\fixportal-ai-observatory`:
+From `<repo root>`:
 
 ```powershell
 git switch main
@@ -1039,8 +1039,8 @@ Run Lighthouse against the production shell and require no regression from the b
 Update the external audit report and tracker:
 
 ```text
-D:\fix-portal\web-audit-output\fixportal-ai-observatory\report.md
-D:\fix-portal\WEB-AUDIT-TRACKER.md
+web-audit-output/fixportal-observatory/report.md
+WEB-AUDIT-TRACKER.md
 ```
 
 Mark FAO-009, FAO-010, and FAO-011 resolved only with the deployed commit, workflow run links, live screenshots, and the relevant automated test evidence.

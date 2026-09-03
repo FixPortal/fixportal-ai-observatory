@@ -685,7 +685,7 @@ Then, immediately after the existing `services.Configure<IngestOptions>(...)` li
 Run: `dotnet build src/AiObservatory.Ingest/AiObservatory.Ingest.csproj`
 Expected: `Build succeeded.` — confirm `bin/Debug/net10.0/appsettings.json` exists after build (Worker SDK copies it as content by convention, same as `Microsoft.NET.Sdk.Web`).
 
-Run: `Test-Path D:\fix-portal\fixportal-ai-observatory\src\AiObservatory.Ingest\bin\Debug\net10.0\appsettings.json` (PowerShell)
+Run: `Test-Path src/AiObservatory.Ingest/bin/Debug/net10.0/appsettings.json` (PowerShell, from the repo root)
 Expected: `True`
 
 - [ ] **Step 4: Commit**

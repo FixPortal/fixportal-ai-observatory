@@ -4,8 +4,8 @@
 
 `PERF-001` — "Aggregate delta pair issues four PostgreSQL round trips per repriced event where one upsert suffices".
 
-- Audit: `E:\Documents\Obsidian Vault\Claude\Performance Audit\fixportal-ai-observatory\2026-08-29-0022-pricing-repricing-performance-audit.md` (+ `.manifest.json`, schema v2).
-- Experiment record: `E:\Documents\Obsidian Vault\Claude\Performance Audit\fixportal-ai-observatory\2026-08-29-0052-PERF-001-experiment.md`.
+- Audit: `2026-08-29-0022-pricing-repricing-performance-audit.md` (+ `.manifest.json`, schema v2), held in the maintainer's private audit archive.
+- Experiment record: `2026-08-29-0052-PERF-001-experiment.md`, same archive.
 - Approval: Chris approved this single finding and its exact proposed experiment ("go for it") after being shown the three published findings and the recommendation to run PERF-001 alone. PERF-002 and PERF-003 were explicitly excluded.
 - Audited commit `9fca4f1d0ebaadaf7f83fb813753748540181086`; baseline commit identical (no drift); candidate on branch `performance/perf-001-net-aggregate-delta`.
 
@@ -47,7 +47,7 @@ Environment: .NET SDK 10.0.400, net10.0 Release, Windows 10.0.26200 X64, ephemer
 
 Materiality threshold (at most 7 calls/event **and** at least 20% median improvement against a same-session baseline) is met on both counts. Predicted improvement from removing 3 round trips at the audited ~0.651 ms each was ~1.95 ms/event; measured was 2.03 ms/event — agreement within 4%.
 
-Raw artefacts, with SHA-256, in `E:\Documents\Obsidian Vault\Claude\Performance Audit\fixportal-ai-observatory\2026-08-29-0022-raw\`: `perf001-baseline-stats.txt`, `perf001-candidate-stats.txt`, `perf001-candidate.diff`, `pg_stat_statements.txt`.
+Raw artefacts, with SHA-256, in the `2026-08-29-0022-raw` set of the same private archive: `perf001-baseline-stats.txt`, `perf001-candidate-stats.txt`, `perf001-candidate.diff`, `pg_stat_statements.txt`.
 
 ### Correctness and normal gates
 
@@ -88,7 +88,7 @@ Commercial impact: `currencyCost: unknown`. No repricing volume, deployment topo
 
 "Pricing snapshot catalog is re-queried and re-materialised once per event within a single activation".
 
-- Audit: as above. Experiment record: `E:\Documents\Obsidian Vault\Claude\Performance Audit\fixportal-ai-observatory\2026-08-29-0905-PERF-003-experiment.md`.
+- Audit: as above. Experiment record: `2026-08-29-0905-PERF-003-experiment.md`, same archive.
 - Approval: Chris, "Please continue with 1) first and then 2)", where item 2 was PERF-002 and PERF-003.
 - Audited commit `9fca4f1`; **baseline commit `59cd019`** (`reviewer-findings-batch16` = `main` at `bdaa846` plus the Q3 fix), candidate on `performance/perf-003-catalog-memo`.
 
@@ -153,7 +153,7 @@ Commercial impact: `currencyCost: unknown`, on the same missing inputs as PERF-0
 
 `PERF-002` proposed removing `ctx.Entry(existing).ReloadAsync(ct)` from `FindEventByIdForUpdateAsync` as a redundant round trip, **conditional** on establishing that it does not reconcile EF Core change-tracker state. It does, so the finding's own rejection condition fired and no product code changed.
 
-Record: `E:\Documents\Obsidian Vault\Claude\Performance Audit\fixportal-ai-observatory\2026-08-29-0817-PERF-002-experiment.md`. Removing the reload and running a focused test on the by-id path leaves the aggregate at 6.00 instead of 5.00. That test is retained, in PR #198.
+Record: `2026-08-29-0817-PERF-002-experiment.md`, same archive. Removing the reload and running a focused test on the by-id path leaves the aggregate at 6.00 instead of 5.00. That test is retained, in PR #198.
 
 ## Benchmark
 
