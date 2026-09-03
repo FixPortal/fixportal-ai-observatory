@@ -80,7 +80,7 @@ export default function Dashboard() {
       <header className="app-header">
         <span className="app-header__lockup">
           <BrandWordmark height={48} className="app-header__wordmark" />
-          <span className="app-header__descriptor">AI Observatory</span>
+          <span className="app-header__descriptor">Observatory</span>
         </span>
         <ThemeToggle value={mode} onChange={setMode} />
       </header>

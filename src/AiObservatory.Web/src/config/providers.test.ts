@@ -40,7 +40,7 @@ test('an unknown provider still falls back to the neutral colour', () => {
 })
 
 test('declares every current acquisition and pricing source with public setup guidance', () => {
-  const setupHref = 'https://github.com/FixPortal/fixportal-ai-observatory/blob/main/docs/provider-setup.md'
+  const setupHref = 'https://github.com/FixPortal/fixportal-observatory/blob/main/docs/provider-setup.md'
   expect(PROVIDERS.flatMap(provider => provider.sources.map(source => [provider.key, source.id, source.displayName, source.setupHref]))).toEqual([
     ['anthropic', 'anthropic-usage-api', 'Messages usage', setupHref],
     ['anthropic', 'anthropic-cost-report', 'Cost report', setupHref],

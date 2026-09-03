@@ -18,8 +18,8 @@ See the [README](README.md#local-development) for the full local setup,
 environment variables, and EF Core migration steps.
 
 ```bash
-git clone https://github.com/FixPortal/fixportal-ai-observatory.git
-cd fixportal-ai-observatory
+git clone https://github.com/FixPortal/fixportal-observatory.git
+cd fixportal-observatory
 docker compose up --build
 ```
 

@@ -18,7 +18,7 @@ export interface ProviderConfig {
   sources: ProviderSource[]
 }
 
-const SETUP_HREF = 'https://github.com/FixPortal/fixportal-ai-observatory/blob/main/docs/provider-setup.md'
+const SETUP_HREF = 'https://github.com/FixPortal/fixportal-observatory/blob/main/docs/provider-setup.md'
 
 export const PROVIDERS = [
   {
