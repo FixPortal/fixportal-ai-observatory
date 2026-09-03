@@ -187,6 +187,7 @@ if (app.Environment.IsDevelopment())
                 || await db.Insights.AnyAsync(ct)
                 || await db.BudgetRules.AnyAsync(ct)
                 || await db.UsageEvents.AnyAsync(ct)
+                || await db.SpendEntries.AnyAsync(ct)
             )
             {
                 return Results.Ok("Already seeded — skipping (data present).");
@@ -385,6 +386,8 @@ if (app.Environment.IsDevelopment())
                 }
             );
 
+            await SeedBilledLedgerAsync(db, today, clock.GetCurrentInstant(), ct);
+
             await db.SaveChangesAsync(ct);
             return Results.Ok("Seed successful");
         }
@@ -417,6 +420,87 @@ await app.RunAsync();
 public partial class Program
 {
     protected Program() { }
+
+    /// <summary>
+    /// Vendor keys, and the monthly GBP charge, used to seed billed evidence in Development.
+    /// Keys match the <c>SpendVendors</c> catalog migrations; a key absent from the catalog is
+    /// skipped rather than failing the seed.
+    /// </summary>
+    private static readonly (string VendorKey, decimal MonthlyGbp)[] SeedBilledMonthlyGbp =
+    [
+        ("anthropic", 18.00m),
+        ("coderabbit", 12.00m),
+        ("github-actions", 7.50m),
+    ];
+
+    private static readonly string[] SeedBilledVendorKeys = [.. SeedBilledMonthlyGbp.Select(v => v.VendorKey)];
+
+    /// <summary>
+    /// Seeds billed evidence for the Reporting tab, which reads the spend ledger rather than
+    /// <c>DailyAggregates</c>. Without it every Reporting tile reads "Not reported" on a fresh
+    /// install and the tab cannot show what it is for.
+    /// <para>
+    /// Vendors are resolved by their stable catalog key rather than by hardcoded GUID, and a
+    /// vendor that is missing — or that carries no default category — is skipped rather than
+    /// failing the whole seed.
+    /// </para>
+    /// </summary>
+    private static async Task SeedBilledLedgerAsync(
+        AiObservatoryDbContext db,
+        LocalDate today,
+        Instant seededAt,
+        CancellationToken ct
+    )
+    {
+        var vendors = await db
+            .SpendVendors.Where(v => SeedBilledVendorKeys.Contains(v.Key))
+            .Select(v => new
+            {
+                v.Key,
+                v.Id,
+                v.DefaultCategoryId,
+            })
+            .ToListAsync(ct);
+
+        var firstOfThisMonth = today.PlusDays(1 - today.Day);
+
+        foreach (var (vendorKey, monthlyGbp) in SeedBilledMonthlyGbp)
+        {
+            var vendor = vendors.Find(v => v.Key == vendorKey);
+            if (vendor?.DefaultCategoryId is not { } categoryId)
+            {
+                continue;
+            }
+
+            // One charge per month over three months so the Reporting comparison
+            // ("previous period") has billed evidence on both sides of the boundary.
+            for (int monthsBack = 0; monthsBack < 3; monthsBack++)
+            {
+                var occurredOn = firstOfThisMonth.PlusMonths(-monthsBack);
+                db.SpendEntries.Add(
+                    new SpendEntry
+                    {
+                        OccurredOn = occurredOn,
+                        VendorId = vendor.Id,
+                        CategoryId = categoryId,
+                        Amount = monthlyGbp,
+                        Currency = "GBP",
+                        AmountGbp = monthlyGbp,
+                        FxRate = 1m,
+                        Description = "Demo seed — synthetic billed charge",
+                        Source = SpendSource.Api,
+                        EntryKey = $"demo-seed:{vendorKey}:{occurredOn.Year:D4}-{occurredOn.Month:D2}",
+                        RecordedAt = seededAt,
+                        SourceId = UsageSourceIds.DemoSeed,
+                        SourceKind = SourceKind.Synthetic,
+                        UsageScope = UsageScope.Subscription,
+                        CostBasis = CostBasis.Billed,
+                        ObservedAt = seededAt,
+                    }
+                );
+            }
+        }
+    }
 
     internal static void ValidateApiKeys(WebApplicationBuilder builder)
     {
