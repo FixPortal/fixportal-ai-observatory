@@ -3,8 +3,8 @@
 Repo: [FixPortal/fixportal-observatory](https://github.com/FixPortal/fixportal-observatory) (public).
 
 **Rev 2 supersedes rev 1**, which was audited by a five-reviewer / four-vendor
-adversarial panel on 2026-07-25 (run `20260725T084848Z`; report in the Obsidian
-vault under `Claude/Adversarial Review/fixportal-ai-observatory/`). The audit
+adversarial panel on 2026-07-25 (run `20260725T084848Z`; report held in the
+maintainer's private review archive). The audit
 found rev 1 unbuildable as written. This revision records what changed and why.
 
 The single most important change: **rev 1 assumed the stored token counts were

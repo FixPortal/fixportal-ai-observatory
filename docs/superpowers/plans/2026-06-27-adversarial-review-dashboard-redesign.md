@@ -884,7 +884,7 @@ git commit -m "feat(web): group adversarial runs into collapsible per-run panels
 
 ### Task 8: Telemetry / skill fixes (OUT OF PR — applied to `~/.claude`)
 
-> **Note:** These files live under `C:\Users\chris\.claude\skills\adversarial-review\` — personal config, not part of the repository or the PR. Apply directly. They make the emit side produce the correct data the API now stores. Verified by the rollout run in Task 9, not by repo tests.
+> **Note:** These files live under `~/.claude/skills/adversarial-review/` — personal config, not part of the repository or the PR. Apply directly. They make the emit side produce the correct data the API now stores. Verified by the rollout run in Task 9, not by repo tests.
 
 **Files:**
 - Modify: `~/.claude/skills/adversarial-review/emit-review-telemetry.ps1`
@@ -913,7 +913,7 @@ Wrap the API call in a `Stopwatch`; add `durationMs = $sw.ElapsedMilliseconds` t
 - [ ] **Step 5: Smoke-test the emit script directly**
 
 ```powershell
-pwsh -NoProfile -File C:\Users\chris\.claude\skills\adversarial-review\emit-review-telemetry.ps1 -RunId 20260627T120000Z -Reviewer anthropic -Role judge -Model claude-opus-4-8 -Repo smoke-test -CostUsd 0.83 -ReviewDurationMs 64000 -IssuesRaised 0 -IssuesAccepted 0
+pwsh -NoProfile -File ~/.claude/skills/adversarial-review/emit-review-telemetry.ps1 -RunId 20260627T120000Z -Reviewer anthropic -Role judge -Model claude-opus-4-8 -Repo smoke-test -CostUsd 0.83 -ReviewDurationMs 64000 -IssuesRaised 0 -IssuesAccepted 0
 ```
 Expected: exits 0; a judge row appears via `GET /api/adversarial-review/runs` for that runId. (Delete it afterward via the Task 9 purge, or leave it for the post-wipe verify.)
 

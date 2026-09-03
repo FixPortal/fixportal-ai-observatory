@@ -32,7 +32,7 @@
 | Modify | `src/AiObservatory.Web/src/pages/Dashboard.tsx` | Wrap CavemanStatsPanel in `.collapsible-panel-zone` div |
 | Modify | `src/AiObservatory.Web/src/index.css` | Append collapsible panel CSS block |
 
-> **Note:** `~/.claude/` changes (hook + settings.json) are personal config files — they are **not part of the repository** and will not appear in the PR. They must be applied directly to `C:\Users\chris\.claude\`.
+> **Note:** `~/.claude/` changes (hook + settings.json) are personal config files — they are **not part of the repository** and will not appear in the PR. They must be applied directly to `~/.claude/`.
 
 ---
 
@@ -42,7 +42,7 @@
 
 - [ ] **Step 1: Create feature branch from origin/main**
 
-  Run in the repo root (`D:\fix-portal\fixportal-ai-observatory`):
+  Run in the repo root (`<repo root>`):
 
   ```powershell
   git fetch origin
@@ -59,8 +59,8 @@
 ### Task 2: caveman-stop.ps1 + settings.json
 
 **Files:**
-- Create: `C:\Users\chris\.claude\hooks\caveman-stop.ps1`
-- Modify: `C:\Users\chris\.claude\settings.json` (Stop hooks array, ~line 462)
+- Create: `~/.claude/hooks/caveman-stop.ps1`
+- Modify: `~/.claude/settings.json` (Stop hooks array, ~line 462)
 
 **Interfaces:**
 - Reads: `CLAUDE_SESSION_ID` env var, falls back to most-recently-modified JSONL in `~/.claude/projects/`
@@ -69,7 +69,7 @@
 
 - [ ] **Step 1: Create caveman-stop.ps1**
 
-  Write `C:\Users\chris\.claude\hooks\caveman-stop.ps1`:
+  Write `~/.claude/hooks/caveman-stop.ps1`:
 
   ```powershell
   #Requires -Version 7
@@ -110,14 +110,14 @@
 - [ ] **Step 2: Verify script exits cleanly**
 
   ```powershell
-  pwsh -NoProfile -ExecutionPolicy Bypass -File C:\Users\chris\.claude\hooks\caveman-stop.ps1; Write-Output "exit $LASTEXITCODE"
+  pwsh -NoProfile -ExecutionPolicy Bypass -File ~/.claude/hooks/caveman-stop.ps1; Write-Output "exit $LASTEXITCODE"
   ```
 
   Expected: `exit 0` (no error output)
 
 - [ ] **Step 3: Insert caveman-stop entry in settings.json**
 
-  In `C:\Users\chris\.claude\settings.json`, find the Stop array. The current order is:
+  In `~/.claude/settings.json`, find the Stop array. The current order is:
   1. `api-error-alert.sh` (async)
   2. `observe-stop.ps1` (async, disabled but wired — it exits 0 immediately)
   3. `observe-sweep.ps1` (async, 120s)
@@ -169,7 +169,7 @@
 - [ ] **Step 4: Validate settings.json is parseable**
 
   ```powershell
-  Get-Content C:\Users\chris\.claude\settings.json | ConvertFrom-Json | Out-Null; Write-Output "valid"
+  Get-Content ~/.claude/settings.json | ConvertFrom-Json | Out-Null; Write-Output "valid"
   ```
 
   Expected: `valid`
