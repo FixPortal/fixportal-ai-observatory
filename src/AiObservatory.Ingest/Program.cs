@@ -250,7 +250,7 @@ static bool RegisterAnthropicSources(
             client.DefaultRequestHeaders.Add("anthropic-version", "2023-06-01");
             client.DefaultRequestHeaders.Add("anthropic-beta", "fast-mode-2026-02-01");
             client.DefaultRequestHeaders.UserAgent.ParseAdd(
-                "AiObservatory.Ingest/1.0 (+https://github.com/FixPortal/fixportal-ai-observatory)"
+                "AiObservatory.Ingest/1.0 (+https://github.com/FixPortal/fixportal-observatory)"
             );
         })
         .RemoveAllLoggers();
