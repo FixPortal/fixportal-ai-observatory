@@ -30,9 +30,7 @@ public sealed class PricingRefreshWorkerServiceTests(ProviderPollingDatabase dat
         var scopeFactory = Substitute.For<IServiceScopeFactory>();
         // The real completion signal, rather than a sleep: the worker reaching its throwing
         // dependency is the event this test was waiting for, so make it observable.
-        var refreshPassEntered = new TaskCompletionSource(
-            TaskCreationOptions.RunContinuationsAsynchronously
-        );
+        var refreshPassEntered = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         // CreateAsyncScope is an extension over CreateScope, so the interface method throws.
         scopeFactory
             .CreateScope()
@@ -48,10 +46,7 @@ public sealed class PricingRefreshWorkerServiceTests(ProviderPollingDatabase dat
         );
 
         await worker.StartAsync(TestContext.Current.CancellationToken);
-        await refreshPassEntered.Task.WaitAsync(
-            TimeSpan.FromSeconds(30),
-            TestContext.Current.CancellationToken
-        );
+        await refreshPassEntered.Task.WaitAsync(TimeSpan.FromSeconds(30), TestContext.Current.CancellationToken);
 
         // STOP BEFORE ASSERTING, which the sleeping version could not do. Reaching the throw
         // is not the same as the exception having been handled, so a check taken the instant
