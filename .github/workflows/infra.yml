@@ -22,6 +22,7 @@ jobs:
     environment: production
     permissions:
       contents: read
+      # Mints the short-lived OIDC token azure/login exchanges for an Azure one.
       id-token: write
     steps:
       - uses: actions/checkout@v7
