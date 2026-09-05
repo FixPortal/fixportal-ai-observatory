@@ -192,3 +192,8 @@ jobs:
     secrets: inherit
     permissions:
       contents: read
+      # The CALLER's permissions are the ceiling for the called workflow: a job in
+      # deploy.yml asking for id-token: write is denied it unless it is granted here
+      # too. Without this, azure/login fails to obtain an OIDC token and the failure
+      # points at the called workflow rather than at this line.
+      id-token: write

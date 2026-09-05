@@ -27,6 +27,23 @@ name: Deploy
 # job below names the `production` environment, whose deployment branch policy admits
 # main alone. GitHub refuses the environment's secrets to a run on any other ref
 # regardless of what the `if:` says.
+#
+# AZURE AUTH IS OIDC, NOT A STORED CREDENTIAL. azure/login exchanges a short-lived
+# GitHub token for an Azure one against a federated credential on the fpaiobs-deploy
+# app registration, whose subject is
+# `repo:FixPortal/fixportal-observatory:environment:production`. That subject is why
+# the `environment:` above is load-bearing rather than decorative: a job outside the
+# production environment gets a token Azure will not accept. There is no client secret
+# to leak, expire or rotate, and the three ids below are identifiers rather than
+# secrets, so they are environment VARIABLES.
+#
+# The Static Web Apps deployment token is the one credential that remains. The classic
+# deploy action still requires it -- Azure/static-web-apps#312 is open, and no RBAC
+# role grants SWA deploy rights. The resource-level OIDC alternative
+# (properties.deploymentAuthPolicy = "GitHub") is deliberately NOT used: it has been
+# reported as unrecoverable once set, with the site refusing token auth afterwards, and
+# this is a Free-tier production site. That token deploys static files to one SWA,
+# which is a far smaller prize than the Contributor role OIDC just replaced.
 on:
   workflow_call:
   workflow_dispatch:
@@ -47,6 +64,10 @@ jobs:
     environment: production
     permissions:
       contents: read
+      # Mints the short-lived OIDC token azure/login exchanges for an Azure access
+      # token. Granted only on the jobs that authenticate to Azure -- deploy-web uses
+      # the Static Web Apps deployment token instead and gets no id-token.
+      id-token: write
     steps:
       - uses: actions/checkout@v7
         with:
@@ -59,7 +80,9 @@ jobs:
         run: dotnet publish src/AiObservatory.Api -c Release -o ./publish/api
       - uses: azure/login@7ddb5af1ef8758cf1353cf3b42f940aee27ba21c # v3
         with:
-          creds: ${{ secrets.AZURE_CREDENTIALS }}
+          client-id: ${{ vars.AZURE_CLIENT_ID }}
+          tenant-id: ${{ vars.AZURE_TENANT_ID }}
+          subscription-id: ${{ vars.AZURE_SUBSCRIPTION_ID }}
       - name: Verify the IDE Key Vault reference is resolved
         run: |
           subscription_id=$(az account show --query id -o tsv)
@@ -134,6 +157,7 @@ jobs:
     environment: production
     permissions:
       contents: read
+      id-token: write
     steps:
       - uses: actions/checkout@v7
         with:
@@ -146,7 +170,9 @@ jobs:
         run: dotnet publish src/AiObservatory.Ingest -c Release -o ./publish/ingest
       - uses: azure/login@7ddb5af1ef8758cf1353cf3b42f940aee27ba21c # v3
         with:
-          creds: ${{ secrets.AZURE_CREDENTIALS }}
+          client-id: ${{ vars.AZURE_CLIENT_ID }}
+          tenant-id: ${{ vars.AZURE_TENANT_ID }}
+          subscription-id: ${{ vars.AZURE_SUBSCRIPTION_ID }}
       - uses: azure/webapps-deploy@02a81bead70021f5284939794bcec79c271ab383 # v3
         with:
           app-name: fpaiobs-ingest
@@ -161,10 +187,13 @@ jobs:
     environment: production
     permissions:
       contents: read
+      id-token: write
     steps:
       - uses: azure/login@7ddb5af1ef8758cf1353cf3b42f940aee27ba21c # v3
         with:
-          creds: ${{ secrets.AZURE_CREDENTIALS }}
+          client-id: ${{ vars.AZURE_CLIENT_ID }}
+          tenant-id: ${{ vars.AZURE_TENANT_ID }}
+          subscription-id: ${{ vars.AZURE_SUBSCRIPTION_ID }}
       - name: Start ingest after deployment
         run: az webapp start --resource-group fpaiobs-rg --name fpaiobs-ingest
 
