@@ -141,7 +141,10 @@ jobs:
 
       - name: Assert every job in this workflow is gated
         env:
-          GATE_EXEMPT: ''
+          # deploy runs AFTER ci-gate rather than feeding it, so it cannot be in the
+          # gate's needs: without a cycle. It is not a quality check and must not be
+          # merge-blocking -- it is the consequence of a merge, not a condition of one.
+          GATE_EXEMPT: 'deploy'
         run: python3 .github/scripts/assert_gate_coverage.py .github/workflows/ci.yml
 
   # Required status check. Deliberately a pure aggregator of needs.*.result: it decides
@@ -166,3 +169,26 @@ jobs:
         run: |
           echo "Upstream results: ${{ join(needs.*.result, ', ') }}"
           exit 1
+
+  # Production deployment, called rather than separately triggered.
+  #
+  # deploy.yml used to run `on: workflow_run: [CI]`. That is a privileged trigger --
+  # it executes in the base repository's context with its secrets -- and this
+  # repository is PUBLIC, so anyone can open the pull request that probes it. Calling
+  # the workflow from here removes the trigger entirely rather than mitigating it.
+  #
+  # `needs: [ci-gate]` preserves what workflow_run was actually buying: the deployment
+  # runs only after CI passed ON THIS COMMIT. A plain `on: push` would have lost that,
+  # because this estate rebase-merges and the merged SHA is one CI never saw as a pull
+  # request head.
+  #
+  # `if:` restricts it to a push on main, so pull request runs of this workflow -- fork
+  # ones included -- skip it and never reach the deployment secrets.
+  deploy:
+    name: Deploy
+    needs: [ci-gate]
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    uses: ./.github/workflows/deploy.yml
+    secrets: inherit
+    permissions:
+      contents: read
