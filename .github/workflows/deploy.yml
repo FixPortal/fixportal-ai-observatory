@@ -1,30 +1,43 @@
 name: Deploy
 
+# CALLED BY ci.yml, NOT TRIGGERED BY workflow_run.
+#
+# This used to run `on: workflow_run: [CI]`, gated per job on the triggering run
+# having been a push on main. That was a correct pwn-request mitigation, and it was
+# also the ONLY thing standing between a fork pull request and the production Azure
+# credentials -- this repository is public, the secrets were repository-scoped, and
+# the whole defence was four `if:` expressions. Add a fifth job without the gate, or
+# edit one of the four, and there is nothing else.
+#
+# `workflow_call` removes the class instead of mitigating it. There is no privileged
+# trigger left to reason about: the deployment runs INSIDE ci.yml's own push-on-main
+# run, after ci-gate, so it still deploys only a commit whose CI passed -- which is
+# the guarantee workflow_run was providing and a plain `on: push` would have lost,
+# because this estate rebase-merges and the merged SHA is one CI never saw as a PR
+# head.
+#
+# Defence in depth, so this no longer rests on a condition anyone can forget: every
+# job below names the `production` environment, whose deployment branch policy admits
+# main alone. GitHub refuses the environment's secrets to a run on any other ref
+# regardless of what the `if:` says.
 on:
-  workflow_run:
-    workflows: [CI]
-    types: [completed]
-    branches: [main]
+  workflow_call:
   workflow_dispatch:
 
 concurrency:
   group: deploy-production
   cancel-in-progress: false
 
-# Each job is gated so only trusted main code ever deploys with the production
-# secrets (pwn-request mitigation):
-#   - workflow_run path: the triggering CI run must have been a *push* on *main*
-#     (a pull_request CI run -- including from a fork -- never satisfies this), and
-#   - workflow_dispatch path: must be dispatched from main.
-# The checkout therefore takes the default ref (the main commit / github.sha)
-# rather than the triggering run's head_sha, so untrusted PR code is never checked
-# out and run with secret access.
+# `github.ref` is the CALLER's ref inside a called workflow, so this one condition
+# covers both entry points: ci.yml's push-on-main run, and a manual dispatch, which
+# must also be from main.
 jobs:
   deploy-api:
     timeout-minutes: 20
     name: Deploy (api)
     runs-on: ubuntu-latest
-    if: ${{ (github.event_name == 'workflow_run' && github.event.workflow_run.conclusion == 'success' && github.event.workflow_run.event == 'push' && github.event.workflow_run.head_branch == 'main') || (github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main') }}
+    if: ${{ github.ref == 'refs/heads/main' }}
+    environment: production
     permissions:
       contents: read
     steps:
@@ -110,7 +123,8 @@ jobs:
     name: Deploy (ingest)
     needs: deploy-api
     runs-on: ubuntu-latest
-    if: ${{ (github.event_name == 'workflow_run' && github.event.workflow_run.conclusion == 'success' && github.event.workflow_run.event == 'push' && github.event.workflow_run.head_branch == 'main') || (github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main') }}
+    if: ${{ github.ref == 'refs/heads/main' }}
+    environment: production
     permissions:
       contents: read
     steps:
@@ -135,8 +149,9 @@ jobs:
     name: Ensure ingest is running
     needs: [deploy-api, deploy-ingest]
     runs-on: ubuntu-latest
-    if: ${{ always() && ((github.event_name == 'workflow_run' && github.event.workflow_run.conclusion == 'success' && github.event.workflow_run.event == 'push' && github.event.workflow_run.head_branch == 'main') || (github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main')) }}
+    if: ${{ always() && github.ref == 'refs/heads/main' }}
     timeout-minutes: 15
+    environment: production
     permissions:
       contents: read
     steps:
@@ -173,7 +188,8 @@ jobs:
     timeout-minutes: 20
     name: Deploy (web)
     runs-on: ubuntu-latest
-    if: ${{ (github.event_name == 'workflow_run' && github.event.workflow_run.conclusion == 'success' && github.event.workflow_run.event == 'push' && github.event.workflow_run.head_branch == 'main') || (github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main') }}
+    if: ${{ github.ref == 'refs/heads/main' }}
+    environment: production
     permissions:
       contents: read
     steps:
