@@ -16,6 +16,13 @@ name: Deploy
 # because this estate rebase-merges and the merged SHA is one CI never saw as a PR
 # head.
 #
+# ONE EXCEPTION TO THAT GUARANTEE, and it is deliberate: workflow_dispatch below is a
+# second entry point that does NOT pass through ci-gate. A manual dispatch deploys
+# whatever is on main, CI result or not -- `if:` checks the ref, not the CI outcome.
+# Dispatching needs write access and main is protected, so it is a break-glass lane
+# rather than a hole; but "only a commit whose CI passed" describes the workflow_call
+# path, not this one.
+#
 # Defence in depth, so this no longer rests on a condition anyone can forget: every
 # job below names the `production` environment, whose deployment branch policy admits
 # main alone. GitHub refuses the environment's secrets to a run on any other ref
